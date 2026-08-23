@@ -1,0 +1,205 @@
+# Chimaera // Imperial MTG Market Surveillance 🛸
+
+**Chimaera** is a clinical, tactical, and production-ready Magic: The Gathering market surveillance and price intelligence web application. Inspired by Imperial naval intelligence dashboards, it monitors single card prices across **TCGplayer** (via Scryfall), **MightyMeeple.com** (via BinderPOS/Shopify backend), and **eBay**, alerting collectors via **Discord Webhooks** when prices drop below customized target acquisition thresholds.
+
+---
+
+### 🎨 Visual Style Specification
+- **Design Philosophy:** Minimalist, tactical, clinical, authoritative. Inspired by Imperial naval intelligence dashboards with high-density data legibility.
+- **Color Palette (Dark Mode):**
+  - **Background:** Deep Naval Blue-Gray (`#10141D`)
+  - **Surface:** Slightly lighter Bridge Gray (`#1B2230`)
+  - **Typography:** Off-White Data Gray (`#E0E0E0`)
+  - **Primary Accent:** Tactical Crimson (`#DC143C`) — Buttons & Deal Alerts
+  - **Secondary Accent:** Sophisticated Teal (`#008080`) — Links & Telemetry
+- **Typography:**
+  - **Headings:** Geometric Sans-Serif (`Montserrat`, `Inter`)
+  - **Data/Body:** Monospace (`Fira Code`, `Roboto Mono`)
+- **Shapes & Aesthetics:** Sharp corners, geometric grids, thin precise 1px border lines, zero soft shadows, and clinical linear iconography.
+
+---
+
+## 🛠️ Architecture & Tech Stack
+
+- **Backend:** Python 3.11+ using **Flask** and **SQLAlchemy**.
+- **Database:** **Neon Serverless PostgreSQL** connected via `psycopg2-binary` and SQLAlchemy.
+  - Connection pooling configured with `pool_pre_ping=True` and `pool_recycle=300` to smoothly handle Neon's auto-suspend/resume behavior without dropped connections.
+  - Automatic zero-config fallback to local **SQLite** (`sqlite:///chimera.db`) when `DATABASE_URL` is omitted in development.
+- **Frontend:** Jinja2 templates styled with Tailwind CSS, custom Google Fonts (`Montserrat`, `Fira Code`), real-time Scryfall search autocomplete, set and finish selectors, and tactical deal indicators.
+- **Background Jobs:** **APScheduler** running automated price surveillance checks on a configurable interval (every 6 to 12 hours).
+- **Price & Inventory Providers:**
+  1. **Scryfall API:** Card name autocomplete, printing resolution, high-resolution artwork, oracle metadata, and TCGplayer Market USD prices.
+  2. **Mighty Meeple:** Live stock and variant scanner querying Mighty Meeple's Shopify/BinderPOS backend (`search/suggest.json` and `/products/{handle}.js`) for condition tiers (NM, LP) and in-stock pricing.
+  3. **eBay:** MTG singles scanner supporting the official eBay Finding/Browse API with an HTML scraping fallback for Buy-It-Now listings.
+- **Deal Engine & Notifications:** Automated deal evaluator that triggers rich Discord Webhook embeds when an in-stock card price drops to or below the target threshold.
+
+---
+
+## 📂 Project Structure
+
+```text
+Chimera/
+├── app.py                  # Flask application factory, routes, and APScheduler setup
+├── config.py               # Configuration with Neon connection pooling & env loading
+├── models.py               # SQLAlchemy models (WatchlistItem, VendorPrice)
+├── deal_engine.py          # Multi-vendor aggregation and Discord Webhook dispatcher
+├── providers/
+│   ├── __init__.py         # Provider exports
+│   ├── scryfall.py         # Scryfall autocomplete, printings & TCGplayer pricing
+│   ├── mightymeeple.py     # Mighty Meeple Shopify/BinderPOS inventory scanner
+│   └── ebay.py             # eBay MTG single listings search & price extractor
+├── templates/
+│   ├── base.html           # Imperial naval layout with navigation, modals, and toast alerts
+│   ├── index.html          # Registry dashboard with multi-vendor price comparison matrix
+│   └── deals.html          # Dedicated priority active deals view
+├── static/
+│   ├── img/
+│   │   └── chimaera_logo.jpg # Imperial ISD Chimaera flagship wireframe sigil
+│   ├── css/
+│   │   └── custom.css      # Imperial Naval theme variables, tactical utilities & fonts
+│   └── js/
+│       └── app.js          # Autocomplete debounce, dynamic print loader, and async API calls
+├── requirements.txt        # Python package dependencies
+├── .env.example            # Example environment configuration
+├── .env                    # Local environment variables
+└── README.md               # Documentation & setup guide
+```
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- Python 3.11 or higher
+- (Optional) A free [Neon](https://neon.tech) Serverless PostgreSQL database
+- (Optional) A Discord channel webhook URL for deal alerts
+
+### 2. Installation & Setup
+
+1. **Clone or navigate to the repository directory:**
+   ```bash
+   cd Chimera
+   ```
+
+2. **Create and activate a virtual environment (optional but recommended):**
+   ```bash
+   python -m venv venv
+   # On Windows:
+   venv\Scripts\activate
+   # On Linux/macOS:
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configure environment variables:**
+   Copy `.env.example` to `.env` (or edit existing `.env`):
+   ```bash
+   cp .env.example .env
+   ```
+
+---
+
+## ⚙️ Configuration (`.env`)
+
+| Variable | Description | Default |
+|---|---|---|
+| `PORT` | Port number for the web application | `5050` |
+| `DATABASE_URL` | Neon PostgreSQL connection URI (`postgresql://user:pass@ep-xyz.../neondb?sslmode=require`) | `sqlite:///chimera.db` |
+| `SECRET_KEY` | Flask session secret key | `chimera-dev-secret-key` |
+| `DISCORD_WEBHOOK_URL` | Discord Webhook URL for real-time deal alerts | `""` (Disabled) |
+| `POLL_INTERVAL_HOURS` | Frequency of background APScheduler price scans | `6` |
+| `EBAY_APP_ID` | Optional eBay Developer App ID for official Finding API | `""` |
+
+### Neon PostgreSQL Setup
+To connect to Neon:
+1. Create a project at [neon.tech](https://neon.tech).
+2. Copy your connection string from the Neon dashboard.
+3. Paste it into `.env`:
+   ```env
+   DATABASE_URL=postgresql://neondb_owner:npg_xxxx@ep-sample-123456.us-east-2.aws.neon.tech/neondb?sslmode=require
+   ```
+4. Chimera's SQLAlchemy engine automatically applies `pool_pre_ping=True` and `pool_recycle=300` to sustain healthy connections across Neon's serverless auto-suspend lifecycle.
+5. On app startup, `db.create_all()` automatically builds all necessary tables and indexes.
+
+---
+
+## 💻 Running the Application
+
+### Option A: Using PowerShell Scripts (Recommended on Windows)
+
+Start the application and launch the dashboard in your default browser:
+```powershell
+.\start_app.ps1
+```
+
+Stop the server and release the network port:
+```powershell
+.\stop_app.ps1
+```
+
+---
+
+### Option B: Manual Command Line
+
+Start the development server:
+```bash
+python app.py
+```
+
+Then open your browser and navigate to:
+```
+http://localhost:5050
+```
+
+---
+
+## 🎯 Features & Usage
+
+### 1. Adding Cards to Your Watchlist
+- Click **"Add Card"** in the top navigation bar.
+- Type any MTG card name into the search bar (e.g., *Lightning Bolt*, *Black Lotus*, *The One Ring*). Scryfall autocomplete delivers instant suggestions.
+- Select the specific set printing and collector number from the dropdown.
+- Choose your desired finish: **Non-foil**, **Foil**, or **Etched Foil**.
+- Enter your **Target Price ($ USD)**.
+- Click **"Add to Watchlist"**. Chimera immediately polls TCGplayer, Mighty Meeple, and eBay to fetch initial live prices.
+
+### 2. Multi-Vendor Price Comparison Pills
+Each card on the Wishlist dashboard displays live pricing from:
+- **TCGplayer:** Current Market Price and direct checkout link.
+- **Mighty Meeple:** In-stock status (`In Stock` / `Out of Stock`), condition tier (NM/LP), price, and direct product link.
+- **eBay:** Lowest Buy-It-Now listing price and direct search link.
+
+### 3. Deal Detection & Active Deals View
+- When any vendor's in-stock price is **≤ Target Price**, the card is marked with a **🔥 Deal Found** badge displaying the dollar and percentage savings.
+- Visit the **Active Deals** tab (`/deals`) to see a curated list of all active deals.
+
+### 4. Discord Deal Notifications
+When a card drops below your target price, Chimera automatically dispatches a rich Discord Webhook embed containing:
+- High-res card artwork
+- Target price vs best live deal price
+- Dollar and percentage savings
+- Multi-vendor price comparison table
+- Direct 1-click checkout URL
+
+You can test your Discord webhook anytime by clicking **"Test Discord Webhook"** in the footer.
+
+### 5. Automated Background Polling
+APScheduler runs in the background to re-poll prices across all storefronts every `POLL_INTERVAL_HOURS` hours without requiring manual intervention. You can also trigger an immediate refresh using the **"Refresh All"** button or individual card **"Poll"** buttons.
+
+---
+
+## 🧪 Testing the Modules
+
+Run automated verification tests on Scryfall, Mighty Meeple, and the deal engine:
+```bash
+python -c "from providers import ScryfallProvider, MightyMeepleProvider; s = ScryfallProvider(); print('Scryfall Autocomplete:', s.autocomplete('Black Lotus')); m = MightyMeepleProvider(); print('Mighty Meeple Sample:', m.search_card('Lightning Bolt'))"
+```
+
+---
+
+## 📄 License
+MIT License. Magic: The Gathering is a trademark of Wizards of the Coast LLC. Chimera is not affiliated with Wizards of the Coast, Scryfall, Mighty Meeple, eBay, or TCGplayer.

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Chimaera // Imperial MTG Market Surveillance{% endblock %}</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        naval: {
+                            DEFAULT: '#10141D',
+                            900: '#0C0F17',
+                            950: '#070A0F',
+                        },
+                        bridge: {
+                            DEFAULT: '#1B2230',
+                            surface: '#1B2230',
+                            elevated: '#222B3D',
+                            border: '#263245',
+                            bright: '#384860',
+                        },
+                        crimson: {
+                            DEFAULT: '#DC143C',
+                            hover: '#B30F30',
+                            light: '#FF3358',
+                            dark: '#2A080E',
+                            muted: 'rgba(220, 20, 60, 0.15)',
+                        },
+                        teal: {
+                            DEFAULT: '#008080',
+                            hover: '#00A3A3',
+                            light: '#00CED1',
+                            dark: '#082222',
+                            muted: 'rgba(0, 128, 128, 0.15)',
+                        },
+                        data: {
+                            DEFAULT: '#E0E0E0',
+                            muted: '#8E9BAE',
+                            dark: '#526175',
+                        }
+                    },
+                    fontFamily: {
+                        heading: ['Montserrat', 'Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'Roboto Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+</head>
+<body class="bg-[#10141D] text-[#E0E0E0] min-h-screen flex flex-col font-mono text-sm antialiased selection:bg-[#DC143C] selection:text-white">
+
+    <!-- Imperial Top Tactical Navigation -->
+    <nav class="bg-[#1B2230] border-b border-[#263245] sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Brand / Chimaera Logo -->
+                <div class="flex items-center space-x-6">
+                    <a href="/" class="flex items-center space-x-3 group">
+                        <div class="h-10 w-16 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#008080]">
+                            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship Sigil" class="h-full w-full object-contain filter contrast-125">
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-heading font-black text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
+                                <span class="text-[9px] px-1 py-0.2 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">ISD-72</span>
+                            </div>
+                            <span class="text-[9px] font-mono tracking-widest text-[#008080] uppercase block mt-0.5 font-semibold">Naval Intelligence // Market Surveillance</span>
+                        </div>
+                    </a>
+                    <div class="hidden md:flex space-x-1">
+                        <a href="/" class="px-3 py-2 text-xs font-mono tracking-wide uppercase transition border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#008080] font-bold{% else %}text-[#8E9BAE] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
+                            01 // Registry
+                        </a>
+                        <a href="/deals" class="px-3 py-2 text-xs font-mono tracking-wide uppercase transition border flex items-center space-x-2 {% if active_tab == 'deals' %}bg-[#10141D] text-white border-[#DC143C] font-bold{% else %}text-[#8E9BAE] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
+                            <span>02 // Priority Deals</span>
+                            {% if deals_count is defined and deals_count > 0 %}
+                            <span class="bg-[#DC143C] text-white text-[10px] px-1.5 py-0.2 font-mono font-bold">{{ deals_count }}</span>
+                            {% endif %}
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Header Actions & Telemetry -->
+                <div class="flex items-center space-x-3">
+                    <div class="hidden lg:flex items-center space-x-2 px-2.5 py-1 bg-[#10141D] border border-[#263245] text-[11px] text-[#8E9BAE]">
+                        <span class="w-2 h-2 rounded-none bg-[#008080] animate-tactical-pulse inline-block"></span>
+                        <span class="font-mono uppercase tracking-wider">SYS:ONLINE</span>
+                    </div>
+
+                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-2">
+                        <svg id="refresh-all-icon" class="w-3.5 h-3.5 text-[#008080]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span class="font-mono tracking-wider uppercase">Poll Fleet</span>
+                    </button>
+
+                    <button onclick="openAddCardModal()" class="btn-crimson px-3.5 py-2 text-xs flex items-center space-x-1.5 shadow-none">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        <span>+ Acquire Target</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Mobile Tactical Nav Bar -->
+    <div class="md:hidden bg-[#1B2230] border-b border-[#263245] px-4 py-2 flex space-x-2">
+        <a href="/" class="flex-1 text-center py-1.5 text-xs font-mono uppercase tracking-wider border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#008080] font-bold{% else %}text-[#8E9BAE] border-transparent{% endif %}">
+            01 // Registry
+        </a>
+        <a href="/deals" class="flex-1 text-center py-1.5 text-xs font-mono uppercase tracking-wider border flex items-center justify-center space-x-1.5 {% if active_tab == 'deals' %}bg-[#10141D] text-white border-[#DC143C] font-bold{% else %}text-[#8E9BAE] border-transparent{% endif %}">
+            <span>02 // Deals</span>
+            {% if deals_count is defined and deals_count > 0 %}
+            <span class="bg-[#DC143C] text-white text-[10px] px-1 py-0.2 font-mono font-bold">{{ deals_count }}</span>
+            {% endif %}
+        </a>
+    </div>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Imperial Naval Telemetry Footer -->
+    <footer class="bg-[#1B2230] border-t border-[#263245] py-4 text-xs font-mono text-[#8E9BAE]">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+                <span class="text-[#008080] font-bold">CHIMAERA</span>
+                <span>// SECTOR MTG-CORE &bull; SURVEILLANCE ENGINES: SCRYFALL &bull; MIGHTY MEEPLE &bull; EBAY</span>
+            </div>
+            <button onclick="testDiscordWebhook()" class="text-[#00CED1] hover:text-white transition tracking-wider uppercase text-[11px] underline">
+                [ Transmit Discord Comm Test ]
+            </button>
+        </div>
+    </footer>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+    <!-- Add Card Modal (Imperial Target Registration) -->
+    <div id="modal-add-card" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-lg w-full p-6 relative">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+                <div>
+                    <span class="text-[10px] font-mono text-[#008080] uppercase tracking-widest block font-bold">PROTOCOL // 0x4A</span>
+                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Target Registration Protocol</h3>
+                </div>
+                <button onclick="closeAddCardModal()" class="text-[#8E9BAE] hover:text-white text-xl leading-none font-mono">&times;</button>
+            </div>
+
+            <!-- Autocomplete Search -->
+            <div class="space-y-4 font-mono">
+                <div>
+                    <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1.5">Card Nomenclature / Search Query</label>
+                    <div class="relative">
+                        <input type="text" id="card-search-input" placeholder="e.g. Imperial Seal, Force of Will, Black Lotus..." 
+                            class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white placeholder-[#526175] focus:border-[#008080]"
+                            autocomplete="off">
+                        <div id="autocomplete-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#10141D] border border-[#384860] max-h-48 overflow-y-auto hidden z-50"></div>
+                    </div>
+                </div>
+
+                <!-- Selected Card Details & Prints Loader -->
+                <div id="print-selector-container" class="hidden space-y-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">Set & Printing Classification</label>
+                        <select id="card-print-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]"></select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">Finish Variant</label>
+                            <select id="card-finish-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]">
+                                <option value="nonfoil">Non-foil</option>
+                                <option value="foil">Foil</option>
+                                <option value="etched">Etched Foil</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">Target Threshold ($ USD)</label>
+                            <input type="number" id="card-target-price-input" step="0.01" min="0" placeholder="e.g. 15.00" 
+                                class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]">
+                        </div>
+                    </div>
+
+                    <!-- Card Preview Telemetry Box -->
+                    <div id="card-preview-box" class="bg-[#10141D] border border-[#263245] p-3 flex items-center space-x-3 mt-2">
+                        <img id="card-preview-img" src="" alt="" class="w-16 h-22 object-cover border border-[#263245] bg-[#0C0F17]">
+                        <div class="flex-1 text-xs">
+                            <div id="card-preview-title" class="font-heading font-bold text-white text-sm"></div>
+                            <div id="card-preview-meta" class="text-[#8E9BAE] text-[11px] mt-0.5"></div>
+                            <div id="card-preview-price" class="text-[#00CED1] mt-1 font-mono font-bold text-[11px]"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-3 border-t border-[#263245]">
+                    <button type="button" onclick="closeAddCardModal()" class="btn-bridge px-4 py-2 text-xs">Cancel</button>
+                    <button type="button" id="btn-submit-add-card" onclick="submitAddCard()" disabled class="btn-crimson px-4 py-2 text-xs">Add to Watchlist</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Target Price Modal -->
+    <div id="modal-edit-target" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-sm w-full p-6 relative">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+                <div>
+                    <span class="text-[10px] font-mono text-[#008080] uppercase tracking-widest block font-bold">RECALIBRATE</span>
+                    <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold</h3>
+                </div>
+                <button onclick="closeEditTargetModal()" class="text-[#8E9BAE] hover:text-white text-xl leading-none font-mono">&times;</button>
+            </div>
+            <input type="hidden" id="edit-target-item-id">
+            <div class="mb-4 font-mono">
+                <p id="edit-target-card-name" class="text-xs text-[#E0E0E0] mb-2 font-bold"></p>
+                <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">New Target Price ($ USD)</label>
+                <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
+                    class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]">
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="closeEditTargetModal()" class="btn-bridge px-3 py-1.5 text-xs">Cancel</button>
+                <button type="button" onclick="submitEditTarget()" class="btn-crimson px-3 py-1.5 text-xs">Commit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+

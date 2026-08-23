@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}Chimaera // Target Registry & Market Surveillance{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Imperial Naval Telemetry KPI Summary Bar -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- Telemetry Module 1 -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono font-bold text-[#8E9BAE] uppercase tracking-widest">Monitored Targets</span>
+                <span class="text-[10px] font-mono text-[#008080]">[ REG:01 ]</span>
+            </div>
+            <div class="text-2xl font-mono font-bold text-white mt-1.5 tracking-tight">{{ total_items }}</div>
+            <div class="text-[10px] font-mono text-[#8E9BAE] mt-1">Total database assets</div>
+        </div>
+
+        <!-- Telemetry Module 2 -->
+        <div class="bg-[#1B2230] border {% if deals_count > 0 %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245]{% endif %} p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono font-bold {% if deals_count > 0 %}text-[#FF3358]{% else %}text-[#8E9BAE]{% endif %} uppercase tracking-widest">Active Deals</span>
+                <span class="text-[10px] font-mono {% if deals_count > 0 %}text-[#DC143C] font-bold animate-tactical-pulse{% else %}text-[#8E9BAE]{% endif %}">[ ALERT ]</span>
+            </div>
+            <div class="text-2xl font-mono font-bold {% if deals_count > 0 %}text-[#FF3358]{% else %}text-white{% endif %} mt-1.5 tracking-tight">
+                {{ deals_count }}
+            </div>
+            <div class="text-[10px] font-mono text-[#8E9BAE] mt-1">Below target threshold</div>
+        </div>
+
+        <!-- Telemetry Module 3 -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono font-bold text-[#8E9BAE] uppercase tracking-widest">Target Portfolio</span>
+                <span class="text-[10px] font-mono text-[#008080]">[ VAL:TGT ]</span>
+            </div>
+            <div class="text-2xl font-mono font-bold text-white mt-1.5 tracking-tight">
+                ${{ "%.2f"|format(total_target_value) }}
+            </div>
+            <div class="text-[10px] font-mono text-[#8E9BAE] mt-1">Cumulative target value</div>
+        </div>
+
+        <!-- Telemetry Module 4 -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
+            <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono font-bold text-[#8E9BAE] uppercase tracking-widest">Live Market Sum</span>
+                <span class="text-[10px] font-mono text-[#00CED1]">[ VAL:MKT ]</span>
+            </div>
+            <div class="text-2xl font-mono font-bold text-[#00CED1] mt-1.5 tracking-tight">
+                ${{ "%.2f"|format(lowest_market_sum) }}
+            </div>
+            <div class="text-[10px] font-mono text-[#8E9BAE] mt-1">Lowest live market total</div>
+        </div>
+    </div>
+
+    <!-- Clinical Toolbar: Search & Filter -->
+    <div class="flex flex-col sm:flex-row justify-between items-center gap-3 bg-[#1B2230] border border-[#263245] p-3">
+        <div class="w-full sm:w-80">
+            <input type="text" id="watchlist-search" placeholder="FILTER TARGET REGISTRY BY NAME / SET..."
+                class="w-full bg-[#10141D] border border-[#263245] px-3 py-1.5 text-xs text-white uppercase placeholder-[#526175] focus:border-[#008080]"
+                onkeyup="filterWatchlist()">
+        </div>
+        <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+            <select id="watchlist-filter-deal" onchange="filterWatchlist()"
+                class="bg-[#10141D] border border-[#263245] px-3 py-1.5 text-xs text-white focus:border-[#008080] uppercase">
+                <option value="all">ALL TARGETS</option>
+                <option value="deals">DEALS ONLY</option>
+                <option value="in_stock">IN STOCK ONLY</option>
+            </select>
+            <span class="text-xs font-mono text-[#8E9BAE] border-l border-[#263245] pl-3">[ {{ items|length }} ASSETS ]</span>
+        </div>
+    </div>
+
+    <!-- Watchlist Targets Grid -->
+    {% if items|length == 0 %}
+    <div class="bg-[#1B2230] border border-[#263245] p-12 text-center relative overflow-hidden">
+        <div class="max-w-xs mx-auto mb-4 opacity-40">
+            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship" class="w-full object-contain filter contrast-150">
+        </div>
+        <div class="text-[11px] font-mono text-[#008080] uppercase tracking-widest font-bold">// REGISTRY OFFLINE</div>
+        <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">No Active Surveillance Targets</h3>
+        <p class="text-xs font-mono text-[#8E9BAE] mt-1.5 max-w-md mx-auto">
+            Target registry is unpopulated. Add Magic: The Gathering singles to monitor TCGplayer, Mighty Meeple, and eBay in real-time.
+        </p>
+        <button onclick="openAddCardModal()" class="btn-crimson mt-5 px-5 py-2 text-xs">
+            + Acquire First Target
+        </button>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="watchlist-grid">
+        {% for item in items %}
+        <div class="watchlist-card bg-[#1B2230] border {% if item.is_deal %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245] hover:border-[#384860]{% endif %} p-4 flex flex-col justify-between transition-colors"
+            data-name="{{ item.name|lower }}"
+            data-set="{{ (item.set_code or '')|lower }}"
+            data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
+            data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
+            id="card-row-{{ item.id }}">
+            
+            <div>
+                <!-- Card Header -->
+                <div class="flex items-start space-x-3">
+                    {% if item.image_uri %}
+                    <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0">
+                    {% else %}
+                    <div class="w-16 h-22 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[10px] text-[#526175] flex-shrink-0 uppercase">NO ART</div>
+                    {% endif %}
+
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-heading font-black text-white truncate tracking-wide" title="{{ item.name }}">{{ item.name }}</h4>
+                        </div>
+
+                        <!-- Badges -->
+                        <div class="flex flex-wrap gap-1 mt-1.5">
+                            {% if item.set_code %}
+                            <span class="bg-[#10141D] text-[#8E9BAE] border border-[#263245] text-[10px] px-1.5 py-0.5 font-mono uppercase">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
+                            {% endif %}
+                            <span class="bg-[#008080]/15 text-[#00CED1] border border-[#008080]/40 text-[10px] px-1.5 py-0.5 font-mono uppercase">{{ item.finish }}</span>
+                        </div>
+
+                        <!-- Target vs Lowest Price Readout -->
+                        <div class="mt-2 text-xs font-mono space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[#8E9BAE]">Target:</span>
+                                <span class="font-bold text-white">
+                                    {% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}<span class="text-[#526175] italic">None</span>{% endif %}
+                                </span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-[#8E9BAE]">Lowest Live:</span>
+                                <span class="font-bold {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}">
+                                    {% if item.lowest_in_stock_price is not none %}
+                                    ${{ "%.2f"|format(item.lowest_in_stock_price) }}
+                                    {% else %}
+                                    <span class="text-[#DC143C] text-[10px] uppercase font-bold">[ Out of Stock ]</span>
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Deal Status Banner -->
+                <div class="mt-3">
+                    {% if item.is_deal %}
+                    <div class="bg-[#DC143C]/20 border border-[#DC143C] text-[#FF3358] text-xs px-2.5 py-1 flex items-center justify-between font-mono font-bold">
+                        <span>[!] TARGET ACQUIRED</span>
+                        <span>-${{ "%.2f"|format(item.savings_amount) }} ({{ item.savings_percent }}% OFF)</span>
+                    </div>
+                    {% elif item.target_price and item.lowest_in_stock_price %}
+                    <div class="bg-[#10141D] text-[#8E9BAE] text-[11px] px-2 py-0.5 border border-[#263245] text-right font-mono">
+                        +${{ "%.2f"|format(item.lowest_in_stock_price - item.target_price) }} above threshold
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Multi-Vendor Breakdown Matrix -->
+                <div class="mt-3 pt-3 border-t border-[#263245] space-y-1.5 font-mono">
+                    <div class="text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest">Vendor Matrix</div>
+                    
+                    {% set tcg = item.get_vendor_price('TCGplayer') %}
+                    {% set mm = item.get_vendor_price('Mighty Meeple') %}
+                    {% set eb = item.get_vendor_price('eBay') %}
+
+                    <!-- TCGplayer -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-2.5 py-1 border border-[#263245]">
+                        <span class="text-[#8E9BAE] text-[11px]">TCGplayer</span>
+                        <div class="flex items-center space-x-2">
+                            {% if tcg and tcg.price > 0 %}
+                            <span class="font-bold text-white text-[11px]">${{ "%.2f"|format(tcg.price) }}</span>
+                            {% if tcg.product_url %}
+                            <a href="{{ tcg.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-[10px] uppercase font-bold">Buy</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#526175] text-[10px]">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Mighty Meeple -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-2.5 py-1 border border-[#263245]">
+                        <span class="text-[#8E9BAE] text-[11px]">Mighty Meeple</span>
+                        <div class="flex items-center space-x-2">
+                            {% if mm and mm.price > 0 %}
+                            <span class="font-bold text-white text-[11px]">${{ "%.2f"|format(mm.price) }}</span>
+                            <span class="text-[9px] uppercase font-bold {% if mm.in_stock %}text-[#00CED1]{% else %}text-[#DC143C]{% endif %}">
+                                ({{ "In" if mm.in_stock else "Out" }})
+                            </span>
+                            {% if mm.product_url %}
+                            <a href="{{ mm.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-[10px] uppercase font-bold">Buy</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#526175] text-[10px]">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- eBay -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-2.5 py-1 border border-[#263245]">
+                        <span class="text-[#8E9BAE] text-[11px]">eBay</span>
+                        <div class="flex items-center space-x-2">
+                            {% if eb and eb.price > 0 %}
+                            <span class="font-bold text-white text-[11px]">${{ "%.2f"|format(eb.price) }}</span>
+                            {% if eb.product_url %}
+                            <a href="{{ eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-[10px] uppercase font-bold">Search</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#526175] text-[10px]">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card Action Footer -->
+            <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-[11px]">
+                <button onclick="triggerRefreshCard({{ item.id }})" id="btn-refresh-{{ item.id }}" class="text-[#8E9BAE] hover:text-white flex items-center space-x-1 uppercase">
+                    <svg class="w-3 h-3 text-[#008080] refresh-icon-{{ item.id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span>Poll</span>
+                </button>
+
+                <div class="flex items-center space-x-3">
+                    <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }})" class="text-[#00CED1] hover:text-white uppercase font-semibold">
+                        Edit Target
+                    </button>
+                    <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="text-[#DC143C] hover:text-[#FF3358] uppercase font-semibold">
+                        Terminate
+                    </button>
+                </div>
+            </div>
+
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}
+

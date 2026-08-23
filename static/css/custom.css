@@ -1,0 +1,194 @@
+/* =========================================================================
+   CHIMAERA // IMPERIAL NAVAL INTELLIGENCE THEME STYLESHEET
+   Design Philosophy: Minimalist, Tactical, Clinical, Authoritative
+   Palette: Deep Naval Blue-Gray (#10141D), Bridge Gray (#1B2230),
+            Tactical Crimson (#DC143C), Sophisticated Teal (#008080)
+   ========================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@500;600;700;800;900&display=swap');
+
+:root {
+    --bg-naval: #10141D;
+    --surface-bridge: #1B2230;
+    --surface-elevated: #222B3D;
+    --border-bridge: #263245;
+    --border-bright: #384860;
+    --text-data: #E0E0E0;
+    --text-muted: #8E9BAE;
+    --accent-crimson: #DC143C;
+    --accent-crimson-hover: #B30F30;
+    --accent-teal: #008080;
+    --accent-teal-hover: #00A3A3;
+}
+
+body {
+    background-color: var(--bg-naval);
+    color: var(--text-data);
+    font-family: 'Fira Code', 'Roboto Mono', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+.font-heading {
+    font-family: 'Montserrat', 'Inter', sans-serif;
+    letter-spacing: 0.04em;
+}
+
+.font-data {
+    font-family: 'Fira Code', 'Roboto Mono', monospace;
+}
+
+/* Sharp tactical borders & panels */
+.tactical-panel {
+    background-color: var(--surface-bridge);
+    border: 1px solid var(--border-bridge);
+    position: relative;
+}
+
+.tactical-panel:hover {
+    border-color: var(--border-bright);
+}
+
+.tactical-crimson-panel {
+    background-color: rgba(220, 20, 60, 0.07);
+    border: 1px solid var(--accent-crimson);
+}
+
+.tactical-teal-panel {
+    background-color: rgba(0, 128, 128, 0.08);
+    border: 1px solid var(--accent-teal);
+}
+
+/* Tactical Corner Bracket Accents */
+.tactical-corners::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: 6px;
+    height: 6px;
+    border-top: 2px solid var(--accent-crimson);
+    border-left: 2px solid var(--accent-crimson);
+    pointer-events: none;
+}
+
+.tactical-corners::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    width: 6px;
+    height: 6px;
+    border-bottom: 2px solid var(--accent-teal);
+    border-right: 2px solid var(--accent-teal);
+    pointer-events: none;
+}
+
+/* Subtle Geometric Tactical Grid Overlay */
+.tactical-grid-bg {
+    background-image: linear-gradient(to right, rgba(38, 50, 69, 0.25) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(38, 50, 69, 0.25) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* Radar / Scanning pulse animation */
+@keyframes tactical-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
+.animate-tactical-pulse {
+    animation: tactical-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes spin-fast {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.animate-spin-custom {
+    animation: spin-fast 0.75s linear infinite;
+}
+
+/* Tactical Buttons */
+.btn-crimson {
+    background-color: var(--accent-crimson);
+    color: #FFFFFF;
+    border: 1px solid var(--accent-crimson);
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-crimson:hover {
+    background-color: var(--accent-crimson-hover);
+    border-color: var(--accent-crimson-hover);
+}
+
+.btn-crimson:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-teal {
+    background-color: var(--accent-teal);
+    color: #FFFFFF;
+    border: 1px solid var(--accent-teal);
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-teal:hover {
+    background-color: var(--accent-teal-hover);
+    border-color: var(--accent-teal-hover);
+}
+
+.btn-bridge {
+    background-color: var(--surface-bridge);
+    color: var(--text-data);
+    border: 1px solid var(--border-bridge);
+    font-family: 'Fira Code', monospace;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-bridge:hover {
+    background-color: var(--surface-elevated);
+    border-color: var(--border-bright);
+    color: #FFFFFF;
+}
+
+/* Custom Tactical Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #10141D;
+    border-left: 1px solid #1B2230;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #263245;
+    border-radius: 0px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #384860;
+}
+
+/* High-contrast focus state */
+input:focus, select:focus, textarea:focus {
+    outline: none !important;
+    border-color: var(--accent-teal) !important;
+    box-shadow: 0 0 0 1px var(--accent-teal);
+}
