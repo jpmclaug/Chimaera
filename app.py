@@ -160,6 +160,17 @@ def create_app(test_config=None):
             active_tab="deals",
         )
 
+    @app.route("/guide")
+    def guide():
+        """Tactical Operations & How-To Guide view."""
+        all_items = WatchlistItem.query.all()
+        deals_count = sum(1 for item in all_items if item.is_deal)
+        return render_template(
+            "guide.html",
+            deals_count=deals_count,
+            active_tab="guide",
+        )
+
     # ---------------------------------------------------------
     # API Routes: Scryfall Lookups
     # ---------------------------------------------------------

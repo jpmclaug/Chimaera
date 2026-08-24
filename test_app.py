@@ -152,6 +152,10 @@ class ChimeraTestSuite(unittest.TestCase):
             resp_deals = self.client.get("/deals")
             self.assertEqual(resp_deals.status_code, 200)
 
+            resp_guide = self.client.get("/guide")
+            self.assertEqual(resp_guide.status_code, 200)
+            self.assertIn(b"Tactical Field Manual", resp_guide.data)
+
             # 4. Update Target Price
             resp_edit = self.client.post(
                 f"/api/watchlist/update-target/{card_id}",

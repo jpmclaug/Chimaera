@@ -86,6 +86,9 @@
                             <span class="bg-[#DC143C] text-white text-xs px-2 py-0.5 font-mono font-bold">{{ deals_count }}</span>
                             {% endif %}
                         </a>
+                        <a href="/guide" class="px-3.5 py-2 text-xs font-mono font-medium tracking-wide uppercase transition border {% if active_tab == 'guide' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
+                            03 // Tactical Guide
+                        </a>
                     </div>
                 </div>
 
@@ -127,6 +130,9 @@
             <span class="bg-[#DC143C] text-white text-xs px-1.5 py-0.5 font-mono font-bold">{{ deals_count }}</span>
             {% endif %}
         </a>
+        <a href="/guide" class="flex-1 text-center py-2 text-xs font-mono uppercase tracking-wider border {% if active_tab == 'guide' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %}">
+            03 // Guide
+        </a>
     </div>
 
     <!-- Main Container -->
@@ -141,9 +147,14 @@
                 <span class="text-[#00CED1] font-bold font-heading tracking-wide">CHIMAERA</span>
                 <span class="text-[#94A3B8]">// SECTOR MTG-CORE &bull; SURVEILLANCE ENGINES: SCRYFALL &bull; MIGHTY MEEPLE &bull; EBAY</span>
             </div>
-            <button onclick="testDiscordWebhook()" class="text-[#00CED1] hover:text-white transition tracking-wider uppercase text-xs underline font-medium">
-                [ Transmit Discord Comm Test ]
-            </button>
+            <div class="flex items-center space-x-4">
+                <a href="/guide" class="text-[#94A3B8] hover:text-[#00CED1] transition tracking-wider uppercase text-xs font-medium">
+                    [ Operations Manual & Guide ]
+                </a>
+                <button onclick="testDiscordWebhook()" class="text-[#00CED1] hover:text-white transition tracking-wider uppercase text-xs underline font-medium">
+                    [ Transmit Discord Comm Test ]
+                </button>
+            </div>
         </div>
     </footer>
 

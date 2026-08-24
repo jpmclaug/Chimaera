@@ -44,6 +44,7 @@ Chimera/
 ├── config.py               # Central environment variable & database connection config
 ├── models.py               # SQLAlchemy models (WatchlistItem, VendorPrice, SystemSetting)
 ├── deal_engine.py          # Multi-vendor deal aggregator & Discord dispatcher
+├── guide.html              # Standalone offline Tactical Operations & How-To Manual
 ├── providers/
 │   ├── __init__.py
 │   ├── scryfall.py         # Scryfall REST client & lowest price calculator across printings
@@ -52,7 +53,8 @@ Chimera/
 ├── templates/
 │   ├── base.html           # Imperial tactical layout with navigation, modals, and toast alerts
 │   ├── index.html          # Registry dashboard with multi-vendor price comparison matrix
-│   └── deals.html          # Dedicated priority active deals view
+│   ├── deals.html          # Dedicated priority active deals view
+│   └── guide.html          # In-app Tactical Operations & How-To Guide (/guide)
 ├── static/
 │   ├── img/
 │   │   └── chimaera_logo.jpg # Imperial ISD Chimaera flagship wireframe sigil
