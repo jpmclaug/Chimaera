@@ -1,21 +1,21 @@
 # Chimaera // Imperial MTG Market Surveillance 🛸
 
-**Chimaera** is a clinical, tactical, and production-ready Magic: The Gathering market surveillance and price intelligence web application. Inspired by Imperial naval intelligence dashboards, it monitors single card prices across **TCGplayer** (via Scryfall), **MightyMeeple.com** (via BinderPOS/Shopify backend), and **eBay**, alerting collectors via **Discord Webhooks** when prices drop below customized target acquisition thresholds.
+**Chimaera** is a clinical, tactical, and production-ready Magic: The Gathering market surveillance and price intelligence web application. Inspired by Imperial tactical intelligence dashboards, it monitors single card prices across **TCGplayer** (via Scryfall), **MightyMeeple.com** (via BinderPOS/Shopify backend), and **eBay**, alerting collectors via **Discord Webhooks** when prices drop below customized target acquisition thresholds.
 
 ---
 
 ### 🎨 Visual Style Specification
-- **Design Philosophy:** Minimalist, tactical, clinical, authoritative. Inspired by Imperial naval intelligence dashboards with high-density data legibility.
+- **Design Philosophy:** Minimalist, tactical, clinical, authoritative. Inspired by Imperial intelligence dashboards with high-density data legibility.
 - **Color Palette (Dark Mode):**
-  - **Background:** Deep Naval Blue-Gray (`#10141D`)
-  - **Surface:** Slightly lighter Bridge Gray (`#1B2230`)
-  - **Typography:** Off-White Data Gray (`#E0E0E0`)
+  - **Background:** Deep Tactical Blue-Gray (`#10141D`)
+  - **Surface:** Bridge Gray (`#1B2230`)
+  - **Typography:** Crisp Slate-100 (`#F1F5F9`) & Slate-400 (`#94A3B8`)
   - **Primary Accent:** Tactical Crimson (`#DC143C`) — Buttons & Deal Alerts
-  - **Secondary Accent:** Sophisticated Teal (`#008080`) — Links & Telemetry
+  - **Secondary Accent:** Cyan / Teal (`#00CED1`) — Links & Telemetry
 - **Typography:**
-  - **Headings:** Geometric Sans-Serif (`Montserrat`, `Inter`)
-  - **Data/Body:** Monospace (`Fira Code`, `Roboto Mono`)
-- **Shapes & Aesthetics:** Sharp corners, geometric grids, thin precise 1px border lines, zero soft shadows, and clinical linear iconography.
+  - **Headings & Primary UI:** Modern Sans-Serif (`Montserrat`, `Inter`)
+  - **Data/Telemetry:** Monospace (`Fira Code`, `Roboto Mono`)
+- **Shapes & Aesthetics:** Sharp corners, geometric grids, thin precise 1px border lines, and clinical linear iconography.
 
 ---
 
@@ -25,7 +25,7 @@
 - **Database:** **Neon Serverless PostgreSQL** connected via `psycopg2-binary` and SQLAlchemy.
   - Connection pooling configured with `pool_pre_ping=True` and `pool_recycle=300` to smoothly handle Neon's auto-suspend/resume behavior without dropped connections.
   - Automatic zero-config fallback to local **SQLite** (`sqlite:///chimera.db`) when `DATABASE_URL` is omitted in development.
-- **Frontend:** Jinja2 templates styled with Tailwind CSS, custom Google Fonts (`Montserrat`, `Fira Code`), real-time Scryfall search autocomplete, set and finish selectors, and tactical deal indicators.
+- **Frontend:** Jinja2 templates styled with Tailwind CSS, custom Google Fonts (`Montserrat`, `Inter`, `Fira Code`), real-time Scryfall search autocomplete, set and finish selectors, and tactical deal indicators.
 - **Background Jobs:** **APScheduler** running automated price surveillance checks on a configurable interval (every 6 to 12 hours).
 - **Price & Inventory Providers:**
   1. **Scryfall API:** Card name autocomplete, printing resolution, high-resolution artwork, oracle metadata, and TCGplayer Market USD prices.
@@ -39,26 +39,30 @@
 
 ```text
 Chimera/
-├── app.py                  # Flask application factory, routes, and APScheduler setup
-├── config.py               # Configuration with Neon connection pooling & env loading
-├── models.py               # SQLAlchemy models (WatchlistItem, VendorPrice)
-├── deal_engine.py          # Multi-vendor aggregation and Discord Webhook dispatcher
+├── app.py                  # Flask web factory, API endpoints & template routes
+├── worker.py               # Standalone daemon/cron worker for background surveillance
+├── config.py               # Central environment variable & database connection config
+├── models.py               # SQLAlchemy models (WatchlistItem, VendorPrice, SystemSetting)
+├── deal_engine.py          # Multi-vendor deal aggregator & Discord dispatcher
 ├── providers/
-│   ├── __init__.py         # Provider exports
-│   ├── scryfall.py         # Scryfall autocomplete, printings & TCGplayer pricing
+│   ├── __init__.py
+│   ├── scryfall.py         # Scryfall REST client & lowest price calculator across printings
 │   ├── mightymeeple.py     # Mighty Meeple Shopify/BinderPOS inventory scanner
 │   └── ebay.py             # eBay MTG single listings search & price extractor
 ├── templates/
-│   ├── base.html           # Imperial naval layout with navigation, modals, and toast alerts
+│   ├── base.html           # Imperial tactical layout with navigation, modals, and toast alerts
 │   ├── index.html          # Registry dashboard with multi-vendor price comparison matrix
 │   └── deals.html          # Dedicated priority active deals view
 ├── static/
 │   ├── img/
 │   │   └── chimaera_logo.jpg # Imperial ISD Chimaera flagship wireframe sigil
 │   ├── css/
-│   │   └── custom.css      # Imperial Naval theme variables, tactical utilities & fonts
+│   │   └── custom.css      # Imperial Tactical theme variables, tactical utilities & fonts
 │   └── js/
 │       └── app.js          # Autocomplete debounce, dynamic print loader, and async API calls
+├── Procfile                # Multi-process definition (web + worker dynos)
+├── start_worker.ps1        # PowerShell standalone worker start script
+├── start_worker.bat        # Windows batch standalone worker launcher
 ├── requirements.txt        # Python package dependencies
 ├── .env.example            # Example environment configuration
 ├── .env                    # Local environment variables

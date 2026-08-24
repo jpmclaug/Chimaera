@@ -1,5 +1,5 @@
 # =========================================================================
-# CHIMAERA // IMPERIAL NAVAL INTELLIGENCE - START SCRIPT
+# CHIMAERA // IMPERIAL TACTICAL INTELLIGENCE - START SCRIPT
 # =========================================================================
 
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition

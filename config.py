@@ -34,7 +34,10 @@ class Config:
     # Notifications & Background Job Settings
     PORT = int(os.getenv("PORT", 5050))
     DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-    POLL_INTERVAL_HOURS = int(os.getenv("POLL_INTERVAL_HOURS", 6))
+    try:
+        POLL_INTERVAL_HOURS = float(os.getenv("POLL_INTERVAL_HOURS", 6))
+    except (ValueError, TypeError):
+        POLL_INTERVAL_HOURS = 6.0
 
     # eBay Optional Credentials
     EBAY_APP_ID = os.getenv("EBAY_APP_ID", "").strip()

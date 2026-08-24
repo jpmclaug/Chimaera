@@ -16,7 +16,7 @@ class WatchlistItem(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), index=True, nullable=False)
-    scryfall_id = db.Column(db.String(64), unique=True, nullable=False)
+    scryfall_id = db.Column(db.String(64), nullable=True)
     set_code = db.Column(db.String(10), nullable=True)
     collector_number = db.Column(db.String(20), nullable=True)
     image_uri = db.Column(db.Text, nullable=True)
@@ -32,6 +32,11 @@ class WatchlistItem(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+
+    @property
+    def is_any_version(self):
+        """Returns True if this card monitors any version / set."""
+        return not self.set_code or self.set_code.strip().upper() in ("ANY", "")
 
     @property
     def in_stock_prices(self):
@@ -96,6 +101,7 @@ class WatchlistItem(db.Model):
             "finish": self.finish,
             "target_price": self.target_price,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "is_any_version": self.is_any_version,
             "is_deal": self.is_deal,
             "lowest_price": self.lowest_in_stock_price,
             "savings_amount": self.savings_amount,
@@ -133,4 +139,64 @@ class VendorPrice(db.Model):
             "in_stock": self.in_stock,
             "product_url": self.product_url,
             "last_checked": self.last_checked.isoformat() if self.last_checked else None,
+        }
+
+
+class SystemSetting(db.Model):
+    """Global key-value configuration and telemetry store for Chimaera."""
+
+    __tablename__ = "system_setting"
+
+    key = db.Column(db.String(50), primary_key=True)
+    value = db.Column(db.Text, nullable=True)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+    @classmethod
+    def get_val(cls, key: str, default: str | None = None) -> str | None:
+        """Retrieves a setting value string or default if not found."""
+        try:
+            row = cls.query.filter_by(key=key).first()
+            return row.value if row and row.value is not None else default
+        except Exception:
+            return default
+
+    @classmethod
+    def get_float(cls, key: str, default: float = 6.0) -> float:
+        """Retrieves a setting value parsed as a float."""
+        val = cls.get_val(key)
+        if val is not None:
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                pass
+        return default
+
+    @classmethod
+    def get_bool(cls, key: str, default: bool = True) -> bool:
+        """Retrieves a setting value parsed as a boolean."""
+        val = cls.get_val(key)
+        if val is not None:
+            return val.strip().lower() in ("true", "1", "yes", "on")
+        return default
+
+    @classmethod
+    def set_val(cls, key: str, value: any) -> "SystemSetting":
+        """Upserts a setting key-value pair and commits to the database."""
+        row = cls.query.filter_by(key=key).first()
+        str_val = str(value) if value is not None else ""
+        if not row:
+            row = cls(key=key, value=str_val)
+            db.session.add(row)
+        else:
+            row.value = str_val
+            row.updated_at = utc_now()
+        db.session.commit()
+        return row
+
+    def to_dict(self):
+        """Serializes setting record into a dict."""
+        return {
+            "key": self.key,
+            "value": self.value,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

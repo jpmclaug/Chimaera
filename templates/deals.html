@@ -10,23 +10,23 @@
         <div>
             <div class="flex items-center space-x-2">
                 <span class="w-2.5 h-2.5 bg-[#DC143C] animate-tactical-pulse inline-block"></span>
-                <span class="text-[10px] font-mono font-bold text-[#FF3358] uppercase tracking-widest">TACTICAL ALERT // DEALS CONFIRMED</span>
+                <span class="text-xs font-mono font-bold text-[#FF3358] uppercase tracking-wider">TACTICAL ALERT // DEALS CONFIRMED</span>
             </div>
-            <h2 class="text-lg font-heading font-black text-white uppercase tracking-wider mt-1">
+            <h2 class="text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
                 Priority Target Acquisitions
             </h2>
-            <p class="text-xs font-mono text-[#8E9BAE] mt-0.5">
+            <p class="text-sm text-[#94A3B8] mt-1 font-sans">
                 Market singles in stock across monitored vendors at or below configured target acquisition thresholds.
             </p>
         </div>
         <div class="flex items-center space-x-4 bg-[#10141D] px-4 py-2.5 border border-[#263245]">
             <div>
-                <div class="text-[9px] font-mono text-[#8E9BAE] uppercase tracking-wider">Active Deals</div>
-                <div class="text-xl font-mono font-bold text-[#FF3358]">{{ deals_count }}</div>
+                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Active Deals</div>
+                <div class="text-2xl font-mono font-bold text-[#FF3358]">{{ deals_count }}</div>
             </div>
             <div class="border-l border-[#263245] pl-4">
-                <div class="text-[9px] font-mono text-[#8E9BAE] uppercase tracking-wider">Cumulative Delta Savings</div>
-                <div class="text-xl font-mono font-bold text-white">${{ "%.2f"|format(total_savings) }}</div>
+                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Cumulative Delta Savings</div>
+                <div class="text-2xl font-mono font-bold text-white">${{ "%.2f"|format(total_savings) }}</div>
             </div>
         </div>
     </div>
@@ -37,12 +37,12 @@
         <div class="max-w-xs mx-auto mb-4 opacity-40">
             <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship" class="w-full object-contain filter contrast-150">
         </div>
-        <div class="text-[11px] font-mono text-[#008080] uppercase tracking-widest font-bold">// NO DEALS TRIGGERED</div>
+        <div class="text-xs font-mono text-[#00CED1] uppercase tracking-widest font-bold">// NO DEALS TRIGGERED</div>
         <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">Surveillance Nominal // No Active Deals</h3>
-        <p class="text-xs font-mono text-[#8E9BAE] mt-1.5 max-w-md mx-auto">
+        <p class="text-sm text-[#94A3B8] mt-2 max-w-md mx-auto font-sans leading-relaxed">
             None of your monitored cards are currently at or below their target threshold price. Adjust target prices in the Registry or poll the fleet.
         </p>
-        <a href="/" class="btn-bridge inline-block mt-5 px-5 py-2 text-xs uppercase tracking-wider">
+        <a href="/" class="btn-bridge inline-block mt-5 px-5 py-2.5 text-xs uppercase tracking-wider">
             &larr; Return to Registry
         </a>
     </div>
@@ -53,25 +53,27 @@
         <div class="bg-[#1B2230] border border-[#DC143C] bg-[#DC143C]/5 p-4 flex flex-col justify-between" id="deal-card-{{ item.id }}">
             
             <div>
-                <div class="flex items-start space-x-3">
+                <div class="flex items-start space-x-3.5">
                     {% if item.image_uri %}
                     <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0">
                     {% else %}
-                    <div class="w-16 h-22 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[10px] text-[#526175] flex-shrink-0 uppercase">NO ART</div>
+                    <div class="w-16 h-22 border border-[#263245] bg-[#10141D] flex items-center justify-center text-xs text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>
                     {% endif %}
 
                     <div class="flex-1 min-w-0">
-                        <h4 class="text-sm font-heading font-black text-white truncate tracking-wide">{{ item.name }}</h4>
+                        <h4 class="text-base font-heading font-bold text-white truncate tracking-wide" title="{{ item.name }}">{{ item.name }}</h4>
                         
-                        <div class="flex flex-wrap gap-1 mt-1.5">
-                            {% if item.set_code %}
-                            <span class="bg-[#10141D] text-[#8E9BAE] border border-[#263245] text-[10px] px-1.5 py-0.5 font-mono uppercase">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
+                        <div class="flex flex-wrap gap-1.5 mt-1.5">
+                            {% if item.set_code and item.set_code.upper() != 'ANY' %}
+                            <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase font-medium">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
+                            {% else %}
+                            <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold tracking-wider">ANY VERSION</span>
                             {% endif %}
-                            <span class="bg-[#008080]/15 text-[#00CED1] border border-[#008080]/40 text-[10px] px-1.5 py-0.5 font-mono uppercase">{{ item.finish }}</span>
+                            <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
                         </div>
 
                         <!-- Savings Badge -->
-                        <div class="mt-2 bg-[#DC143C]/20 border border-[#DC143C] px-2 py-1 text-xs text-[#FF3358] font-mono font-bold">
+                        <div class="mt-2 bg-[#DC143C]/20 border border-[#DC143C] px-2.5 py-1 text-xs text-[#FF3358] font-mono font-bold">
                             <div class="flex items-center justify-between">
                                 <span>SAVE ${{ "%.2f"|format(item.savings_amount) }}</span>
                                 <span>{{ item.savings_percent }}% OFF</span>
@@ -83,29 +85,29 @@
                 <!-- Price Comparison Readout -->
                 <div class="mt-3 grid grid-cols-2 gap-2 text-xs font-mono bg-[#10141D] p-2.5 border border-[#263245]">
                     <div>
-                        <div class="text-[#8E9BAE] text-[10px] uppercase">Target Threshold</div>
-                        <div class="text-sm font-bold text-white mt-0.5">${{ "%.2f"|format(item.target_price) }}</div>
+                        <div class="text-[#94A3B8] text-xs uppercase">Target Threshold</div>
+                        <div class="text-base font-bold text-white mt-0.5">${{ "%.2f"|format(item.target_price) }}</div>
                     </div>
                     <div>
-                        <div class="text-[#8E9BAE] text-[10px] uppercase">Live Deal Price</div>
-                        <div class="text-sm font-bold text-[#FF3358] mt-0.5">${{ "%.2f"|format(item.lowest_in_stock_price) }}</div>
+                        <div class="text-[#94A3B8] text-xs uppercase">Live Deal Price</div>
+                        <div class="text-base font-bold text-[#FF3358] mt-0.5">${{ "%.2f"|format(item.lowest_in_stock_price) }}</div>
                     </div>
                 </div>
 
                 <!-- Winning Vendor Box -->
                 {% if best %}
-                <div class="mt-3 bg-[#10141D] p-2.5 border border-[#263245] font-mono">
-                    <div class="text-[9px] text-[#00CED1] uppercase font-bold tracking-wider">Optimal Vendor Source</div>
-                    <div class="flex items-center justify-between mt-1">
+                <div class="mt-3 bg-[#10141D] p-3 border border-[#263245] font-mono">
+                    <div class="text-xs text-[#00CED1] uppercase font-bold tracking-wider">Optimal Vendor Source</div>
+                    <div class="flex items-center justify-between mt-1.5">
                         <div class="text-xs font-bold text-white flex items-center space-x-1.5">
                             <span>{{ best.vendor_name }}</span>
-                            <span class="text-[10px] text-[#8E9BAE] font-normal">({{ best.condition }})</span>
+                            <span class="text-xs text-[#94A3B8] font-normal">({{ best.condition }})</span>
                         </div>
                         <span class="text-xs font-bold text-[#00CED1]">${{ "%.2f"|format(best.price) }}</span>
                     </div>
 
                     {% if best.product_url %}
-                    <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson mt-2 block w-full text-center py-2 text-xs">
+                    <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson mt-2.5 block w-full text-center py-2 text-xs">
                         Execute Acquisition on {{ best.vendor_name }} &rarr;
                     </a>
                     {% endif %}
@@ -114,14 +116,14 @@
             </div>
 
             <!-- Footer Actions -->
-            <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-[11px]">
-                <button onclick="triggerRefreshCard({{ item.id }})" class="text-[#8E9BAE] hover:text-white flex items-center space-x-1 uppercase">
-                    <svg class="w-3 h-3 text-[#008080] refresh-icon-{{ item.id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-xs">
+                <button onclick="triggerRefreshCard({{ item.id }})" class="text-[#94A3B8] hover:text-white flex items-center space-x-1.5 uppercase font-medium">
+                    <svg class="w-3.5 h-3.5 text-[#00CED1] refresh-icon-{{ item.id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
                     <span>Poll Prices</span>
                 </button>
-                <a href="/" class="text-[#00CED1] hover:text-white uppercase font-semibold">
+                <a href="/" class="text-[#00CED1] hover:text-white uppercase font-bold">
                     View in Registry &rarr;
                 </a>
             </div>

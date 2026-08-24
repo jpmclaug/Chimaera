@@ -12,7 +12,7 @@
             theme: {
                 extend: {
                     colors: {
-                        naval: {
+                        tactical: {
                             DEFAULT: '#10141D',
                             900: '#0C0F17',
                             950: '#070A0F',
@@ -22,7 +22,7 @@
                             surface: '#1B2230',
                             elevated: '#222B3D',
                             border: '#263245',
-                            bright: '#384860',
+                            bright: '#3D4F6B',
                         },
                         crimson: {
                             DEFAULT: '#DC143C',
@@ -32,19 +32,21 @@
                             muted: 'rgba(220, 20, 60, 0.15)',
                         },
                         teal: {
-                            DEFAULT: '#008080',
+                            DEFAULT: '#00CED1',
                             hover: '#00A3A3',
-                            light: '#00CED1',
+                            light: '#2DD4BF',
                             dark: '#082222',
-                            muted: 'rgba(0, 128, 128, 0.15)',
+                            muted: 'rgba(0, 206, 209, 0.15)',
                         },
                         data: {
-                            DEFAULT: '#E0E0E0',
-                            muted: '#8E9BAE',
-                            dark: '#526175',
+                            DEFAULT: '#F1F5F9',
+                            muted: '#94A3B8',
+                            subtle: '#64748B',
+                            dark: '#475569',
                         }
                     },
                     fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
                         heading: ['Montserrat', 'Inter', 'sans-serif'],
                         mono: ['Fira Code', 'Roboto Mono', 'monospace'],
                     }
@@ -54,7 +56,7 @@
     </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
 </head>
-<body class="bg-[#10141D] text-[#E0E0E0] min-h-screen flex flex-col font-mono text-sm antialiased selection:bg-[#DC143C] selection:text-white">
+<body class="bg-[#10141D] text-[#F1F5F9] min-h-screen flex flex-col font-sans text-sm antialiased selection:bg-[#DC143C] selection:text-white">
 
     <!-- Imperial Top Tactical Navigation -->
     <nav class="bg-[#1B2230] border-b border-[#263245] sticky top-0 z-40">
@@ -63,46 +65,48 @@
                 <!-- Brand / Chimaera Logo -->
                 <div class="flex items-center space-x-6">
                     <a href="/" class="flex items-center space-x-3 group">
-                        <div class="h-10 w-16 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#008080]">
+                        <div class="h-10 w-16 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#00CED1]">
                             <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship Sigil" class="h-full w-full object-contain filter contrast-125">
                         </div>
                         <div>
                             <div class="flex items-center space-x-2">
                                 <span class="font-heading font-black text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
-                                <span class="text-[9px] px-1 py-0.2 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">ISD-72</span>
+                                <span class="text-[11px] px-1.5 py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">ISD-72</span>
                             </div>
-                            <span class="text-[9px] font-mono tracking-widest text-[#008080] uppercase block mt-0.5 font-semibold">Naval Intelligence // Market Surveillance</span>
+                            <span class="text-[11px] font-mono tracking-widest text-[#00CED1] uppercase block mt-0.5 font-semibold">Tactical Intelligence // Market Surveillance</span>
                         </div>
                     </a>
                     <div class="hidden md:flex space-x-1">
-                        <a href="/" class="px-3 py-2 text-xs font-mono tracking-wide uppercase transition border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#008080] font-bold{% else %}text-[#8E9BAE] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
+                        <a href="/" class="px-3.5 py-2 text-xs font-mono font-medium tracking-wide uppercase transition border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
                             01 // Registry
                         </a>
-                        <a href="/deals" class="px-3 py-2 text-xs font-mono tracking-wide uppercase transition border flex items-center space-x-2 {% if active_tab == 'deals' %}bg-[#10141D] text-white border-[#DC143C] font-bold{% else %}text-[#8E9BAE] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
+                        <a href="/deals" class="px-3.5 py-2 text-xs font-mono font-medium tracking-wide uppercase transition border flex items-center space-x-2 {% if active_tab == 'deals' %}bg-[#10141D] text-white border-[#DC143C] font-bold{% else %}text-[#94A3B8] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
                             <span>02 // Priority Deals</span>
                             {% if deals_count is defined and deals_count > 0 %}
-                            <span class="bg-[#DC143C] text-white text-[10px] px-1.5 py-0.2 font-mono font-bold">{{ deals_count }}</span>
+                            <span class="bg-[#DC143C] text-white text-xs px-2 py-0.5 font-mono font-bold">{{ deals_count }}</span>
                             {% endif %}
                         </a>
                     </div>
                 </div>
 
-                <!-- Header Actions & Telemetry -->
+                    <!-- Header Actions & Telemetry -->
                 <div class="flex items-center space-x-3">
-                    <div class="hidden lg:flex items-center space-x-2 px-2.5 py-1 bg-[#10141D] border border-[#263245] text-[11px] text-[#8E9BAE]">
-                        <span class="w-2 h-2 rounded-none bg-[#008080] animate-tactical-pulse inline-block"></span>
-                        <span class="font-mono uppercase tracking-wider">SYS:ONLINE</span>
-                    </div>
-
-                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-2">
-                        <svg id="refresh-all-icon" class="w-3.5 h-3.5 text-[#008080]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    <button onclick="openCadenceModal()" id="btn-open-cadence" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1]">
+                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
-                        <span class="font-mono tracking-wider uppercase">Poll Fleet</span>
+                        <span id="nav-cadence-label" class="font-mono uppercase font-semibold">Cadence</span>
                     </button>
 
-                    <button onclick="openAddCardModal()" class="btn-crimson px-3.5 py-2 text-xs flex items-center space-x-1.5 shadow-none">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-3.5 py-2 text-xs flex items-center space-x-2">
+                        <svg id="refresh-all-icon" class="w-4 h-4 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span class="font-mono tracking-wider uppercase font-semibold">Poll Fleet</span>
+                    </button>
+
+                    <button onclick="openAddCardModal()" class="btn-crimson px-4 py-2 text-xs flex items-center space-x-1.5 shadow-none">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
                         </svg>
                         <span>+ Acquire Target</span>
@@ -114,13 +118,13 @@
 
     <!-- Mobile Tactical Nav Bar -->
     <div class="md:hidden bg-[#1B2230] border-b border-[#263245] px-4 py-2 flex space-x-2">
-        <a href="/" class="flex-1 text-center py-1.5 text-xs font-mono uppercase tracking-wider border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#008080] font-bold{% else %}text-[#8E9BAE] border-transparent{% endif %}">
+        <a href="/" class="flex-1 text-center py-2 text-xs font-mono uppercase tracking-wider border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %}">
             01 // Registry
         </a>
-        <a href="/deals" class="flex-1 text-center py-1.5 text-xs font-mono uppercase tracking-wider border flex items-center justify-center space-x-1.5 {% if active_tab == 'deals' %}bg-[#10141D] text-white border-[#DC143C] font-bold{% else %}text-[#8E9BAE] border-transparent{% endif %}">
+        <a href="/deals" class="flex-1 text-center py-2 text-xs font-mono uppercase tracking-wider border flex items-center justify-center space-x-1.5 {% if active_tab == 'deals' %}bg-[#10141D] text-white border-[#DC143C] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %}">
             <span>02 // Deals</span>
             {% if deals_count is defined and deals_count > 0 %}
-            <span class="bg-[#DC143C] text-white text-[10px] px-1 py-0.2 font-mono font-bold">{{ deals_count }}</span>
+            <span class="bg-[#DC143C] text-white text-xs px-1.5 py-0.5 font-mono font-bold">{{ deals_count }}</span>
             {% endif %}
         </a>
     </div>
@@ -130,14 +134,14 @@
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Imperial Naval Telemetry Footer -->
-    <footer class="bg-[#1B2230] border-t border-[#263245] py-4 text-xs font-mono text-[#8E9BAE]">
+    <!-- Imperial Tactical Telemetry Footer -->
+    <footer class="bg-[#1B2230] border-t border-[#263245] py-4 text-xs font-mono text-[#94A3B8]">
         <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div class="flex items-center space-x-3">
-                <span class="text-[#008080] font-bold">CHIMAERA</span>
-                <span>// SECTOR MTG-CORE &bull; SURVEILLANCE ENGINES: SCRYFALL &bull; MIGHTY MEEPLE &bull; EBAY</span>
+                <span class="text-[#00CED1] font-bold font-heading tracking-wide">CHIMAERA</span>
+                <span class="text-[#94A3B8]">// SECTOR MTG-CORE &bull; SURVEILLANCE ENGINES: SCRYFALL &bull; MIGHTY MEEPLE &bull; EBAY</span>
             </div>
-            <button onclick="testDiscordWebhook()" class="text-[#00CED1] hover:text-white transition tracking-wider uppercase text-[11px] underline">
+            <button onclick="testDiscordWebhook()" class="text-[#00CED1] hover:text-white transition tracking-wider uppercase text-xs underline font-medium">
                 [ Transmit Discord Comm Test ]
             </button>
         </div>
@@ -151,54 +155,57 @@
         <div class="bg-[#1B2230] border-2 border-[#263245] max-w-lg w-full p-6 relative">
             <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
                 <div>
-                    <span class="text-[10px] font-mono text-[#008080] uppercase tracking-widest block font-bold">PROTOCOL // 0x4A</span>
+                    <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">PROTOCOL // 0x4A</span>
                     <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Target Registration Protocol</h3>
                 </div>
-                <button onclick="closeAddCardModal()" class="text-[#8E9BAE] hover:text-white text-xl leading-none font-mono">&times;</button>
+                <button onclick="closeAddCardModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
 
             <!-- Autocomplete Search -->
-            <div class="space-y-4 font-mono">
+            <div class="space-y-4">
                 <div>
-                    <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1.5">Card Nomenclature / Search Query</label>
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Card Nomenclature / Search Query</label>
                     <div class="relative">
                         <input type="text" id="card-search-input" placeholder="e.g. Imperial Seal, Force of Will, Black Lotus..." 
-                            class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white placeholder-[#526175] focus:border-[#008080]"
+                            class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-sm text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono"
                             autocomplete="off">
-                        <div id="autocomplete-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#10141D] border border-[#384860] max-h-48 overflow-y-auto hidden z-50"></div>
+                        <div id="autocomplete-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#10141D] border border-[#3D4F6B] max-h-56 overflow-y-auto hidden z-50 shadow-2xl"></div>
                     </div>
                 </div>
 
                 <!-- Selected Card Details & Prints Loader -->
                 <div id="print-selector-container" class="hidden space-y-3">
                     <div>
-                        <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">Set & Printing Classification</label>
-                        <select id="card-print-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]"></select>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Tracking Scope / Version</label>
+                            <span class="text-[10px] font-mono text-[#00CED1] font-bold uppercase tracking-wider">[ Any Version Default ]</span>
+                        </div>
+                        <select id="card-print-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono"></select>
                     </div>
 
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">Finish Variant</label>
-                            <select id="card-finish-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]">
+                            <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Finish Variant</label>
+                            <select id="card-finish-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
                                 <option value="nonfoil">Non-foil</option>
                                 <option value="foil">Foil</option>
                                 <option value="etched">Etched Foil</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">Target Threshold ($ USD)</label>
+                            <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold ($ USD)</label>
                             <input type="number" id="card-target-price-input" step="0.01" min="0" placeholder="e.g. 15.00" 
-                                class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]">
+                                class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
                         </div>
                     </div>
 
                     <!-- Card Preview Telemetry Box -->
-                    <div id="card-preview-box" class="bg-[#10141D] border border-[#263245] p-3 flex items-center space-x-3 mt-2">
+                    <div id="card-preview-box" class="bg-[#10141D] border border-[#263245] p-3 flex items-center space-x-3.5 mt-2">
                         <img id="card-preview-img" src="" alt="" class="w-16 h-22 object-cover border border-[#263245] bg-[#0C0F17]">
-                        <div class="flex-1 text-xs">
-                            <div id="card-preview-title" class="font-heading font-bold text-white text-sm"></div>
-                            <div id="card-preview-meta" class="text-[#8E9BAE] text-[11px] mt-0.5"></div>
-                            <div id="card-preview-price" class="text-[#00CED1] mt-1 font-mono font-bold text-[11px]"></div>
+                        <div class="flex-1 min-w-0">
+                            <div id="card-preview-title" class="font-heading font-bold text-white text-sm truncate"></div>
+                            <div id="card-preview-meta" class="text-[#94A3B8] text-xs font-mono mt-0.5"></div>
+                            <div id="card-preview-price" class="text-[#00CED1] mt-1 font-mono font-bold text-xs"></div>
                         </div>
                     </div>
                 </div>
@@ -216,21 +223,83 @@
         <div class="bg-[#1B2230] border-2 border-[#263245] max-w-sm w-full p-6 relative">
             <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
                 <div>
-                    <span class="text-[10px] font-mono text-[#008080] uppercase tracking-widest block font-bold">RECALIBRATE</span>
+                    <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">RECALIBRATE</span>
                     <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold</h3>
                 </div>
-                <button onclick="closeEditTargetModal()" class="text-[#8E9BAE] hover:text-white text-xl leading-none font-mono">&times;</button>
+                <button onclick="closeEditTargetModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
             <input type="hidden" id="edit-target-item-id">
-            <div class="mb-4 font-mono">
-                <p id="edit-target-card-name" class="text-xs text-[#E0E0E0] mb-2 font-bold"></p>
-                <label class="block text-[10px] font-bold text-[#8E9BAE] uppercase tracking-widest mb-1">New Target Price ($ USD)</label>
+            <div class="mb-4">
+                <p id="edit-target-card-name" class="text-sm text-[#F1F5F9] mb-2 font-bold font-mono"></p>
+                <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">New Target Price ($ USD)</label>
                 <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
-                    class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#008080]">
+                    class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
             </div>
             <div class="flex justify-end space-x-2">
-                <button type="button" onclick="closeEditTargetModal()" class="btn-bridge px-3 py-1.5 text-xs">Cancel</button>
-                <button type="button" onclick="submitEditTarget()" class="btn-crimson px-3 py-1.5 text-xs">Commit</button>
+                <button type="button" onclick="closeEditTargetModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
+                <button type="button" onclick="submitEditTarget()" class="btn-crimson px-4 py-2 text-xs">Commit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Surveillance Protocol & Cadence Settings Modal -->
+    <div id="modal-cadence-settings" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-6 relative">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+                <div>
+                    <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">CONFIG // 0x7E</span>
+                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Surveillance Cadence</h3>
+                </div>
+                <button onclick="closeCadenceModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Status & Telemetry Readout -->
+                <div class="bg-[#10141D] border border-[#263245] p-3 space-y-2 font-mono text-xs">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[#94A3B8]">Worker Telemetry:</span>
+                        <span id="telemetry-worker-status" class="font-bold text-[#00CED1] uppercase">[ STANDALONE READY ]</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-[#94A3B8]">Last Fleet Sweep:</span>
+                        <span id="telemetry-last-poll" class="text-white">--</span>
+                    </div>
+                    <div class="border-t border-[#263245]/60 pt-1.5 text-[11px] text-[#94A3B8]" id="telemetry-status-message">
+                        Telemetry nominal.
+                    </div>
+                </div>
+
+                <!-- Interval Settings Form -->
+                <div>
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Auto-Surveillance Refresh Cadence</label>
+                    <select id="cadence-interval-select" class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
+                        <option value="0.25">Every 15 Minutes (0.25h)</option>
+                        <option value="0.5">Every 30 Minutes (0.5h)</option>
+                        <option value="1">Every 1 Hour (1.0h)</option>
+                        <option value="2">Every 2 Hours (2.0h)</option>
+                        <option value="4">Every 4 Hours (4.0h)</option>
+                        <option value="6" selected>Every 6 Hours (6.0h - Default)</option>
+                        <option value="12">Every 12 Hours (12.0h)</option>
+                        <option value="24">Every 24 Hours (24.0h)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center space-x-3 bg-[#10141D] p-3 border border-[#263245]">
+                    <input type="checkbox" id="cadence-auto-enabled" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                    <label for="cadence-auto-enabled" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
+                        Enable Automated Background Surveillance
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between pt-3 border-t border-[#263245]">
+                    <button type="button" onclick="triggerManualSweepFromModal()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1">
+                        <span>⚡ Poll Now</span>
+                    </button>
+                    <div class="flex space-x-2">
+                        <button type="button" onclick="closeCadenceModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
+                        <button type="button" onclick="saveCadenceSettings()" id="btn-save-cadence" class="btn-crimson px-4 py-2 text-xs">Save Cadence</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

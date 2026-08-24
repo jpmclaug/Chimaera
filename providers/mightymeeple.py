@@ -62,7 +62,8 @@ class MightyMeepleProvider:
             if not candidate_products:
                 candidate_products = products[:3]  # Fallback to first few results
 
-            best_variant_match = None
+            in_stock_matches = []
+            out_of_stock_matches = []
             is_foil_target = (finish or "nonfoil").lower() in ("foil", "etched")
 
             for prod in candidate_products:
@@ -82,26 +83,30 @@ class MightyMeepleProvider:
                         price_num = 0.0
 
                     if price_num > 0 and prod.get("available", False):
-                        return {
+                        in_stock_matches.append({
                             "vendor_name": "Mighty Meeple",
                             "price": round(price_num, 2),
                             "condition": "NM/LP",
                             "in_stock": True,
                             "product_url": prod_url,
-                        }
+                        })
                     continue
 
                 # Match variants by finish and condition
                 matched = self._match_variant(variants, is_foil_target)
                 if matched:
                     matched["product_url"] = prod_url
-                    if matched.get("in_stock"):
-                        return matched
-                    elif best_variant_match is None:
-                        best_variant_match = matched
+                    if matched.get("in_stock") and matched.get("price", 0) > 0:
+                        in_stock_matches.append(matched)
+                    else:
+                        out_of_stock_matches.append(matched)
 
-            if best_variant_match:
-                return best_variant_match
+            if in_stock_matches:
+                in_stock_matches.sort(key=lambda m: m["price"])
+                return in_stock_matches[0]
+
+            if out_of_stock_matches:
+                return out_of_stock_matches[0]
 
             # Out of stock fallback
             first_prod = candidate_products[0]

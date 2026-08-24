@@ -49,6 +49,38 @@ class ScryfallProvider:
             logger.error(f"Error fetching card by ID {scryfall_id}: {e}")
         return None
 
+    def get_card_named(self, card_name: str) -> dict | None:
+        """Fetches canonical card object from Scryfall by exact card name."""
+        if not card_name:
+            return None
+
+        try:
+            url = f"{SCRYFALL_BASE_URL}/cards/named"
+            response = self.session.get(url, params={"exact": card_name.strip()}, timeout=8)
+            if response.status_code == 200:
+                card = response.json()
+                image_uri = None
+                if "image_uris" in card and card["image_uris"].get("normal"):
+                    image_uri = card["image_uris"]["normal"]
+                elif "card_faces" in card and card["card_faces"]:
+                    first_face = card["card_faces"][0]
+                    if "image_uris" in first_face and first_face["image_uris"].get("normal"):
+                        image_uri = first_face["image_uris"]["normal"]
+
+                return {
+                    "id": card.get("id"),
+                    "name": card.get("name"),
+                    "set_code": card.get("set", "").upper(),
+                    "collector_number": card.get("collector_number", ""),
+                    "image_uri": image_uri,
+                    "prices": card.get("prices", {}),
+                    "tcgplayer_url": card.get("purchase_uris", {}).get("tcgplayer"),
+                }
+            logger.warning(f"Scryfall named lookup failed for '{card_name}' (status: {response.status_code})")
+        except Exception as e:
+            logger.error(f"Error fetching card named '{card_name}': {e}")
+        return None
+
     def search_card_prints(self, card_name: str) -> list[dict]:
         """Fetches all unique prints for a specific card name."""
         if not card_name:
@@ -150,4 +182,79 @@ class ScryfallProvider:
             "condition": "Market NM",
             "in_stock": False,
             "product_url": purchase_url,
+        }
+
+    def get_cheapest_tcgplayer_price(self, card_name: str, finish: str = "nonfoil") -> dict | None:
+        """
+        Finds the lowest TCGplayer market price across all printings/versions of a card.
+        """
+        if not card_name:
+            return None
+
+        prints = self.search_card_prints(card_name)
+        finish = (finish or "nonfoil").lower()
+
+        valid_prints = []
+        for p in prints:
+            prices = p.get("prices", {})
+            price_val = None
+            if finish == "foil":
+                price_val = prices.get("usd_foil") or prices.get("usd_etched") or prices.get("usd")
+            elif finish == "etched":
+                price_val = prices.get("usd_etched") or prices.get("usd_foil") or prices.get("usd")
+            elif finish == "any":
+                candidates = [prices.get("usd"), prices.get("usd_foil"), prices.get("usd_etched")]
+                cand_nums = []
+                for c in candidates:
+                    try:
+                        if c is not None:
+                            cand_nums.append(float(c))
+                    except (ValueError, TypeError):
+                        pass
+                if cand_nums:
+                    price_val = min(cand_nums)
+            else:  # nonfoil
+                price_val = prices.get("usd") or prices.get("usd_foil")
+
+            if price_val is not None:
+                try:
+                    num_p = float(price_val)
+                    if num_p > 0:
+                        valid_prints.append({
+                            "print": p,
+                            "price": num_p,
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+        encoded_name = urllib.parse.quote(card_name)
+        search_fallback_url = f"https://www.tcgplayer.com/search/magic/product?q={encoded_name}"
+
+        if valid_prints:
+            valid_prints.sort(key=lambda x: x["price"])
+            best = valid_prints[0]
+            best_print = best["print"]
+            purchase_url = best_print.get("tcgplayer_url") or search_fallback_url
+            set_tag = best_print.get("set_code", "").upper()
+            cond = f"Market NM ({set_tag})" if set_tag else "Market NM"
+
+            return {
+                "vendor_name": "TCGplayer",
+                "price": round(best["price"], 2),
+                "condition": cond,
+                "in_stock": True,
+                "product_url": purchase_url,
+            }
+
+        # Fallback to single card named lookup if prints yielded no valid price
+        card_info = self.get_card_named(card_name)
+        if card_info and card_info.get("id"):
+            return self.get_tcgplayer_price(card_info["id"], finish=finish)
+
+        return {
+            "vendor_name": "TCGplayer",
+            "price": 0.0,
+            "condition": "Market NM",
+            "in_stock": False,
+            "product_url": search_fallback_url,
         }

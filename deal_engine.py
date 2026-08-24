@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 import requests
 from config import Config
-from models import db, WatchlistItem, VendorPrice
+from models import db, WatchlistItem, VendorPrice, SystemSetting
 from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider
 
 logger = logging.getLogger(__name__)
@@ -22,23 +22,28 @@ class DealEngine:
         Polls all 3 providers for a single WatchlistItem, upserts VendorPrice records,
         and dispatches a Discord deal alert if a new deal threshold is met.
         """
-        logger.info(f"Polling prices for: {item.name} ({item.set_code or 'N/A'}, {item.finish})")
+        is_any = item.is_any_version
+        version_label = "Any Version" if is_any else (item.set_code or "N/A")
+        logger.info(f"Polling prices for: {item.name} ({version_label}, {item.finish})")
 
         # 1. Scryfall / TCGplayer
-        tcg_data = self.scryfall.get_tcgplayer_price(item.scryfall_id, finish=item.finish)
+        if is_any:
+            tcg_data = self.scryfall.get_cheapest_tcgplayer_price(item.name, finish=item.finish)
+        else:
+            tcg_data = self.scryfall.get_tcgplayer_price(item.scryfall_id, finish=item.finish)
         ref_price = tcg_data.get("price") if tcg_data and tcg_data.get("in_stock") else None
 
         # 2. Mighty Meeple
         mm_data = self.mightymeeple.search_card(
             card_name=item.name,
-            set_code=item.set_code,
+            set_code=None if is_any else item.set_code,
             finish=item.finish,
         )
 
         # 3. eBay
         ebay_data = self.ebay.search_card(
             card_name=item.name,
-            set_code=item.set_code,
+            set_code=None if is_any else item.set_code,
             finish=item.finish,
             reference_price=ref_price,
         )
@@ -110,7 +115,20 @@ class DealEngine:
             except Exception as e:
                 logger.error(f"Error polling card {item.name} (ID: {item.id}): {e}")
 
-        logger.info("Completed poll for all watchlist items.")
+        deals_found = sum(1 for s in summary if s.get("is_deal"))
+        now = datetime.now(timezone.utc)
+        try:
+            SystemSetting.set_val("last_poll_time", now.isoformat())
+            SystemSetting.set_val("last_poll_count", len(summary))
+            SystemSetting.set_val("last_poll_deals", deals_found)
+            SystemSetting.set_val(
+                "last_poll_status",
+                f"Surveillance cycle complete: {len(summary)} targets monitored, {deals_found} active deals triggered."
+            )
+        except Exception as e:
+            logger.debug(f"Could not persist telemetry to SystemSetting: {e}")
+
+        logger.info(f"Completed poll for all watchlist items ({len(summary)} scanned, {deals_found} deals).")
         return summary
 
     def send_discord_deal_alert(
@@ -168,9 +186,10 @@ class DealEngine:
                     "inline": False,
                 })
 
+            set_label = "Any Version" if item.is_any_version else (item.set_code or "Unknown")
             embed = {
                 "title": f"🚨 Priority Deal: {item.name}",
-                "description": f"**Set:** {item.set_code or 'Unknown'} | **Finish:** {item.finish.capitalize()}",
+                "description": f"**Set:** {set_label} | **Finish:** {item.finish.capitalize()}",
                 "color": 0xDC143C,  # Tactical Crimson
                 "fields": fields,
                 "footer": {
@@ -210,7 +229,7 @@ class DealEngine:
                 "embeds": [
                     {
                         "title": "🛰️ Chimaera Webhook Telemetry Test",
-                        "description": "Imperial naval market surveillance webhook integration is successfully configured and operational!",
+                        "description": "Imperial tactical market surveillance webhook integration is successfully configured and operational!",
                         "color": 0x008080,  # Sophisticated Teal
                         "fields": [
                             {"name": "Status", "value": "✓ Online & Monitoring", "inline": True},
