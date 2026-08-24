@@ -4,6 +4,8 @@
 
 let currentPrintsData = [];
 let autocompleteTimeout = null;
+let currentPriceIntel = { market: null, great: null, good: null, fair: null };
+let editPriceIntel = { market: null, great: null, good: null, fair: null };
 
 // =========================================================================
 // Tactical Toast Notification System
@@ -67,23 +69,121 @@ function closeAddCardModal() {
         document.getElementById("print-selector-container").classList.add("hidden");
         document.getElementById("btn-submit-add-card").disabled = true;
         currentPrintsData = [];
+        currentPriceIntel = { market: null, great: null, good: null, fair: null };
     }
 }
 
-function openEditTargetModal(id, name, currentTarget) {
+async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true) {
     const modal = document.getElementById("modal-edit-target");
     if (!modal) return;
 
     document.getElementById("edit-target-item-id").value = id;
     document.getElementById("edit-target-card-name").textContent = `TARGET: ${name}`;
     document.getElementById("edit-target-price-input").value = currentTarget !== null ? currentTarget : "";
+    
+    const scopeElem = document.getElementById("edit-target-scope-label");
+    if (scopeElem) {
+        scopeElem.textContent = `Surveillance Scope: ${isAnyVersion ? 'Any Version (Card in General)' : 'Specific Printing'}`;
+    }
+
+    const mmCheckbox = document.getElementById("edit-target-mm-alert");
+    if (mmCheckbox) {
+        mmCheckbox.checked = Boolean(notifyMM);
+    }
+
     modal.classList.remove("hidden");
     document.getElementById("edit-target-price-input").focus();
+
+    // Fetch price intel for quick presets in edit modal
+    try {
+        const res = await fetch(`/api/card/price-intel?name=${encodeURIComponent(name)}`);
+        if (res.ok) {
+            const data = await res.json();
+            const mp = data.market_price;
+            if (mp && mp > 0) {
+                editPriceIntel = {
+                    market: mp,
+                    great: data.targets.great_deal_20,
+                    good: data.targets.good_deal_10,
+                    fair: data.targets.fair_market,
+                };
+                const gLabel = document.getElementById("label-edit-preset-great");
+                const gdLabel = document.getElementById("label-edit-preset-good");
+                const mLabel = document.getElementById("label-edit-preset-market");
+                if (gLabel && editPriceIntel.great) gLabel.textContent = `-20% ($${editPriceIntel.great.toFixed(2)})`;
+                if (gdLabel && editPriceIntel.good) gdLabel.textContent = `-10% ($${editPriceIntel.good.toFixed(2)})`;
+                if (mLabel && editPriceIntel.fair) mLabel.textContent = `100% ($${editPriceIntel.fair.toFixed(2)})`;
+            }
+        }
+    } catch (e) {
+        console.debug("Failed to fetch price intel for edit modal:", e);
+    }
 }
 
 function closeEditTargetModal() {
     const modal = document.getElementById("modal-edit-target");
     if (modal) modal.classList.add("hidden");
+}
+
+// =========================================================================
+// Price Intelligence Presets
+// =========================================================================
+function applyTargetPreset(type) {
+    const input = document.getElementById("card-target-price-input");
+    if (!input || !currentPriceIntel.market) return;
+
+    if (type === "great" && currentPriceIntel.great !== null) {
+        input.value = currentPriceIntel.great.toFixed(2);
+    } else if (type === "good" && currentPriceIntel.good !== null) {
+        input.value = currentPriceIntel.good.toFixed(2);
+    } else if (type === "market" && currentPriceIntel.fair !== null) {
+        input.value = currentPriceIntel.fair.toFixed(2);
+    }
+}
+
+function applyEditTargetPreset(type) {
+    const input = document.getElementById("edit-target-price-input");
+    if (!input || !editPriceIntel.market) return;
+
+    if (type === "great" && editPriceIntel.great !== null) {
+        input.value = editPriceIntel.great.toFixed(2);
+    } else if (type === "good" && editPriceIntel.good !== null) {
+        input.value = editPriceIntel.good.toFixed(2);
+    } else if (type === "market" && editPriceIntel.fair !== null) {
+        input.value = editPriceIntel.fair.toFixed(2);
+    }
+}
+
+function updatePriceIntelPresets(marketPrice) {
+    const marketLabel = document.getElementById("intel-market-price");
+    const labelGreat = document.getElementById("label-preset-great");
+    const labelGood = document.getElementById("label-preset-good");
+    const labelMarket = document.getElementById("label-preset-market");
+
+    if (!marketPrice || marketPrice <= 0) {
+        currentPriceIntel = { market: null, great: null, good: null, fair: null };
+        if (marketLabel) marketLabel.textContent = "Estimating...";
+        if (labelGreat) labelGreat.textContent = "-20%";
+        if (labelGood) labelGood.textContent = "-10%";
+        if (labelMarket) labelMarket.textContent = "100%";
+        return;
+    }
+
+    const great = Math.round(marketPrice * 0.80 * 100) / 100;
+    const good = Math.round(marketPrice * 0.90 * 100) / 100;
+    const fair = Math.round(marketPrice * 100) / 100;
+
+    currentPriceIntel = {
+        market: marketPrice,
+        great: great,
+        good: good,
+        fair: fair,
+    };
+
+    if (marketLabel) marketLabel.textContent = `$${fair.toFixed(2)}`;
+    if (labelGreat) labelGreat.textContent = `-20% ($${great.toFixed(2)})`;
+    if (labelGood) labelGood.textContent = `-10% ($${good.toFixed(2)})`;
+    if (labelMarket) labelMarket.textContent = `100% ($${fair.toFixed(2)})`;
 }
 
 // =========================================================================
@@ -221,7 +321,7 @@ async function selectCardName(cardName) {
         `).join("");
 
         printSelect.innerHTML = `
-            <option value="any" selected>★ Any Version (Lowest Market Price across all prints)</option>
+            <option value="any" selected>★ Any Version (Card in General - Lowest Market Price)</option>
             ${printOptions}
         `;
 
@@ -244,6 +344,7 @@ function updateSelectedPrintView() {
     const titleElem = document.getElementById("card-preview-title");
     const metaElem = document.getElementById("card-preview-meta");
     const priceElem = document.getElementById("card-preview-price");
+    const scopeIndicator = document.getElementById("scope-badge-indicator");
 
     if (!currentPrintsData || currentPrintsData.length === 0) return;
 
@@ -253,6 +354,10 @@ function updateSelectedPrintView() {
     if (selectedValue === "any") {
         // Any Version Mode
         const canonical = currentPrintsData[0];
+        if (scopeIndicator) {
+            scopeIndicator.textContent = "[ ★ Any Version (General Card) ]";
+            scopeIndicator.className = "text-[10px] font-mono text-[#00CED1] font-bold uppercase tracking-wider";
+        }
         if (imgElem) {
             imgElem.src = canonical.image_uri || "";
             imgElem.alt = canonical.name;
@@ -270,10 +375,18 @@ function updateSelectedPrintView() {
         if (priceElem) {
             priceElem.textContent = lowest !== null ? `TCGPLAYER MARKET TELEMETRY: $${lowest.toFixed(2)} (Lowest Print)` : "TCGPLAYER MARKET TELEMETRY: Market Active";
         }
+
+        updatePriceIntelPresets(lowest);
+
     } else {
         // Specific Print Mode
         const printObj = currentPrintsData.find(p => p.id === selectedValue);
         if (!printObj) return;
+
+        if (scopeIndicator) {
+            scopeIndicator.textContent = `[ 🎯 ${printObj.set_code.toUpperCase()} #${printObj.collector_number} ]`;
+            scopeIndicator.className = "text-[10px] font-mono text-[#2DD4BF] font-bold uppercase tracking-wider";
+        }
 
         if (imgElem) {
             imgElem.src = printObj.image_uri || "";
@@ -300,15 +413,20 @@ function updateSelectedPrintView() {
 
         const finishVal = finishSelect.value;
         let estPrice = "N/A";
+        let numericPrice = null;
         if (finishVal === "foil" && printObj.prices.usd_foil) {
             estPrice = `$${printObj.prices.usd_foil}`;
+            numericPrice = parseFloat(printObj.prices.usd_foil);
         } else if (finishVal === "etched" && printObj.prices.usd_etched) {
             estPrice = `$${printObj.prices.usd_etched}`;
+            numericPrice = parseFloat(printObj.prices.usd_etched);
         } else if (printObj.prices.usd) {
             estPrice = `$${printObj.prices.usd}`;
+            numericPrice = parseFloat(printObj.prices.usd);
         }
 
         if (priceElem) priceElem.textContent = `TCGPLAYER MARKET TELEMETRY: ${estPrice}`;
+        updatePriceIntelPresets(numericPrice);
     }
 }
 
@@ -319,6 +437,7 @@ async function submitAddCard() {
     const printSelect = document.getElementById("card-print-select");
     const finishSelect = document.getElementById("card-finish-select");
     const targetPriceInput = document.getElementById("card-target-price-input");
+    const notifyMMCheckbox = document.getElementById("card-notify-mm-input");
     const submitBtn = document.getElementById("btn-submit-add-card");
 
     if (!currentPrintsData || currentPrintsData.length === 0) {
@@ -340,6 +459,7 @@ async function submitAddCard() {
             image_uri: canonical.image_uri,
             finish: finishSelect.value,
             target_price: targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
+            notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
         };
     } else {
         const printObj = currentPrintsData.find(p => p.id === selectedValue);
@@ -356,6 +476,7 @@ async function submitAddCard() {
             image_uri: printObj.image_uri,
             finish: finishSelect.value,
             target_price: targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
+            notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
         };
     }
 
@@ -388,11 +509,12 @@ async function submitAddCard() {
 }
 
 // =========================================================================
-// Edit Target Price Submit Action
+// Edit Target Price & Alert Settings Submit Action
 // =========================================================================
 async function submitEditTarget() {
     const itemId = document.getElementById("edit-target-item-id").value;
     const targetPriceVal = document.getElementById("edit-target-price-input").value;
+    const mmAlertChecked = document.getElementById("edit-target-mm-alert")?.checked ?? true;
 
     try {
         const res = await fetch(`/api/watchlist/update-target/${itemId}`, {
@@ -400,12 +522,13 @@ async function submitEditTarget() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 target_price: targetPriceVal ? parseFloat(targetPriceVal) : null,
+                notify_mm_stock: mmAlertChecked,
             }),
         });
 
         const data = await res.json();
         if (res.ok) {
-            showToast("Target threshold reconfigured.", "success");
+            showToast("Target configuration committed.", "success");
             closeEditTargetModal();
             setTimeout(() => window.location.reload(), 450);
         } else {
@@ -414,6 +537,36 @@ async function submitEditTarget() {
     } catch (err) {
         console.error("Update target error:", err);
         showToast("Communication error updating target", "error");
+    }
+}
+
+// =========================================================================
+// Toggle Mighty Meeple Stock Alert (Per Card)
+// =========================================================================
+async function toggleMightyMeepleAlert(itemId) {
+    try {
+        const res = await fetch(`/api/watchlist/toggle-mm-alert/${itemId}`, { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message, "success");
+            const btn = document.getElementById(`mm-alert-btn-${itemId}`);
+            const statusSpan = document.getElementById(`mm-alert-status-${itemId}`);
+            if (statusSpan) {
+                statusSpan.textContent = data.notify_mm_stock ? "ON" : "OFF";
+            }
+            if (btn) {
+                if (data.notify_mm_stock) {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25";
+                } else {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+                }
+            }
+        } else {
+            showToast(data.error || "Failed to toggle Mighty Meeple alert", "error");
+        }
+    } catch (err) {
+        console.error("Error toggling MM alert:", err);
+        showToast("Communication error toggling alert", "error");
     }
 }
 
@@ -511,6 +664,8 @@ function filterWatchlist() {
         const set = card.dataset.set || "";
         const isDeal = card.dataset.isDeal === "true";
         const inStock = card.dataset.inStock === "true";
+        const mmStock = card.dataset.mmStock === "true";
+        const isAny = card.dataset.isAny === "true";
 
         const matchesSearch = !searchVal || name.includes(searchVal) || set.includes(searchVal);
         let matchesFilter = true;
@@ -519,6 +674,12 @@ function filterWatchlist() {
             matchesFilter = isDeal;
         } else if (dealFilter === "in_stock") {
             matchesFilter = inStock;
+        } else if (dealFilter === "mm_in_stock") {
+            matchesFilter = mmStock;
+        } else if (dealFilter === "any_version") {
+            matchesFilter = isAny;
+        } else if (dealFilter === "specific_print") {
+            matchesFilter = !isAny;
         }
 
         if (matchesSearch && matchesFilter) {
@@ -578,6 +739,8 @@ async function fetchCadenceTelemetry() {
         // Update modal fields
         const select = document.getElementById("cadence-interval-select");
         const autoCheck = document.getElementById("cadence-auto-enabled");
+        const mmCheck = document.getElementById("cadence-notify-mm");
+        const ebaySelect = document.getElementById("cadence-ebay-mode");
         const workerStatusElem = document.getElementById("telemetry-worker-status");
         const lastPollElem = document.getElementById("telemetry-last-poll");
         const statusMsgElem = document.getElementById("telemetry-status-message");
@@ -602,6 +765,14 @@ async function fetchCadenceTelemetry() {
 
         if (autoCheck) {
             autoCheck.checked = Boolean(data.auto_poll_enabled);
+        }
+
+        if (mmCheck) {
+            mmCheck.checked = Boolean(data.notify_mm_stock_enabled !== undefined ? data.notify_mm_stock_enabled : true);
+        }
+
+        if (ebaySelect && data.ebay_link_mode) {
+            ebaySelect.value = data.ebay_link_mode;
         }
 
         if (workerStatusElem) {
@@ -641,6 +812,8 @@ async function fetchCadenceTelemetry() {
 async function saveCadenceSettings() {
     const select = document.getElementById("cadence-interval-select");
     const autoCheck = document.getElementById("cadence-auto-enabled");
+    const mmCheck = document.getElementById("cadence-notify-mm");
+    const ebaySelect = document.getElementById("cadence-ebay-mode");
     const btn = document.getElementById("btn-save-cadence");
 
     if (btn) {
@@ -652,6 +825,8 @@ async function saveCadenceSettings() {
         const payload = {
             poll_interval_hours: select ? parseFloat(select.value) : 6.0,
             auto_poll_enabled: autoCheck ? autoCheck.checked : true,
+            notify_mm_stock_enabled: mmCheck ? mmCheck.checked : true,
+            ebay_link_mode: ebaySelect ? ebaySelect.value : "direct",
         };
 
         const res = await fetch("/api/settings/cadence", {
@@ -662,19 +837,19 @@ async function saveCadenceSettings() {
 
         const data = await res.json();
         if (res.ok) {
-            showToast(data.message || "Surveillance cadence updated", "success");
+            showToast(data.message || "Surveillance settings committed", "success");
             closeCadenceModal();
             await fetchCadenceTelemetry();
         } else {
-            showToast(data.error || "Failed to update cadence", "error");
+            showToast(data.error || "Failed to update settings", "error");
         }
     } catch (err) {
-        console.error("Save cadence error:", err);
-        showToast("Error updating cadence settings", "error");
+        console.error("Save settings error:", err);
+        showToast("Error updating settings", "error");
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = "Save Cadence";
+            btn.textContent = "Save Settings";
         }
     }
 }

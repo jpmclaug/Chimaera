@@ -67,6 +67,9 @@
                 <option value="all">ALL TARGETS</option>
                 <option value="deals">DEALS ONLY</option>
                 <option value="in_stock">IN STOCK ONLY</option>
+                <option value="mm_in_stock">MIGHTY MEEPLE IN STOCK</option>
+                <option value="any_version">ANY VERSION (GENERAL)</option>
+                <option value="specific_print">SPECIFIC PRINTINGS</option>
             </select>
             <span class="text-xs font-mono text-[#94A3B8] font-bold border-l border-[#263245] pl-3">[ {{ items|length }} ASSETS ]</span>
         </div>
@@ -95,6 +98,8 @@
             data-set="{{ (item.set_code or '')|lower }}"
             data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
+            data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
+            data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
             id="card-row-{{ item.id }}">
             
             <div>
@@ -107,21 +112,29 @@
                     {% endif %}
 
                     <div class="flex-1 min-w-0">
-                        <div class="flex items-center justify-between">
+                        <div class="flex items-center justify-between gap-1">
                             <h4 class="text-base font-heading font-bold text-white truncate tracking-wide" title="{{ item.name }}">{{ item.name }}</h4>
                         </div>
 
-                        <!-- Badges -->
-                        <div class="flex flex-wrap gap-1.5 mt-1.5">
+                        <!-- Badges & Alerts -->
+                        <div class="flex flex-wrap gap-1.5 mt-1.5 items-center">
                             {% if item.set_code and item.set_code.upper() != 'ANY' %}
                             <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase font-medium">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
                             {% else %}
                             <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold tracking-wider">ANY VERSION</span>
                             {% endif %}
                             <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
+                            
+                            <!-- Mighty Meeple Stock Alert Toggle -->
+                            <button onclick="toggleMightyMeepleAlert({{ item.id }})" id="mm-alert-btn-{{ item.id }}"
+                                class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_mm_stock %}bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                title="Toggle Mighty Meeple In-Stock Alert">
+                                <span>MM Alert:</span>
+                                <span id="mm-alert-status-{{ item.id }}">{{ "ON" if item.notify_mm_stock else "OFF" }}</span>
+                            </button>
                         </div>
 
-                        <!-- Target vs Lowest Price Readout -->
+                        <!-- Target vs Lowest Price & Price Intelligence Readout -->
                         <div class="mt-2.5 text-xs font-mono space-y-1 bg-[#10141D]/60 p-2 border border-[#263245]">
                             <div class="flex items-center justify-between">
                                 <span class="text-[#94A3B8]">Target:</span>
@@ -139,6 +152,26 @@
                                     {% endif %}
                                 </span>
                             </div>
+                            
+                            <!-- Price Intelligence Benchmarks -->
+                            <div class="flex items-center justify-between pt-1 border-t border-[#263245]/60 text-[11px]">
+                                <span class="text-[#64748B]">Market Ref:</span>
+                                <div class="flex items-center space-x-1.5">
+                                    <span class="text-[#94A3B8]">{% if item.market_price %}${{ "%.2f"|format(item.market_price) }}{% else %}N/A{% endif %}</span>
+                                    {% if item.price_rating == 'Great Deal' %}
+                                    <span class="text-[#00CED1] font-bold text-[10px] bg-[#00CED1]/15 px-1 border border-[#00CED1]/40">★ Great Deal</span>
+                                    {% elif item.price_rating == 'Good Deal' %}
+                                    <span class="text-[#2DD4BF] font-bold text-[10px] bg-[#2DD4BF]/15 px-1 border border-[#2DD4BF]/40">✓ Good Deal</span>
+                                    {% elif item.price_rating == 'Fair Market' %}
+                                    <span class="text-[#94A3B8] text-[10px]">Market Fair</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% if item.suggested_good_price %}
+                            <div class="text-[10px] text-[#64748B] text-right font-sans">
+                                Good deal target: <span class="font-mono text-[#94A3B8]">${{ "%.2f"|format(item.suggested_good_price) }}</span> (-10%)
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -182,7 +215,12 @@
 
                     <!-- Mighty Meeple -->
                     <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
-                        <span class="text-[#94A3B8] text-xs font-medium">Mighty Meeple</span>
+                        <div class="flex items-center space-x-1.5">
+                            <span class="text-[#94A3B8] text-xs font-medium">Mighty Meeple</span>
+                            {% if mm and mm.in_stock %}
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#00CED1] inline-block animate-pulse" title="In Stock at Mighty Meeple"></span>
+                            {% endif %}
+                        </div>
                         <div class="flex items-center space-x-2">
                             {% if mm and mm.price > 0 %}
                             <span class="font-bold text-white text-xs">${{ "%.2f"|format(mm.price) }}</span>
@@ -204,9 +242,13 @@
                         <div class="flex items-center space-x-2">
                             {% if eb and eb.price > 0 %}
                             <span class="font-bold text-white text-xs">${{ "%.2f"|format(eb.price) }}</span>
-                            {% if eb.product_url %}
-                            <a href="{{ eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Search</a>
-                            {% endif %}
+                            <div class="flex items-center space-x-1.5">
+                                <a href="{{ eb.product_url or eb.search_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold" title="Direct link to lowest price Buy-It-Now listing">Lowest</a>
+                                <span class="text-[#64748B]">|</span>
+                                <a href="{{ eb.search_url or eb.product_url }}" target="_blank" rel="noopener" class="text-[#94A3B8] hover:text-white underline text-xs uppercase font-medium" title="Search all active eBay listings">Search</a>
+                            </div>
+                            {% elif eb and (eb.product_url or eb.search_url) %}
+                            <a href="{{ eb.search_url or eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Search</a>
                             {% else %}
                             <span class="text-[#64748B] text-xs">N/A</span>
                             {% endif %}
@@ -225,7 +267,7 @@
                 </button>
 
                 <div class="flex items-center space-x-3">
-                    <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }})" class="text-[#00CED1] hover:text-white uppercase font-bold">
+                    <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }})" class="text-[#00CED1] hover:text-white uppercase font-bold">
                         Edit Target
                     </button>
                     <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">

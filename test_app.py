@@ -276,6 +276,166 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn("count", res)
             self.assertEqual(SystemSetting.get_val("worker_status"), "idle")
 
+    def test_10_mightymeeple_restock_alert_and_toggle(self):
+        """Tests Mighty Meeple alert toggle API and restock notification flow."""
+        with self.app.app_context():
+            item = WatchlistItem(
+                name="Force of Will",
+                finish="nonfoil",
+                target_price=60.00,
+                notify_mm_stock=True,
+            )
+            db.session.add(item)
+            db.session.commit()
+            item_id = item.id
+
+            # 1. Default should be True
+            self.assertTrue(item.notify_mm_stock)
+
+            # 2. Toggle via API -> False
+            resp = self.client.post(f"/api/watchlist/toggle-mm-alert/{item_id}")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            self.assertFalse(data["notify_mm_stock"])
+            self.assertIn("disabled", data["message"].lower())
+
+            # 3. Toggle back -> True
+            resp2 = self.client.post(f"/api/watchlist/toggle-mm-alert/{item_id}")
+            self.assertEqual(resp2.status_code, 200)
+            data2 = resp2.get_json()
+            self.assertTrue(data2["notify_mm_stock"])
+            self.assertIn("enabled", data2["message"].lower())
+
+    def test_11_card_scope_update_api(self):
+        """Tests updating tracking scope between Any Version (General) and Specific Printings."""
+        with self.app.app_context():
+            item = WatchlistItem(
+                name="Demonic Tutor",
+                is_any_version=True,
+                finish="nonfoil",
+                target_price=35.00,
+            )
+            db.session.add(item)
+            db.session.commit()
+            item_id = item.id
+
+            # Update from Any Version to Specific Set (UMA #93)
+            scope_payload = {
+                "is_any_version": False,
+                "scryfall_id": "test-dt-uma-93",
+                "set_code": "UMA",
+                "collector_number": "93",
+                "finish": "foil",
+            }
+            resp = self.client.post(
+                f"/api/watchlist/update-scope/{item_id}",
+                data=json.dumps(scope_payload),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+            updated = db.session.get(WatchlistItem, item_id)
+            self.assertFalse(updated.is_any_version)
+            self.assertEqual(updated.set_code, "UMA")
+            self.assertEqual(updated.collector_number, "93")
+            self.assertEqual(updated.finish, "foil")
+
+            # Switch back to Any Version
+            back_payload = {
+                "is_any_version": True,
+                "finish": "nonfoil",
+            }
+            resp_back = self.client.post(
+                f"/api/watchlist/update-scope/{item_id}",
+                data=json.dumps(back_payload),
+                content_type="application/json",
+            )
+            self.assertEqual(resp_back.status_code, 200)
+            updated_back = db.session.get(WatchlistItem, item_id)
+            self.assertTrue(updated_back.is_any_version)
+            self.assertIsNone(updated_back.set_code)
+
+    def test_12_price_intel_and_benchmarks(self):
+        """Tests market price intelligence, suggested deals, and price rating calculation."""
+        with self.app.app_context():
+            item = WatchlistItem(
+                name="Mana Vault",
+                finish="nonfoil",
+                target_price=50.00,
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            # Add TCGplayer market reference
+            vp_tcg = VendorPrice(
+                watchlist_id=item.id,
+                vendor_name="TCGplayer",
+                price=100.00,
+                in_stock=True,
+            )
+            # Add live deal from Mighty Meeple at $75 (25% off)
+            vp_mm = VendorPrice(
+                watchlist_id=item.id,
+                vendor_name="Mighty Meeple",
+                price=75.00,
+                in_stock=True,
+            )
+            db.session.add_all([vp_tcg, vp_mm])
+            db.session.commit()
+
+            fetched = db.session.get(WatchlistItem, item.id)
+            self.assertEqual(fetched.market_price, 100.00)
+            self.assertEqual(fetched.suggested_good_price, 90.00)
+            self.assertEqual(fetched.suggested_great_price, 80.00)
+            # Price ratio = 75 / 100 = 0.75 <= 0.80 -> Great Deal
+            self.assertEqual(fetched.price_rating, "Great Deal")
+            self.assertTrue(fetched.mm_in_stock)
+
+            # Test API endpoint
+            resp = self.client.get("/api/card/price-intel?name=Mana%20Vault")
+            self.assertEqual(resp.status_code, 200)
+            intel = resp.get_json()
+            self.assertEqual(intel["name"], "Mana Vault")
+            self.assertIn("market_price", intel)
+            self.assertIn("targets", intel)
+            self.assertIn("good_deal_10", intel["targets"])
+            self.assertIn("great_deal_20", intel["targets"])
+
+    def test_13_ebay_link_modes_and_preferences(self):
+        """Tests eBay product_url vs search_url persistence and preference configuration."""
+        with self.app.app_context():
+            item = WatchlistItem(
+                name="Sylvan Library",
+                finish="nonfoil",
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            vp_ebay = VendorPrice(
+                watchlist_id=item.id,
+                vendor_name="eBay",
+                price=42.00,
+                product_url="https://www.ebay.com/itm/123456789",
+                search_url="https://www.ebay.com/sch/i.html?_nkw=Sylvan+Library",
+                in_stock=True,
+            )
+            db.session.add(vp_ebay)
+            db.session.commit()
+
+            # Verify VendorPrice serialization contains search_url
+            d = vp_ebay.to_dict()
+            self.assertEqual(d["product_url"], "https://www.ebay.com/itm/123456789")
+            self.assertEqual(d["search_url"], "https://www.ebay.com/sch/i.html?_nkw=Sylvan+Library")
+
+            # Test settings endpoint for eBay link preference
+            resp = self.client.post(
+                "/api/settings/ebay-preference",
+                data=json.dumps({"ebay_link_mode": "search"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.get_json()["ebay_link_mode"], "search")
+            self.assertEqual(SystemSetting.get_val("ebay_link_mode"), "search")
+
 
 if __name__ == "__main__":
     unittest.main()

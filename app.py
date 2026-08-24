@@ -39,23 +39,41 @@ def _migrate_db_schema(app):
                                     image_uri TEXT,
                                     finish VARCHAR(20) DEFAULT 'nonfoil',
                                     target_price FLOAT,
+                                    notify_mm_stock BOOLEAN DEFAULT 1 NOT NULL,
                                     created_at DATETIME
                                 )
                             """))
                             conn.execute(db.text("""
-                                INSERT INTO watchlist_item_migration (id, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, created_at)
-                                SELECT id, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, created_at FROM watchlist_item
+                                INSERT INTO watchlist_item_migration (id, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, notify_mm_stock, created_at)
+                                SELECT id, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, 1, created_at FROM watchlist_item
                             """))
                             conn.execute(db.text("DROP TABLE watchlist_item"))
                             conn.execute(db.text("ALTER TABLE watchlist_item_migration RENAME TO watchlist_item"))
                             conn.execute(db.text("PRAGMA foreign_keys=ON"))
                             conn.commit()
                             logger.info("SQLite database migration completed successfully.")
+
+                    # Ensure notify_mm_stock column exists in watchlist_item
+                    cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(watchlist_item)")).fetchall()]
+                    if "notify_mm_stock" not in cols:
+                        logger.info("Adding notify_mm_stock column to watchlist_item...")
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_mm_stock BOOLEAN DEFAULT 1 NOT NULL"))
+                        conn.commit()
+
+                    # Ensure search_url column exists in vendor_price
+                    vp_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(vendor_price)")).fetchall()]
+                    if "search_url" not in vp_cols:
+                        logger.info("Adding search_url column to vendor_price...")
+                        conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN search_url TEXT"))
+                        conn.commit()
+
             elif dialect in ("postgresql", "postgres"):
                 with db.engine.connect() as conn:
-                    logger.info("Verifying PostgreSQL watchlist_item constraints...")
+                    logger.info("Verifying PostgreSQL watchlist_item constraints and columns...")
                     conn.execute(db.text("ALTER TABLE watchlist_item ALTER COLUMN scryfall_id DROP NOT NULL"))
                     conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
+                    conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
+                    conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
         except Exception as e:
@@ -207,6 +225,7 @@ def create_app(test_config=None):
         image_uri = (data.get("image_uri") or "").strip() or None
         finish = (data.get("finish") or "nonfoil").strip().lower()
         target_price_raw = data.get("target_price")
+        notify_mm_stock = bool(data.get("notify_mm_stock", True))
 
         if not name:
             return jsonify({"error": "Card name is required."}), 400
@@ -259,6 +278,7 @@ def create_app(test_config=None):
             image_uri=image_uri,
             finish=finish,
             target_price=target_price,
+            notify_mm_stock=notify_mm_stock,
         )
         db.session.add(new_item)
         db.session.commit()
@@ -271,6 +291,64 @@ def create_app(test_config=None):
             "message": f"Successfully added {name} ({version_desc}) to watchlist.",
             "card": new_item.to_dict(),
         }), 201
+
+    @app.route("/api/watchlist/toggle-mm-alert/<int:item_id>", methods=["POST"])
+    def toggle_mm_alert(item_id):
+        """Toggle Mighty Meeple stock alert for a specific card."""
+        item = db.session.get(WatchlistItem, item_id)
+        if not item:
+            return jsonify({"error": "Card not found."}), 404
+
+        data = request.get_json(silent=True) or {}
+        if "notify_mm_stock" in data:
+            item.notify_mm_stock = bool(data["notify_mm_stock"])
+        else:
+            item.notify_mm_stock = not bool(item.notify_mm_stock if item.notify_mm_stock is not None else True)
+
+        db.session.commit()
+        status_str = "ENABLED" if item.notify_mm_stock else "DISABLED"
+        return jsonify({
+            "message": f"Mighty Meeple in-stock alert {status_str} for {item.name}.",
+            "notify_mm_stock": item.notify_mm_stock,
+            "card": item.to_dict(),
+        })
+
+    @app.route("/api/watchlist/update-scope/<int:item_id>", methods=["POST"])
+    def update_card_scope(item_id):
+        """Update a card's scope between Any Version (general) and a specific print."""
+        item = db.session.get(WatchlistItem, item_id)
+        if not item:
+            return jsonify({"error": "Card not found."}), 404
+
+        data = request.get_json() or {}
+        is_any = data.get("is_any_version", False)
+        set_code = (data.get("set_code") or "").strip().upper() or None
+        collector_number = (data.get("collector_number") or "").strip() or None
+        scryfall_id = (data.get("scryfall_id") or "").strip() or None
+        image_uri = (data.get("image_uri") or "").strip() or None
+        finish = (data.get("finish") or item.finish or "nonfoil").strip().lower()
+
+        if is_any or not set_code or set_code == "ANY":
+            item.set_code = None
+            item.collector_number = None
+        else:
+            item.set_code = set_code
+            item.collector_number = collector_number
+
+        if scryfall_id:
+            item.scryfall_id = scryfall_id
+        if image_uri:
+            item.image_uri = image_uri
+        item.finish = finish
+
+        db.session.commit()
+        deal_engine.poll_card(item, notify=True)
+
+        scope_label = "Any Version (Card in General)" if item.is_any_version else f"{item.set_code} #{item.collector_number or '?'}"
+        return jsonify({
+            "message": f"Updated tracking scope for {item.name} to {scope_label}.",
+            "card": item.to_dict(),
+        })
 
     @app.route("/api/watchlist/update-target/<int:item_id>", methods=["POST"])
     def update_target_price(item_id):
@@ -290,9 +368,12 @@ def create_app(test_config=None):
             except ValueError:
                 return jsonify({"error": "Invalid target price number."}), 400
 
+        if "notify_mm_stock" in data:
+            item.notify_mm_stock = bool(data["notify_mm_stock"])
+
         db.session.commit()
         return jsonify({
-            "message": "Target price updated.",
+            "message": "Target price and alert preferences updated.",
             "card": item.to_dict(),
         })
 
@@ -334,6 +415,47 @@ def create_app(test_config=None):
             "deleted_id": item_id,
         })
 
+    @app.route("/api/card/price-intel")
+    def card_price_intel():
+        """Returns real-time price intelligence and good-price deal targets for a card."""
+        name = request.args.get("name", "").strip()
+        finish = request.args.get("finish", "nonfoil").strip().lower()
+        set_code = request.args.get("set_code", "").strip().upper() or None
+
+        if not name:
+            return jsonify({"error": "Card name required."}), 400
+
+        market_price = None
+        if set_code and set_code != "ANY":
+            prints = scryfall_provider.search_card_prints(name)
+            match_print = next((p for p in prints if p.get("set_code", "").upper() == set_code), None)
+            if match_print and match_print.get("prices"):
+                p_dict = match_print["prices"]
+                p_val = p_dict.get("usd_foil") if finish == "foil" else (p_dict.get("usd_etched") if finish == "etched" else p_dict.get("usd"))
+                if p_val:
+                    try:
+                        market_price = float(p_val)
+                    except (ValueError, TypeError):
+                        pass
+        else:
+            cheapest = scryfall_provider.get_cheapest_tcgplayer_price(name, finish=finish)
+            market_price = cheapest.get("price") if cheapest and cheapest.get("in_stock") else None
+
+        good_target = round(market_price * 0.90, 2) if market_price and market_price > 0 else None
+        great_target = round(market_price * 0.80, 2) if market_price and market_price > 0 else None
+        fair_target = round(market_price, 2) if market_price and market_price > 0 else None
+
+        return jsonify({
+            "name": name,
+            "finish": finish,
+            "market_price": market_price,
+            "targets": {
+                "great_deal_20": great_target,
+                "good_deal_10": good_target,
+                "fair_market": fair_target,
+            }
+        })
+
     @app.route("/api/discord/test", methods=["POST"])
     def test_discord_webhook():
         """Test Discord webhook integration."""
@@ -347,6 +469,8 @@ def create_app(test_config=None):
         """Returns current surveillance cadence, worker heartbeat, and telemetry status."""
         interval_hours = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
         auto_enabled = SystemSetting.get_bool("auto_poll_enabled", default=True)
+        notify_mm_stock = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
+        ebay_link_mode = SystemSetting.get_val("ebay_link_mode", default="direct")
         last_poll_time = SystemSetting.get_val("last_poll_time")
         last_poll_status = SystemSetting.get_val("last_poll_status", "No surveillance cycles recorded.")
         last_poll_count = SystemSetting.get_val("last_poll_count", "0")
@@ -357,6 +481,8 @@ def create_app(test_config=None):
         return jsonify({
             "poll_interval_hours": interval_hours,
             "auto_poll_enabled": auto_enabled,
+            "notify_mm_stock_enabled": notify_mm_stock,
+            "ebay_link_mode": ebay_link_mode,
             "last_poll_time": last_poll_time,
             "last_poll_status": last_poll_status,
             "last_poll_count": int(last_poll_count) if str(last_poll_count).isdigit() else 0,
@@ -367,10 +493,12 @@ def create_app(test_config=None):
 
     @app.route("/api/settings/cadence", methods=["POST"])
     def update_cadence():
-        """Updates surveillance cadence interval and auto-refresh toggle in database."""
+        """Updates surveillance cadence interval, auto-refresh toggle, and alert preferences."""
         data = request.get_json() or {}
         interval_raw = data.get("poll_interval_hours")
         auto_enabled_raw = data.get("auto_poll_enabled")
+        notify_mm_raw = data.get("notify_mm_stock_enabled")
+        ebay_mode_raw = data.get("ebay_link_mode")
 
         if interval_raw is not None:
             try:
@@ -385,13 +513,36 @@ def create_app(test_config=None):
             auto_val = "true" if bool(auto_enabled_raw) else "false"
             SystemSetting.set_val("auto_poll_enabled", auto_val)
 
+        if notify_mm_raw is not None:
+            mm_val = "true" if bool(notify_mm_raw) else "false"
+            SystemSetting.set_val("notify_mm_stock_enabled", mm_val)
+
+        if ebay_mode_raw is not None:
+            mode_str = "search" if str(ebay_mode_raw).lower() == "search" else "direct"
+            SystemSetting.set_val("ebay_link_mode", mode_str)
+
         current_interval = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
         current_auto = SystemSetting.get_bool("auto_poll_enabled", default=True)
+        current_mm = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
+        current_ebay = SystemSetting.get_val("ebay_link_mode", default="direct")
 
         return jsonify({
-            "message": f"Surveillance cadence updated: every {current_interval}h ({'Active' if current_auto else 'Paused'}).",
+            "message": f"Surveillance configuration committed: every {current_interval}h ({'Active' if current_auto else 'Paused'}).",
             "poll_interval_hours": current_interval,
             "auto_poll_enabled": current_auto,
+            "notify_mm_stock_enabled": current_mm,
+            "ebay_link_mode": current_ebay,
+        })
+
+    @app.route("/api/settings/ebay-preference", methods=["POST"])
+    def update_ebay_preference():
+        """Updates global default eBay link navigation mode."""
+        data = request.get_json() or {}
+        mode = "search" if str(data.get("ebay_link_mode", "")).lower() == "search" else "direct"
+        SystemSetting.set_val("ebay_link_mode", mode)
+        return jsonify({
+            "message": f"eBay default navigation updated to {'Direct Lowest Listing' if mode == 'direct' else 'Search Results Page'}.",
+            "ebay_link_mode": mode,
         })
 
     @app.route("/api/worker/trigger", methods=["POST"])

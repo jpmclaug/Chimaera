@@ -51,6 +51,10 @@ class DealEngine:
         now = datetime.now(timezone.utc)
         results = [tcg_data, mm_data, ebay_data]
 
+        # Check previous Mighty Meeple stock status before upserting
+        mm_existing = VendorPrice.query.filter_by(watchlist_id=item.id, vendor_name="Mighty Meeple").first()
+        mm_was_in_stock = bool(mm_existing and mm_existing.in_stock and mm_existing.price > 0)
+
         for vendor_data in results:
             if not vendor_data:
                 continue
@@ -68,6 +72,7 @@ class DealEngine:
                 existing.condition = vendor_data.get("condition", "NM")
                 existing.in_stock = bool(vendor_data.get("in_stock", True))
                 existing.product_url = vendor_data.get("product_url")
+                existing.search_url = vendor_data.get("search_url") or vendor_data.get("product_url")
                 existing.last_checked = now
             else:
                 new_vp = VendorPrice(
@@ -77,13 +82,23 @@ class DealEngine:
                     condition=vendor_data.get("condition", "NM"),
                     in_stock=bool(vendor_data.get("in_stock", True)),
                     product_url=vendor_data.get("product_url"),
+                    search_url=vendor_data.get("search_url") or vendor_data.get("product_url"),
                     last_checked=now,
                 )
                 db.session.add(new_vp)
 
         db.session.commit()
 
-        # Check for deal & send notification
+        # Check for Mighty Meeple In-Stock Alert
+        mm_now_in_stock = bool(mm_data and mm_data.get("in_stock") and mm_data.get("price", 0) > 0)
+        global_mm_alert = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
+        card_mm_alert = bool(item.notify_mm_stock if item.notify_mm_stock is not None else True)
+
+        if notify and mm_now_in_stock and not mm_was_in_stock and global_mm_alert and card_mm_alert:
+            logger.info(f"Mighty Meeple restock detected for {item.name}! Dispatching stock alert...")
+            self.send_discord_mm_stock_alert(item=item, mm_data=mm_data)
+
+        # Check for general deal & send notification
         if notify and item.is_deal:
             best = item.best_vendor
             if best:
@@ -99,6 +114,7 @@ class DealEngine:
             "card_name": item.name,
             "is_deal": item.is_deal,
             "lowest_price": item.lowest_in_stock_price,
+            "mm_in_stock": item.mm_in_stock,
             "vendors": [v.to_dict() for v in item.vendor_prices],
         }
 
@@ -214,6 +230,93 @@ class DealEngine:
                 logger.warning(f"Discord webhook failed with status code {resp.status_code}: {resp.text}")
         except Exception as e:
             logger.error(f"Failed to send Discord webhook deal alert: {e}")
+
+        return False
+
+    def send_discord_mm_stock_alert(
+        self,
+        item: WatchlistItem,
+        mm_data: dict,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed specifically for Mighty Meeple in-stock restocks."""
+        webhook_url = Config.DISCORD_WEBHOOK_URL
+        if not webhook_url:
+            logger.debug("Discord Webhook URL not configured; skipping Mighty Meeple stock alert.")
+            return False
+
+        try:
+            price_val = float(mm_data.get("price", 0.0))
+            condition_val = mm_data.get("condition", "NM")
+            product_url = mm_data.get("product_url")
+            set_label = "Any Version" if item.is_any_version else (item.set_code or "Unknown")
+
+            fields = [
+                {
+                    "name": "Mighty Meeple Price",
+                    "value": f"**${price_val:.2f}** ({condition_val})",
+                    "inline": True,
+                },
+                {
+                    "name": "Stock Status",
+                    "value": "✓ **IN STOCK NOW**",
+                    "inline": True,
+                },
+            ]
+
+            if item.target_price:
+                fields.append({
+                    "name": "Your Target Threshold",
+                    "value": f"${item.target_price:.2f}",
+                    "inline": True,
+                })
+
+            if item.market_price:
+                fields.append({
+                    "name": "TCGplayer Market Ref",
+                    "value": f"${item.market_price:.2f}",
+                    "inline": True,
+                })
+
+            if product_url:
+                fields.append({
+                    "name": "Direct Purchase",
+                    "value": f"[🛒 Buy Now on Mighty Meeple]({product_url})",
+                    "inline": False,
+                })
+
+            fields.append({
+                "name": "Alert Configuration",
+                "value": "You can toggle Mighty Meeple stock alerts on or off anytime in the Chimaera Target Registry.",
+                "inline": False,
+            })
+
+            embed = {
+                "title": f"🎲 Mighty Meeple In-Stock: {item.name}",
+                "description": f"**Set:** {set_label} | **Finish:** {item.finish.capitalize()}",
+                "color": 0x00CED1,  # Imperial Teal
+                "fields": fields,
+                "footer": {
+                    "text": "Chimaera MTG Tactical Intelligence // Mighty Meeple Surveillance",
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            if item.image_uri:
+                embed["thumbnail"] = {"url": item.image_uri}
+
+            payload = {
+                "username": "Chimaera Stock Monitor",
+                "embeds": [embed],
+            }
+
+            resp = requests.post(webhook_url, json=payload, timeout=8)
+            if resp.status_code in (200, 204):
+                logger.info(f"Discord Mighty Meeple stock alert sent successfully for {item.name}")
+                return True
+            else:
+                logger.warning(f"Discord Mighty Meeple alert failed with status code {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Failed to send Discord Mighty Meeple stock alert: {e}")
 
         return False
 

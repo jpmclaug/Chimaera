@@ -22,6 +22,7 @@ class WatchlistItem(db.Model):
     image_uri = db.Column(db.Text, nullable=True)
     finish = db.Column(db.String(20), default="nonfoil")  # nonfoil, foil, etched
     target_price = db.Column(db.Float, nullable=True)
+    notify_mm_stock = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now)
 
     # Relationships
@@ -37,6 +38,12 @@ class WatchlistItem(db.Model):
     def is_any_version(self):
         """Returns True if this card monitors any version / set."""
         return not self.set_code or self.set_code.strip().upper() in ("ANY", "")
+
+    @is_any_version.setter
+    def is_any_version(self, value):
+        if value:
+            self.set_code = None
+            self.collector_number = None
 
     @property
     def in_stock_prices(self):
@@ -82,6 +89,54 @@ class WatchlistItem(db.Model):
         diff = self.target_price - self.lowest_in_stock_price
         return max(0.0, round((diff / self.target_price) * 100, 1))
 
+    @property
+    def mm_vendor_price(self):
+        """Returns Mighty Meeple VendorPrice record or None."""
+        return self.get_vendor_price("Mighty Meeple")
+
+    @property
+    def mm_in_stock(self):
+        """Returns True if Mighty Meeple currently has this card in stock."""
+        mm = self.mm_vendor_price
+        return bool(mm and mm.in_stock and mm.price > 0)
+
+    @property
+    def market_price(self):
+        """Returns TCGplayer market reference baseline price or None."""
+        tcg = self.get_vendor_price("TCGplayer")
+        if tcg and tcg.price > 0:
+            return tcg.price
+        return None
+
+    @property
+    def suggested_good_price(self):
+        """Returns target price representing a solid 10% discount from market."""
+        mp = self.market_price
+        return round(mp * 0.90, 2) if mp and mp > 0 else None
+
+    @property
+    def suggested_great_price(self):
+        """Returns target price representing a high-value 20% discount from market."""
+        mp = self.market_price
+        return round(mp * 0.80, 2) if mp and mp > 0 else None
+
+    @property
+    def price_rating(self):
+        """Evaluates price rating compared to market baseline: Great Deal, Good Deal, Fair Market, Above Market."""
+        lowest = self.lowest_in_stock_price
+        market = self.market_price
+        if not lowest or not market or market <= 0:
+            return "Unknown"
+        ratio = lowest / market
+        if ratio <= 0.80:
+            return "Great Deal"
+        elif ratio <= 0.92:
+            return "Good Deal"
+        elif ratio <= 1.05:
+            return "Fair Market"
+        else:
+            return "Above Market"
+
     def get_vendor_price(self, vendor_name):
         """Helper to get a specific vendor's latest price record."""
         for vp in self.vendor_prices:
@@ -100,12 +155,18 @@ class WatchlistItem(db.Model):
             "image_uri": self.image_uri,
             "finish": self.finish,
             "target_price": self.target_price,
+            "notify_mm_stock": bool(self.notify_mm_stock if self.notify_mm_stock is not None else True),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "is_any_version": self.is_any_version,
             "is_deal": self.is_deal,
             "lowest_price": self.lowest_in_stock_price,
             "savings_amount": self.savings_amount,
             "savings_percent": self.savings_percent,
+            "market_price": self.market_price,
+            "suggested_good_price": self.suggested_good_price,
+            "suggested_great_price": self.suggested_great_price,
+            "price_rating": self.price_rating,
+            "mm_in_stock": self.mm_in_stock,
             "vendor_prices": [vp.to_dict() for vp in self.vendor_prices],
         }
 
@@ -126,6 +187,7 @@ class VendorPrice(db.Model):
     condition = db.Column(db.String(20), default="NM")
     in_stock = db.Column(db.Boolean, default=True)
     product_url = db.Column(db.Text, nullable=True)
+    search_url = db.Column(db.Text, nullable=True)
     last_checked = db.Column(db.DateTime, default=utc_now)
 
     def to_dict(self):
@@ -138,6 +200,7 @@ class VendorPrice(db.Model):
             "condition": self.condition,
             "in_stock": self.in_stock,
             "product_url": self.product_url,
+            "search_url": self.search_url or self.product_url,
             "last_checked": self.last_checked.isoformat() if self.last_checked else None,
         }
 

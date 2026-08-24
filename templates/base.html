@@ -189,7 +189,7 @@
                     <div>
                         <div class="flex items-center justify-between mb-1.5">
                             <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Tracking Scope / Version</label>
-                            <span class="text-[10px] font-mono text-[#00CED1] font-bold uppercase tracking-wider">[ Any Version Default ]</span>
+                            <span id="scope-badge-indicator" class="text-[10px] font-mono text-[#00CED1] font-bold uppercase tracking-wider">[ Any Version Default ]</span>
                         </div>
                         <select id="card-print-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono"></select>
                     </div>
@@ -208,6 +208,37 @@
                             <input type="number" id="card-target-price-input" step="0.01" min="0" placeholder="e.g. 15.00" 
                                 class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
                         </div>
+                    </div>
+
+                    <!-- Price Intelligence & 1-Click Good Price Guidance Panel -->
+                    <div id="price-intel-panel" class="bg-[#10141D] border border-[#263245] p-3 space-y-2 font-mono text-xs">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[#94A3B8]">Market Reference Price:</span>
+                            <span id="intel-market-price" class="text-white font-bold">$0.00</span>
+                        </div>
+                        <div class="text-[11px] text-[#94A3B8]">1-Click Target Price Presets:</div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button type="button" onclick="applyTargetPreset('great')" id="btn-preset-great" class="bg-[#1B2230] border border-[#00CED1]/40 hover:bg-[#00CED1]/20 text-[#00CED1] p-1.5 text-center transition">
+                                <span class="block font-bold text-xs">Great Deal</span>
+                                <span id="label-preset-great" class="text-[10px] text-[#94A3B8]">-20% ($0.00)</span>
+                            </button>
+                            <button type="button" onclick="applyTargetPreset('good')" id="btn-preset-good" class="bg-[#1B2230] border border-[#2DD4BF]/40 hover:bg-[#2DD4BF]/20 text-[#2DD4BF] p-1.5 text-center transition">
+                                <span class="block font-bold text-xs">Good Deal</span>
+                                <span id="label-preset-good" class="text-[10px] text-[#94A3B8]">-10% ($0.00)</span>
+                            </button>
+                            <button type="button" onclick="applyTargetPreset('market')" id="btn-preset-market" class="bg-[#1B2230] border border-[#3D4F6B] hover:bg-white/10 text-white p-1.5 text-center transition">
+                                <span class="block font-bold text-xs">Market</span>
+                                <span id="label-preset-market" class="text-[10px] text-[#94A3B8]">100% ($0.00)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Mighty Meeple Alert Checkbox -->
+                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="card-notify-mm-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="card-notify-mm-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Send alert if card becomes in stock at Mighty Meeple
+                        </label>
                     </div>
 
                     <!-- Card Preview Telemetry Box -->
@@ -231,20 +262,53 @@
 
     <!-- Edit Target Price Modal -->
     <div id="modal-edit-target" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-sm w-full p-6 relative">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-6 relative">
             <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
                 <div>
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">RECALIBRATE</span>
-                    <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold</h3>
+                    <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold & Alerts</h3>
                 </div>
                 <button onclick="closeEditTargetModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
             <input type="hidden" id="edit-target-item-id">
-            <div class="mb-4">
-                <p id="edit-target-card-name" class="text-sm text-[#F1F5F9] mb-2 font-bold font-mono"></p>
-                <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">New Target Price ($ USD)</label>
-                <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
-                    class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
+            <div class="space-y-4 mb-4">
+                <div>
+                    <p id="edit-target-card-name" class="text-sm text-[#F1F5F9] font-bold font-mono"></p>
+                    <span id="edit-target-scope-label" class="text-[11px] text-[#94A3B8] font-mono block mt-0.5"></span>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold Price ($ USD)</label>
+                    <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
+                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
+                </div>
+
+                <!-- Edit Modal 1-Click Presets -->
+                <div id="edit-presets-container" class="bg-[#10141D] p-3 border border-[#263245] space-y-2">
+                    <div class="text-[11px] text-[#94A3B8] font-mono">Quick Target Presets:</div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button type="button" onclick="applyEditTargetPreset('great')" id="btn-edit-preset-great" class="bg-[#1B2230] border border-[#00CED1]/40 hover:bg-[#00CED1]/20 text-[#00CED1] p-1.5 text-center text-xs font-mono">
+                            <span class="block font-bold">Great Deal</span>
+                            <span id="label-edit-preset-great" class="text-[10px] text-[#94A3B8]">-20%</span>
+                        </button>
+                        <button type="button" onclick="applyEditTargetPreset('good')" id="btn-edit-preset-good" class="bg-[#1B2230] border border-[#2DD4BF]/40 hover:bg-[#2DD4BF]/20 text-[#2DD4BF] p-1.5 text-center text-xs font-mono">
+                            <span class="block font-bold">Good Deal</span>
+                            <span id="label-edit-preset-good" class="text-[10px] text-[#94A3B8]">-10%</span>
+                        </button>
+                        <button type="button" onclick="applyEditTargetPreset('market')" id="btn-edit-preset-market" class="bg-[#1B2230] border border-[#3D4F6B] hover:bg-white/10 text-white p-1.5 text-center text-xs font-mono">
+                            <span class="block font-bold">Market</span>
+                            <span id="label-edit-preset-market" class="text-[10px] text-[#94A3B8]">100%</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Edit MM In-Stock Alert Checkbox -->
+                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                    <input type="checkbox" id="edit-target-mm-alert" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                    <label for="edit-target-mm-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                        Notify if in stock at Mighty Meeple
+                    </label>
+                </div>
             </div>
             <div class="flex justify-end space-x-2">
                 <button type="button" onclick="closeEditTargetModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
@@ -259,7 +323,7 @@
             <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
                 <div>
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">CONFIG // 0x7E</span>
-                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Surveillance Cadence</h3>
+                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Surveillance & Alert Settings</h3>
                 </div>
                 <button onclick="closeCadenceModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
@@ -302,13 +366,30 @@
                     </label>
                 </div>
 
+                <!-- Mighty Meeple Global Alert Toggle -->
+                <div class="flex items-center space-x-3 bg-[#10141D] p-3 border border-[#263245]">
+                    <input type="checkbox" id="cadence-notify-mm" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                    <label for="cadence-notify-mm" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
+                        Enable Mighty Meeple In-Stock Notifications
+                    </label>
+                </div>
+
+                <!-- eBay Navigation Mode Preference -->
+                <div>
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">eBay Default Link Navigation</label>
+                    <select id="cadence-ebay-mode" class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
+                        <option value="direct" selected>Direct to Lowest Price Listing</option>
+                        <option value="search">Open Search Results Page</option>
+                    </select>
+                </div>
+
                 <div class="flex items-center justify-between pt-3 border-t border-[#263245]">
                     <button type="button" onclick="triggerManualSweepFromModal()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1">
                         <span>⚡ Poll Now</span>
                     </button>
                     <div class="flex space-x-2">
                         <button type="button" onclick="closeCadenceModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
-                        <button type="button" onclick="saveCadenceSettings()" id="btn-save-cadence" class="btn-crimson px-4 py-2 text-xs">Save Cadence</button>
+                        <button type="button" onclick="saveCadenceSettings()" id="btn-save-cadence" class="btn-crimson px-4 py-2 text-xs">Save Settings</button>
                     </div>
                 </div>
             </div>

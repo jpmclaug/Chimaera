@@ -89,6 +89,7 @@ class EbayProvider:
             "condition": "Buy It Now",
             "in_stock": True if fallback_price > 0 else False,
             "product_url": search_url,
+            "search_url": search_url,
         }
 
     def _search_finding_api(
@@ -146,6 +147,7 @@ class EbayProvider:
                             "condition": "Buy It Now",
                             "in_stock": True,
                             "product_url": item_url,
+                            "search_url": fallback_url,
                         }
         except Exception as e:
             logger.warning(f"eBay Finding API request failed: {e}")
@@ -210,6 +212,7 @@ class EbayProvider:
                     "condition": "Buy It Now",
                     "in_stock": True,
                     "product_url": item_url,
+                    "search_url": search_url,
                 }
         except Exception as e:
             logger.debug(f"eBay scrape fallback failed: {e}")
@@ -228,4 +231,5 @@ class EbayProvider:
             "condition": "Buy It Now",
             "in_stock": False,
             "product_url": url,
+            "search_url": url,
         }

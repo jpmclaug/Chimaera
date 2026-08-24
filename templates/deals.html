@@ -63,13 +63,16 @@
                     <div class="flex-1 min-w-0">
                         <h4 class="text-base font-heading font-bold text-white truncate tracking-wide" title="{{ item.name }}">{{ item.name }}</h4>
                         
-                        <div class="flex flex-wrap gap-1.5 mt-1.5">
+                        <div class="flex flex-wrap gap-1.5 mt-1.5 items-center">
                             {% if item.set_code and item.set_code.upper() != 'ANY' %}
                             <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase font-medium">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
                             {% else %}
                             <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold tracking-wider">ANY VERSION</span>
                             {% endif %}
                             <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
+                            {% if item.mm_in_stock %}
+                            <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1] text-[10px] px-1.5 py-0.5 font-mono uppercase font-bold">Mighty Meeple In-Stock</span>
+                            {% endif %}
                         </div>
 
                         <!-- Savings Badge -->
@@ -94,6 +97,21 @@
                     </div>
                 </div>
 
+                <!-- Price Intelligence Context -->
+                {% if item.market_price %}
+                <div class="mt-2 bg-[#10141D]/60 p-2 border border-[#263245] flex items-center justify-between font-mono text-xs">
+                    <span class="text-[#94A3B8]">Market Reference:</span>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-white font-bold">${{ "%.2f"|format(item.market_price) }}</span>
+                        {% if item.price_rating == 'Great Deal' %}
+                        <span class="text-[#00CED1] text-[10px] font-bold bg-[#00CED1]/15 px-1.5 py-0.5 border border-[#00CED1]/40">★ Great Deal</span>
+                        {% elif item.price_rating == 'Good Deal' %}
+                        <span class="text-[#2DD4BF] text-[10px] font-bold bg-[#2DD4BF]/15 px-1.5 py-0.5 border border-[#2DD4BF]/40">✓ Good Deal</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Winning Vendor Box -->
                 {% if best %}
                 <div class="mt-3 bg-[#10141D] p-3 border border-[#263245] font-mono">
@@ -107,9 +125,20 @@
                     </div>
 
                     {% if best.product_url %}
+                    {% if best.vendor_name == 'eBay' and best.search_url and best.search_url != best.product_url %}
+                    <div class="grid grid-cols-2 gap-2 mt-2.5">
+                        <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson block text-center py-2 text-xs">
+                            Lowest Listing &rarr;
+                        </a>
+                        <a href="{{ best.search_url }}" target="_blank" rel="noopener" class="btn-bridge block text-center py-2 text-xs text-[#00CED1]">
+                            Search All &rarr;
+                        </a>
+                    </div>
+                    {% else %}
                     <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson mt-2.5 block w-full text-center py-2 text-xs">
                         Execute Acquisition on {{ best.vendor_name }} &rarr;
                     </a>
+                    {% endif %}
                     {% endif %}
                 </div>
                 {% endif %}
