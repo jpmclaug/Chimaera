@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Chimaera // Access Restricted{% endblock %}
+
+{% block content %}
+<div class="min-h-[70vh] flex items-center justify-center py-10 px-4">
+    <div class="max-w-md w-full bg-[#1B2230] border-2 border-[#DC143C] p-8 relative shadow-2xl overflow-hidden">
+        
+        <!-- Tactical Header Glow Accent -->
+        <div class="absolute top-0 left-0 right-0 h-1.5 bg-[#DC143C]"></div>
+
+        <!-- Terminal Header -->
+        <div class="text-center mb-6">
+            <div class="inline-flex items-center space-x-2 bg-[#10141D] border border-[#DC143C]/50 px-3 py-1 mb-3">
+                <span class="w-2.5 h-2.5 bg-[#DC143C] animate-tactical-pulse inline-block"></span>
+                <span class="text-[10px] font-mono font-bold text-[#FF3358] uppercase tracking-widest">
+                    {% if suspended %}ACCOUNT SUSPENDED // 0x403{% else %}ACCESS RESTRICTED // 0x401{% endif %}
+                </span>
+            </div>
+            <h2 class="text-2xl font-heading font-black text-white uppercase tracking-wider">
+                Clearance Denied
+            </h2>
+            <p class="text-xs text-[#94A3B8] font-mono mt-1 uppercase">
+                Terminal Access Verification Failed
+            </p>
+        </div>
+
+        <!-- Detail Message Box -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 mb-6 font-mono text-xs space-y-3">
+            <div>
+                <span class="text-[#94A3B8] text-[10px] uppercase block">Attempted Identity:</span>
+                <span class="text-white font-bold text-sm break-all">{{ attempted_email or 'Unknown Identity' }}</span>
+            </div>
+
+            <div class="border-t border-[#263245] pt-2 text-[#94A3B8] leading-relaxed">
+                {% if suspended %}
+                This account has been deactivated by the system administrator. Active surveillance and telemetry privileges are currently suspended.
+                {% else %}
+                This Google account is not on the authorized personnel whitelist. Chimaera is an invite-only surveillance terminal and does not permit public registration.
+                {% endif %}
+            </div>
+
+            {% if admin_contact %}
+            <div class="border-t border-[#263245] pt-2 text-[11px] text-[#64748B]">
+                To request access clearance, contact the fleet administrator at:
+                <span class="text-[#00CED1] block font-bold mt-0.5">{{ admin_contact }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="space-y-3">
+            <a href="{{ url_for('logout') }}" class="btn-crimson block w-full text-center py-3 text-xs uppercase font-bold tracking-wider">
+                &larr; Try Another Account
+            </a>
+            <a href="{{ url_for('login_page') }}" class="btn-bridge block w-full text-center py-2.5 text-xs uppercase tracking-wider">
+                Return to Login Portal
+            </a>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-6 text-center text-[10px] font-mono text-[#64748B] uppercase tracking-widest">
+            <span>SECURITY AUDIT EVENT RECORDED</span>
+        </div>
+    </div>
+</div>
+{% endblock %}

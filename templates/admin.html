@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Chimaera // Tactical Admin Clearance{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Admin Header Banner -->
+    <div class="bg-[#1B2230] border-2 border-[#00CED1] p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 bg-[#00CED1] animate-tactical-pulse inline-block"></span>
+                <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">COMMAND CLEARANCE // LEVEL 5</span>
+            </div>
+            <h2 class="text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
+                Access Authorization & Personnel Control
+            </h2>
+            <p class="text-sm text-[#94A3B8] mt-1 font-sans">
+                Manage whitelisted Gmail accounts permitted to authenticate into the Chimaera surveillance fleet.
+            </p>
+        </div>
+        <div class="flex items-center space-x-4 bg-[#10141D] px-4 py-2.5 border border-[#263245]">
+            <div>
+                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Whitelisted</div>
+                <div class="text-2xl font-mono font-bold text-[#00CED1]">{{ allowed_emails|length }}</div>
+            </div>
+            <div class="border-l border-[#263245] pl-4">
+                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Active Users</div>
+                <div class="text-2xl font-mono font-bold text-white">{{ users|length }}</div>
+            </div>
+            <div class="border-l border-[#263245] pl-4">
+                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Total Targets</div>
+                <div class="text-2xl font-mono font-bold text-[#FF3358]">{{ total_tracked_cards }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Whitelist Authorization Form & Table -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Add Whitelist Form Card -->
+        <div class="bg-[#1B2230] border border-[#263245] p-5">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+                <div class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-wider">// AUTHORIZE NEW IDENTITY</div>
+            </div>
+            <form onsubmit="submitAddWhitelist(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Gmail Account Address *</label>
+                    <input type="email" id="whitelist-email-input" placeholder="user@gmail.com" required
+                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Personnel Description / Notes</label>
+                    <input type="text" id="whitelist-notes-input" placeholder="e.g. Commander / Field Scout"
+                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono">
+                </div>
+
+                <div class="flex items-center space-x-2.5 bg-[#10141D] p-3 border border-[#263245]">
+                    <input type="checkbox" id="whitelist-admin-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer">
+                    <label for="whitelist-admin-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                        Grant Administrative Clearance (Level 5)
+                    </label>
+                </div>
+
+                <button type="submit" id="btn-add-whitelist" class="btn-crimson w-full py-2.5 text-xs uppercase font-bold tracking-wider">
+                    Authorize Account &rarr;
+                </button>
+            </form>
+        </div>
+
+        <!-- Whitelist Table (2 cols on lg) -->
+        <div class="lg:col-span-2 bg-[#1B2230] border border-[#263245] p-5">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+                <div class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-wider">// AUTHORIZED ACCESS WHITELIST ({{ allowed_emails|length }})</div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left font-mono text-xs">
+                    <thead>
+                        <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[11px]">
+                            <th class="pb-2.5">Email Identity</th>
+                            <th class="pb-2.5">Clearance</th>
+                            <th class="pb-2.5">Notes</th>
+                            <th class="pb-2.5 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#263245]/60">
+                        {% for entry in allowed_emails %}
+                        <tr class="hover:bg-[#10141D]/50 transition" id="whitelist-row-{{ entry.id }}">
+                            <td class="py-3 pr-2">
+                                <div class="font-bold text-white">{{ entry.email }}</div>
+                                <div class="text-[10px] text-[#64748B]">Added {{ entry.created_at.strftime('%Y-%m-%d') if entry.created_at else '--' }} by {{ entry.added_by }}</div>
+                            </td>
+                            <td class="py-3">
+                                {% if entry.is_admin %}
+                                <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-2 py-0.5 text-[10px] font-bold uppercase">ADMIN</span>
+                                {% else %}
+                                <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 px-2 py-0.5 text-[10px] font-bold uppercase">OPERATOR</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 text-[#94A3B8] text-[11px] max-w-xs truncate">
+                                {{ entry.notes or '--' }}
+                            </td>
+                            <td class="py-3 text-right space-x-1.5 whitespace-nowrap">
+                                <button onclick="toggleWhitelistAdmin({{ entry.id }})" 
+                                    class="px-2 py-1 text-[10px] uppercase font-bold border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white hover:border-[#00CED1] transition"
+                                    title="Toggle Admin role">
+                                    Role
+                                </button>
+                                {% if current_user and entry.email.lower() != current_user.email.lower() %}
+                                <button onclick="deleteWhitelist({{ entry.id }}, '{{ entry.email }}')" 
+                                    class="px-2 py-1 text-[10px] uppercase font-bold border border-[#DC143C]/40 bg-[#DC143C]/10 text-[#FF3358] hover:bg-[#DC143C]/25 transition"
+                                    title="Revoke access">
+                                    Revoke
+                                </button>
+                                {% else %}
+                                <span class="text-[10px] text-[#64748B] italic px-1">[YOU]</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Registered Users Table -->
+    <div class="bg-[#1B2230] border border-[#263245] p-5">
+        <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+            <div class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-wider">// REGISTERED USER FLEET ACCOUNTS ({{ users|length }})</div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left font-mono text-xs">
+                <thead>
+                    <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[11px]">
+                        <th class="pb-2.5">User Identity</th>
+                        <th class="pb-2.5">Clearance</th>
+                        <th class="pb-2.5">Status</th>
+                        <th class="pb-2.5">Watchlist Targets</th>
+                        <th class="pb-2.5">Last Surveillance Login</th>
+                        <th class="pb-2.5 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[#263245]/60">
+                    {% for u in users %}
+                    <tr class="hover:bg-[#10141D]/50 transition" id="user-row-{{ u.id }}">
+                        <td class="py-3 pr-2">
+                            <div class="flex items-center space-x-2.5">
+                                {% if u.picture %}
+                                <img src="{{ u.picture }}" alt="{{ u.name }}" class="w-7 h-7 rounded-full border border-[#263245]">
+                                {% else %}
+                                <div class="w-7 h-7 rounded-full bg-[#10141D] border border-[#263245] flex items-center justify-center font-bold text-[#00CED1] text-xs">
+                                    {{ (u.name or u.email)[0]|upper }}
+                                </div>
+                                {% endif %}
+                                <div>
+                                    <div class="font-bold text-white">{{ u.name or u.email.split('@')[0] }}</div>
+                                    <div class="text-[10px] text-[#64748B]">{{ u.email }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3">
+                            {% if u.is_admin %}
+                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-2 py-0.5 text-[10px] font-bold uppercase">ADMIN</span>
+                            {% else %}
+                            <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 px-2 py-0.5 text-[10px] font-bold uppercase">OPERATOR</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3">
+                            {% if u.is_active %}
+                            <span class="text-[#00CED1] text-[10px] font-bold uppercase">&#x25CF; ACTIVE</span>
+                            {% else %}
+                            <span class="text-[#FF3358] text-[10px] font-bold uppercase">&#x25CF; SUSPENDED</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 text-white font-bold">
+                            {{ u.watchlist_items|length }} cards
+                        </td>
+                        <td class="py-3 text-[#94A3B8] text-[11px]">
+                            {{ u.last_login.strftime('%Y-%m-%d %H:%M UTC') if u.last_login else 'Never' }}
+                        </td>
+                        <td class="py-3 text-right whitespace-nowrap">
+                            {% if current_user and u.id != current_user.id %}
+                            <button onclick="toggleUserStatus({{ u.id }}, '{{ u.email }}')" 
+                                class="px-2.5 py-1 text-[10px] uppercase font-bold border transition {% if u.is_active %}border-[#DC143C]/40 bg-[#DC143C]/10 text-[#FF3358] hover:bg-[#DC143C]/25{% else %}border-[#00CED1]/40 bg-[#00CED1]/10 text-[#00CED1] hover:bg-[#00CED1]/25{% endif %}">
+                                {% if u.is_active %}Suspend{% else %}Activate{% endif %}
+                            </button>
+                            {% else %}
+                            <span class="text-[10px] text-[#64748B] italic px-1">[ACTIVE SESSION]</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- Admin JavaScript Controllers -->
+<script>
+async function submitAddWhitelist(e) {
+    e.preventDefault();
+    const emailInput = document.getElementById("whitelist-email-input");
+    const notesInput = document.getElementById("whitelist-notes-input");
+    const adminInput = document.getElementById("whitelist-admin-input");
+    const btn = document.getElementById("btn-add-whitelist");
+
+    const email = emailInput.value.trim();
+    const notes = notesInput.value.trim();
+    const isAdmin = adminInput.checked;
+
+    if (!email) return;
+
+    btn.disabled = true;
+    btn.textContent = "Authorizing...";
+
+    try {
+        const res = await fetch("/api/admin/whitelist/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email, notes: notes, is_admin: isAdmin }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message, "success");
+            setTimeout(() => window.location.reload(), 450);
+        } else {
+            showToast(data.error || "Failed to authorize email", "error");
+            btn.disabled = false;
+            btn.textContent = "Authorize Account \u2192";
+        }
+    } catch (err) {
+        showToast("Communication error adding whitelist entry", "error");
+        btn.disabled = false;
+        btn.textContent = "Authorize Account \u2192";
+    }
+}
+
+async function deleteWhitelist(id, email) {
+    if (!confirm(`CONFIRM REVOCATION:\nRevoke terminal clearance for "${email}"?`)) return;
+
+    try {
+        const res = await fetch(`/api/admin/whitelist/delete/${id}`, { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message, "success");
+            const row = document.getElementById(`whitelist-row-${id}`);
+            if (row) row.remove();
+            setTimeout(() => window.location.reload(), 450);
+        } else {
+            showToast(data.error || "Failed to revoke clearance", "error");
+        }
+    } catch (err) {
+        showToast("Communication error revoking clearance", "error");
+    }
+}
+
+async function toggleWhitelistAdmin(id) {
+    try {
+        const res = await fetch(`/api/admin/whitelist/toggle-admin/${id}`, { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message, "success");
+            setTimeout(() => window.location.reload(), 450);
+        } else {
+            showToast(data.error || "Failed to update role", "error");
+        }
+    } catch (err) {
+        showToast("Communication error updating role", "error");
+    }
+}
+
+async function toggleUserStatus(userId, email) {
+    if (!confirm(`CONFIRM STATUS RECONFIGURATION:\nToggle status for user "${email}"?`)) return;
+
+    try {
+        const res = await fetch(`/api/admin/users/toggle-status/${userId}`, { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message, "success");
+            setTimeout(() => window.location.reload(), 450);
+        } else {
+            showToast(data.error || "Failed to update user status", "error");
+        }
+    } catch (err) {
+        showToast("Communication error updating user status", "error");
+    }
+}
+</script>
+{% endblock %}

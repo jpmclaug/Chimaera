@@ -1,7 +1,7 @@
 import unittest
 import json
 from app import create_app
-from models import db, WatchlistItem, VendorPrice, SystemSetting
+from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting
 from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider
 from deal_engine import DealEngine
 from worker import run_worker_cycle
@@ -17,17 +17,51 @@ class ChimeraTestSuite(unittest.TestCase):
             "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
             "SQLALCHEMY_ENGINE_OPTIONS": {},
             "DISCORD_WEBHOOK_URL": "",
+            "ADMIN_EMAIL": "jpmclaug@gmail.com",
         })
         cls.client = cls.app.test_client()
 
         with cls.app.app_context():
             db.create_all()
 
+    def login_as(self, email="jpmclaug@gmail.com", is_admin=True):
+        """Helper to authenticate test client as a given user."""
+        with self.app.app_context():
+            allowed = AllowedEmail.get_by_email(email)
+            if not allowed:
+                allowed = AllowedEmail(
+                    email=email,
+                    is_admin=is_admin,
+                    notes="Test Account",
+                    added_by="TestSuite",
+                )
+                db.session.add(allowed)
+                db.session.commit()
+            user = User.query.filter(db.func.lower(User.email) == email.lower()).first()
+            if not user:
+                user = User(
+                    email=email,
+                    name=email.split("@")[0].capitalize(),
+                    is_admin=is_admin,
+                    is_active=True,
+                )
+                db.session.add(user)
+                db.session.commit()
+
+            with self.client.session_transaction() as sess:
+                sess["user_id"] = user.id
+                sess["user_email"] = user.email
+                sess["is_admin"] = user.is_admin
+            return user
+
     def setUp(self):
         with self.app.app_context():
             db.session.query(VendorPrice).delete()
             db.session.query(WatchlistItem).delete()
+            db.session.query(User).delete()
+            db.session.query(AllowedEmail).delete()
             db.session.commit()
+        self.admin_user = self.login_as("jpmclaug@gmail.com", is_admin=True)
 
     def test_01_models_and_deal_logic(self):
         """Tests WatchlistItem, VendorPrice, and calculated properties."""
@@ -280,6 +314,7 @@ class ChimeraTestSuite(unittest.TestCase):
         """Tests Mighty Meeple alert toggle API and restock notification flow."""
         with self.app.app_context():
             item = WatchlistItem(
+                user_id=self.admin_user.id,
                 name="Force of Will",
                 finish="nonfoil",
                 target_price=60.00,
@@ -310,6 +345,7 @@ class ChimeraTestSuite(unittest.TestCase):
         """Tests updating tracking scope between Any Version (General) and Specific Printings."""
         with self.app.app_context():
             item = WatchlistItem(
+                user_id=self.admin_user.id,
                 name="Demonic Tutor",
                 is_any_version=True,
                 finish="nonfoil",
@@ -358,6 +394,7 @@ class ChimeraTestSuite(unittest.TestCase):
         """Tests market price intelligence, suggested deals, and price rating calculation."""
         with self.app.app_context():
             item = WatchlistItem(
+                user_id=self.admin_user.id,
                 name="Mana Vault",
                 finish="nonfoil",
                 target_price=50.00,
@@ -404,6 +441,7 @@ class ChimeraTestSuite(unittest.TestCase):
         """Tests eBay product_url vs search_url persistence and preference configuration."""
         with self.app.app_context():
             item = WatchlistItem(
+                user_id=self.admin_user.id,
                 name="Sylvan Library",
                 finish="nonfoil",
             )
@@ -435,6 +473,204 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertEqual(resp.status_code, 200)
             self.assertEqual(resp.get_json()["ebay_link_mode"], "search")
             self.assertEqual(SystemSetting.get_val("ebay_link_mode"), "search")
+
+    def test_14_user_and_allowed_email_models(self):
+        """Tests User and AllowedEmail model methods, properties, and serializations."""
+        with self.app.app_context():
+            allowed = AllowedEmail(
+                email="scout@gmail.com",
+                notes="Field Scout Recon",
+                is_admin=False,
+                added_by="Admin",
+            )
+            db.session.add(allowed)
+            db.session.commit()
+
+            self.assertTrue(AllowedEmail.is_allowed("scout@gmail.com"))
+            self.assertTrue(AllowedEmail.is_allowed("SCOUT@GMAIL.COM"))  # Case insensitive
+            self.assertFalse(AllowedEmail.is_allowed("intruder@gmail.com"))
+
+            entry = AllowedEmail.get_by_email("SCOUT@gmail.com")
+            self.assertIsNotNone(entry)
+            self.assertEqual(entry.notes, "Field Scout Recon")
+            self.assertFalse(entry.is_admin)
+
+            d = entry.to_dict()
+            self.assertEqual(d["email"], "scout@gmail.com")
+            self.assertEqual(d["notes"], "Field Scout Recon")
+            self.assertFalse(d["is_admin"])
+
+            user = User(
+                email="scout@gmail.com",
+                name="Fleet Scout",
+                is_admin=False,
+                is_active=True,
+            )
+            db.session.add(user)
+            db.session.commit()
+
+            u_dict = user.to_dict()
+            self.assertEqual(u_dict["email"], "scout@gmail.com")
+            self.assertEqual(u_dict["name"], "Fleet Scout")
+            self.assertFalse(u_dict["is_admin"])
+            self.assertTrue(u_dict["is_active"])
+            self.assertEqual(u_dict["card_count"], 0)
+
+    def test_15_whitelist_access_control_and_auth(self):
+        """Tests invite-only whitelist rejection, dev login, and suspension."""
+        # Unauthenticated request to / should redirect to /login
+        with self.client.session_transaction() as sess:
+            sess.clear()
+
+        resp = self.client.get("/", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp.headers["Location"])
+
+        # Attempt dev login with unwhitelisted email -> access denied
+        resp = self.client.post(
+            "/auth/dev-login",
+            data=json.dumps({"email": "unauthorized_user@gmail.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+        # Authorize the email in AllowedEmail
+        with self.app.app_context():
+            allowed = AllowedEmail(email="authorized_cadet@gmail.com", is_admin=False, added_by="Test")
+            db.session.add(allowed)
+            db.session.commit()
+
+        # Dev login now succeeds
+        resp = self.client.post(
+            "/auth/dev-login",
+            data=json.dumps({"email": "authorized_cadet@gmail.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("user", resp.get_json())
+
+        # Suspend user and verify access is rejected
+        with self.app.app_context():
+            u = User.query.filter_by(email="authorized_cadet@gmail.com").first()
+            u.is_active = False
+            db.session.commit()
+
+        resp = self.client.post(
+            "/auth/dev-login",
+            data=json.dumps({"email": "authorized_cadet@gmail.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn("suspended", resp.get_json()["error"].lower())
+
+    def test_16_admin_management_endpoints(self):
+        """Tests admin dashboard authorization, adding whitelist, toggling roles, and revoking clearance."""
+        # Authenticate as regular non-admin operator
+        operator = self.login_as("operator@gmail.com", is_admin=False)
+
+        # Operator attempting to access /admin should be blocked (redirected to / with flash)
+        resp = self.client.get("/admin", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.headers["Location"], "/")
+
+        # Operator attempting to call admin API should get 403
+        resp = self.client.post(
+            "/api/admin/whitelist/add",
+            data=json.dumps({"email": "newbie@gmail.com"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+        # Authenticate as Administrator
+        admin = self.login_as("jpmclaug@gmail.com", is_admin=True)
+
+        # Admin accessing /admin succeeds
+        resp = self.client.get("/admin")
+        self.assertEqual(resp.status_code, 200)
+
+        # Admin adding new whitelist email
+        resp = self.client.post(
+            "/api/admin/whitelist/add",
+            data=json.dumps({
+                "email": "admiral_piett@gmail.com",
+                "notes": "Fleet Commander",
+                "is_admin": True,
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        res_data = resp.get_json()
+        self.assertIn("allowed", res_data)
+        new_id = res_data["allowed"]["id"]
+
+        # Admin toggles admin role on the new entry
+        resp = self.client.post(f"/api/admin/whitelist/toggle-admin/{new_id}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.get_json()["is_admin"])
+
+        # Admin revokes clearance
+        resp = self.client.post(f"/api/admin/whitelist/delete/{new_id}")
+        self.assertEqual(resp.status_code, 200)
+        with self.app.app_context():
+            self.assertFalse(AllowedEmail.is_allowed("admiral_piett@gmail.com"))
+
+        # Admin cannot revoke their own clearance
+        with self.app.app_context():
+            my_allowed = AllowedEmail.get_by_email("jpmclaug@gmail.com")
+            my_id = my_allowed.id
+        resp = self.client.post(f"/api/admin/whitelist/delete/{my_id}")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_17_multi_user_watchlist_isolation(self):
+        """Tests per-user data tenancy: watchlist items and deals are isolated across users."""
+        # 1. User Alpha logs in and creates a card
+        user_alpha = self.login_as("alpha@gmail.com", is_admin=False)
+        with self.app.app_context():
+            card_alpha = WatchlistItem(
+                user_id=user_alpha.id,
+                name="Underground Sea",
+                finish="nonfoil",
+                target_price=500.0,
+            )
+            db.session.add(card_alpha)
+            db.session.commit()
+            card_alpha_id = card_alpha.id
+
+        # User Alpha sees their card
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Underground Sea", resp.data)
+
+        # 2. User Beta logs in
+        user_beta = self.login_as("beta@gmail.com", is_admin=False)
+
+        # User Beta's dashboard should NOT have Underground Sea
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn(b"Underground Sea", resp.data)
+
+        # User Beta attempts to edit or delete User Alpha's card -> 404
+        resp = self.client.post(f"/api/watchlist/update-target/{card_alpha_id}", data=json.dumps({"target_price": 400.0}), content_type="application/json")
+        self.assertEqual(resp.status_code, 404)
+
+        resp = self.client.delete(f"/api/watchlist/delete/{card_alpha_id}")
+        self.assertEqual(resp.status_code, 404)
+
+        # User Beta adds their own card
+        with self.app.app_context():
+            card_beta = WatchlistItem(
+                user_id=user_beta.id,
+                name="Mox Pearl",
+                finish="nonfoil",
+                target_price=2000.0,
+            )
+            db.session.add(card_beta)
+            db.session.commit()
+
+        # User Beta sees Mox Pearl, not Underground Sea
+        resp = self.client.get("/")
+        self.assertIn(b"Mox Pearl", resp.data)
+        self.assertNotIn(b"Underground Sea", resp.data)
 
 
 if __name__ == "__main__":

@@ -9,12 +9,96 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
+class User(db.Model):
+    """Registered user account authenticated via Google OAuth."""
+
+    __tablename__ = "user"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, index=True, nullable=False)
+    name = db.Column(db.String(255), nullable=True)
+    picture = db.Column(db.Text, nullable=True)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    last_login = db.Column(db.DateTime, nullable=True)
+
+    # Relationships
+    watchlist_items = db.relationship(
+        "WatchlistItem",
+        backref=db.backref("user", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+    )
+
+    def to_dict(self):
+        """Serializes user record into a dict."""
+        return {
+            "id": self.id,
+            "email": self.email,
+            "name": self.name or self.email.split("@")[0],
+            "picture": self.picture,
+            "is_admin": self.is_admin,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_login": self.last_login.isoformat() if self.last_login else None,
+            "card_count": len(self.watchlist_items),
+        }
+
+
+class AllowedEmail(db.Model):
+    """Whitelist of authorized Gmail addresses permitted to access Chimaera."""
+
+    __tablename__ = "allowed_email"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, index=True, nullable=False)
+    notes = db.Column(db.String(255), nullable=True)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+    added_by = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=utc_now)
+
+    @classmethod
+    def is_allowed(cls, email: str) -> bool:
+        """Returns True if the email is on the authorized whitelist."""
+        if not email:
+            return False
+        clean = email.strip().lower()
+        return cls.query.filter(db.func.lower(cls.email) == clean).first() is not None
+
+    @classmethod
+    def get_by_email(cls, email: str) -> "AllowedEmail | None":
+        """Retrieves AllowedEmail entry by email address."""
+        if not email:
+            return None
+        clean = email.strip().lower()
+        return cls.query.filter(db.func.lower(cls.email) == clean).first()
+
+    def to_dict(self):
+        """Serializes allowed email record into a dict."""
+        return {
+            "id": self.id,
+            "email": self.email,
+            "notes": self.notes or "",
+            "is_admin": self.is_admin,
+            "added_by": self.added_by or "System",
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class WatchlistItem(db.Model):
     """Magic: The Gathering card monitored on user's watchlist."""
 
     __tablename__ = "watchlist_item"
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     name = db.Column(db.String(255), index=True, nullable=False)
     scryfall_id = db.Column(db.String(64), nullable=True)
     set_code = db.Column(db.String(10), nullable=True)
@@ -148,6 +232,7 @@ class WatchlistItem(db.Model):
         """Serializes watchlist item and its vendor prices into a dict."""
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "name": self.name,
             "scryfall_id": self.scryfall_id,
             "set_code": self.set_code,

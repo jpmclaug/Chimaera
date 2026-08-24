@@ -1,9 +1,23 @@
 import logging
 import os
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+import secrets
+from functools import wraps
+from datetime import datetime, timezone
+from flask import (
+    Flask,
+    render_template,
+    request,
+    jsonify,
+    redirect,
+    url_for,
+    flash,
+    session,
+    g,
+)
+import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
-from models import db, WatchlistItem, VendorPrice, SystemSetting
+from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting
 from deal_engine import DealEngine
 from providers import ScryfallProvider
 
@@ -16,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def _migrate_db_schema(app):
-    """Ensures watchlist_item and system_setting tables are configured across dialects."""
+    """Ensures user, allowed_email, watchlist_item, and system_setting tables are configured across dialects."""
     with app.app_context():
         try:
             dialect = db.engine.dialect.name
@@ -32,6 +46,7 @@ def _migrate_db_schema(app):
                             conn.execute(db.text("""
                                 CREATE TABLE IF NOT EXISTS watchlist_item_migration (
                                     id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                                    user_id INTEGER,
                                     name VARCHAR(255) NOT NULL,
                                     scryfall_id VARCHAR(64),
                                     set_code VARCHAR(10),
@@ -40,12 +55,13 @@ def _migrate_db_schema(app):
                                     finish VARCHAR(20) DEFAULT 'nonfoil',
                                     target_price FLOAT,
                                     notify_mm_stock BOOLEAN DEFAULT 1 NOT NULL,
-                                    created_at DATETIME
+                                    created_at DATETIME,
+                                    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
                                 )
                             """))
                             conn.execute(db.text("""
-                                INSERT INTO watchlist_item_migration (id, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, notify_mm_stock, created_at)
-                                SELECT id, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, 1, created_at FROM watchlist_item
+                                INSERT INTO watchlist_item_migration (id, user_id, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, notify_mm_stock, created_at)
+                                SELECT id, NULL, name, scryfall_id, set_code, collector_number, image_uri, finish, target_price, 1, created_at FROM watchlist_item
                             """))
                             conn.execute(db.text("DROP TABLE watchlist_item"))
                             conn.execute(db.text("ALTER TABLE watchlist_item_migration RENAME TO watchlist_item"))
@@ -53,8 +69,14 @@ def _migrate_db_schema(app):
                             conn.commit()
                             logger.info("SQLite database migration completed successfully.")
 
-                    # Ensure notify_mm_stock column exists in watchlist_item
+                    # Ensure user_id column exists in watchlist_item
                     cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(watchlist_item)")).fetchall()]
+                    if "user_id" not in cols:
+                        logger.info("Adding user_id column to watchlist_item...")
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN user_id INTEGER REFERENCES user(id) ON DELETE CASCADE"))
+                        conn.commit()
+
+                    # Ensure notify_mm_stock column exists in watchlist_item
                     if "notify_mm_stock" not in cols:
                         logger.info("Adding notify_mm_stock column to watchlist_item...")
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_mm_stock BOOLEAN DEFAULT 1 NOT NULL"))
@@ -72,10 +94,55 @@ def _migrate_db_schema(app):
                     logger.info("Verifying PostgreSQL watchlist_item constraints and columns...")
                     conn.execute(db.text("ALTER TABLE watchlist_item ALTER COLUMN scryfall_id DROP NOT NULL"))
                     conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
+                    conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
                     conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
+
+            # Bootstrap Initial Primary Admin
+            admin_email = (app.config.get("ADMIN_EMAIL") or "jpmclaug@gmail.com").strip().lower()
+            if admin_email:
+                allowed = AllowedEmail.get_by_email(admin_email)
+                if not allowed:
+                    allowed = AllowedEmail(
+                        email=admin_email,
+                        notes="Primary System Administrator (Bootstrap)",
+                        is_admin=True,
+                        added_by="System Bootstrap",
+                    )
+                    db.session.add(allowed)
+                    db.session.commit()
+                else:
+                    if not allowed.is_admin:
+                        allowed.is_admin = True
+                        db.session.commit()
+
+                admin_user = User.query.filter(db.func.lower(User.email) == admin_email).first()
+                if not admin_user:
+                    admin_user = User(
+                        email=admin_email,
+                        name="Primary Administrator",
+                        is_admin=True,
+                        is_active=True,
+                    )
+                    db.session.add(admin_user)
+                    db.session.commit()
+                else:
+                    if not admin_user.is_admin:
+                        admin_user.is_admin = True
+                        admin_user.is_active = True
+                        db.session.commit()
+
+                # Assign any orphan cards to the primary administrator
+                if admin_user.id:
+                    orphans = WatchlistItem.query.filter(WatchlistItem.user_id.is_(None)).all()
+                    if orphans:
+                        for card in orphans:
+                            card.user_id = admin_user.id
+                        db.session.commit()
+                        logger.info(f"Assigned {len(orphans)} legacy watchlist items to admin ({admin_email}).")
+
         except Exception as e:
             logger.warning(f"Database schema migration check skipped or completed with message: {e}")
 
@@ -100,8 +167,57 @@ def create_app(test_config=None):
         logger.info("Database initialized successfully.")
 
     # ---------------------------------------------------------
+    # Authentication Helpers & Decorators
+    # ---------------------------------------------------------
+    def get_current_user():
+        """Resolves the active user from session."""
+        user_id = session.get("user_id")
+        if not user_id:
+            return None
+        if not hasattr(g, "current_user") or g.current_user is None or g.current_user.id != user_id:
+            g.current_user = db.session.get(User, user_id)
+        return g.current_user
+
+    def login_required(f):
+        """Ensures user is authenticated and active."""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = get_current_user()
+            if not user or not user.is_active:
+                session.clear()
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": "Authentication required. Session expired or unauthorized."}), 401
+                return redirect(url_for("login_page", next=request.url))
+            return f(*args, **kwargs)
+        return decorated_function
+
+    def admin_required(f):
+        """Ensures user has administrative clearance."""
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            user = get_current_user()
+            if not user or not user.is_active:
+                session.clear()
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": "Authentication required."}), 401
+                return redirect(url_for("login_page", next=request.url))
+            if not user.is_admin:
+                if request.path.startswith("/api/"):
+                    return jsonify({"error": "Administrative clearance required."}), 403
+                flash("ACCESS RESTRICTED // Administrative clearance required for this protocol.", "error")
+                return redirect(url_for("index"))
+            return f(*args, **kwargs)
+        return decorated_function
+
+    @app.context_processor
+    def inject_auth_context():
+        """Injects current_user into all Jinja templates."""
+        return {
+            "current_user": get_current_user(),
+        }
+
+    # ---------------------------------------------------------
     # In-Process Background Scheduler (Optional / Monolithic Mode)
-    # Disabled by default for serverless deployments (handled by standalone worker.py)
     # ---------------------------------------------------------
     enable_inprocess_sched = (
         str(app.config.get("ENABLE_INPROCESS_SCHEDULER", os.getenv("ENABLE_INPROCESS_SCHEDULER", "false"))).lower()
@@ -135,18 +251,389 @@ def create_app(test_config=None):
                 logger.warning(f"Could not start in-process scheduler: {e}")
 
     # ---------------------------------------------------------
-    # View Routes
+    # Authentication & OAuth Routes
+    # ---------------------------------------------------------
+    @app.route("/login")
+    def login_page():
+        """Renders sign-in portal."""
+        user = get_current_user()
+        if user and user.is_active:
+            return redirect(url_for("index"))
+        next_url = request.args.get("next", "/")
+        google_configured = bool(app.config.get("GOOGLE_CLIENT_ID"))
+        return render_template(
+            "login.html",
+            next_url=next_url,
+            google_configured=google_configured,
+            is_testing=bool(app.config.get("TESTING")),
+        )
+
+    @app.route("/auth/google")
+    def google_auth():
+        """Initiates Google OAuth 2.0 Authorization Code flow."""
+        client_id = app.config.get("GOOGLE_CLIENT_ID")
+        if not client_id:
+            flash("Google OAuth client ID not configured on server.", "error")
+            return redirect(url_for("login_page"))
+
+        state = secrets.token_urlsafe(32)
+        session["oauth_state"] = state
+        session["oauth_next"] = request.args.get("next", "/")
+
+        base_url = app.config.get("APP_BASE_URL")
+        if base_url:
+            redirect_uri = f"{base_url}/auth/google/callback"
+        else:
+            is_https = request.headers.get("X-Forwarded-Proto") == "https" or request.is_secure
+            scheme = "https" if is_https else "http"
+            redirect_uri = url_for("google_auth_callback", _external=True, _scheme=scheme)
+
+        session["oauth_redirect_uri"] = redirect_uri
+
+        google_auth_endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
+        params = {
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": "openid email profile",
+            "state": state,
+            "prompt": "select_account",
+        }
+        req = requests.Request("GET", google_auth_endpoint, params=params).prepare()
+        return redirect(req.url)
+
+    @app.route("/auth/google/callback")
+    def google_auth_callback():
+        """Handles Google OAuth authorization code exchange and whitelist verification."""
+        state_received = request.args.get("state")
+        state_expected = session.pop("oauth_state", None)
+        next_url = session.pop("oauth_next", "/")
+        redirect_uri = session.pop("oauth_redirect_uri", None)
+
+        if not state_received or not state_expected or state_received != state_expected:
+            flash("SECURITY ALERT // Invalid OAuth state token. Please retry.", "error")
+            return redirect(url_for("login_page"))
+
+        code = request.args.get("code")
+        if not code:
+            flash("Google authorization denied or cancelled.", "error")
+            return redirect(url_for("login_page"))
+
+        client_id = app.config.get("GOOGLE_CLIENT_ID")
+        client_secret = app.config.get("GOOGLE_CLIENT_SECRET")
+
+        if not redirect_uri:
+            base_url = app.config.get("APP_BASE_URL")
+            if base_url:
+                redirect_uri = f"{base_url}/auth/google/callback"
+            else:
+                is_https = request.headers.get("X-Forwarded-Proto") == "https" or request.is_secure
+                scheme = "https" if is_https else "http"
+                redirect_uri = url_for("google_auth_callback", _external=True, _scheme=scheme)
+
+        # Exchange authorization code for tokens
+        token_endpoint = "https://oauth2.googleapis.com/token"
+        token_data = {
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }
+
+        try:
+            token_resp = requests.post(token_endpoint, data=token_data, timeout=10)
+            if token_resp.status_code != 200:
+                logger.error(f"Google token exchange failed: {token_resp.text}")
+                flash("Failed to authenticate with Google.", "error")
+                return redirect(url_for("login_page"))
+
+            tokens = token_resp.json()
+            access_token = tokens.get("access_token")
+
+            # Retrieve Google User Profile
+            userinfo_resp = requests.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10,
+            )
+            if userinfo_resp.status_code != 200:
+                flash("Failed to retrieve Google profile telemetry.", "error")
+                return redirect(url_for("login_page"))
+
+            profile = userinfo_resp.json()
+            email = (profile.get("email") or "").strip().lower()
+            if not email:
+                flash("No email provided in Google account telemetry.", "error")
+                return redirect(url_for("login_page"))
+
+            # Whitelist Verification Check
+            primary_admin = (app.config.get("ADMIN_EMAIL") or "jpmclaug@gmail.com").strip().lower()
+            allowed_entry = AllowedEmail.get_by_email(email)
+            is_primary = (email == primary_admin)
+
+            if not allowed_entry and not is_primary:
+                logger.warning(f"Unauthorized login attempt by unwhitelisted account: {email}")
+                return redirect(url_for("access_denied", email=email))
+
+            # Auto-seed primary admin into allowed whitelist if not present
+            if is_primary and not allowed_entry:
+                allowed_entry = AllowedEmail(
+                    email=email,
+                    notes="Primary System Administrator",
+                    is_admin=True,
+                    added_by="System Bootstrap",
+                )
+                db.session.add(allowed_entry)
+                db.session.commit()
+
+            # Find or register User record
+            user = User.query.filter(db.func.lower(User.email) == email).first()
+            if not user:
+                user = User(
+                    email=email,
+                    name=profile.get("name") or email.split("@")[0],
+                    picture=profile.get("picture"),
+                    is_admin=bool(is_primary or (allowed_entry and allowed_entry.is_admin)),
+                    is_active=True,
+                    last_login=datetime.now(timezone.utc),
+                )
+                db.session.add(user)
+                db.session.commit()
+            else:
+                user.name = profile.get("name") or user.name
+                user.picture = profile.get("picture") or user.picture
+                user.is_admin = bool(is_primary or (allowed_entry and allowed_entry.is_admin))
+                user.last_login = datetime.now(timezone.utc)
+                db.session.commit()
+
+            if not user.is_active:
+                logger.warning(f"Login attempt by suspended user account: {email}")
+                return redirect(url_for("access_denied", email=email, suspended="1"))
+
+            # Establish Session
+            session["user_id"] = user.id
+            session["user_email"] = user.email
+            session["is_admin"] = user.is_admin
+
+            flash(f"OPERATIONAL // Welcome aboard, {user.name}.", "success")
+            return redirect(next_url or url_for("index"))
+
+        except Exception as e:
+            logger.error(f"OAuth Callback error: {e}")
+            flash("Communication failure during authentication handshake.", "error")
+            return redirect(url_for("login_page"))
+
+    @app.route("/auth/dev-login", methods=["POST"])
+    def dev_login():
+        """Development & test mode login route."""
+        if not app.config.get("TESTING") and app.config.get("GOOGLE_CLIENT_ID"):
+            return jsonify({"error": "Direct dev login disabled in production."}), 403
+
+        data = request.get_json(silent=True) or request.form or {}
+        email = (data.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"error": "Email required."}), 400
+
+        primary_admin = (app.config.get("ADMIN_EMAIL") or "jpmclaug@gmail.com").strip().lower()
+        allowed_entry = AllowedEmail.get_by_email(email)
+        is_primary = (email == primary_admin)
+
+        if not allowed_entry and not is_primary:
+            return redirect(url_for("access_denied", email=email)) if not request.is_json else (jsonify({"error": "Email not whitelisted."}), 403)
+
+        user = User.query.filter(db.func.lower(User.email) == email).first()
+        if not user:
+            user = User(
+                email=email,
+                name=email.split("@")[0].capitalize(),
+                is_admin=bool(is_primary or (allowed_entry and allowed_entry.is_admin)),
+                is_active=True,
+                last_login=datetime.now(timezone.utc),
+            )
+            db.session.add(user)
+            db.session.commit()
+        else:
+            user.last_login = datetime.now(timezone.utc)
+            user.is_admin = bool(is_primary or (allowed_entry and allowed_entry.is_admin))
+            db.session.commit()
+
+        if not user.is_active:
+            return redirect(url_for("access_denied", email=email, suspended="1")) if not request.is_json else (jsonify({"error": "Account suspended."}), 403)
+
+        session["user_id"] = user.id
+        session["user_email"] = user.email
+        session["is_admin"] = user.is_admin
+
+        if request.is_json:
+            return jsonify({"message": f"Authenticated as {user.email}", "user": user.to_dict()})
+        return redirect(request.args.get("next") or url_for("index"))
+
+    @app.route("/logout")
+    def logout():
+        """Clears user session and terminates tactical access."""
+        session.clear()
+        flash("SYSTEM LOGOUT // Tactical session terminated.", "info")
+        return redirect(url_for("login_page"))
+
+    @app.route("/access-denied")
+    def access_denied():
+        """Renders tactical access restriction notice."""
+        attempted_email = request.args.get("email", "")
+        suspended = bool(request.args.get("suspended"))
+        admin_contact = app.config.get("ADMIN_EMAIL", "jpmclaug@gmail.com")
+        return render_template(
+            "access_denied.html",
+            attempted_email=attempted_email,
+            suspended=suspended,
+            admin_contact=admin_contact,
+        )
+
+    # ---------------------------------------------------------
+    # Admin Management Console Routes
+    # ---------------------------------------------------------
+    @app.route("/admin")
+    @admin_required
+    def admin_dashboard():
+        """Administrative console for authorized user and whitelist management."""
+        allowed_emails = AllowedEmail.query.order_by(AllowedEmail.created_at.desc()).all()
+        users = User.query.order_by(User.created_at.desc()).all()
+        total_tracked_cards = WatchlistItem.query.count()
+        return render_template(
+            "admin.html",
+            allowed_emails=allowed_emails,
+            users=users,
+            total_tracked_cards=total_tracked_cards,
+            active_tab="admin",
+        )
+
+    @app.route("/api/admin/whitelist/add", methods=["POST"])
+    @admin_required
+    def admin_add_whitelist():
+        """Authorizes a new Gmail address to access Chimaera."""
+        current_admin = get_current_user()
+        data = request.get_json(silent=True) or {}
+        email = (data.get("email") or "").strip().lower()
+        notes = (data.get("notes") or "").strip()
+        is_admin_grant = bool(data.get("is_admin", False))
+
+        if not email or "@" not in email:
+            return jsonify({"error": "A valid email address is required."}), 400
+
+        existing = AllowedEmail.get_by_email(email)
+        if existing:
+            return jsonify({"error": f"'{email}' is already on the authorized access whitelist."}), 409
+
+        new_allowed = AllowedEmail(
+            email=email,
+            notes=notes,
+            is_admin=is_admin_grant,
+            added_by=current_admin.email if current_admin else "Admin",
+        )
+        db.session.add(new_allowed)
+
+        # If user account already exists, synchronize role
+        existing_user = User.query.filter(db.func.lower(User.email) == email).first()
+        if existing_user:
+            existing_user.is_admin = is_admin_grant
+            existing_user.is_active = True
+
+        db.session.commit()
+        return jsonify({
+            "message": f"Authorized '{email}' for Chimaera access.",
+            "allowed": new_allowed.to_dict(),
+        }), 201
+
+    @app.route("/api/admin/whitelist/delete/<int:item_id>", methods=["POST", "DELETE"])
+    @admin_required
+    def admin_delete_whitelist(item_id):
+        """Revokes access authorization for an email."""
+        current_admin = get_current_user()
+        entry = db.session.get(AllowedEmail, item_id)
+        if not entry:
+            return jsonify({"error": "Whitelist record not found."}), 404
+
+        if current_admin and entry.email.lower() == current_admin.email.lower():
+            return jsonify({"error": "Action rejected: You cannot revoke your own access clearance."}), 400
+
+        primary_admin = (app.config.get("ADMIN_EMAIL") or "jpmclaug@gmail.com").strip().lower()
+        if entry.email.lower() == primary_admin:
+            return jsonify({"error": "Action rejected: Primary system administrator cannot be revoked."}), 400
+
+        revoked_email = entry.email
+        db.session.delete(entry)
+
+        # Also revoke admin status on User record if exists
+        u = User.query.filter(db.func.lower(User.email) == revoked_email.lower()).first()
+        if u:
+            u.is_admin = False
+
+        db.session.commit()
+        return jsonify({"message": f"Revoked authorization for '{revoked_email}'."})
+
+    @app.route("/api/admin/whitelist/toggle-admin/<int:item_id>", methods=["POST"])
+    @admin_required
+    def admin_toggle_whitelist_admin(item_id):
+        """Toggles administrator clearance for an authorized email."""
+        current_admin = get_current_user()
+        entry = db.session.get(AllowedEmail, item_id)
+        if not entry:
+            return jsonify({"error": "Whitelist record not found."}), 404
+
+        if current_admin and entry.email.lower() == current_admin.email.lower():
+            return jsonify({"error": "Action rejected: You cannot demote your own active admin clearance."}), 400
+
+        entry.is_admin = not entry.is_admin
+
+        u = User.query.filter(db.func.lower(User.email) == entry.email.lower()).first()
+        if u:
+            u.is_admin = entry.is_admin
+
+        db.session.commit()
+        status_label = "ADMINISTRATOR" if entry.is_admin else "OPERATOR"
+        return jsonify({
+            "message": f"Updated clearance for '{entry.email}' to {status_label}.",
+            "is_admin": entry.is_admin,
+            "allowed": entry.to_dict(),
+        })
+
+    @app.route("/api/admin/users/toggle-status/<int:user_id>", methods=["POST"])
+    @admin_required
+    def admin_toggle_user_status(user_id):
+        """Suspends or activates an existing registered user."""
+        current_admin = get_current_user()
+        target_user = db.session.get(User, user_id)
+        if not target_user:
+            return jsonify({"error": "User record not found."}), 404
+
+        if current_admin and target_user.id == current_admin.id:
+            return jsonify({"error": "Action rejected: You cannot suspend your own account."}), 400
+
+        target_user.is_active = not target_user.is_active
+        db.session.commit()
+
+        status_label = "ACTIVE" if target_user.is_active else "SUSPENDED"
+        return jsonify({
+            "message": f"User '{target_user.email}' is now {status_label}.",
+            "is_active": target_user.is_active,
+            "user": target_user.to_dict(),
+        })
+
+    # ---------------------------------------------------------
+    # Core User-Scoped View Routes
     # ---------------------------------------------------------
     @app.route("/")
+    @login_required
     def index():
-        """Wishlist Dashboard view."""
-        items = WatchlistItem.query.order_by(WatchlistItem.created_at.desc()).all()
-        
+        """Wishlist Dashboard view scoped to the authenticated user."""
+        user = get_current_user()
+        items = WatchlistItem.query.filter_by(user_id=user.id).order_by(WatchlistItem.created_at.desc()).all()
+
         # Calculate summary KPIs
         total_items = len(items)
         deals_count = sum(1 for item in items if item.is_deal)
         total_target_value = sum(item.target_price for item in items if item.target_price)
-        
+
         # Total lowest market value
         lowest_market_sum = sum(
             item.lowest_in_stock_price for item in items if item.lowest_in_stock_price is not None
@@ -163,11 +650,13 @@ def create_app(test_config=None):
         )
 
     @app.route("/deals")
+    @login_required
     def deals():
-        """Dedicated Active Deals view."""
-        all_items = WatchlistItem.query.order_by(WatchlistItem.created_at.desc()).all()
+        """Dedicated Active Deals view scoped to the authenticated user."""
+        user = get_current_user()
+        all_items = WatchlistItem.query.filter_by(user_id=user.id).order_by(WatchlistItem.created_at.desc()).all()
         deal_items = [item for item in all_items if item.is_deal]
-        
+
         total_savings = sum(item.savings_amount for item in deal_items)
 
         return render_template(
@@ -179,10 +668,12 @@ def create_app(test_config=None):
         )
 
     @app.route("/guide")
+    @login_required
     def guide():
         """Tactical Operations & How-To Guide view."""
-        all_items = WatchlistItem.query.all()
-        deals_count = sum(1 for item in all_items if item.is_deal)
+        user = get_current_user()
+        user_items = WatchlistItem.query.filter_by(user_id=user.id).all() if user else []
+        deals_count = sum(1 for item in user_items if item.is_deal)
         return render_template(
             "guide.html",
             deals_count=deals_count,
@@ -193,6 +684,7 @@ def create_app(test_config=None):
     # API Routes: Scryfall Lookups
     # ---------------------------------------------------------
     @app.route("/api/scryfall/autocomplete")
+    @login_required
     def scryfall_autocomplete():
         """Card name autocomplete."""
         query = request.args.get("q", "").strip()
@@ -202,6 +694,7 @@ def create_app(test_config=None):
         return jsonify({"suggestions": suggestions})
 
     @app.route("/api/scryfall/prints")
+    @login_required
     def scryfall_prints():
         """Fetch all printings for a specific card name."""
         card_name = request.args.get("name", "").strip()
@@ -214,9 +707,11 @@ def create_app(test_config=None):
     # API Routes: Watchlist CRUD & Price Refresh
     # ---------------------------------------------------------
     @app.route("/api/watchlist/add", methods=["POST"])
+    @login_required
     def add_card():
-        """Add a card to watchlist and run initial price check."""
-        data = request.get_json() or {}
+        """Add a card to the authenticated user's watchlist and run initial price check."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
         name = (data.get("name") or "").strip()
         is_any_version = data.get("is_any_version", False)
         set_code = (data.get("set_code") or "").strip().upper() or None
@@ -235,9 +730,10 @@ def create_app(test_config=None):
             set_code = None
             collector_number = None
 
-        # Check for duplicates
+        # Check for duplicates within user's own watchlist
         if set_code is None:
             existing = WatchlistItem.query.filter(
+                WatchlistItem.user_id == user.id,
                 WatchlistItem.name.ilike(name),
                 (WatchlistItem.set_code == None) | (WatchlistItem.set_code == "") | (WatchlistItem.set_code == "ANY"),
                 WatchlistItem.finish == finish,
@@ -246,6 +742,7 @@ def create_app(test_config=None):
                 return jsonify({"error": f"'{name}' (Any Version, {finish.capitalize()}) is already on your watchlist."}), 409
         else:
             existing = WatchlistItem.query.filter(
+                WatchlistItem.user_id == user.id,
                 WatchlistItem.name.ilike(name),
                 WatchlistItem.set_code == set_code,
                 WatchlistItem.collector_number == collector_number,
@@ -271,6 +768,7 @@ def create_app(test_config=None):
                 return jsonify({"error": "Invalid target price value."}), 400
 
         new_item = WatchlistItem(
+            user_id=user.id,
             name=name,
             scryfall_id=scryfall_id,
             set_code=set_code,
@@ -293,11 +791,13 @@ def create_app(test_config=None):
         }), 201
 
     @app.route("/api/watchlist/toggle-mm-alert/<int:item_id>", methods=["POST"])
+    @login_required
     def toggle_mm_alert(item_id):
         """Toggle Mighty Meeple stock alert for a specific card."""
+        user = get_current_user()
         item = db.session.get(WatchlistItem, item_id)
-        if not item:
-            return jsonify({"error": "Card not found."}), 404
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
 
         data = request.get_json(silent=True) or {}
         if "notify_mm_stock" in data:
@@ -314,13 +814,15 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/watchlist/update-scope/<int:item_id>", methods=["POST"])
+    @login_required
     def update_card_scope(item_id):
         """Update a card's scope between Any Version (general) and a specific print."""
+        user = get_current_user()
         item = db.session.get(WatchlistItem, item_id)
-        if not item:
-            return jsonify({"error": "Card not found."}), 404
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
 
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         is_any = data.get("is_any_version", False)
         set_code = (data.get("set_code") or "").strip().upper() or None
         collector_number = (data.get("collector_number") or "").strip() or None
@@ -351,13 +853,15 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/watchlist/update-target/<int:item_id>", methods=["POST"])
+    @login_required
     def update_target_price(item_id):
         """Update target price for a card."""
+        user = get_current_user()
         item = db.session.get(WatchlistItem, item_id)
-        if not item:
-            return jsonify({"error": "Card not found."}), 404
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
 
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         target_price_raw = data.get("target_price")
 
         if target_price_raw is None or str(target_price_raw).strip() == "":
@@ -378,11 +882,13 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/watchlist/refresh/<int:item_id>", methods=["POST"])
+    @login_required
     def refresh_card_price(item_id):
         """Manually trigger price refresh for a specific card."""
+        user = get_current_user()
         item = db.session.get(WatchlistItem, item_id)
-        if not item:
-            return jsonify({"error": "Card not found."}), 404
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
 
         result = deal_engine.poll_card(item, notify=True)
         return jsonify({
@@ -391,20 +897,25 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/watchlist/refresh-all", methods=["POST"])
+    @login_required
     def refresh_all_cards():
-        """Manually refresh all cards on the watchlist."""
-        results = deal_engine.poll_all_cards(notify=True)
+        """Manually refresh all cards on the user's watchlist."""
+        user = get_current_user()
+        items = WatchlistItem.query.filter_by(user_id=user.id).all()
+        results = deal_engine.poll_user_cards(items, notify=True)
         return jsonify({
             "message": f"Successfully refreshed {len(results)} cards.",
             "count": len(results),
         })
 
     @app.route("/api/watchlist/delete/<int:item_id>", methods=["DELETE", "POST"])
+    @login_required
     def delete_card(item_id):
         """Remove card and its associated vendor prices."""
+        user = get_current_user()
         item = db.session.get(WatchlistItem, item_id)
-        if not item:
-            return jsonify({"error": "Card not found."}), 404
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
 
         card_name = item.name
         db.session.delete(item)
@@ -416,6 +927,7 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/card/price-intel")
+    @login_required
     def card_price_intel():
         """Returns real-time price intelligence and good-price deal targets for a card."""
         name = request.args.get("name", "").strip()
@@ -457,6 +969,7 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/discord/test", methods=["POST"])
+    @login_required
     def test_discord_webhook():
         """Test Discord webhook integration."""
         success, msg = deal_engine.send_test_discord_notification()
@@ -465,6 +978,7 @@ def create_app(test_config=None):
         return jsonify({"error": msg}), 400
 
     @app.route("/api/settings/telemetry")
+    @login_required
     def get_telemetry():
         """Returns current surveillance cadence, worker heartbeat, and telemetry status."""
         interval_hours = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
@@ -492,9 +1006,10 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/settings/cadence", methods=["POST"])
+    @login_required
     def update_cadence():
         """Updates surveillance cadence interval, auto-refresh toggle, and alert preferences."""
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         interval_raw = data.get("poll_interval_hours")
         auto_enabled_raw = data.get("auto_poll_enabled")
         notify_mm_raw = data.get("notify_mm_stock_enabled")
@@ -535,9 +1050,10 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/settings/ebay-preference", methods=["POST"])
+    @login_required
     def update_ebay_preference():
         """Updates global default eBay link navigation mode."""
-        data = request.get_json() or {}
+        data = request.get_json(silent=True) or {}
         mode = "search" if str(data.get("ebay_link_mode", "")).lower() == "search" else "direct"
         SystemSetting.set_val("ebay_link_mode", mode)
         return jsonify({
@@ -546,6 +1062,7 @@ def create_app(test_config=None):
         })
 
     @app.route("/api/worker/trigger", methods=["POST"])
+    @login_required
     def trigger_worker_poll():
         """Signals the standalone worker via database flag and runs manual fleet poll."""
         SystemSetting.set_val("manual_poll_requested", "true")

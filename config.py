@@ -43,3 +43,9 @@ class Config:
     EBAY_APP_ID = os.getenv("EBAY_APP_ID", "").strip()
     EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID", "").strip()
     EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET", "").strip()
+
+    # Google OAuth 2.0 (Gmail Login)
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "jpmclaug@gmail.com").strip().lower()
+    APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")

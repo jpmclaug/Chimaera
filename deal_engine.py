@@ -147,6 +147,17 @@ class DealEngine:
         logger.info(f"Completed poll for all watchlist items ({len(summary)} scanned, {deals_found} deals).")
         return summary
 
+    def poll_user_cards(self, items: list[WatchlistItem], notify: bool = True) -> list[dict]:
+        """Polls prices for a specific user's WatchlistItems."""
+        summary = []
+        for item in items:
+            try:
+                res = self.poll_card(item, notify=notify)
+                summary.append(res)
+            except Exception as e:
+                logger.error(f"Error polling card {item.name} (ID: {item.id}): {e}")
+        return summary
+
     def send_discord_deal_alert(
         self,
         item: WatchlistItem,
