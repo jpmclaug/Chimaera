@@ -42,9 +42,8 @@ Chimera/
 ├── app.py                  # Flask web factory, API endpoints & template routes
 ├── worker.py               # Standalone daemon/cron worker for background surveillance
 ├── config.py               # Central environment variable & database connection config
-├── models.py               # SQLAlchemy models (WatchlistItem, VendorPrice, SystemSetting)
+├── models.py               # SQLAlchemy models (User, AllowedEmail, WatchlistItem, VendorPrice, ActivityLog, SystemSetting)
 ├── deal_engine.py          # Multi-vendor deal aggregator & Discord dispatcher
-├── guide.html              # Standalone offline Tactical Operations & How-To Manual
 ├── providers/
 │   ├── __init__.py
 │   ├── scryfall.py         # Scryfall REST client & lowest price calculator across printings
@@ -54,7 +53,9 @@ Chimera/
 │   ├── base.html           # Tactical layout with navigation, modals, and toast alerts
 │   ├── index.html          # Registry dashboard with multi-vendor price comparison matrix
 │   ├── deals.html          # Dedicated priority active deals view
-│   └── guide.html          # In-app Tactical Operations & How-To Guide (/guide)
+│   ├── admin.html          # Administrative console, cards surveillance & security audit
+│   ├── login.html          # Authentication portal
+│   └── access_denied.html  # Access restricted security notice
 ├── static/
 │   ├── img/
 │   │   └── chimaera_logo.jpg # Chimaera wireframe sigil

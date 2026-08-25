@@ -6,33 +6,475 @@
 <div class="space-y-6">
 
     <!-- Admin Header Banner -->
-    <div class="bg-[#1B2230] border-2 border-[#00CED1] p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+    <div class="bg-[#1B2230] border-2 border-[#00CED1] p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative overflow-hidden">
         <div>
             <div class="flex items-center space-x-2">
                 <span class="w-2.5 h-2.5 bg-[#00CED1] animate-tactical-pulse inline-block"></span>
                 <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">COMMAND CLEARANCE // LEVEL 5</span>
             </div>
             <h2 class="text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
-                Access Authorization & Personnel Control
+                Surveillance Control & Personnel Telemetry
             </h2>
             <p class="text-sm text-[#94A3B8] mt-1 font-sans">
-                Manage whitelisted Gmail accounts permitted to authenticate into the Chimaera surveillance platform.
+                Comprehensive command console: multi-user target registry surveillance, personnel activity telemetry, security audit logs, and whitelist authorization.
             </p>
         </div>
-        <div class="flex items-center space-x-4 bg-[#10141D] px-4 py-2.5 border border-[#263245]">
+        <div class="flex flex-wrap items-center gap-3 bg-[#10141D] px-4 py-2.5 border border-[#263245]">
             <div>
-                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Whitelisted</div>
-                <div class="text-2xl font-mono font-bold text-[#00CED1]">{{ allowed_emails|length }}</div>
+                <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Whitelisted</div>
+                <div class="text-xl font-mono font-bold text-[#00CED1]">{{ allowed_emails|length }}</div>
             </div>
-            <div class="border-l border-[#263245] pl-4">
-                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Active Users</div>
-                <div class="text-2xl font-mono font-bold text-white">{{ users|length }}</div>
+            <div class="border-l border-[#263245] pl-3">
+                <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Active Users</div>
+                <div class="text-xl font-mono font-bold text-white">{{ users|length }}</div>
             </div>
-            <div class="border-l border-[#263245] pl-4">
-                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Total Targets</div>
-                <div class="text-2xl font-mono font-bold text-[#FF3358]">{{ total_tracked_cards }}</div>
+            <div class="border-l border-[#263245] pl-3">
+                <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">All Targets</div>
+                <div class="text-xl font-mono font-bold text-[#FF3358]">{{ total_tracked_cards }}</div>
+            </div>
+            <div class="border-l border-[#263245] pl-3">
+                <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Failed Logins</div>
+                <div class="text-xl font-mono font-bold {% if failed_logins|length > 0 %}text-[#FF3358] animate-pulse{% else %}text-[#2DD4BF]{% endif %}">{{ failed_logins|length }}</div>
             </div>
         </div>
+    </div>
+
+    <!-- Security Alert: Failed Login Attempts Panel -->
+    <div class="bg-[#1B2230] border-2 {% if failed_logins|length > 0 %}border-[#DC143C]/80{% else %}border-[#263245]{% endif %} p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#263245] pb-3 mb-4 gap-2">
+            <div class="flex items-center space-x-2">
+                <svg class="w-4 h-4 text-[#FF3358]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+                <div class="text-xs font-mono font-bold uppercase tracking-wider text-[#FF3358]">
+                    // SECURITY TELEMETRY: FAILED LOGIN ATTEMPTS ({{ failed_logins|length }})
+                </div>
+            </div>
+            <span class="text-[11px] font-mono text-[#94A3B8]">Real-time IP & unauthorized attempt monitoring</span>
+        </div>
+
+        {% if failed_logins|length > 0 %}
+        <div class="overflow-x-auto max-h-72 overflow-y-auto">
+            <table class="w-full text-left font-mono text-xs">
+                <thead>
+                    <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[10px]">
+                        <th class="pb-2">Timestamp (UTC)</th>
+                        <th class="pb-2">Attempted Identifier</th>
+                        <th class="pb-2">User ID (If Known)</th>
+                        <th class="pb-2">Client IP Address</th>
+                        <th class="pb-2">Security Diagnosis / Reason</th>
+                        <th class="pb-2">Endpoint</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[#263245]/60">
+                    {% for log in failed_logins %}
+                    <tr class="hover:bg-[#10141D]/60 transition">
+                        <td class="py-2.5 text-[#94A3B8] whitespace-nowrap text-[11px]">
+                            {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '--' }}
+                        </td>
+                        <td class="py-2.5 font-bold text-white whitespace-nowrap">
+                            <span class="text-[#FF3358]">&#x25CF;</span> {{ log.user_email or 'Anonymous / None' }}
+                        </td>
+                        <td class="py-2.5 text-[#00CED1] whitespace-nowrap">
+                            {% if log.user_id %}
+                            <span class="bg-[#10141D] border border-[#263245] px-1.5 py-0.5 text-[10px]">USER #{{ log.user_id }}</span>
+                            {% else %}
+                            <span class="text-[#64748B] text-[10px]">Unregistered</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-2.5 text-[#2DD4BF] whitespace-nowrap font-bold">
+                            <span class="bg-[#10141D] border border-[#263245] px-2 py-0.5">{{ log.ip_address or 'Unknown' }}</span>
+                        </td>
+                        <td class="py-2.5 text-[#F1F5F9] text-[11px]">
+                            {{ log.details or 'Authentication rejected' }}
+                        </td>
+                        <td class="py-2.5 text-[#64748B] text-[10px] whitespace-nowrap font-mono">
+                            {{ log.endpoint or '--' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="bg-[#10141D] border border-[#263245] p-4 text-center font-mono text-xs text-[#2DD4BF]">
+            🛡️ No unauthorized or failed authentication attempts recorded. Tactical perimeter secure.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Active Registered Users Table with Usage Frequency Stats -->
+    <div class="bg-[#1B2230] border border-[#263245] p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#263245] pb-3 mb-4 gap-2">
+            <div class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-wider">// REGISTERED PERSONNEL & USAGE TELEMETRY ({{ users|length }})</div>
+            <span class="text-[11px] font-mono text-[#94A3B8]">Monitors card counts, 7-day usage frequency, and last tool activity</span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left font-mono text-xs">
+                <thead>
+                    <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[11px]">
+                        <th class="pb-2.5">User Identity</th>
+                        <th class="pb-2.5">Clearance</th>
+                        <th class="pb-2.5">Status</th>
+                        <th class="pb-2.5">Targets</th>
+                        <th class="pb-2.5">Usage Past 7 Days</th>
+                        <th class="pb-2.5">Last Tool Activity</th>
+                        <th class="pb-2.5">Last Login</th>
+                        <th class="pb-2.5 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[#263245]/60">
+                    {% for u in users %}
+                    <tr class="hover:bg-[#10141D]/50 transition" id="user-row-{{ u.id }}">
+                        <td class="py-3 pr-2">
+                            <div class="flex items-center space-x-2.5">
+                                {% if u.picture %}
+                                <img src="{{ u.picture }}" alt="{{ u.name }}" class="w-7 h-7 rounded-full border border-[#263245]">
+                                {% else %}
+                                <div class="w-7 h-7 rounded-full bg-[#10141D] border border-[#263245] flex items-center justify-center font-bold text-[#00CED1] text-xs">
+                                    {{ (u.name or u.email)[0]|upper }}
+                                </div>
+                                {% endif %}
+                                <div>
+                                    <div class="font-bold text-white flex items-center space-x-1.5">
+                                        <span>{{ u.name or u.email.split('@')[0] }}</span>
+                                        <span class="text-[9px] text-[#64748B] font-normal">#{{ u.id }}</span>
+                                    </div>
+                                    <div class="text-[10px] text-[#64748B]">{{ u.email }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="py-3">
+                            {% if u.is_admin %}
+                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-2 py-0.5 text-[10px] font-bold uppercase">ADMIN</span>
+                            {% else %}
+                            <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 px-2 py-0.5 text-[10px] font-bold uppercase">OPERATOR</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3">
+                            {% if u.is_active %}
+                            <span class="text-[#00CED1] text-[10px] font-bold uppercase">&#x25CF; ACTIVE</span>
+                            {% else %}
+                            <span class="text-[#FF3358] text-[10px] font-bold uppercase">&#x25CF; SUSPENDED</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3">
+                            <button onclick="filterAdminCardsByUser({{ u.id }}, '{{ u.name or u.email }}')" class="font-bold text-white hover:text-[#00CED1] underline decoration-dotted transition" title="Filter card inventory to this user">
+                                {{ u.card_count }} cards
+                            </button>
+                        </td>
+                        <td class="py-3">
+                            {% set week_usage = u.get_usage_past_week() %}
+                            {% if week_usage > 0 %}
+                            <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 px-2 py-0.5 text-[10px] font-bold">
+                                {{ week_usage }} actions
+                            </span>
+                            {% else %}
+                            <span class="text-[#64748B] text-[10px]">0 actions</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 text-[#94A3B8] text-[11px]">
+                            {% set last_act = u.get_last_active() %}
+                            {% if last_act %}
+                            <span class="text-white font-mono">{{ last_act.strftime('%Y-%m-%d %H:%M') }}</span> <span class="text-[9px] text-[#64748B]">UTC</span>
+                            {% else %}
+                            <span class="text-[#64748B]">Never</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 text-[#94A3B8] text-[11px]">
+                            {{ u.last_login.strftime('%Y-%m-%d %H:%M UTC') if u.last_login else 'Never' }}
+                        </td>
+                        <td class="py-3 text-right whitespace-nowrap space-x-1.5">
+                            <button onclick="filterAdminCardsByUser({{ u.id }}, '{{ u.name or u.email }}')" 
+                                class="px-2 py-1 text-[10px] uppercase font-bold border border-[#00CED1]/40 bg-[#00CED1]/10 text-[#00CED1] hover:bg-[#00CED1]/25 transition"
+                                title="Inspect cards registered by this user">
+                                View Cards
+                            </button>
+                            {% if current_user and u.id != current_user.id %}
+                            <button onclick="toggleUserStatus({{ u.id }}, '{{ u.email }}')" 
+                                class="px-2 py-1 text-[10px] uppercase font-bold border transition {% if u.is_active %}border-[#DC143C]/40 bg-[#DC143C]/10 text-[#FF3358] hover:bg-[#DC143C]/25{% else %}border-[#00CED1]/40 bg-[#00CED1]/10 text-[#00CED1] hover:bg-[#00CED1]/25{% endif %}">
+                                {% if u.is_active %}Suspend{% else %}Activate{% endif %}
+                            </button>
+                            {% else %}
+                            <span class="text-[10px] text-[#64748B] italic px-1">[YOU]</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Surveillance Target Inventory Across All Users -->
+    <div class="bg-[#1B2230] border-2 border-[#00CED1] p-5 space-y-4" id="section-admin-cards">
+        <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-[#263245] pb-3 gap-3">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="w-2 h-2 bg-[#00CED1] inline-block"></span>
+                    <span class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-wider">// SURVEILLANCE TARGET REGISTRY ACROSS ALL USERS ({{ all_cards|length }})</span>
+                </div>
+                <p class="text-xs text-[#94A3B8] mt-0.5">
+                    Live inspection of all cards, target thresholds, price ratings, and owners monitored in the system.
+                </p>
+            </div>
+
+            <!-- Filters Bar -->
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Search Filter -->
+                <div class="relative">
+                    <input type="text" id="admin-cards-search" placeholder="Search card name, tag, set..."
+                        oninput="filterAdminCardsTable()"
+                        class="bg-[#10141D] border border-[#263245] px-3 py-1.5 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono w-48 sm:w-60">
+                </div>
+
+                <!-- User Dropdown Filter -->
+                <select id="admin-cards-user-select" onchange="filterAdminCardsTable()"
+                    class="bg-[#10141D] border border-[#263245] px-3 py-1.5 text-xs text-white focus:border-[#00CED1] font-mono">
+                    <option value="all">All Personnel ({{ all_cards|length }} cards)</option>
+                    {% for u in users %}
+                    <option value="{{ u.id }}">{{ u.name or u.email.split('@')[0] }} ({{ u.card_count }} cards)</option>
+                    {% endfor %}
+                </select>
+
+                <!-- Deals Only Toggle -->
+                <button type="button" id="btn-admin-deals-toggle" onclick="toggleAdminDealsOnly()"
+                    class="px-2.5 py-1.5 text-xs font-mono uppercase font-bold border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition flex items-center space-x-1">
+                    <span>🔥 Deals Only</span>
+                </button>
+
+                <!-- Reset Filters -->
+                <button type="button" onclick="resetAdminCardsFilter()"
+                    class="px-2.5 py-1.5 text-xs font-mono uppercase border border-[#263245] bg-[#10141D] text-[#64748B] hover:text-white transition">
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Filter Feedback Status -->
+        <div class="flex items-center justify-between text-xs font-mono text-[#94A3B8] px-1">
+            <div id="admin-cards-filter-status">Showing all {{ all_cards|length }} tracked targets</div>
+            <div id="admin-cards-count-badge" class="text-[11px] text-[#00CED1] font-bold">[ {{ all_cards|length }} DISPLAYED ]</div>
+        </div>
+
+        <!-- Cards Surveillance Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-left font-mono text-xs">
+                <thead>
+                    <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[10px]">
+                        <th class="pb-2.5">Target Nomenclature</th>
+                        <th class="pb-2.5">Added By / Owner</th>
+                        <th class="pb-2.5">Scope & Finish</th>
+                        <th class="pb-2.5">Tag</th>
+                        <th class="pb-2.5">Target Threshold</th>
+                        <th class="pb-2.5">Lowest Live Price</th>
+                        <th class="pb-2.5">Market Intel</th>
+                        <th class="pb-2.5">Date Added</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[#263245]/60" id="admin-cards-table-body">
+                    {% for item in all_cards %}
+                    <tr class="admin-card-row hover:bg-[#10141D]/60 transition"
+                        data-user-id="{{ item.user_id or 0 }}"
+                        data-is-deal="{{ '1' if item.is_deal else '0' }}"
+                        data-name="{{ item.name|lower }}"
+                        data-tag="{{ (item.tag or '')|lower }}"
+                        data-set="{{ (item.set_code or '')|lower }}"
+                        data-owner="{{ (item.user.name or item.user.email or 'unassigned')|lower if item.user else 'unassigned' }}">
+                        
+                        <!-- Card Name & Image -->
+                        <td class="py-3 pr-3">
+                            <div class="flex items-center space-x-2.5">
+                                {% if item.image_uri %}
+                                <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-8 h-11 object-cover border border-[#263245] bg-[#0C0F17] flex-shrink-0">
+                                {% else %}
+                                <div class="w-8 h-11 bg-[#10141D] border border-[#263245] flex items-center justify-center text-[10px] text-[#64748B] flex-shrink-0">
+                                    MTG
+                                </div>
+                                {% endif %}
+                                <div class="min-w-0">
+                                    <div class="font-bold text-white truncate max-w-xs">{{ item.name }}</div>
+                                    <div class="text-[10px] text-[#64748B] flex items-center space-x-1.5 mt-0.5">
+                                        {% if item.is_any_version %}
+                                        <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/30 px-1 py-0.2 font-bold uppercase text-[9px]">ANY VERSION</span>
+                                        {% else %}
+                                        <span class="text-[#94A3B8] font-bold">{{ item.set_code }}</span>
+                                        <span>#{{ item.collector_number or '?' }}</span>
+                                        {% endif %}
+                                        {% if item.notify_mm_stock %}
+                                        <span class="text-[#2DD4BF]" title="Mighty Meeple restock alerts active">⚡ MM Alert</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Added By / User Owner -->
+                        <td class="py-3 pr-2 whitespace-nowrap">
+                            {% if item.user %}
+                            <div class="flex items-center space-x-2">
+                                {% if item.user.picture %}
+                                <img src="{{ item.user.picture }}" alt="{{ item.user.name }}" class="w-5 h-5 rounded-full border border-[#263245]">
+                                {% else %}
+                                <div class="w-5 h-5 rounded-full bg-[#10141D] border border-[#263245] flex items-center justify-center text-[9px] font-bold text-[#00CED1]">
+                                    {{ (item.user.name or item.user.email)[0]|upper }}
+                                </div>
+                                {% endif %}
+                                <div>
+                                    <div class="font-bold text-white text-[11px]">{{ item.user.name or item.user.email.split('@')[0] }}</div>
+                                    <div class="text-[9px] text-[#64748B]">{{ item.user.email }}</div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <span class="text-[#64748B] italic text-[11px]">Legacy / Unassigned</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Scope & Finish -->
+                        <td class="py-3 whitespace-nowrap">
+                            <div class="text-white text-[11px]">
+                                {% if item.finish == 'foil' %}
+                                <span class="text-[#FFD700] font-bold">★ FOIL</span>
+                                {% elif item.finish == 'etched' %}
+                                <span class="text-[#C084FC] font-bold">✦ ETCHED</span>
+                                {% else %}
+                                <span class="text-[#94A3B8]">Non-foil</span>
+                                {% endif %}
+                            </div>
+                        </td>
+
+                        <!-- Tag / Category -->
+                        <td class="py-3 whitespace-nowrap">
+                            {% if item.tag %}
+                            <span class="bg-[#10141D] border border-[#9333EA]/40 text-[#C084FC] px-1.5 py-0.5 text-[10px]">
+                                🏷️ {{ item.tag }}
+                            </span>
+                            {% else %}
+                            <span class="text-[#64748B] text-[10px]">--</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Target Threshold -->
+                        <td class="py-3 whitespace-nowrap">
+                            {% if item.target_price %}
+                            <span class="font-bold text-[#00CED1]">${{ "%.2f"|format(item.target_price) }}</span>
+                            {% else %}
+                            <span class="text-[#64748B]">None (Monitor)</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Lowest Live Price & Vendor -->
+                        <td class="py-3 whitespace-nowrap">
+                            {% if item.lowest_in_stock_price %}
+                            <div class="font-bold {% if item.is_deal %}text-[#FF3358]{% else %}text-white{% endif %}">
+                                ${{ "%.2f"|format(item.lowest_in_stock_price) }}
+                            </div>
+                            <div class="text-[10px] text-[#94A3B8]">
+                                via {{ item.best_vendor.vendor_name if item.best_vendor else 'Vendor' }}
+                            </div>
+                            {% else %}
+                            <span class="text-[#64748B] text-[11px]">Out of Stock</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Market Intel / Deal Status -->
+                        <td class="py-3 whitespace-nowrap">
+                            {% if item.is_deal %}
+                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-2 py-0.5 text-[10px] font-bold uppercase inline-flex items-center space-x-1">
+                                <span>🔥 DEAL</span>
+                                {% if item.savings_percent > 0 %}
+                                <span>(-{{ item.savings_percent }}%)</span>
+                                {% endif %}
+                            </span>
+                            {% elif item.price_rating == 'Great Deal' %}
+                            <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 px-2 py-0.5 text-[10px] font-bold uppercase">GREAT DEAL</span>
+                            {% elif item.price_rating == 'Good Deal' %}
+                            <span class="bg-[#2DD4BF]/20 text-[#2DD4BF] border border-[#2DD4BF]/40 px-2 py-0.5 text-[10px] font-bold uppercase">GOOD DEAL</span>
+                            {% elif item.market_price %}
+                            <span class="text-[#94A3B8] text-[10px]">Mkt: ${{ "%.2f"|format(item.market_price) }}</span>
+                            {% else %}
+                            <span class="text-[#64748B] text-[10px]">--</span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Date Added -->
+                        <td class="py-3 text-[#94A3B8] text-[11px] whitespace-nowrap">
+                            {{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '--' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Empty Filter Result Message -->
+        <div id="admin-cards-empty-filter" class="hidden bg-[#10141D] border border-[#263245] p-6 text-center font-mono text-xs text-[#94A3B8]">
+            No tracked surveillance targets match the active filter criteria.
+        </div>
+    </div>
+
+    <!-- Recent System Activity & Tool Usage Stream -->
+    <div class="bg-[#1B2230] border border-[#263245] p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#263245] pb-3 mb-4 gap-2">
+            <div class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-wider">// SYSTEM ACTIVITY & TOOL USAGE AUDIT STREAM ({{ recent_activities|length }})</div>
+            <span class="text-[11px] font-mono text-[#94A3B8]">Tracks real-time operations, imports, searches, and modifications</span>
+        </div>
+
+        {% if recent_activities|length > 0 %}
+        <div class="overflow-x-auto max-h-80 overflow-y-auto">
+            <table class="w-full text-left font-mono text-xs">
+                <thead>
+                    <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[10px]">
+                        <th class="pb-2">Timestamp (UTC)</th>
+                        <th class="pb-2">Personnel / User</th>
+                        <th class="pb-2">Operation Type</th>
+                        <th class="pb-2">Activity Description</th>
+                        <th class="pb-2">Client IP</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-[#263245]/60">
+                    {% for act in recent_activities %}
+                    <tr class="hover:bg-[#10141D]/50 transition">
+                        <td class="py-2 text-[#94A3B8] whitespace-nowrap text-[11px]">
+                            {{ act.created_at.strftime('%Y-%m-%d %H:%M:%S') if act.created_at else '--' }}
+                        </td>
+                        <td class="py-2 font-bold text-white whitespace-nowrap text-[11px]">
+                            {{ act.user_email or (act.user.email if act.user else 'System') }}
+                        </td>
+                        <td class="py-2 whitespace-nowrap">
+                            {% if act.action == 'LOGIN_SUCCESS' %}
+                            <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 px-1.5 py-0.2 text-[9px] font-bold">LOGIN</span>
+                            {% elif act.action == 'LOGIN_FAILED' %}
+                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-1.5 py-0.2 text-[9px] font-bold">FAILED_LOGIN</span>
+                            {% elif act.action == 'CARD_ADD' %}
+                            <span class="bg-[#2DD4BF]/20 text-[#2DD4BF] border border-[#2DD4BF]/50 px-1.5 py-0.2 text-[9px] font-bold">+TARGET</span>
+                            {% elif act.action == 'BULK_CARD_ADD' %}
+                            <span class="bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/50 px-1.5 py-0.2 text-[9px] font-bold">BATCH_IMPORT</span>
+                            {% elif act.action == 'CARD_DELETE' %}
+                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-1.5 py-0.2 text-[9px] font-bold">DELETE</span>
+                            {% elif act.action == 'PRICE_REFRESH' %}
+                            <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] px-1.5 py-0.2 text-[9px] font-bold">POLL</span>
+                            {% else %}
+                            <span class="bg-[#10141D] text-white border border-[#263245] px-1.5 py-0.2 text-[9px] font-bold">{{ act.action }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-2 text-[#F1F5F9] text-[11px]">
+                            {{ act.details or '--' }}
+                        </td>
+                        <td class="py-2 text-[#64748B] text-[10px] whitespace-nowrap">
+                            {{ act.ip_address or '--' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="bg-[#10141D] border border-[#263245] p-4 text-center font-mono text-xs text-[#94A3B8]">
+            No recent activity records found.
+        </div>
+        {% endif %}
     </div>
 
     <!-- Whitelist Authorization Form & Table -->
@@ -126,83 +568,111 @@
         </div>
     </div>
 
-    <!-- Active Registered Users Table -->
-    <div class="bg-[#1B2230] border border-[#263245] p-5">
-        <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
-            <div class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-wider">// REGISTERED USER ACCOUNTS ({{ users|length }})</div>
-        </div>
-
-        <div class="overflow-x-auto">
-            <table class="w-full text-left font-mono text-xs">
-                <thead>
-                    <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[11px]">
-                        <th class="pb-2.5">User Identity</th>
-                        <th class="pb-2.5">Clearance</th>
-                        <th class="pb-2.5">Status</th>
-                        <th class="pb-2.5">Watchlist Targets</th>
-                        <th class="pb-2.5">Last Surveillance Login</th>
-                        <th class="pb-2.5 text-right">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-[#263245]/60">
-                    {% for u in users %}
-                    <tr class="hover:bg-[#10141D]/50 transition" id="user-row-{{ u.id }}">
-                        <td class="py-3 pr-2">
-                            <div class="flex items-center space-x-2.5">
-                                {% if u.picture %}
-                                <img src="{{ u.picture }}" alt="{{ u.name }}" class="w-7 h-7 rounded-full border border-[#263245]">
-                                {% else %}
-                                <div class="w-7 h-7 rounded-full bg-[#10141D] border border-[#263245] flex items-center justify-center font-bold text-[#00CED1] text-xs">
-                                    {{ (u.name or u.email)[0]|upper }}
-                                </div>
-                                {% endif %}
-                                <div>
-                                    <div class="font-bold text-white">{{ u.name or u.email.split('@')[0] }}</div>
-                                    <div class="text-[10px] text-[#64748B]">{{ u.email }}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="py-3">
-                            {% if u.is_admin %}
-                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-2 py-0.5 text-[10px] font-bold uppercase">ADMIN</span>
-                            {% else %}
-                            <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 px-2 py-0.5 text-[10px] font-bold uppercase">OPERATOR</span>
-                            {% endif %}
-                        </td>
-                        <td class="py-3">
-                            {% if u.is_active %}
-                            <span class="text-[#00CED1] text-[10px] font-bold uppercase">&#x25CF; ACTIVE</span>
-                            {% else %}
-                            <span class="text-[#FF3358] text-[10px] font-bold uppercase">&#x25CF; SUSPENDED</span>
-                            {% endif %}
-                        </td>
-                        <td class="py-3 text-white font-bold">
-                            {{ u.watchlist_items|length }} cards
-                        </td>
-                        <td class="py-3 text-[#94A3B8] text-[11px]">
-                            {{ u.last_login.strftime('%Y-%m-%d %H:%M UTC') if u.last_login else 'Never' }}
-                        </td>
-                        <td class="py-3 text-right whitespace-nowrap">
-                            {% if current_user and u.id != current_user.id %}
-                            <button onclick="toggleUserStatus({{ u.id }}, '{{ u.email }}')" 
-                                class="px-2.5 py-1 text-[10px] uppercase font-bold border transition {% if u.is_active %}border-[#DC143C]/40 bg-[#DC143C]/10 text-[#FF3358] hover:bg-[#DC143C]/25{% else %}border-[#00CED1]/40 bg-[#00CED1]/10 text-[#00CED1] hover:bg-[#00CED1]/25{% endif %}">
-                                {% if u.is_active %}Suspend{% else %}Activate{% endif %}
-                            </button>
-                            {% else %}
-                            <span class="text-[10px] text-[#64748B] italic px-1">[ACTIVE SESSION]</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
 </div>
 
 <!-- Admin JavaScript Controllers -->
 <script>
+let adminDealsOnlyFilter = false;
+
+function toggleAdminDealsOnly() {
+    adminDealsOnlyFilter = !adminDealsOnlyFilter;
+    const btn = document.getElementById("btn-admin-deals-toggle");
+    if (adminDealsOnlyFilter) {
+        btn.classList.remove("text-[#94A3B8]", "border-[#263245]");
+        btn.classList.add("text-[#FF3358]", "border-[#DC143C]", "bg-[#DC143C]/15");
+    } else {
+        btn.classList.remove("text-[#FF3358]", "border-[#DC143C]", "bg-[#DC143C]/15");
+        btn.classList.add("text-[#94A3B8]", "border-[#263245]");
+    }
+    filterAdminCardsTable();
+}
+
+function filterAdminCardsByUser(userId, userName) {
+    const select = document.getElementById("admin-cards-user-select");
+    if (select) {
+        select.value = String(userId);
+    }
+    const section = document.getElementById("section-admin-cards");
+    if (section) {
+        section.scrollIntoView({ behavior: "smooth" });
+    }
+    filterAdminCardsTable();
+}
+
+function resetAdminCardsFilter() {
+    const searchInput = document.getElementById("admin-cards-search");
+    const select = document.getElementById("admin-cards-user-select");
+    if (searchInput) searchInput.value = "";
+    if (select) select.value = "all";
+    if (adminDealsOnlyFilter) {
+        toggleAdminDealsOnly();
+    } else {
+        filterAdminCardsTable();
+    }
+}
+
+function filterAdminCardsTable() {
+    const searchInput = document.getElementById("admin-cards-search");
+    const userSelect = document.getElementById("admin-cards-user-select");
+    const query = (searchInput?.value || "").toLowerCase().trim();
+    const selectedUserId = userSelect?.value || "all";
+
+    const rows = document.querySelectorAll(".admin-card-row");
+    const emptyMsg = document.getElementById("admin-cards-empty-filter");
+    const statusMsg = document.getElementById("admin-cards-filter-status");
+    const countBadge = document.getElementById("admin-cards-count-badge");
+
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const rowUserId = row.getAttribute("data-user-id");
+        const rowIsDeal = row.getAttribute("data-is-deal") === "1";
+        const rowName = row.getAttribute("data-name") || "";
+        const rowTag = row.getAttribute("data-tag") || "";
+        const rowSet = row.getAttribute("data-set") || "";
+        const rowOwner = row.getAttribute("data-owner") || "";
+
+        let matchUser = (selectedUserId === "all" || rowUserId === selectedUserId);
+        let matchDeal = (!adminDealsOnlyFilter || rowIsDeal);
+        let matchSearch = (!query || 
+            rowName.includes(query) || 
+            rowTag.includes(query) || 
+            rowSet.includes(query) || 
+            rowOwner.includes(query)
+        );
+
+        if (matchUser && matchDeal && matchSearch) {
+            row.style.display = "";
+            visibleCount++;
+        } else {
+            row.style.display = "none";
+        }
+    });
+
+    if (emptyMsg) {
+        emptyMsg.classList.toggle("hidden", visibleCount > 0);
+    }
+
+    if (countBadge) {
+        countBadge.textContent = `[ ${visibleCount} DISPLAYED ]`;
+    }
+
+    if (statusMsg) {
+        let desc = `Showing ${visibleCount} of ${rows.length} tracked targets`;
+        if (selectedUserId !== "all") {
+            const optText = userSelect.options[userSelect.selectedIndex].text;
+            desc += ` &bull; User: ${optText.split('(')[0].trim()}`;
+        }
+        if (adminDealsOnlyFilter) {
+            desc += ` &bull; Deals Only`;
+        }
+        if (query) {
+            desc += ` &bull; Search: "${query}"`;
+        }
+        statusMsg.innerHTML = desc;
+    }
+}
+
 async function submitAddWhitelist(e) {
     e.preventDefault();
     const emailInput = document.getElementById("whitelist-email-input");

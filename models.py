@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
@@ -32,8 +32,39 @@ class User(db.Model):
         passive_deletes=True,
     )
 
+    @property
+    def card_count(self):
+        """Returns total count of cards monitored by this user."""
+        return len(self.watchlist_items)
+
+    def get_usage_past_week(self, days: int = 7) -> int:
+        """Returns count of tool activity events for this user in the past N days."""
+        try:
+            since = datetime.now(timezone.utc) - timedelta(days=days)
+            return ActivityLog.query.filter(
+                ActivityLog.user_id == self.id,
+                ActivityLog.created_at >= since,
+            ).count()
+        except Exception:
+            return 0
+
+    def get_last_active(self):
+        """Returns the most recent tool activity timestamp for this user."""
+        try:
+            latest = (
+                ActivityLog.query.filter_by(user_id=self.id)
+                .order_by(ActivityLog.created_at.desc())
+                .first()
+            )
+            if latest and latest.created_at:
+                return latest.created_at
+        except Exception:
+            pass
+        return self.last_login
+
     def to_dict(self):
         """Serializes user record into a dict."""
+        last_active = self.get_last_active()
         return {
             "id": self.id,
             "email": self.email,
@@ -43,7 +74,9 @@ class User(db.Model):
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
-            "card_count": len(self.watchlist_items),
+            "last_active": last_active.isoformat() if last_active else None,
+            "card_count": self.card_count,
+            "usage_past_week": self.get_usage_past_week(),
         }
 
 
@@ -350,3 +383,43 @@ class SystemSetting(db.Model):
             "value": self.value,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class ActivityLog(db.Model):
+    """Activity tracking, tool usage analytics, and authentication security audit log."""
+
+    __tablename__ = "activity_log"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    user_email = db.Column(db.String(255), nullable=True, index=True)
+    ip_address = db.Column(db.String(64), nullable=True, index=True)
+    action = db.Column(db.String(100), nullable=False, index=True)  # LOGIN_SUCCESS, LOGIN_FAILED, CARD_ADD, etc.
+    endpoint = db.Column(db.String(255), nullable=True)
+    details = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utc_now, index=True)
+
+    # Relationships
+    user = db.relationship(
+        "User",
+        backref=db.backref("activity_logs", lazy=True, cascade="all, delete-orphan", passive_deletes=True),
+    )
+
+    def to_dict(self):
+        """Serializes activity log record into a dict."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "user_email": self.user_email,
+            "ip_address": self.ip_address,
+            "action": self.action,
+            "endpoint": self.endpoint,
+            "details": self.details,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+

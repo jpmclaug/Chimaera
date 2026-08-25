@@ -1,7 +1,7 @@
 import unittest
 import json
 from app import create_app, parse_bulk_card_names
-from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting
+from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog
 from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider
 from deal_engine import DealEngine
 from worker import run_worker_cycle
@@ -56,6 +56,7 @@ class ChimeraTestSuite(unittest.TestCase):
 
     def setUp(self):
         with self.app.app_context():
+            db.session.query(ActivityLog).delete()
             db.session.query(VendorPrice).delete()
             db.session.query(WatchlistItem).delete()
             db.session.query(User).delete()
@@ -220,8 +221,7 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertEqual(resp_deals.status_code, 200)
 
             resp_guide = self.client.get("/guide")
-            self.assertEqual(resp_guide.status_code, 200)
-            self.assertIn(b"Tactical Field Manual", resp_guide.data)
+            self.assertEqual(resp_guide.status_code, 404)
 
             # 4. Update Target Price
             resp_edit = self.client.post(
@@ -994,8 +994,136 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn(b"Commander Staples", resp_deals.data)
             self.assertIn(b"Cyclonic Rift", resp_deals.data)
 
+    def test_26_activity_logging_and_usage_frequency(self):
+        """Tests tool usage logging, 7-day activity calculation, and last active tracking."""
+        with self.app.app_context():
+            user = self.login_as("analyst@gmail.com", is_admin=False)
+
+            # 1. Page view logging
+            resp_index = self.client.get("/")
+            self.assertEqual(resp_index.status_code, 200)
+
+            # 2. Add card logging
+            add_payload = {
+                "name": "Birds of Paradise",
+                "is_any_version": True,
+                "finish": "nonfoil",
+                "target_price": 5.00,
+            }
+            resp_add = self.client.post("/api/watchlist/add", data=json.dumps(add_payload), content_type="application/json")
+            self.assertEqual(resp_add.status_code, 201)
+
+            # 3. Check logs in DB
+            logs = ActivityLog.query.filter_by(user_id=user.id).all()
+            self.assertGreaterEqual(len(logs), 2)
+            actions = [l.action for l in logs]
+            self.assertIn("PAGE_VIEW", actions)
+            self.assertIn("CARD_ADD", actions)
+
+            # 4. Check user stats
+            u = db.session.get(User, user.id)
+            self.assertEqual(u.card_count, 1)
+            self.assertGreaterEqual(u.get_usage_past_week(), 2)
+            self.assertIsNotNone(u.get_last_active())
+
+            # 5. Check serialization
+            u_dict = u.to_dict()
+            self.assertEqual(u_dict["card_count"], 1)
+            self.assertGreaterEqual(u_dict["usage_past_week"], 2)
+            self.assertIsNotNone(u_dict["last_active"])
+
+    def test_27_failed_login_and_security_telemetry(self):
+        """Tests logging and admin readout of failed login attempts with IP and failure reason."""
+        with self.app.app_context():
+            # 1. Attempt login with unwhitelisted email
+            resp1 = self.client.post(
+                "/auth/dev-login",
+                data=json.dumps({"email": "intruder@evil.org"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp1.status_code, 403)
+
+            # Check failed login log
+            log1 = ActivityLog.query.filter_by(action="LOGIN_FAILED", user_email="intruder@evil.org").first()
+            self.assertIsNotNone(log1)
+            self.assertIn("not on authorized whitelist", log1.details.lower())
+            self.assertIsNotNone(log1.ip_address)
+
+            # 2. Attempt login with suspended user
+            allowed = AllowedEmail(email="suspended_agent@gmail.com", is_admin=False, added_by="Test")
+            db.session.add(allowed)
+            db.session.commit()
+            susp_user = User(email="suspended_agent@gmail.com", is_admin=False, is_active=False)
+            db.session.add(susp_user)
+            db.session.commit()
+
+            resp2 = self.client.post(
+                "/auth/dev-login",
+                data=json.dumps({"email": "suspended_agent@gmail.com"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp2.status_code, 403)
+
+            # Check suspended log has user_id
+            log2 = ActivityLog.query.filter_by(action="LOGIN_FAILED", user_email="suspended_agent@gmail.com").first()
+            self.assertIsNotNone(log2)
+            self.assertEqual(log2.user_id, susp_user.id)
+            self.assertIn("suspended", log2.details.lower())
+
+            # 3. Log in as Admin and verify security panel displays failed attempts
+            self.login_as("jpmclaug@gmail.com", is_admin=True)
+            resp_admin = self.client.get("/admin")
+            self.assertEqual(resp_admin.status_code, 200)
+            self.assertIn(b"intruder@evil.org", resp_admin.data)
+            self.assertIn(b"suspended_agent@gmail.com", resp_admin.data)
+            self.assertIn(b"SECURITY TELEMETRY", resp_admin.data)
+
+    def test_28_admin_all_users_card_surveillance(self):
+        """Tests admin visibility into cards added by other users and /api/admin/cards endpoint."""
+        with self.app.app_context():
+            # Create cards for User 1
+            user1 = self.login_as("agent_one@gmail.com", is_admin=False)
+            c1 = WatchlistItem(user_id=user1.id, name="Black Lotus", finish="nonfoil", target_price=10000.0, tag="Power 9")
+            db.session.add(c1)
+
+            # Create cards for User 2
+            user2 = self.login_as("agent_two@gmail.com", is_admin=False)
+            c2 = WatchlistItem(user_id=user2.id, name="Mox Sapphire", finish="foil", target_price=5000.0, tag="Vintage")
+            db.session.add(c2)
+            db.session.commit()
+
+            # Non-admin trying to access /api/admin/cards should be forbidden
+            resp_non_admin = self.client.get("/api/admin/cards")
+            self.assertEqual(resp_non_admin.status_code, 403)
+
+            # Admin accessing /admin and /api/admin/cards
+            self.login_as("jpmclaug@gmail.com", is_admin=True)
+            resp_admin = self.client.get("/admin")
+            self.assertEqual(resp_admin.status_code, 200)
+            self.assertIn(b"Black Lotus", resp_admin.data)
+            self.assertIn(b"Mox Sapphire", resp_admin.data)
+            self.assertIn(b"agent_one@gmail.com", resp_admin.data)
+            self.assertIn(b"agent_two@gmail.com", resp_admin.data)
+
+            # Test /api/admin/cards
+            resp_api = self.client.get("/api/admin/cards")
+            self.assertEqual(resp_api.status_code, 200)
+            data = resp_api.get_json()
+            self.assertEqual(data["total"], 2)
+            card_names = [c["name"] for c in data["cards"]]
+            self.assertIn("Black Lotus", card_names)
+            self.assertIn("Mox Sapphire", card_names)
+
+            # Test filter by user_id
+            resp_filtered = self.client.get(f"/api/admin/cards?user_id={user1.id}")
+            self.assertEqual(resp_filtered.status_code, 200)
+            filtered_data = resp_filtered.get_json()
+            self.assertEqual(filtered_data["total"], 1)
+            self.assertEqual(filtered_data["cards"][0]["name"], "Black Lotus")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

@@ -17,7 +17,7 @@ from flask import (
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
-from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting
+from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog
 from deal_engine import DealEngine
 from providers import ScryfallProvider
 
@@ -203,8 +203,71 @@ def create_app(test_config=None):
         logger.info("Database initialized successfully.")
 
     # ---------------------------------------------------------
-    # Authentication Helpers & Decorators
+    # Authentication & Activity Telemetry Helpers
     # ---------------------------------------------------------
+    def get_client_ip(req=None) -> str:
+        """Extracts client IP address respecting X-Forwarded-For if behind a proxy."""
+        if req is None:
+            try:
+                req = request
+            except Exception:
+                return "127.0.0.1"
+        if not req:
+            return "127.0.0.1"
+        forwarded = req.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return req.remote_addr or "127.0.0.1"
+
+    def log_activity(
+        action: str,
+        details: str | None = None,
+        user: User | None = None,
+        user_id: int | None = None,
+        email: str | None = None,
+        ip: str | None = None,
+        endpoint: str | None = None,
+    ) -> ActivityLog | None:
+        """
+        Records an activity or security event into the audit log.
+        Fails safely without breaking core application flow.
+        """
+        try:
+            if not ip:
+                ip = get_client_ip()
+            if not endpoint:
+                try:
+                    endpoint = request.path
+                except Exception:
+                    endpoint = None
+            if not user and not user_id:
+                try:
+                    user = get_current_user()
+                except Exception:
+                    user = None
+
+            final_user_id = user.id if user else user_id
+            final_email = email or (user.email if user else None)
+
+            entry = ActivityLog(
+                user_id=final_user_id,
+                user_email=final_email,
+                ip_address=ip,
+                action=action,
+                endpoint=endpoint,
+                details=details,
+            )
+            db.session.add(entry)
+            db.session.commit()
+            return entry
+        except Exception as e:
+            logger.warning(f"Activity logging skipped or failed: {e}")
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return None
+
     def get_current_user():
         """Resolves the active user from session."""
         user_id = session.get("user_id")
@@ -347,11 +410,13 @@ def create_app(test_config=None):
         redirect_uri = session.pop("oauth_redirect_uri", None)
 
         if not state_received or not state_expected or state_received != state_expected:
+            log_activity("LOGIN_FAILED", details="Access Denied: Invalid OAuth state token")
             flash("SECURITY ALERT // Invalid OAuth state token. Please retry.", "error")
             return redirect(url_for("login_page"))
 
         code = request.args.get("code")
         if not code:
+            log_activity("LOGIN_FAILED", details="Access Denied: Google OAuth cancelled or denied")
             flash("Google authorization denied or cancelled.", "error")
             return redirect(url_for("login_page"))
 
@@ -381,6 +446,7 @@ def create_app(test_config=None):
             token_resp = requests.post(token_endpoint, data=token_data, timeout=10)
             if token_resp.status_code != 200:
                 logger.error(f"Google token exchange failed: {token_resp.text}")
+                log_activity("LOGIN_FAILED", details="Access Denied: Google token exchange failure")
                 flash("Failed to authenticate with Google.", "error")
                 return redirect(url_for("login_page"))
 
@@ -394,12 +460,14 @@ def create_app(test_config=None):
                 timeout=10,
             )
             if userinfo_resp.status_code != 200:
+                log_activity("LOGIN_FAILED", details="Access Denied: Google profile retrieval failure")
                 flash("Failed to retrieve Google profile telemetry.", "error")
                 return redirect(url_for("login_page"))
 
             profile = userinfo_resp.json()
             email = (profile.get("email") or "").strip().lower()
             if not email:
+                log_activity("LOGIN_FAILED", details="Access Denied: No email in Google account profile")
                 flash("No email provided in Google account telemetry.", "error")
                 return redirect(url_for("login_page"))
 
@@ -410,6 +478,11 @@ def create_app(test_config=None):
 
             if not allowed_entry and not is_primary:
                 logger.warning(f"Unauthorized login attempt by unwhitelisted account: {email}")
+                log_activity(
+                    "LOGIN_FAILED",
+                    details=f"Access Denied: '{email}' is not on authorized whitelist",
+                    email=email,
+                )
                 return redirect(url_for("access_denied", email=email))
 
             # Auto-seed primary admin into allowed whitelist if not present
@@ -445,6 +518,13 @@ def create_app(test_config=None):
 
             if not user.is_active:
                 logger.warning(f"Login attempt by suspended user account: {email}")
+                log_activity(
+                    "LOGIN_FAILED",
+                    details="Access Denied: Account is suspended",
+                    user=user,
+                    user_id=user.id,
+                    email=email,
+                )
                 return redirect(url_for("access_denied", email=email, suspended="1"))
 
             # Establish Session
@@ -452,11 +532,13 @@ def create_app(test_config=None):
             session["user_email"] = user.email
             session["is_admin"] = user.is_admin
 
+            log_activity("LOGIN_SUCCESS", details=f"Authenticated via Google OAuth ({user.email})", user=user)
             flash(f"OPERATIONAL // Welcome aboard, {user.name}.", "success")
             return redirect(next_url or url_for("index"))
 
         except Exception as e:
             logger.error(f"OAuth Callback error: {e}")
+            log_activity("LOGIN_FAILED", details=f"Access Denied: OAuth error ({e})")
             flash("Communication failure during authentication handshake.", "error")
             return redirect(url_for("login_page"))
 
@@ -464,11 +546,13 @@ def create_app(test_config=None):
     def dev_login():
         """Development & test mode login route."""
         if not app.config.get("TESTING") and app.config.get("GOOGLE_CLIENT_ID"):
+            log_activity("LOGIN_FAILED", details="Access Denied: Direct dev login disabled in production")
             return jsonify({"error": "Direct dev login disabled in production."}), 403
 
         data = request.get_json(silent=True) or request.form or {}
         email = (data.get("email") or "").strip().lower()
         if not email:
+            log_activity("LOGIN_FAILED", details="Access Denied: Email required in dev login")
             return jsonify({"error": "Email required."}), 400
 
         primary_admin = (app.config.get("ADMIN_EMAIL") or "jpmclaug@gmail.com").strip().lower()
@@ -476,6 +560,11 @@ def create_app(test_config=None):
         is_primary = (email == primary_admin)
 
         if not allowed_entry and not is_primary:
+            log_activity(
+                "LOGIN_FAILED",
+                details=f"Access Denied: '{email}' is not on authorized whitelist",
+                email=email,
+            )
             return redirect(url_for("access_denied", email=email)) if not request.is_json else (jsonify({"error": "Email not whitelisted."}), 403)
 
         user = User.query.filter(db.func.lower(User.email) == email).first()
@@ -495,11 +584,20 @@ def create_app(test_config=None):
             db.session.commit()
 
         if not user.is_active:
+            log_activity(
+                "LOGIN_FAILED",
+                details="Access Denied: Account is suspended",
+                user=user,
+                user_id=user.id,
+                email=email,
+            )
             return redirect(url_for("access_denied", email=email, suspended="1")) if not request.is_json else (jsonify({"error": "Account suspended."}), 403)
 
         session["user_id"] = user.id
         session["user_email"] = user.email
         session["is_admin"] = user.is_admin
+
+        log_activity("LOGIN_SUCCESS", details=f"Authenticated via Dev Login ({user.email})", user=user)
 
         if request.is_json:
             return jsonify({"message": f"Authenticated as {user.email}", "user": user.to_dict()})
@@ -508,6 +606,9 @@ def create_app(test_config=None):
     @app.route("/logout")
     def logout():
         """Clears user session and terminates tactical access."""
+        current = get_current_user()
+        if current:
+            log_activity("LOGOUT", details=f"Session terminated for {current.email}", user=current)
         session.clear()
         flash("SYSTEM LOGOUT // Tactical session terminated.", "info")
         return redirect(url_for("login_page"))
@@ -531,15 +632,31 @@ def create_app(test_config=None):
     @app.route("/admin")
     @admin_required
     def admin_dashboard():
-        """Administrative console for authorized user and whitelist management."""
+        """Administrative console for authorized user and whitelist management, security telemetry, and card surveillance."""
+        current_admin = get_current_user()
         allowed_emails = AllowedEmail.query.order_by(AllowedEmail.created_at.desc()).all()
         users = User.query.order_by(User.created_at.desc()).all()
-        total_tracked_cards = WatchlistItem.query.count()
+        all_cards = WatchlistItem.query.order_by(WatchlistItem.created_at.desc()).all()
+        failed_logins = (
+            ActivityLog.query.filter_by(action="LOGIN_FAILED")
+            .order_by(ActivityLog.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        recent_activities = (
+            ActivityLog.query.order_by(ActivityLog.created_at.desc())
+            .limit(50)
+            .all()
+        )
+        log_activity("PAGE_VIEW", details="Accessed Command Clearance Admin Console", user=current_admin)
         return render_template(
             "admin.html",
             allowed_emails=allowed_emails,
             users=users,
-            total_tracked_cards=total_tracked_cards,
+            all_cards=all_cards,
+            failed_logins=failed_logins,
+            recent_activities=recent_activities,
+            total_tracked_cards=len(all_cards),
             active_tab="admin",
         )
 
@@ -575,6 +692,7 @@ def create_app(test_config=None):
             existing_user.is_active = True
 
         db.session.commit()
+        log_activity("ADMIN_ACTION", details=f"Authorized whitelist email: '{email}' (Admin: {is_admin_grant})", user=current_admin)
         return jsonify({
             "message": f"Authorized '{email}' for Chimaera access.",
             "allowed": new_allowed.to_dict(),
@@ -605,6 +723,7 @@ def create_app(test_config=None):
             u.is_admin = False
 
         db.session.commit()
+        log_activity("ADMIN_ACTION", details=f"Revoked access clearance for '{revoked_email}'", user=current_admin)
         return jsonify({"message": f"Revoked authorization for '{revoked_email}'."})
 
     @app.route("/api/admin/whitelist/toggle-admin/<int:item_id>", methods=["POST"])
@@ -627,6 +746,7 @@ def create_app(test_config=None):
 
         db.session.commit()
         status_label = "ADMINISTRATOR" if entry.is_admin else "OPERATOR"
+        log_activity("ADMIN_ACTION", details=f"Updated clearance for '{entry.email}' to {status_label}", user=current_admin)
         return jsonify({
             "message": f"Updated clearance for '{entry.email}' to {status_label}.",
             "is_admin": entry.is_admin,
@@ -649,10 +769,36 @@ def create_app(test_config=None):
         db.session.commit()
 
         status_label = "ACTIVE" if target_user.is_active else "SUSPENDED"
+        log_activity("ADMIN_ACTION", details=f"Updated user status for '{target_user.email}' to {status_label}", user=current_admin)
         return jsonify({
             "message": f"User '{target_user.email}' is now {status_label}.",
             "is_active": target_user.is_active,
             "user": target_user.to_dict(),
+        })
+
+    @app.route("/api/admin/cards", methods=["GET"])
+    @admin_required
+    def admin_get_all_cards():
+        """Returns JSON list of all watchlist targets across all users."""
+        user_id_filter = request.args.get("user_id")
+        query = WatchlistItem.query.order_by(WatchlistItem.created_at.desc())
+        if user_id_filter:
+            try:
+                query = query.filter_by(user_id=int(user_id_filter))
+            except ValueError:
+                pass
+        items = query.all()
+        return jsonify({
+            "total": len(items),
+            "cards": [
+                {
+                    **item.to_dict(),
+                    "owner_name": item.user.name or item.user.email.split("@")[0] if item.user else "Unassigned",
+                    "owner_email": item.user.email if item.user else "unassigned",
+                    "owner_picture": item.user.picture if item.user else None,
+                }
+                for item in items
+            ]
         })
 
     # ---------------------------------------------------------
@@ -677,6 +823,7 @@ def create_app(test_config=None):
 
         # Unique active tags
         user_tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
+        log_activity("PAGE_VIEW", details="Accessed Registry Dashboard", user=user)
 
         return render_template(
             "index.html",
@@ -699,6 +846,7 @@ def create_app(test_config=None):
 
         total_savings = sum(item.savings_amount for item in deal_items)
         user_tags = sorted(list({item.tag.strip() for item in all_items if item.tag and item.tag.strip()}))
+        log_activity("PAGE_VIEW", details="Accessed Priority Deals View", user=user)
 
         return render_template(
             "deals.html",
@@ -707,19 +855,6 @@ def create_app(test_config=None):
             total_savings=total_savings,
             user_tags=user_tags,
             active_tab="deals",
-        )
-
-    @app.route("/guide")
-    @login_required
-    def guide():
-        """Tactical Operations & How-To Guide view."""
-        user = get_current_user()
-        user_items = WatchlistItem.query.filter_by(user_id=user.id).all() if user else []
-        deals_count = sum(1 for item in user_items if item.is_deal)
-        return render_template(
-            "guide.html",
-            deals_count=deals_count,
-            active_tab="guide",
         )
 
     # ---------------------------------------------------------
@@ -829,6 +964,7 @@ def create_app(test_config=None):
         deal_engine.poll_card(new_item, notify=True)
 
         version_desc = "Any Version" if set_code is None else f"{set_code} #{collector_number or '?'}"
+        log_activity("CARD_ADD", details=f"Registered target '{name}' ({version_desc})", user=user)
         return jsonify({
             "message": f"Successfully added {name} ({version_desc}) to watchlist.",
             "card": new_item.to_dict(),
@@ -947,6 +1083,7 @@ def create_app(test_config=None):
                     logger.error(f"Error polling new bulk item {item.name}: {e}")
 
         summary_msg = f"Successfully registered {len(added_items)} targets ({len(skipped_items)} skipped, {len(failed_items)} unresolved)."
+        log_activity("BULK_CARD_ADD", details=f"Batch import: {len(added_items)} registered, {len(skipped_items)} skipped, {len(failed_items)} failed", user=user)
 
         return jsonify({
             "message": summary_msg,
@@ -976,6 +1113,7 @@ def create_app(test_config=None):
 
         db.session.commit()
         status_str = "ENABLED" if item.notify_mm_stock else "DISABLED"
+        log_activity("CARD_UPDATE", details=f"Toggled MM alert to {status_str} for '{item.name}'", user=user)
         return jsonify({
             "message": f"Mighty Meeple in-stock alert {status_str} for {item.name}.",
             "notify_mm_stock": item.notify_mm_stock,
@@ -1016,6 +1154,7 @@ def create_app(test_config=None):
         deal_engine.poll_card(item, notify=True)
 
         scope_label = "Any Version (Card in General)" if item.is_any_version else f"{item.set_code} #{item.collector_number or '?'}"
+        log_activity("CARD_UPDATE", details=f"Updated scope for '{item.name}' to {scope_label}", user=user)
         return jsonify({
             "message": f"Updated tracking scope for {item.name} to {scope_label}.",
             "card": item.to_dict(),
@@ -1049,6 +1188,7 @@ def create_app(test_config=None):
             item.tag = raw_tag or None
 
         db.session.commit()
+        log_activity("CARD_UPDATE", details=f"Updated target price to ${item.target_price or 'None'} for '{item.name}'", user=user)
         return jsonify({
             "message": "Target configuration committed.",
             "card": item.to_dict(),
@@ -1069,6 +1209,7 @@ def create_app(test_config=None):
         db.session.commit()
 
         tag_label = f"'{item.tag}'" if item.tag else "removed"
+        log_activity("CARD_UPDATE", details=f"Updated tag to {tag_label} for '{item.name}'", user=user)
         return jsonify({
             "message": f"Target tag updated to {tag_label} for {item.name}.",
             "tag": item.tag,
@@ -1094,6 +1235,7 @@ def create_app(test_config=None):
             return jsonify({"error": "Card not found in your target registry."}), 404
 
         result = deal_engine.poll_card(item, notify=True)
+        log_activity("PRICE_REFRESH", details=f"Price refreshed for '{item.name}'", user=user)
         return jsonify({
             "message": f"Refreshed prices for {item.name}.",
             "card": item.to_dict(),
@@ -1106,6 +1248,7 @@ def create_app(test_config=None):
         user = get_current_user()
         items = WatchlistItem.query.filter_by(user_id=user.id).all()
         results = deal_engine.poll_user_cards(items, notify=True)
+        log_activity("PRICE_REFRESH", details=f"Refreshed all {len(results)} targets", user=user)
         return jsonify({
             "message": f"Successfully refreshed {len(results)} cards.",
             "count": len(results),
@@ -1124,6 +1267,7 @@ def create_app(test_config=None):
         db.session.delete(item)
         db.session.commit()
 
+        log_activity("CARD_DELETE", details=f"Removed target '{card_name}'", user=user)
         return jsonify({
             "message": f"Removed {card_name} from watchlist.",
             "deleted_id": item_id,
