@@ -1,5 +1,6 @@
 import logging
 import re
+import unicodedata
 import urllib.parse
 import requests
 
@@ -10,6 +11,49 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 )
+
+# Junk terms indicating non-playable single items or merchandise on Mighty Meeple
+JUNK_TERMS = [
+    "art card",
+    "art series",
+    "artist card",
+    "token",
+    "playmat",
+    "sleeve",
+    "sleeves",
+    "deck box",
+    "binder",
+    "booster pack",
+    "booster box",
+    "collector booster",
+    "bundle",
+    "display",
+    "case",
+    "draft pack",
+]
+
+
+def normalize_card_text(text: str) -> str:
+    """Normalizes card names and titles to lowercase ASCII with uniform whitespace."""
+    if not text:
+        return ""
+    # Strip diacritics and accents (e.g. Dáin -> Dain)
+    norm = unicodedata.normalize("NFKD", text).encode("ASCII", "ignore").decode("utf-8")
+    # Replace non-alphanumeric characters with spaces
+    cleaned = re.sub(r"[^\w\s]", " ", norm.lower())
+    return " ".join(cleaned.split())
+
+
+def extract_base_name_from_title(title: str) -> str:
+    """
+    Extracts the base card name from Mighty Meeple product titles:
+    e.g. 'The One Ring (Borderless) [The Hobbit]' -> 'The One Ring'
+    """
+    # Remove bracketed set info: [The Lord of the Rings: Tales of Middle-Earth]
+    t = re.sub(r"\[.*?\]", "", title)
+    # Remove parenthesized variant info: (Borderless), (Extended Art), (Showcase)
+    t = re.sub(r"\(.*?\)", "", t)
+    return t.strip()
 
 
 class MightyMeepleProvider:
@@ -37,30 +81,37 @@ class MightyMeepleProvider:
         if not card_name:
             return self._empty_result(card_name)
 
-        encoded_q = urllib.parse.quote_plus(card_name.strip())
-        suggest_url = f"{MIGHTY_MEEPLE_BASE}/search/suggest.json?q={encoded_q}&resources[type]=product"
-        fallback_search_url = f"{MIGHTY_MEEPLE_BASE}/search?q={encoded_q}&type=product"
+        # Normalize card name and extract primary face for DFC/split cards
+        clean_name = unicodedata.normalize("NFKD", card_name).encode("ASCII", "ignore").decode("utf-8").strip()
+        primary_name = clean_name.split(" // ")[0].strip()
+
+        fallback_search_url = f"{MIGHTY_MEEPLE_BASE}/search?q={urllib.parse.quote_plus(clean_name)}&type=product"
 
         try:
-            resp = self.session.get(suggest_url, timeout=10)
-            if resp.status_code != 200:
-                logger.warning(f"Mighty Meeple suggest returned {resp.status_code}")
-                return self._empty_result(card_name, fallback_search_url)
+            # 1. Search using exact phrase in double quotes to prevent Shopify partial word scatter
+            quoted_q = f'"{primary_name}"'
+            suggest_url = (
+                f"{MIGHTY_MEEPLE_BASE}/search/suggest.json"
+                f"?q={urllib.parse.quote_plus(quoted_q)}&resources[type]=product"
+            )
 
-            data = resp.json()
-            products = []
-            if "resources" in data and "results" in data["resources"]:
-                products = data["resources"]["results"].get("products", [])
-            elif "products" in data:
-                products = data["products"]
+            products = self._fetch_suggest_products(suggest_url)
+
+            # 2. If exact phrase returned no products, fall back to unquoted query
+            if not products:
+                unquoted_url = (
+                    f"{MIGHTY_MEEPLE_BASE}/search/suggest.json"
+                    f"?q={urllib.parse.quote_plus(primary_name)}&resources[type]=product"
+                )
+                products = self._fetch_suggest_products(unquoted_url)
 
             if not products:
                 return self._empty_result(card_name, fallback_search_url)
 
-            # Find matching products
+            # 3. Strictly filter products to ensure legitimate card name match
             candidate_products = self._filter_products(products, card_name, set_name, set_code)
             if not candidate_products:
-                candidate_products = products[:3]  # Fallback to first few results
+                return self._empty_result(card_name, fallback_search_url)
 
             in_stock_matches = []
             out_of_stock_matches = []
@@ -82,14 +133,18 @@ class MightyMeepleProvider:
                     except (ValueError, TypeError):
                         price_num = 0.0
 
-                    if price_num > 0 and prod.get("available", False):
-                        in_stock_matches.append({
-                            "vendor_name": "Mighty Meeple",
-                            "price": round(price_num, 2),
-                            "condition": "NM/LP",
-                            "in_stock": True,
-                            "product_url": prod_url,
-                        })
+                    is_avail = bool(prod.get("available", False))
+                    entry = {
+                        "vendor_name": "Mighty Meeple",
+                        "price": round(price_num, 2),
+                        "condition": "NM/LP" if is_avail else "NM",
+                        "in_stock": is_avail,
+                        "product_url": prod_url,
+                    }
+                    if is_avail and price_num > 0:
+                        in_stock_matches.append(entry)
+                    else:
+                        out_of_stock_matches.append(entry)
                     continue
 
                 # Match variants by finish and condition
@@ -106,9 +161,13 @@ class MightyMeepleProvider:
                 return in_stock_matches[0]
 
             if out_of_stock_matches:
+                # Prefer out-of-stock matches that have a recorded positive price
+                priced_oos = [m for m in out_of_stock_matches if m.get("price", 0) > 0]
+                if priced_oos:
+                    return priced_oos[0]
                 return out_of_stock_matches[0]
 
-            # Out of stock fallback
+            # Out of stock fallback referencing the first valid matched product
             first_prod = candidate_products[0]
             first_url = first_prod.get("url") or f"/products/{first_prod.get('handle', '')}"
             if not first_url.startswith("http"):
@@ -132,6 +191,20 @@ class MightyMeepleProvider:
             logger.error(f"Error checking Mighty Meeple for '{card_name}': {e}")
             return self._empty_result(card_name, fallback_search_url)
 
+    def _fetch_suggest_products(self, url: str) -> list[dict]:
+        """Fetches product suggestions from Mighty Meeple Shopify suggest endpoint."""
+        try:
+            resp = self.session.get(url, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "resources" in data and "results" in data["resources"]:
+                    return data["resources"]["results"].get("products", [])
+                elif "products" in data:
+                    return data["products"]
+        except Exception as e:
+            logger.debug(f"Failed suggest query to {url}: {e}")
+        return []
+
     def _get_product_variants(self, handle: str) -> list[dict]:
         """Fetches Shopify product variant details via .js endpoint."""
         if not handle:
@@ -146,6 +219,42 @@ class MightyMeepleProvider:
             logger.debug(f"Failed to fetch variants for handle {handle}: {e}")
         return []
 
+    def _is_card_name_match(self, title: str, card_name: str) -> bool:
+        """Determines if a Mighty Meeple product title genuinely matches the target card name."""
+        norm_target = normalize_card_text(card_name)
+        if not norm_target:
+            return False
+
+        norm_title = normalize_card_text(title)
+
+        # Exclude junk / non-playable products unless target card name contains that term
+        for jt in JUNK_TERMS:
+            if jt in norm_title and jt not in norm_target:
+                return False
+
+        # Extract base card name by stripping set brackets [ ] and variant parentheses ( )
+        extracted_name = extract_base_name_from_title(title)
+        norm_extracted = normalize_card_text(extracted_name)
+
+        # 1. Exact match on extracted base card name
+        if norm_extracted == norm_target:
+            return True
+
+        # 2. Split cards / DFC handling (e.g. Fire // Ice, Wear // Tear)
+        if "//" in card_name or "/" in card_name:
+            parts = [normalize_card_text(p) for p in re.split(r"/+", card_name) if p.strip()]
+            if parts and all(p in norm_title for p in parts):
+                return True
+
+        # 3. Match exact word boundary in the title section preceding the set brackets
+        before_set = title.split("[")[0]
+        norm_before_set = normalize_card_text(before_set)
+        pattern = rf"\b{re.escape(norm_target)}\b"
+        if re.search(pattern, norm_before_set):
+            return True
+
+        return False
+
     def _filter_products(
         self,
         products: list[dict],
@@ -153,17 +262,19 @@ class MightyMeepleProvider:
         set_name: str | None,
         set_code: str | None,
     ) -> list[dict]:
-        """Filters products to those matching card name and optionally set."""
-        clean_target = re.sub(r"[^\w\s]", "", card_name.lower())
+        """
+        Filters products to those strictly matching card name, with optional set preference.
+        Returns empty list if no genuine matches found (never falls back to unrelated products).
+        """
         matched = []
+        primary_name = card_name.split(" // ")[0].strip()
 
         for p in products:
             title = p.get("title", "")
-            clean_title = re.sub(r"[^\w\s]", "", title.lower())
 
-            # Card name must be present
-            if clean_target in clean_title:
-                # If set name or code provided, score preference
+            # Verify genuine card name match
+            if self._is_card_name_match(title, card_name) or self._is_card_name_match(title, primary_name):
+                # Score set match preference
                 if set_name and set_name.lower() in title.lower():
                     matched.insert(0, p)
                 elif set_code and f"[{set_code.lower()}]" in title.lower():
@@ -171,7 +282,7 @@ class MightyMeepleProvider:
                 else:
                     matched.append(p)
 
-        return matched if matched else products
+        return matched
 
     def _match_variant(self, variants: list[dict], is_foil_target: bool) -> dict | None:
         """

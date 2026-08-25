@@ -902,6 +902,48 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn(b"Vintage Cube", resp_index.data)
             self.assertIn(b"watchlist-filter-tag", resp_index.data)
 
+    def test_24_mightymeeple_exact_matching_and_accents(self):
+        """Tests MightyMeepleProvider title normalization, Art Card exclusion, and exact matching."""
+        mm = MightyMeepleProvider()
+
+        # 1. Matching logic unit tests
+        self.assertTrue(mm._is_card_name_match("The One Ring [The Lord of the Rings: Tales of Middle-Earth]", "The One Ring"))
+        self.assertTrue(mm._is_card_name_match("The One Ring (Borderless) [The Hobbit: Eternal-Legal]", "The One Ring"))
+        self.assertFalse(mm._is_card_name_match("One Ring to Rule Them All [The Lord of the Rings: Tales of Middle-Earth]", "The One Ring"))
+        self.assertFalse(mm._is_card_name_match("Oath of Eorl [The Lord of the Rings: Tales of Middle-Earth Commander]", "The One Ring"))
+        self.assertFalse(mm._is_card_name_match("Sol Ring [Commander Collection: Black]", "The One Ring"))
+
+        # Accented characters (Dáin -> Dain)
+        self.assertTrue(mm._is_card_name_match("Dain of the Ancient Halls (Extended Art) [The Hobbit: Eternal-Legal]", "Dáin of the Ancient Halls"))
+        self.assertFalse(mm._is_card_name_match("Wall of Spears [Antiquities]", "Dáin of the Ancient Halls"))
+        self.assertFalse(mm._is_card_name_match("Haunting Wind [Antiquities]", "Dáin of the Ancient Halls"))
+
+        # Exclude Art Cards and tokens
+        self.assertFalse(mm._is_card_name_match("Dain of the Ancient Halls Art Card [The Hobbit Art Series]", "Dáin of the Ancient Halls"))
+        self.assertFalse(mm._is_card_name_match("The One Ring Art Card [The Lord of the Rings Art Series]", "The One Ring"))
+        self.assertFalse(mm._is_card_name_match("Elf Token [Lorwyn]", "Timberwatch Elf"))
+
+        # Filter products should return empty if no matches (not products[:3])
+        unrelated_products = [
+            {"title": "Oath of Eorl [The Lord of the Rings]", "handle": "oath-of-eorl"},
+            {"title": "Wall of Spears [Antiquities]", "handle": "wall-of-spears"},
+        ]
+        filtered = mm._filter_products(unrelated_products, "The One Ring", None, None)
+        self.assertEqual(len(filtered), 0)
+
+        # 2. Live searches for The One Ring and Dáin of the Ancient Halls
+        res_ring = mm.search_card("The One Ring")
+        self.assertEqual(res_ring["vendor_name"], "Mighty Meeple")
+        # Ensure it didn't match Oath of Eorl or Sol Ring
+        self.assertNotIn("oath-of-eorl", res_ring["product_url"])
+        self.assertNotIn("sol-ring", res_ring["product_url"])
+
+        res_dain = mm.search_card("Dáin of the Ancient Halls")
+        self.assertEqual(res_dain["vendor_name"], "Mighty Meeple")
+        # Ensure it didn't match Wall of Spears or Art Card
+        self.assertNotIn("wall-of-spears", res_dain["product_url"])
+        self.assertNotIn("art-card", res_dain["product_url"])
+
 
 if __name__ == "__main__":
     unittest.main()
