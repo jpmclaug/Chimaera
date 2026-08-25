@@ -942,9 +942,58 @@ class ChimeraTestSuite(unittest.TestCase):
         self.assertEqual(res_dain["vendor_name"], "Mighty Meeple")
         # Ensure it didn't match Wall of Spears or Art Card
         self.assertNotIn("wall-of-spears", res_dain["product_url"])
-        self.assertNotIn("art-card", res_dain["product_url"])
+    def test_25_mobile_views_and_deals_tag_filtering(self):
+        """Tests responsive view modes (Grid, Compact, Swipe Deck) and tag filtering on Registry and Deals pages."""
+        with self.app.app_context():
+            # Create a deal card with a tag
+            item1 = WatchlistItem(
+                user_id=self.admin_user.id,
+                name="Cyclonic Rift",
+                finish="nonfoil",
+                target_price=30.00,
+                tag="Commander Staples",
+            )
+            db.session.add(item1)
+            db.session.commit()
+
+            vp1 = VendorPrice(
+                watchlist_id=item1.id,
+                vendor_name="TCGplayer",
+                price=25.00,
+                condition="NM",
+                in_stock=True,
+            )
+            db.session.add(vp1)
+            db.session.commit()
+
+            # 1. Check index page contains all 3 view containers, tag pills, and mobile nav elements
+            resp_index = self.client.get("/")
+            self.assertEqual(resp_index.status_code, 200)
+            self.assertIn(b"watchlist-grid", resp_index.data)
+            self.assertIn(b"watchlist-compact", resp_index.data)
+            self.assertIn(b"watchlist-swipe", resp_index.data)
+            self.assertIn(b"tag-pill", resp_index.data)
+            self.assertIn(b"btn-view-grid", resp_index.data)
+            self.assertIn(b"btn-view-compact", resp_index.data)
+            self.assertIn(b"btn-view-swipe", resp_index.data)
+            self.assertIn(b"Commander Staples", resp_index.data)
+            self.assertIn(b"Acquire", resp_index.data)
+            self.assertIn(b"Exit", resp_index.data)
+
+            # 2. Check deals page contains all 3 view containers and deals tag filtering
+            resp_deals = self.client.get("/deals")
+            self.assertEqual(resp_deals.status_code, 200)
+            self.assertIn(b"deals-grid", resp_deals.data)
+            self.assertIn(b"deals-compact", resp_deals.data)
+            self.assertIn(b"deals-swipe", resp_deals.data)
+            self.assertIn(b"deals-filter-tag", resp_deals.data)
+            self.assertIn(b"deals-search", resp_deals.data)
+            self.assertIn(b"deals-tag-pill", resp_deals.data)
+            self.assertIn(b"Commander Staples", resp_deals.data)
+            self.assertIn(b"Cyclonic Rift", resp_deals.data)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

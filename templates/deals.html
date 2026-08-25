@@ -3,37 +3,109 @@
 {% block title %}Chimaera // Priority Tactical Deals{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="space-y-4 sm:space-y-6">
 
     <!-- Priority Deals Header Telemetry Banner -->
-    <div class="bg-[#1B2230] border-2 border-[#DC143C] p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative overflow-hidden">
+    <div class="bg-[#1B2230] border-2 border-[#DC143C] p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 relative overflow-hidden">
         <div>
             <div class="flex items-center space-x-2">
                 <span class="w-2.5 h-2.5 bg-[#DC143C] animate-tactical-pulse inline-block"></span>
                 <span class="text-xs font-mono font-bold text-[#FF3358] uppercase tracking-wider">TACTICAL ALERT // DEALS CONFIRMED</span>
             </div>
-            <h2 class="text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
+            <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
                 Priority Target Acquisitions
             </h2>
-            <p class="text-sm text-[#94A3B8] mt-1 font-sans">
+            <p class="text-xs sm:text-sm text-[#94A3B8] mt-1 font-sans">
                 Market singles in stock across monitored vendors at or below configured target acquisition thresholds.
             </p>
         </div>
-        <div class="flex items-center space-x-4 bg-[#10141D] px-4 py-2.5 border border-[#263245]">
+        <div class="flex items-center space-x-3 sm:space-x-4 bg-[#10141D] px-3.5 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-shrink-0">
             <div>
-                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Active Deals</div>
-                <div class="text-2xl font-mono font-bold text-[#FF3358]">{{ deals_count }}</div>
+                <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Active Deals</div>
+                <div class="text-xl sm:text-2xl font-mono font-bold text-[#FF3358]">{{ deals_count }}</div>
             </div>
-            <div class="border-l border-[#263245] pl-4">
-                <div class="text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Cumulative Delta Savings</div>
-                <div class="text-2xl font-mono font-bold text-white">${{ "%.2f"|format(total_savings) }}</div>
+            <div class="border-l border-[#263245] pl-3 sm:pl-4">
+                <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Total Delta Savings</div>
+                <div class="text-xl sm:text-2xl font-mono font-bold text-white">${{ "%.2f"|format(total_savings) }}</div>
             </div>
         </div>
     </div>
 
-    <!-- Deals Grid -->
+    <!-- Clinical Toolbar: Search, Filters & View Mode Switcher -->
+    <div class="bg-[#1B2230] border border-[#263245] p-3 sm:p-3.5 space-y-2.5">
+        <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-2.5">
+            <!-- Search Field -->
+            <div class="w-full md:w-80 lg:w-96">
+                <input type="text" id="deals-search" placeholder="FILTER DEALS BY NAME, SET, OR TAG..."
+                    class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white uppercase placeholder-[#64748B] focus:border-[#00CED1] font-mono tracking-wide"
+                    onkeyup="filterDeals()">
+            </div>
+
+            <!-- Filters & Controls -->
+            <div class="flex flex-wrap items-center gap-2 justify-between md:justify-end">
+                <select id="deals-filter-tag" onchange="syncDealsTagDropdownToPills(this.value)"
+                    class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 sm:py-2 text-xs text-[#C084FC] focus:border-[#00CED1] uppercase font-mono font-medium flex-1 sm:flex-initial">
+                    <option value="all">ALL TAGS</option>
+                    {% if user_tags %}
+                    {% for tag in user_tags %}
+                    <option value="{{ tag|lower }}">🏷️ {{ tag }}</option>
+                    {% endfor %}
+                    {% endif %}
+                    <option value="__untagged__">[ UNTAGGED ]</option>
+                </select>
+
+                <!-- View Mode Switcher -->
+                <div class="flex items-center border border-[#263245] bg-[#10141D] p-0.5 flex-shrink-0" title="Switch View Mode">
+                    <button onclick="setViewMode('grid')" id="btn-view-grid" class="view-btn active" title="Detailed Grid View">
+                        <span class="hidden sm:inline">Grid</span>
+                        <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                        </svg>
+                    </button>
+                    <button onclick="setViewMode('compact')" id="btn-view-compact" class="view-btn" title="High-Level Compact List">
+                        <span class="hidden sm:inline">List</span>
+                        <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <button onclick="setViewMode('swipe')" id="btn-view-swipe" class="view-btn" title="Swipe Deck / Single Card Carousel">
+                        <span class="hidden sm:inline">Swipe</span>
+                        <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <a href="/" class="btn-bridge px-2.5 py-1.5 sm:py-2 text-xs text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center space-x-1 uppercase font-mono font-bold" title="Return to Registry">
+                    <span>Registry &rarr;</span>
+                </a>
+                <span class="text-xs font-mono text-[#FF3358] font-bold border-l border-[#263245] pl-2.5 hidden lg:inline" id="header-deals-counter">[ {{ deal_items|length }} DEALS ]</span>
+            </div>
+        </div>
+
+        <!-- Tag Quick-Filter Pills Bar -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#263245]/60">
+            <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">TAGS:</span>
+            <button onclick="filterDealsByTag('all')" class="tag-pill deals-tag-pill active flex-shrink-0" data-tag="all">
+                ALL DEALS ({{ deal_items|length }})
+            </button>
+            {% if user_tags %}
+            {% for tag in user_tags %}
+            {% set tag_deal_count = deal_items|selectattr("tag")|selectattr("tag", "equalto", tag)|list|length %}
+            <button onclick="filterDealsByTag('{{ tag|replace("'", "\\'") }}')" class="tag-pill deals-tag-pill flex-shrink-0" data-tag="{{ tag|lower }}">
+                🏷️ {{ tag }} ({{ tag_deal_count }})
+            </button>
+            {% endfor %}
+            {% endif %}
+            <button onclick="filterDealsByTag('__untagged__')" class="tag-pill deals-tag-pill flex-shrink-0" data-tag="__untagged__">
+                UNTAGGED
+            </button>
+        </div>
+    </div>
+
+    <!-- Deals Empty State -->
     {% if deal_items|length == 0 %}
-    <div class="bg-[#1B2230] border border-[#263245] p-12 text-center relative overflow-hidden">
+    <div class="bg-[#1B2230] border border-[#263245] p-10 sm:p-12 text-center relative overflow-hidden">
         <div class="max-w-xs mx-auto mb-4 opacity-40">
             <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Logo" class="w-full object-contain filter contrast-150">
         </div>
@@ -47,10 +119,18 @@
         </a>
     </div>
     {% else %}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+    <!-- =========================================================================
+         VIEW 1: DETAILED DEALS GRID
+         ========================================================================= -->
+    <div class="watchlist-view-container grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="deals-grid">
         {% for item in deal_items %}
         {% set best = item.best_vendor %}
-        <div class="bg-[#1B2230] border border-[#DC143C] bg-[#DC143C]/5 p-4 flex flex-col justify-between" id="deal-card-{{ item.id }}">
+        <div class="deal-card bg-[#1B2230] border border-[#DC143C] bg-[#DC143C]/5 p-4 flex flex-col justify-between"
+            data-name="{{ item.name|lower }}"
+            data-set="{{ (item.set_code or '')|lower }}"
+            data-tag="{{ (item.tag or '')|lower }}"
+            id="deal-card-{{ item.id }}">
             
             <div>
                 <div class="flex items-start space-x-3.5">
@@ -163,8 +243,192 @@
         </div>
         {% endfor %}
     </div>
+
+    <!-- =========================================================================
+         VIEW 2: COMPACT / HIGH-LEVEL DEALS LIST (MOBILE SCANNING)
+         ========================================================================= -->
+    <div class="watchlist-view-container hidden space-y-2" id="deals-compact">
+        {% for item in deal_items %}
+        {% set best = item.best_vendor %}
+        <div class="deal-card compact-card is-deal flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono"
+            data-name="{{ item.name|lower }}"
+            data-set="{{ (item.set_code or '')|lower }}"
+            data-tag="{{ (item.tag or '')|lower }}"
+            id="compact-deal-{{ item.id }}">
+            
+            <!-- Left: Thumbnail & Details -->
+            <div class="flex items-center space-x-3 min-w-0 flex-1">
+                {% if item.image_uri %}
+                <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-10 h-14 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0">
+                {% else %}
+                <div class="w-10 h-14 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[9px] text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>
+                {% endif %}
+
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center space-x-2">
+                        <h4 class="font-heading font-bold text-sm text-white truncate">{{ item.name }}</h4>
+                        <span class="bg-[#DC143C] text-white text-[9px] px-1 py-0.2 uppercase font-bold flex-shrink-0">
+                            -{{ item.savings_percent }}%
+                        </span>
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
+                        {% if item.set_code and item.set_code.upper() != 'ANY' %}
+                        <span class="text-[#94A3B8] bg-[#10141D] px-1.5 py-0.2 border border-[#263245] uppercase text-[10px]">{{ item.set_code }}</span>
+                        {% else %}
+                        <span class="text-[#94A3B8] bg-[#3D4F6B]/30 px-1.5 py-0.2 border border-[#3D4F6B] uppercase text-[10px]">ANY</span>
+                        {% endif %}
+                        <span class="text-[#00CED1] uppercase text-[10px]">{{ item.finish }}</span>
+                        {% if item.tag %}
+                        <span class="text-[#C084FC] bg-[#9333EA]/20 border border-[#9333EA]/40 px-1.5 py-0.2 uppercase text-[10px]">🏷️ {{ item.tag }}</span>
+                        {% endif %}
+                        <span class="text-[#FF3358] font-bold text-[10px]">SAVE ${{ "%.2f"|format(item.savings_amount) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right / Middle: Price & Acquisition CTA -->
+            <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#263245]/60">
+                <div class="text-right">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Target / Deal</div>
+                    <div class="text-xs font-bold">
+                        <span class="text-[#94A3B8]">${{ "%.2f"|format(item.target_price) }}</span>
+                        <span class="text-[#64748B]"> / </span>
+                        <span class="text-[#FF3358]">${{ "%.2f"|format(item.lowest_in_stock_price) }}</span>
+                    </div>
+                </div>
+
+                {% if best and best.product_url %}
+                <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson px-3 py-1.5 text-xs uppercase font-bold flex-shrink-0" title="Acquire on {{ best.vendor_name }}">
+                    Buy ${{ "%.2f"|format(best.price) }} &rarr;
+                </a>
+                {% endif %}
+            </div>
+
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- =========================================================================
+         VIEW 3: SWIPE DECK CAROUSEL FOR DEALS
+         ========================================================================= -->
+    <div class="watchlist-view-container hidden space-y-4" id="deals-swipe">
+        <!-- Swipe Navigation Header Telemetry Bar -->
+        <div class="bg-[#1B2230] border border-[#263245] p-3 flex items-center justify-between font-mono text-xs">
+            <button onclick="swipeDeckPrev('deals-swipe-track')" class="btn-bridge px-3 py-1.5 flex items-center space-x-1 text-[#00CED1] hover:text-white uppercase font-bold">
+                <span>&larr; PREV</span>
+            </button>
+            <div class="text-center">
+                <span class="text-[#FF3358] uppercase text-[10px] font-bold block">TACTICAL DEAL TARGET</span>
+                <span id="deals-swipe-indicator" class="text-sm font-bold text-white tracking-wider">01 / {{ deal_items|length }}</span>
+            </div>
+            <button onclick="swipeDeckNext('deals-swipe-track')" class="btn-bridge px-3 py-1.5 flex items-center space-x-1 text-[#00CED1] hover:text-white uppercase font-bold">
+                <span>NEXT &rarr;</span>
+            </button>
+        </div>
+
+        <!-- Swipe Track Container -->
+        <div class="swipe-deck-wrapper" id="deals-swipe-wrapper">
+            <div class="swipe-track" id="deals-swipe-track">
+                {% for item in deal_items %}
+                {% set best = item.best_vendor %}
+                <div class="swipe-card-slide deal-card"
+                    data-name="{{ item.name|lower }}"
+                    data-set="{{ (item.set_code or '')|lower }}"
+                    data-tag="{{ (item.tag or '')|lower }}"
+                    data-index="{{ loop.index0 }}">
+                    
+                    <div class="bg-[#1B2230] border border-[#DC143C] bg-[#DC143C]/5 p-4 sm:p-6 max-w-xl mx-auto flex flex-col justify-between">
+                        <div>
+                            <!-- Header -->
+                            <div class="flex items-start space-x-4">
+                                {% if item.image_uri %}
+                                <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-20 h-28 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0">
+                                {% else %}
+                                <div class="w-20 h-28 border border-[#263245] bg-[#10141D] flex items-center justify-center text-xs text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>
+                                {% endif %}
+
+                                <div class="flex-1 min-w-0">
+                                    <h4 class="text-lg font-heading font-black text-white truncate tracking-wide">{{ item.name }}</h4>
+                                    
+                                    <div class="flex flex-wrap gap-1.5 mt-2 items-center">
+                                        {% if item.set_code and item.set_code.upper() != 'ANY' %}
+                                        <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
+                                        {% else %}
+                                        <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold">ANY VERSION</span>
+                                        {% endif %}
+                                        <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase">{{ item.finish }}</span>
+                                        {% if item.tag %}
+                                        <span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold">🏷️ {{ item.tag }}</span>
+                                        {% endif %}
+                                    </div>
+
+                                    <!-- Savings Banner -->
+                                    <div class="mt-2.5 bg-[#DC143C]/20 border border-[#DC143C] px-3 py-1.5 text-xs text-[#FF3358] font-mono font-bold">
+                                        <div class="flex items-center justify-between">
+                                            <span>SAVE ${{ "%.2f"|format(item.savings_amount) }}</span>
+                                            <span>{{ item.savings_percent }}% OFF</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Price Comparison Readout -->
+                            <div class="mt-3.5 grid grid-cols-2 gap-2 text-xs font-mono bg-[#10141D] p-3 border border-[#263245]">
+                                <div>
+                                    <div class="text-[#94A3B8] text-[10px] uppercase">Target Threshold</div>
+                                    <div class="text-base font-bold text-white mt-0.5">${{ "%.2f"|format(item.target_price) }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-[#94A3B8] text-[10px] uppercase">Live Deal Price</div>
+                                    <div class="text-base font-bold text-[#FF3358] mt-0.5">${{ "%.2f"|format(item.lowest_in_stock_price) }}</div>
+                                </div>
+                            </div>
+
+                            <!-- Optimal Vendor Box -->
+                            {% if best %}
+                            <div class="mt-3 bg-[#10141D] p-3.5 border border-[#263245] font-mono">
+                                <div class="text-xs text-[#00CED1] uppercase font-bold tracking-wider">Optimal Acquisition Source</div>
+                                <div class="flex items-center justify-between mt-2">
+                                    <div class="text-sm font-bold text-white">
+                                        {{ best.vendor_name }} <span class="text-xs text-[#94A3B8] font-normal">({{ best.condition }})</span>
+                                    </div>
+                                    <span class="text-sm font-bold text-[#00CED1]">${{ "%.2f"|format(best.price) }}</span>
+                                </div>
+
+                                {% if best.product_url %}
+                                <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson mt-3 block w-full text-center py-2.5 text-xs uppercase font-bold tracking-wider">
+                                    Execute Acquisition on {{ best.vendor_name }} &rarr;
+                                </a>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Card Action Footer -->
+                        <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-xs">
+                            <button onclick="triggerRefreshCard({{ item.id }})" class="btn-bridge px-3 py-1.5 text-xs text-[#94A3B8] hover:text-white flex items-center space-x-1.5 uppercase font-medium">
+                                <svg class="w-3.5 h-3.5 text-[#00CED1] refresh-icon-{{ item.id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                <span>Poll Prices</span>
+                            </button>
+                            <a href="/" class="text-[#00CED1] hover:text-white uppercase font-bold">
+                                View in Registry &rarr;
+                            </a>
+                        </div>
+
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <p class="text-center text-[11px] font-mono text-[#64748B]">
+            Swipe left/right or use arrow buttons to cycle through active deals
+        </p>
+    </div>
     {% endif %}
 
 </div>
 {% endblock %}
-

@@ -6,6 +6,11 @@ let currentPrintsData = [];
 let autocompleteTimeout = null;
 let currentPriceIntel = { market: null, great: null, good: null, fair: null };
 let editPriceIntel = { market: null, great: null, good: null, fair: null };
+let activeViewMode = "grid";
+const swipeTrackState = {
+    "registry-swipe-track": { index: 0 },
+    "deals-swipe-track": { index: 0 }
+};
 
 // =========================================================================
 // Tactical Toast Notification System
@@ -70,10 +75,45 @@ function setModalTag(inputId, tagName) {
 
 function filterByTag(tagName) {
     const filter = document.getElementById("watchlist-filter-tag");
+    const tagVal = (tagName || "").toLowerCase().trim();
     if (filter) {
-        filter.value = (tagName || "").toLowerCase().trim();
-        filterWatchlist();
+        filter.value = tagVal;
     }
+    syncTagPillHighlight(".tag-pill-btn", tagVal);
+    filterWatchlist();
+}
+
+function syncTagDropdownToPills(tagValue) {
+    syncTagPillHighlight(".tag-pill-btn", tagValue);
+    filterWatchlist();
+}
+
+function filterDealsByTag(tagName) {
+    const filter = document.getElementById("deals-filter-tag");
+    const tagVal = (tagName || "").toLowerCase().trim();
+    if (filter) {
+        filter.value = tagVal;
+    }
+    syncTagPillHighlight(".deals-tag-pill", tagVal);
+    filterDeals();
+}
+
+function syncDealsTagDropdownToPills(tagValue) {
+    syncTagPillHighlight(".deals-tag-pill", tagValue);
+    filterDeals();
+}
+
+function syncTagPillHighlight(pillSelector, tagValue) {
+    const pills = document.querySelectorAll(pillSelector);
+    const cleanTag = (tagValue || "").toLowerCase().trim();
+    pills.forEach(p => {
+        const pillTag = (p.dataset.tag || "").toLowerCase().trim();
+        if (pillTag === cleanTag || (!cleanTag && pillTag === "all") || (cleanTag === "all" && pillTag === "all")) {
+            p.classList.add("active");
+        } else {
+            p.classList.remove("active");
+        }
+    });
 }
 
 function closeAddCardModal() {
@@ -867,13 +907,179 @@ async function deleteCard(itemId, cardName) {
 }
 
 // =========================================================================
-// Filter & Search Watchlist Client-side
+// View Mode Switching & Swipe Deck Touch Engine
+// =========================================================================
+function setViewMode(mode) {
+    activeViewMode = mode;
+    localStorage.setItem("chimaera_view_mode", mode);
+
+    // Update buttons
+    const btns = {
+        grid: document.getElementById("btn-view-grid"),
+        compact: document.getElementById("btn-view-compact"),
+        swipe: document.getElementById("btn-view-swipe")
+    };
+    Object.keys(btns).forEach(k => {
+        if (btns[k]) {
+            if (k === mode) btns[k].classList.add("active");
+            else btns[k].classList.remove("active");
+        }
+    });
+
+    // Update Registry Containers if present
+    const rGrid = document.getElementById("watchlist-grid");
+    const rCompact = document.getElementById("watchlist-compact");
+    const rSwipe = document.getElementById("watchlist-swipe");
+
+    if (rGrid || rCompact || rSwipe) {
+        if (rGrid) rGrid.classList.add("hidden");
+        if (rCompact) rCompact.classList.add("hidden");
+        if (rSwipe) rSwipe.classList.add("hidden");
+
+        if (mode === "compact" && rCompact) {
+            rCompact.classList.remove("hidden");
+        } else if (mode === "swipe" && rSwipe) {
+            rSwipe.classList.remove("hidden");
+            updateSwipeDeckPosition("registry-swipe-track");
+        } else if (rGrid) {
+            rGrid.classList.remove("hidden");
+        }
+    }
+
+    // Update Deals Containers if present
+    const dGrid = document.getElementById("deals-grid");
+    const dCompact = document.getElementById("deals-compact");
+    const dSwipe = document.getElementById("deals-swipe");
+
+    if (dGrid || dCompact || dSwipe) {
+        if (dGrid) dGrid.classList.add("hidden");
+        if (dCompact) dCompact.classList.add("hidden");
+        if (dSwipe) dSwipe.classList.add("hidden");
+
+        if (mode === "compact" && dCompact) {
+            dCompact.classList.remove("hidden");
+        } else if (mode === "swipe" && dSwipe) {
+            dSwipe.classList.remove("hidden");
+            updateSwipeDeckPosition("deals-swipe-track");
+        } else if (dGrid) {
+            dGrid.classList.remove("hidden");
+        }
+    }
+}
+
+function initSwipeDeck(trackId, wrapperId) {
+    const track = document.getElementById(trackId);
+    const wrapper = document.getElementById(wrapperId);
+    if (!track || !wrapper) return;
+
+    let startX = 0;
+    let startY = 0;
+    let isSwiping = false;
+
+    wrapper.addEventListener("touchstart", (e) => {
+        if (e.touches.length === 1) {
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            isSwiping = true;
+        }
+    }, { passive: true });
+
+    wrapper.addEventListener("touchend", (e) => {
+        if (!isSwiping) return;
+        isSwiping = false;
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const diffX = endX - startX;
+        const diffY = endY - startY;
+
+        // Horizontal swipe detected if horizontal distance exceeds vertical and is > 35px
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 35) {
+            if (diffX < 0) {
+                swipeDeckNext(trackId);
+            } else {
+                swipeDeckPrev(trackId);
+            }
+        }
+    }, { passive: true });
+}
+
+function getVisibleSlides(trackId) {
+    const track = document.getElementById(trackId);
+    if (!track) return [];
+    const slides = Array.from(track.querySelectorAll(".swipe-card-slide"));
+    return slides.filter(slide => !slide.classList.contains("hidden"));
+}
+
+function swipeDeckNext(trackId) {
+    const visibleSlides = getVisibleSlides(trackId);
+    if (visibleSlides.length === 0) return;
+
+    if (!swipeTrackState[trackId]) swipeTrackState[trackId] = { index: 0 };
+    let curr = swipeTrackState[trackId].index;
+    if (curr < visibleSlides.length - 1) {
+        swipeTrackState[trackId].index = curr + 1;
+    } else {
+        swipeTrackState[trackId].index = 0;
+    }
+    updateSwipeDeckPosition(trackId);
+}
+
+function swipeDeckPrev(trackId) {
+    const visibleSlides = getVisibleSlides(trackId);
+    if (visibleSlides.length === 0) return;
+
+    if (!swipeTrackState[trackId]) swipeTrackState[trackId] = { index: 0 };
+    let curr = swipeTrackState[trackId].index;
+    if (curr > 0) {
+        swipeTrackState[trackId].index = curr - 1;
+    } else {
+        swipeTrackState[trackId].index = visibleSlides.length - 1;
+    }
+    updateSwipeDeckPosition(trackId);
+}
+
+function updateSwipeDeckPosition(trackId) {
+    const track = document.getElementById(trackId);
+    if (!track) return;
+    const visibleSlides = getVisibleSlides(trackId);
+    const indicatorId = trackId === "registry-swipe-track" ? "registry-swipe-indicator" : "deals-swipe-indicator";
+    const indicator = document.getElementById(indicatorId);
+
+    if (visibleSlides.length === 0) {
+        if (indicator) indicator.textContent = "00 / 00";
+        return;
+    }
+
+    if (!swipeTrackState[trackId]) swipeTrackState[trackId] = { index: 0 };
+    if (swipeTrackState[trackId].index >= visibleSlides.length) {
+        swipeTrackState[trackId].index = 0;
+    }
+
+    const activeIndex = swipeTrackState[trackId].index;
+    const activeSlide = visibleSlides[activeIndex];
+
+    const allSlides = Array.from(track.querySelectorAll(".swipe-card-slide"));
+    const realIndex = allSlides.indexOf(activeSlide);
+
+    track.style.transform = `translateX(-${realIndex * 100}%)`;
+
+    if (indicator) {
+        const curStr = String(activeIndex + 1).padStart(2, "0");
+        const totStr = String(visibleSlides.length).padStart(2, "0");
+        indicator.textContent = `${curStr} / ${totStr}`;
+    }
+}
+
+// =========================================================================
+// Filter & Search Watchlist Client-side (Grid, Compact, Swipe Deck)
 // =========================================================================
 function filterWatchlist() {
     const searchVal = (document.getElementById("watchlist-search")?.value || "").toLowerCase().trim();
     const dealFilter = document.getElementById("watchlist-filter-deal")?.value || "all";
     const tagFilter = (document.getElementById("watchlist-filter-tag")?.value || "all").toLowerCase().trim();
     const cards = document.querySelectorAll(".watchlist-card");
+
+    let visibleGridCount = 0;
 
     cards.forEach(card => {
         const name = card.dataset.name || "";
@@ -902,16 +1108,69 @@ function filterWatchlist() {
         let matchesTag = true;
         if (tagFilter === "__untagged__") {
             matchesTag = !tag;
-        } else if (tagFilter !== "all") {
+        } else if (tagFilter !== "all" && tagFilter !== "") {
             matchesTag = (tag === tagFilter);
         }
 
         if (matchesSearch && matchesDeal && matchesTag) {
             card.classList.remove("hidden");
+            if (card.closest("#watchlist-grid")) visibleGridCount++;
         } else {
             card.classList.add("hidden");
         }
     });
+
+    const headerCounter = document.getElementById("header-assets-counter");
+    if (headerCounter) {
+        headerCounter.textContent = `[ ${visibleGridCount} ASSETS ]`;
+    }
+
+    if (swipeTrackState["registry-swipe-track"]) {
+        swipeTrackState["registry-swipe-track"].index = 0;
+    }
+    updateSwipeDeckPosition("registry-swipe-track");
+}
+
+// =========================================================================
+// Filter & Search Deals Client-side (Grid, Compact, Swipe Deck)
+// =========================================================================
+function filterDeals() {
+    const searchVal = (document.getElementById("deals-search")?.value || "").toLowerCase().trim();
+    const tagFilter = (document.getElementById("deals-filter-tag")?.value || "all").toLowerCase().trim();
+    const dealCards = document.querySelectorAll(".deal-card");
+
+    let visibleDealsCount = 0;
+
+    dealCards.forEach(card => {
+        const name = card.dataset.name || "";
+        const set = card.dataset.set || "";
+        const tag = (card.dataset.tag || "").toLowerCase().trim();
+
+        const matchesSearch = !searchVal || name.includes(searchVal) || set.includes(searchVal) || tag.includes(searchVal);
+        let matchesTag = true;
+        if (tagFilter === "__untagged__") {
+            matchesTag = !tag;
+        } else if (tagFilter !== "all" && tagFilter !== "") {
+            matchesTag = (tag === tagFilter);
+        }
+
+        if (matchesSearch && matchesTag) {
+            card.classList.remove("hidden");
+            if (card.closest("#deals-grid")) visibleDealsCount++;
+        } else {
+            card.classList.add("hidden");
+        }
+    });
+
+    const headerDealsCounter = document.getElementById("header-deals-counter");
+    if (headerDealsCounter) {
+        headerDealsCounter.textContent = `[ ${visibleDealsCount} DEALS ]`;
+    }
+
+    if (swipeTrackState["deals-swipe-track"]) {
+        swipeTrackState["deals-swipe-track"].index = 0;
+    }
+    updateSwipeDeckPosition("deals-swipe-track");
 }
 
 // =========================================================================
@@ -1083,8 +1342,35 @@ async function triggerManualSweepFromModal() {
     await triggerRefreshAll();
 }
 
-// Fetch telemetry status on initial page load
+// =========================================================================
+// Global Initialization & Keyboard Navigation
+// =========================================================================
 document.addEventListener("DOMContentLoaded", () => {
     fetchCadenceTelemetry();
+
+    // Initialize Swipe Decks for touch gestures
+    initSwipeDeck("registry-swipe-track", "registry-swipe-wrapper");
+    initSwipeDeck("deals-swipe-track", "deals-swipe-wrapper");
+
+    // Restore saved view mode preference
+    const savedMode = localStorage.getItem("chimaera_view_mode") || "grid";
+    setViewMode(savedMode);
+
+    // Keyboard Arrow Key Navigation for Swipe Mode
+    document.addEventListener("keydown", (e) => {
+        if (activeViewMode === "swipe") {
+            // Ignore if typing in input or textarea
+            const tag = e.target.tagName.toLowerCase();
+            if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+            if (e.key === "ArrowLeft") {
+                if (document.getElementById("registry-swipe-track")) swipeDeckPrev("registry-swipe-track");
+                if (document.getElementById("deals-swipe-track")) swipeDeckPrev("deals-swipe-track");
+            } else if (e.key === "ArrowRight") {
+                if (document.getElementById("registry-swipe-track")) swipeDeckNext("registry-swipe-track");
+                if (document.getElementById("deals-swipe-track")) swipeDeckNext("deals-swipe-track");
+            }
+        }
+    });
 });
 
