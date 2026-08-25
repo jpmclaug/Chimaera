@@ -1150,9 +1150,81 @@ class ChimeraTestSuite(unittest.TestCase):
         self.assertTrue(res_foil["in_stock"])
         self.assertGreater(res_foil["price"], 10.00)
 
+    def test_30_buylist_pricing_and_endpoints(self):
+        """Tests Mighty Meeple Buylist provider methods and Flask endpoints."""
+        mm = MightyMeepleProvider()
+
+        # 1. Test search_buylist for a known staple
+        search_res = mm.search_buylist("Sol Ring", limit=5)
+        self.assertIn("items", search_res)
+        self.assertGreater(search_res["total"], 0)
+        first_item = search_res["items"][0]
+        self.assertIn("variants", first_item)
+        self.assertGreater(len(first_item["variants"]), 0)
+        self.assertGreater(first_item["default_lp_credit"], 0)
+
+        # 2. Test bulk_buylist_lookup
+        bulk_res = mm.bulk_buylist_lookup(
+            card_names=["Sol Ring", "The One Ring"],
+            default_condition="Lightly Played",
+            default_payout="credit",
+        )
+        self.assertIn("quotes", bulk_res)
+        self.assertIn("summary", bulk_res)
+        self.assertEqual(bulk_res["summary"]["total_cards"], 2)
+        self.assertGreaterEqual(bulk_res["summary"]["matched_count"], 1)
+        self.assertGreater(bulk_res["summary"]["total_credit_value"], 0)
+
+        # 3. Test supported games & sets
+        games = mm.get_supported_games()
+        self.assertIsInstance(games, list)
+        self.assertGreater(len(games), 0)
+        game_ids = [g["game_id"] for g in games]
+        self.assertIn("mtg", game_ids)
+
+        sets = mm.get_buylist_sets(game="mtg")
+        self.assertIsInstance(sets, list)
+
+        # 4. Test Flask Buylist page route
+        resp_page = self.client.get("/buylist")
+        self.assertEqual(resp_page.status_code, 200)
+        self.assertIn(b"Live Buylist", resp_page.data)
+        self.assertIn(b"Single Card Search", resp_page.data)
+        self.assertIn(b"Bulk Manifest Upload", resp_page.data)
+
+        # 5. Test /api/buylist/search endpoint
+        resp_api_search = self.client.get("/api/buylist/search?q=Sol%20Ring")
+        self.assertEqual(resp_api_search.status_code, 200)
+        data_search = resp_api_search.get_json()
+        self.assertIn("items", data_search)
+        self.assertGreater(data_search["total"], 0)
+
+        # 6. Test /api/buylist/bulk endpoint
+        resp_api_bulk = self.client.post(
+            "/api/buylist/bulk",
+            json={
+                "cards": "Sol Ring; The One Ring; Sheoldred, the Apocalypse",
+                "condition": "Lightly Played",
+                "payout": "credit",
+            },
+        )
+        self.assertEqual(resp_api_bulk.status_code, 200)
+        data_bulk = resp_api_bulk.get_json()
+        self.assertIn("quotes", data_bulk)
+        self.assertIn("summary", data_bulk)
+        self.assertEqual(data_bulk["summary"]["total_cards"], 3)
+        self.assertGreaterEqual(data_bulk["summary"]["matched_count"], 2)
+
+        # 7. Test /api/buylist/games and /api/buylist/sets
+        resp_games = self.client.get("/api/buylist/games")
+        self.assertEqual(resp_games.status_code, 200)
+        resp_sets = self.client.get("/api/buylist/sets?game=mtg")
+        self.assertEqual(resp_sets.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

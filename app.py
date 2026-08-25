@@ -19,7 +19,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
 from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog
 from deal_engine import DealEngine
-from providers import ScryfallProvider
+from providers import ScryfallProvider, MightyMeepleProvider
 
 # Configure logging
 logging.basicConfig(
@@ -193,9 +193,10 @@ def create_app(test_config=None):
     # Initialize Database
     db.init_app(app)
 
-    # Initialize Deal Engine and Scryfall provider
+    # Initialize Deal Engine, Scryfall provider, and Mighty Meeple provider
     deal_engine = DealEngine(app=app)
     scryfall_provider = ScryfallProvider()
+    mightymeeple_provider = MightyMeepleProvider()
 
     with app.app_context():
         db.create_all()
@@ -856,6 +857,111 @@ def create_app(test_config=None):
             user_tags=user_tags,
             active_tab="deals",
         )
+
+    @app.route("/buylist")
+    @login_required
+    def buylist():
+        """Mighty Meeple Live Buylist & Trade-in Scanner view."""
+        user = get_current_user()
+        items = WatchlistItem.query.filter_by(user_id=user.id).all()
+        user_tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
+        supported_games = mightymeeple_provider.get_supported_games()
+        log_activity("PAGE_VIEW", details="Accessed Mighty Meeple Buylist Scanner", user=user)
+
+        return render_template(
+            "buylist.html",
+            user_tags=user_tags,
+            supported_games=supported_games,
+            active_tab="buylist",
+        )
+
+    # ---------------------------------------------------------
+    # API Routes: Mighty Meeple Buylist Endpoints
+    # ---------------------------------------------------------
+    @app.route("/api/buylist/search")
+    @login_required
+    def buylist_search():
+        """Searches Mighty Meeple buylist catalog for single card names."""
+        query = (request.args.get("q") or request.args.get("keyword") or "").strip()
+        if not query:
+            return jsonify({"items": [], "total": 0})
+
+        set_name = (request.args.get("set_name") or "").strip() or None
+        game = (request.args.get("game") or "mtg").strip()
+        try:
+            limit = int(request.args.get("limit", 20))
+        except (ValueError, TypeError):
+            limit = 20
+        try:
+            offset = int(request.args.get("offset", 0))
+        except (ValueError, TypeError):
+            offset = 0
+
+        res = mightymeeple_provider.search_buylist(
+            query=query,
+            set_name=set_name,
+            game=game,
+            limit=limit,
+            offset=offset,
+        )
+        return jsonify(res)
+
+    @app.route("/api/buylist/bulk", methods=["POST"])
+    @login_required
+    def buylist_bulk():
+        """
+        Processes a bulk manifest of card names against the Mighty Meeple buylist.
+        Defaults to Lightly Played condition and Store Credit payout.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_input = data.get("cards") or data.get("raw_input") or ""
+        card_names = data.get("card_names")
+
+        if not card_names:
+            if isinstance(raw_input, list):
+                card_names = raw_input
+            else:
+                card_names = parse_bulk_card_names(str(raw_input))
+
+        if not card_names:
+            return jsonify({"error": "No valid card names found in payload."}), 400
+
+        condition = (data.get("condition") or "Lightly Played").strip()
+        payout = (data.get("payout") or "credit").strip().lower()
+        finish = (data.get("finish") or "nonfoil").strip().lower()
+        game = (data.get("game") or "mtg").strip()
+
+        result = mightymeeple_provider.bulk_buylist_lookup(
+            card_names=card_names,
+            default_condition=condition,
+            default_payout=payout,
+            finish=finish,
+            game=game,
+        )
+
+        log_activity(
+            "BUYLIST_LOOKUP",
+            details=f"Evaluated {len(card_names)} cards on buylist ({condition}, {payout.upper()})",
+            user=user,
+        )
+
+        return jsonify(result)
+
+    @app.route("/api/buylist/sets")
+    @login_required
+    def buylist_sets():
+        """Returns valid buylist set names for the requested game."""
+        game = (request.args.get("game") or "mtg").strip()
+        sets = mightymeeple_provider.get_buylist_sets(game=game)
+        return jsonify({"sets": sets})
+
+    @app.route("/api/buylist/games")
+    @login_required
+    def buylist_games():
+        """Returns supported TCG ecosystems."""
+        games = mightymeeple_provider.get_supported_games()
+        return jsonify({"games": games})
 
     # ---------------------------------------------------------
     # API Routes: Scryfall Lookups

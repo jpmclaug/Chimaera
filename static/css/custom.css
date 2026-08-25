@@ -303,3 +303,27 @@ input:focus, select:focus, textarea:focus {
     -webkit-tap-highlight-color: rgba(0, 206, 209, 0.2);
 }
 
+/* Buylist Mode Switcher */
+.buylist-mode-btn {
+    background-color: transparent;
+    color: var(--text-muted);
+    border: 1px solid transparent;
+}
+.buylist-mode-btn:hover {
+    color: #FFFFFF;
+    background-color: rgba(45, 212, 191, 0.08);
+}
+.buylist-mode-btn.active {
+    background-color: var(--surface-bridge);
+    color: #2DD4BF;
+    border-color: #2DD4BF;
+    font-weight: 700;
+}
+
+/* Buylist Drag-and-Drop Active State */
+#buylist-dropzone.drag-active {
+    border-color: #2DD4BF !important;
+    background-color: rgba(45, 212, 191, 0.12) !important;
+}
+
+

@@ -2,11 +2,14 @@ import logging
 import re
 import unicodedata
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 logger = logging.getLogger(__name__)
 
 MIGHTY_MEEPLE_BASE = "https://mightymeeple.com"
+BINDERPOS_PORTAL_BASE = "https://portal.binderpos.com"
+MIGHTY_MEEPLE_STORE_ID = "7b044554-df1f-4771-a58e-39092834f726"
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -393,3 +396,300 @@ class MightyMeepleProvider:
             "in_stock": False,
             "product_url": url or f"{MIGHTY_MEEPLE_BASE}/search?q={encoded}&type=product",
         }
+
+    # =========================================================================
+    # Buylist Intelligence & Pricing API Methods (BinderPOS Portal)
+    # =========================================================================
+
+    def search_buylist(
+        self,
+        query: str,
+        set_name: str | None = None,
+        game: str = "mtg",
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict:
+        """
+        Queries Mighty Meeple's live BinderPOS buylist catalog.
+        Returns matched cards with complete condition, finish, cash & credit variant prices.
+        """
+        if not query or not str(query).strip():
+            return {"items": [], "total": 0}
+
+        clean_query = str(query).strip()
+        url = f"{BINDERPOS_PORTAL_BASE}/external/shopify/{MIGHTY_MEEPLE_STORE_ID}/cards/{game or 'mtg'}"
+        params = {
+            "keyword": clean_query,
+            "limit": max(1, min(50, limit)),
+            "offset": max(0, offset),
+        }
+        if set_name and str(set_name).strip():
+            params["setName"] = str(set_name).strip()
+
+        try:
+            resp = self.session.get(url, params=params, timeout=12)
+            if resp.status_code != 200:
+                logger.warning(f"Mighty Meeple buylist query '{query}' returned HTTP {resp.status_code}")
+                return {"items": [], "total": 0, "error": f"HTTP {resp.status_code}"}
+
+            raw_list = resp.json()
+            if not isinstance(raw_list, list):
+                return {"items": [], "total": 0}
+
+            items = []
+            for raw in raw_list:
+                parsed_variants = []
+                for v in raw.get("variants", []):
+                    cond_name = v.get("variantName", "Near Mint")
+                    for bt in v.get("cardBuylistTypes", []):
+                        finish_type = bt.get("type") or bt.get("legacyType") or "Normal"
+                        parsed_variants.append({
+                            "variant_id": bt.get("productVariantId"),
+                            "condition": cond_name,
+                            "finish": finish_type,
+                            "store_sell_price": round(float(bt.get("storeSellPrice", 0.0) or 0.0), 2),
+                            "cash_price": round(float(bt.get("buyPrice", 0.0) or 0.0), 2),
+                            "credit_price": round(float(bt.get("creditBuyPrice", 0.0) or 0.0), 2),
+                            "max_quantity": int(bt.get("maxPurchaseQuantity", 0) or 0),
+                            "can_purchase_overstock": bool(bt.get("canPurchaseOverstock", False)),
+                            "overstock_cash_price": round(float(bt.get("overStockBuyPrice", 0.0) or 0.0), 2),
+                            "overstock_credit_price": round(float(bt.get("creditOverstockBuyPrice", 0.0) or 0.0), 2),
+                        })
+
+                # Compute convenient default quotes for LP and NM
+                default_lp = self._find_variant_quote(parsed_variants, condition="Lightly Played")
+                default_nm = self._find_variant_quote(parsed_variants, condition="Near Mint")
+
+                items.append({
+                    "id": raw.get("id"),
+                    "card_name": raw.get("cardName") or clean_query,
+                    "set_name": raw.get("setName") or "Unknown Set",
+                    "rarity": (raw.get("rarity") or "").lower(),
+                    "game": raw.get("gameName") or raw.get("game") or "Magic: The Gathering",
+                    "game_id": raw.get("gameId") or (game or "mtg"),
+                    "image_url": raw.get("imageUrl") or "",
+                    "variants": parsed_variants,
+                    # Defaults
+                    "default_lp_credit": default_lp["credit_price"] if default_lp else (default_nm["credit_price"] if default_nm else 0.0),
+                    "default_lp_cash": default_lp["cash_price"] if default_lp else (default_nm["cash_price"] if default_nm else 0.0),
+                    "default_nm_credit": default_nm["credit_price"] if default_nm else 0.0,
+                    "default_nm_cash": default_nm["cash_price"] if default_nm else 0.0,
+                    "default_sell_price": default_lp["store_sell_price"] if default_lp else (default_nm["store_sell_price"] if default_nm else 0.0),
+                    "default_max_qty": default_lp["max_quantity"] if default_lp else (default_nm["max_quantity"] if default_nm else 0),
+                })
+
+            return {"items": items, "total": len(items)}
+
+        except Exception as e:
+            logger.error(f"Error querying Mighty Meeple buylist for '{query}': {e}")
+            return {"items": [], "total": 0, "error": str(e)}
+
+    def _find_variant_quote(
+        self,
+        variants: list[dict],
+        condition: str = "Lightly Played",
+        finish: str = "nonfoil",
+    ) -> dict | None:
+        """Helper to find the best matching variant quote by condition and finish."""
+        if not variants:
+            return None
+
+        cond_clean = (condition or "Lightly Played").lower().strip()
+        is_foil_target = (finish or "nonfoil").lower().strip() in ("foil", "etched")
+
+        # 1. Exact condition and exact finish match
+        for v in variants:
+            v_cond = v.get("condition", "").lower()
+            v_foil = "foil" in v.get("finish", "").lower() or "etched" in v.get("finish", "").lower()
+            if (cond_clean in v_cond or (cond_clean == "lp" and "light" in v_cond) or (cond_clean == "nm" and "near" in v_cond)) and (v_foil == is_foil_target):
+                return v
+
+        # 2. Condition match with any finish
+        for v in variants:
+            v_cond = v.get("condition", "").lower()
+            if cond_clean in v_cond or (cond_clean == "lp" and "light" in v_cond) or (cond_clean == "nm" and "near" in v_cond):
+                return v
+
+        # 3. Fallback to first non-zero variant
+        for v in variants:
+            if v.get("credit_price", 0) > 0 or v.get("cash_price", 0) > 0:
+                return v
+
+        return variants[0] if variants else None
+
+    def bulk_buylist_lookup(
+        self,
+        card_names: list[str],
+        default_condition: str = "Lightly Played",
+        default_payout: str = "credit",
+        finish: str = "nonfoil",
+        game: str = "mtg",
+        max_workers: int = 6,
+    ) -> dict:
+        """
+        Executes concurrent buylist price lookups across a manifest of card names.
+        Structures total valuation (defaulting to LP Store Credit) and individual quotes.
+        """
+        if not card_names:
+            return {
+                "quotes": [],
+                "summary": {
+                    "total_cards": 0,
+                    "matched_count": 0,
+                    "unmatched_count": 0,
+                    "total_credit_value": 0.0,
+                    "total_cash_value": 0.0,
+                    "total_sell_value": 0.0,
+                    "default_condition": default_condition,
+                    "default_payout": default_payout,
+                },
+            }
+
+        # Deduplicate names preserving order
+        unique_names = []
+        seen = set()
+        for name in card_names:
+            clean = str(name).strip().strip("\"'").strip()
+            if clean and clean.lower() not in seen:
+                seen.add(clean.lower())
+                unique_names.append(clean)
+
+        raw_results = {}
+        with ThreadPoolExecutor(max_workers=min(max_workers, 8)) as executor:
+            future_to_name = {
+                executor.submit(self.search_buylist, name, None, game, 10, 0): name
+                for name in unique_names
+            }
+            for future in as_completed(future_to_name):
+                name = future_to_name[future]
+                try:
+                    res = future.result()
+                    raw_results[name] = res.get("items", [])
+                except Exception as e:
+                    logger.error(f"Buylist bulk worker error on '{name}': {e}")
+                    raw_results[name] = []
+
+        quotes = []
+        total_credit = 0.0
+        total_cash = 0.0
+        total_sell = 0.0
+        matched_count = 0
+        unmatched_count = 0
+
+        for name in unique_names:
+            items = raw_results.get(name, [])
+            if not items:
+                unmatched_count += 1
+                quotes.append({
+                    "requested_name": name,
+                    "matched": False,
+                    "card_name": name,
+                    "set_name": "Not Found",
+                    "rarity": "",
+                    "image_url": "",
+                    "condition": default_condition,
+                    "finish": finish,
+                    "credit_price": 0.0,
+                    "cash_price": 0.0,
+                    "store_sell_price": 0.0,
+                    "max_quantity": 0,
+                    "prints_count": 0,
+                    "all_prints": [],
+                })
+                continue
+
+            # Pick the best matching card print (prefer exact name match)
+            best_card = None
+            primary_name = name.split(" // ")[0].strip().lower()
+            for itm in items:
+                itm_name = (itm.get("card_name") or "").strip().lower()
+                if itm_name == name.lower() or itm_name == primary_name:
+                    best_card = itm
+                    break
+            if not best_card:
+                best_card = items[0]
+
+            matched_count += 1
+            v_match = self._find_variant_quote(best_card.get("variants", []), condition=default_condition, finish=finish)
+            c_price = v_match.get("credit_price", 0.0) if v_match else 0.0
+            k_price = v_match.get("cash_price", 0.0) if v_match else 0.0
+            s_price = v_match.get("store_sell_price", 0.0) if v_match else 0.0
+            m_qty = v_match.get("max_quantity", 0) if v_match else 0
+
+            total_credit += c_price
+            total_cash += k_price
+            total_sell += s_price
+
+            quotes.append({
+                "requested_name": name,
+                "matched": True,
+                "card_name": best_card.get("card_name"),
+                "set_name": best_card.get("set_name"),
+                "rarity": best_card.get("rarity"),
+                "image_url": best_card.get("image_url"),
+                "condition": v_match.get("condition", default_condition) if v_match else default_condition,
+                "finish": v_match.get("finish", finish) if v_match else finish,
+                "credit_price": c_price,
+                "cash_price": k_price,
+                "store_sell_price": s_price,
+                "max_quantity": m_qty,
+                "prints_count": len(items),
+                "all_prints": items,
+            })
+
+        return {
+            "quotes": quotes,
+            "summary": {
+                "total_cards": len(unique_names),
+                "matched_count": matched_count,
+                "unmatched_count": unmatched_count,
+                "total_credit_value": round(total_credit, 2),
+                "total_cash_value": round(total_cash, 2),
+                "total_sell_value": round(total_sell, 2),
+                "default_condition": default_condition,
+                "default_payout": default_payout,
+            },
+        }
+
+    def get_supported_games(self) -> list[dict]:
+        """Fetches supported card game ecosystems from BinderPOS."""
+        try:
+            url = f"{BINDERPOS_PORTAL_BASE}/external/shopify/{MIGHTY_MEEPLE_STORE_ID}/supportedGames"
+            resp = self.session.get(url, timeout=8)
+            if resp.status_code == 200:
+                raw = resp.json()
+                if isinstance(raw, list):
+                    clean = []
+                    for g in raw:
+                        gid = g.get("gameId")
+                        gname = g.get("gameName") or gid
+                        if gid and not gid.endswith("s"):  # Filter internal suffix aliases
+                            clean.append({"game_id": gid, "game_name": gname})
+                    return clean
+        except Exception as e:
+            logger.debug(f"Failed to fetch supported buylist games: {e}")
+
+        # Fallback standard games
+        return [
+            {"game_id": "mtg", "game_name": "Magic: The Gathering"},
+            {"game_id": "pokemon", "game_name": "Pokémon"},
+            {"game_id": "lor", "game_name": "Disney Lorcana"},
+            {"game_id": "yugioh", "game_name": "Yu-Gi-Oh!"},
+            {"game_id": "one", "game_name": "One Piece"},
+            {"game_id": "swu", "game_name": "Star Wars: Unlimited"},
+            {"game_id": "fleshAndBlood", "game_name": "Flesh and Blood"},
+        ]
+
+    def get_buylist_sets(self, game: str = "mtg") -> list[str]:
+        """Fetches all valid set names for a given game from BinderPOS."""
+        try:
+            url = f"{BINDERPOS_PORTAL_BASE}/api/cards/{game or 'mtg'}/sets"
+            resp = self.session.get(url, timeout=8)
+            if resp.status_code == 200:
+                sets = resp.json()
+                if isinstance(sets, list):
+                    return sorted([str(s).strip() for s in sets if s and str(s).strip()])
+        except Exception as e:
+            logger.debug(f"Failed to fetch buylist sets for {game}: {e}")
+        return []
+

@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+
+{% block title %}Chimaera // Mighty Meeple Buylist Scanner{% endblock %}
+
+{% block content %}
+<div class="space-y-4 sm:space-y-6">
+
+    <!-- Buylist Header Telemetry Banner -->
+    <div class="bg-[#1B2230] border-2 border-[#2DD4BF] p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative overflow-hidden">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 bg-[#2DD4BF] animate-tactical-pulse inline-block"></span>
+                <span class="text-xs font-mono font-bold text-[#2DD4BF] uppercase tracking-wider">VENDOR BUYLIST // MIGHTY MEEPLE SCANNER</span>
+            </div>
+            <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
+                Live Buylist & Trade-in Valuation
+            </h2>
+            <p class="text-xs sm:text-sm text-[#94A3B8] mt-1 font-sans">
+                Real-time stock purchasing quotes directly from Mighty Meeple's BinderPOS engine. Defaults to <strong class="text-white">Lightly Played (LP)</strong> and <strong class="text-[#2DD4BF]">Store Credit</strong> payout.
+            </p>
+        </div>
+
+        <!-- Telemetry Summary KPI Cards -->
+        <div class="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
+            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-1 sm:flex-initial min-w-[120px]">
+                <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Cards Quoted</div>
+                <div id="kpi-buylist-count" class="text-lg sm:text-xl font-mono font-bold text-white">0</div>
+            </div>
+            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#2DD4BF]/50 flex-1 sm:flex-initial min-w-[140px]">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] sm:text-xs font-mono text-[#2DD4BF] uppercase tracking-wider font-bold">Store Credit</span>
+                    <span class="text-[9px] bg-[#2DD4BF]/20 text-[#2DD4BF] px-1 font-mono font-bold">+30-40%</span>
+                </div>
+                <div id="kpi-buylist-credit" class="text-lg sm:text-xl font-mono font-bold text-[#2DD4BF]">$0.00</div>
+            </div>
+            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-1 sm:flex-initial min-w-[130px]">
+                <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Cash Payout</div>
+                <div id="kpi-buylist-cash" class="text-lg sm:text-xl font-mono font-bold text-[#F1F5F9]">$0.00</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mode Switcher & Global Valuation Controls -->
+    <div class="bg-[#1B2230] border border-[#263245] p-3 sm:p-4 space-y-3">
+        <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+            <!-- Mode Toggle: Single Card vs Bulk Upload -->
+            <div class="flex items-center border border-[#263245] bg-[#10141D] p-0.5">
+                <button onclick="setBuylistMode('single')" id="btn-mode-single" class="buylist-mode-btn active px-3.5 py-1.5 text-xs font-mono font-bold uppercase transition flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <span>Single Card Search</span>
+                </button>
+                <button onclick="setBuylistMode('bulk')" id="btn-mode-bulk" class="buylist-mode-btn px-3.5 py-1.5 text-xs font-mono font-bold uppercase transition flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-[#2DD4BF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                    <span>Bulk Manifest Upload</span>
+                </button>
+            </div>
+
+            <!-- Global Valuation Preset Selectors -->
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Condition Selector (Default LP) -->
+                <div class="flex items-center space-x-1.5 bg-[#10141D] border border-[#263245] px-2.5 py-1">
+                    <span class="text-[10px] font-mono text-[#94A3B8] uppercase font-bold">Grade:</span>
+                    <select id="buylist-global-condition" onchange="onBuylistPreferenceChange()" class="bg-transparent text-xs font-mono font-bold text-white focus:outline-none cursor-pointer">
+                        <option value="Lightly Played" selected>Lightly Played (LP) [Default]</option>
+                        <option value="Near Mint">Near Mint (NM)</option>
+                        <option value="Moderately Played">Moderately Played (MP)</option>
+                        <option value="Heavily Played">Heavily Played (HP)</option>
+                        <option value="Damaged">Damaged (DMG)</option>
+                    </select>
+                </div>
+
+                <!-- Payout Mode Selector (Default Store Credit) -->
+                <div class="flex items-center space-x-1.5 bg-[#10141D] border border-[#2DD4BF]/60 px-2.5 py-1">
+                    <span class="text-[10px] font-mono text-[#2DD4BF] uppercase font-bold">Payout:</span>
+                    <select id="buylist-global-payout" onchange="onBuylistPreferenceChange()" class="bg-transparent text-xs font-mono font-bold text-[#2DD4BF] focus:outline-none cursor-pointer">
+                        <option value="credit" selected>★ Store Credit (Bonus) [Default]</option>
+                        <option value="cash">Cash (Direct)</option>
+                        <option value="both">Compare Both (Credit & Cash)</option>
+                    </select>
+                </div>
+
+                <!-- Game Selector (Default MTG) -->
+                <div class="flex items-center space-x-1.5 bg-[#10141D] border border-[#263245] px-2.5 py-1">
+                    <span class="text-[10px] font-mono text-[#94A3B8] uppercase font-bold">TCG:</span>
+                    <select id="buylist-global-game" onchange="onBuylistGameChange()" class="bg-transparent text-xs font-mono font-bold text-white focus:outline-none cursor-pointer">
+                        {% if supported_games %}
+                        {% for g in supported_games %}
+                        <option value="{{ g.game_id }}" {% if g.game_id == 'mtg' %}selected{% endif %}>{{ g.game_name }}</option>
+                        {% endfor %}
+                        {% else %}
+                        <option value="mtg" selected>Magic: The Gathering</option>
+                        <option value="pokemon">Pokémon</option>
+                        <option value="lor">Disney Lorcana</option>
+                        <option value="yugioh">Yu-Gi-Oh!</option>
+                        <option value="one">One Piece</option>
+                        <option value="swu">Star Wars: Unlimited</option>
+                        <option value="fleshAndBlood">Flesh and Blood</option>
+                        {% endif %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 1: SINGLE CARD SEARCH MODE -->
+    <!-- ========================================================================= -->
+    <div id="buylist-single-container" class="space-y-4">
+        <div class="bg-[#1B2230] border border-[#263245] p-4 space-y-3">
+            <div class="flex flex-col sm:flex-row gap-2.5">
+                <div class="flex-1 relative">
+                    <input type="text" id="buylist-search-input" placeholder="SEARCH BUYLIST (E.G. THE ONE RING, SOL RING, SHEOLDRED, RAGAVAN)..."
+                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-xs sm:text-sm text-white uppercase placeholder-[#64748B] focus:border-[#00CED1] font-mono tracking-wide"
+                        onkeydown="if(event.key === 'Enter') triggerSingleBuylistSearch()">
+                    <button onclick="clearSingleBuylistSearch()" id="btn-clear-single-search" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-white font-mono text-xs">
+                        [CLEAR]
+                    </button>
+                </div>
+                <button onclick="triggerSingleBuylistSearch()" id="btn-search-buylist" class="btn-crimson px-5 py-2.5 text-xs flex items-center justify-center space-x-2 flex-shrink-0 font-bold">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <span>Scan Buylist</span>
+                </button>
+            </div>
+
+            <!-- Quick Search Chips -->
+            <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+                <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold flex-shrink-0">QUICK SAMPLES:</span>
+                <button onclick="quickBuylistSearch('The One Ring')" class="text-[11px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1] px-2 py-0.5 transition flex-shrink-0">
+                    The One Ring
+                </button>
+                <button onclick="quickBuylistSearch('Sol Ring')" class="text-[11px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1] px-2 py-0.5 transition flex-shrink-0">
+                    Sol Ring
+                </button>
+                <button onclick="quickBuylistSearch('Sheoldred, the Apocalypse')" class="text-[11px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1] px-2 py-0.5 transition flex-shrink-0">
+                    Sheoldred
+                </button>
+                <button onclick="quickBuylistSearch('Ragavan, Nimble Pilferer')" class="text-[11px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1] px-2 py-0.5 transition flex-shrink-0">
+                    Ragavan
+                </button>
+                <button onclick="quickBuylistSearch('Force of Will')" class="text-[11px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1] px-2 py-0.5 transition flex-shrink-0">
+                    Force of Will
+                </button>
+                <button onclick="quickBuylistSearch('Mana Crypt')" class="text-[11px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1] px-2 py-0.5 transition flex-shrink-0">
+                    Mana Crypt
+                </button>
+            </div>
+        </div>
+
+        <!-- Single Search Loading State -->
+        <div id="single-search-loading" class="hidden bg-[#1B2230] border border-[#263245] p-8 text-center font-mono">
+            <div class="inline-flex items-center space-x-3 text-[#00CED1]">
+                <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span class="text-sm font-bold uppercase tracking-wider">Scanning Mighty Meeple buylist...</span>
+            </div>
+            <p class="text-xs text-[#94A3B8] mt-2">Querying live BinderPOS variants, condition grades, and stock purchasing quotas.</p>
+        </div>
+
+        <!-- Single Search Results Container -->
+        <div id="single-search-results" class="space-y-3">
+            <!-- Results will be dynamically populated here -->
+            <div id="single-search-empty-slate" class="bg-[#1B2230] border border-[#263245] p-8 text-center font-mono">
+                <div class="w-10 h-10 bg-[#10141D] border border-[#263245] flex items-center justify-center mx-auto text-[#00CED1] text-lg font-bold">
+                    &para;
+                </div>
+                <h3 class="text-sm font-heading font-bold text-white uppercase tracking-wider mt-3">Ready to Query Buylist</h3>
+                <p class="text-xs text-[#94A3B8] max-w-md mx-auto mt-1">
+                    Enter any card name above to view all printings, condition grade multipliers, cash payouts, and store credit trade-in values.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 2: BULK MANIFEST UPLOAD MODE -->
+    <!-- ========================================================================= -->
+    <div id="buylist-bulk-container" class="hidden space-y-4">
+        <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 space-y-4">
+            <div>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider font-mono">
+                        Target Manifest / Card List (Semicolon or Line Delimited)
+                    </label>
+                    <span id="bulk-buylist-counter" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">
+                        [ 0 Cards ]
+                    </span>
+                </div>
+                <textarea id="bulk-buylist-input" rows="5" 
+                    placeholder="The One Ring; Sol Ring; Sheoldred, the Apocalypse; Ragavan, Nimble Pilferer; Mana Crypt; Force of Will; Rhystic Study; Cyclonic Rift; Esper Sentinel"
+                    class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#2DD4BF] font-mono leading-relaxed"
+                    oninput="updateBulkBuylistCount()"></textarea>
+                <p class="text-[11px] text-[#64748B] font-mono mt-1">
+                    Separate names with semicolons (<code class="text-[#2DD4BF] font-bold">;</code>) or newlines. Names with commas (e.g. <em>Ragavan, Nimble Pilferer</em>) are supported automatically.
+                </p>
+            </div>
+
+            <!-- Drag and Drop CSV / File Upload Zone -->
+            <div id="buylist-dropzone" class="border-2 border-dashed border-[#263245] hover:border-[#2DD4BF] bg-[#10141D] p-4 text-center cursor-pointer transition">
+                <input type="file" id="buylist-file-input" accept=".csv,.txt" class="hidden" onchange="handleBuylistFileUpload(event)">
+                <div class="flex flex-col items-center justify-center space-y-1.5 pointer-events-none">
+                    <svg class="w-6 h-6 text-[#2DD4BF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <div class="text-xs font-mono font-bold text-white">
+                        Drop CSV or TXT manifest here, or <span class="text-[#2DD4BF] underline">browse file</span>
+                    </div>
+                    <div class="text-[10px] text-[#64748B] font-mono">
+                        Accepts raw list, Moxfield/Deckbox/TCGplayer export CSV
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Toolbar for Bulk Submission -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-2 border-t border-[#263245]">
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="loadSampleBulkBuylist()" class="text-xs font-mono text-[#94A3B8] hover:text-[#2DD4BF] underline uppercase">
+                        &rarr; Load Sample 10 Card Trade-in
+                    </button>
+                </div>
+                <div class="flex space-x-2">
+                    <button type="button" onclick="clearBulkBuylist()" class="btn-bridge px-3.5 py-2 text-xs font-mono uppercase font-bold">
+                        Clear
+                    </button>
+                    <button type="button" id="btn-submit-bulk-buylist" onclick="submitBulkBuylist()" class="btn-crimson px-5 py-2 text-xs flex items-center justify-center space-x-2 font-bold bg-[#2DD4BF] hover:bg-[#00CED1] text-[#10141D] border-[#2DD4BF]">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <span>Calculate Buylist Valuation</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bulk Loading Progress Indicator -->
+        <div id="bulk-buylist-loading" class="hidden bg-[#1B2230] border border-[#2DD4BF]/50 p-6 text-center font-mono space-y-2">
+            <div class="inline-flex items-center space-x-3 text-[#2DD4BF]">
+                <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span class="text-sm font-bold uppercase tracking-wider">Evaluating bulk manifest against Mighty Meeple...</span>
+            </div>
+            <p class="text-xs text-[#94A3B8]">Executing concurrent live queries across condition tables and store credit calculations.</p>
+        </div>
+
+        <!-- Bulk Results Section -->
+        <div id="bulk-buylist-results" class="hidden space-y-3">
+            <!-- Results Header Action Bar -->
+            <div class="bg-[#1B2230] border border-[#263245] p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 font-mono text-xs">
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs font-bold text-white uppercase tracking-wider">// VALUATION REPORT:</span>
+                    <span id="bulk-report-summary-badge" class="bg-[#10141D] text-[#2DD4BF] border border-[#2DD4BF]/40 px-2 py-0.5 font-bold">
+                        0 / 0 Cards Matched
+                    </span>
+                </div>
+                <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                    <button onclick="copyBulkBuylistSummary()" class="btn-bridge px-3 py-1.5 text-xs flex items-center space-x-1.5 font-bold uppercase" title="Copy Text Summary to Clipboard">
+                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+                        </svg>
+                        <span>Copy Summary</span>
+                    </button>
+                    <button onclick="exportBulkBuylistCSV()" class="btn-bridge px-3 py-1.5 text-xs flex items-center space-x-1.5 font-bold uppercase text-[#2DD4BF] border-[#2DD4BF]/40 hover:bg-[#2DD4BF]/20" title="Download CSV Manifest">
+                        <svg class="w-3.5 h-3.5 text-[#2DD4BF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        <span>Export CSV</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bulk Table -->
+            <div class="bg-[#1B2230] border border-[#263245] overflow-x-auto">
+                <table class="w-full text-left font-mono text-xs">
+                    <thead class="bg-[#10141D] text-[#94A3B8] border-b border-[#263245] uppercase text-[10px] tracking-wider">
+                        <tr>
+                            <th class="p-3">Card Name</th>
+                            <th class="p-3">Set / Printing</th>
+                            <th class="p-3">Grade / Finish</th>
+                            <th class="p-3 text-right text-[#2DD4BF]">Store Credit</th>
+                            <th class="p-3 text-right">Cash Buy</th>
+                            <th class="p-3 text-right text-[#94A3B8]">Retail Sell</th>
+                            <th class="p-3 text-center">Max Qty</th>
+                            <th class="p-3 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bulk-buylist-table-body" class="divide-y divide-[#263245]">
+                        <!-- Rows populated dynamically -->
+                    </tbody>
+                    <tfoot class="bg-[#10141D] border-t-2 border-[#2DD4BF] text-white font-bold">
+                        <tr>
+                            <td colspan="3" class="p-3 uppercase tracking-wider text-right text-xs">
+                                Manifest Total Valuation:
+                            </td>
+                            <td id="bulk-table-total-credit" class="p-3 text-right text-[#2DD4BF] text-sm font-mono">
+                                $0.00
+                            </td>
+                            <td id="bulk-table-total-cash" class="p-3 text-right text-white text-sm font-mono">
+                                $0.00
+                            </td>
+                            <td id="bulk-table-total-sell" class="p-3 text-right text-[#94A3B8] text-xs font-mono">
+                                $0.00
+                            </td>
+                            <td colspan="2" class="p-3"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modal for Viewing All Prints / Variants of a Card -->
+<div id="modal-buylist-variants" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#1B2230] border-2 border-[#263245] max-w-2xl w-full p-6 relative max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4 flex-shrink-0">
+            <div>
+                <span class="text-xs font-mono text-[#2DD4BF] uppercase tracking-widest block font-bold">PRINTS & VARIANTS</span>
+                <h3 id="modal-variant-card-name" class="text-base font-heading font-black text-white uppercase tracking-wider mt-0.5">Card Variants</h3>
+            </div>
+            <button onclick="closeBuylistVariantModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+        </div>
+
+        <div id="modal-variant-content" class="overflow-y-auto flex-1 space-y-3 font-mono text-xs pr-1">
+            <!-- Dynamically populated variant list -->
+        </div>
+
+        <div class="flex justify-end pt-3 border-t border-[#263245] mt-4 flex-shrink-0">
+            <button type="button" onclick="closeBuylistVariantModal()" class="btn-bridge px-4 py-2 text-xs">Close</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
