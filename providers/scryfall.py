@@ -49,6 +49,26 @@ class ScryfallProvider:
             logger.error(f"Error fetching card by ID {scryfall_id}: {e}")
         return None
 
+    def _format_card_object(self, card: dict) -> dict:
+        """Standardizes Scryfall card JSON into Chimaera card dictionary."""
+        image_uri = None
+        if "image_uris" in card and card["image_uris"].get("normal"):
+            image_uri = card["image_uris"]["normal"]
+        elif "card_faces" in card and card["card_faces"]:
+            first_face = card["card_faces"][0]
+            if "image_uris" in first_face and first_face["image_uris"].get("normal"):
+                image_uri = first_face["image_uris"]["normal"]
+
+        return {
+            "id": card.get("id"),
+            "name": card.get("name"),
+            "set_code": card.get("set", "").upper(),
+            "collector_number": card.get("collector_number", ""),
+            "image_uri": image_uri,
+            "prices": card.get("prices", {}),
+            "tcgplayer_url": card.get("purchase_uris", {}).get("tcgplayer"),
+        }
+
     def get_card_named(self, card_name: str) -> dict | None:
         """Fetches canonical card object from Scryfall by exact card name."""
         if not card_name:
@@ -58,28 +78,77 @@ class ScryfallProvider:
             url = f"{SCRYFALL_BASE_URL}/cards/named"
             response = self.session.get(url, params={"exact": card_name.strip()}, timeout=8)
             if response.status_code == 200:
-                card = response.json()
-                image_uri = None
-                if "image_uris" in card and card["image_uris"].get("normal"):
-                    image_uri = card["image_uris"]["normal"]
-                elif "card_faces" in card and card["card_faces"]:
-                    first_face = card["card_faces"][0]
-                    if "image_uris" in first_face and first_face["image_uris"].get("normal"):
-                        image_uri = first_face["image_uris"]["normal"]
-
-                return {
-                    "id": card.get("id"),
-                    "name": card.get("name"),
-                    "set_code": card.get("set", "").upper(),
-                    "collector_number": card.get("collector_number", ""),
-                    "image_uri": image_uri,
-                    "prices": card.get("prices", {}),
-                    "tcgplayer_url": card.get("purchase_uris", {}).get("tcgplayer"),
-                }
+                return self._format_card_object(response.json())
             logger.warning(f"Scryfall named lookup failed for '{card_name}' (status: {response.status_code})")
         except Exception as e:
             logger.error(f"Error fetching card named '{card_name}': {e}")
         return None
+
+    def get_cards_collection(self, card_names: list[str]) -> tuple[dict[str, dict], list[str]]:
+        """
+        Batch resolves multiple card names via Scryfall's /cards/collection endpoint.
+        Returns a tuple of (found_map, not_found_list).
+        found_map keys are lowercase card names.
+        """
+        if not card_names:
+            return {}, []
+
+        found_map: dict[str, dict] = {}
+        not_found_list: list[str] = []
+
+        # Scryfall /cards/collection accepts at most 75 identifiers per request
+        batch_size = 75
+        for i in range(0, len(card_names), batch_size):
+            chunk = card_names[i:i + batch_size]
+            identifiers = [{"name": name.strip()} for name in chunk if name.strip()]
+            if not identifiers:
+                continue
+
+            try:
+                url = f"{SCRYFALL_BASE_URL}/cards/collection"
+                response = self.session.post(
+                    url,
+                    json={"identifiers": identifiers},
+                    headers={"Content-Type": "application/json"},
+                    timeout=15,
+                )
+                if response.status_code == 200:
+                    payload = response.json()
+                    for card in payload.get("data", []):
+                        formatted = self._format_card_object(card)
+                        c_name = formatted.get("name", "")
+                        found_map[c_name.lower()] = formatted
+                        # Also index by base name before // for double-faced cards
+                        if " // " in c_name:
+                            found_map[c_name.split(" // ")[0].lower()] = formatted
+
+                    for nf in payload.get("not_found", []):
+                        nf_name = nf.get("name", "")
+                        if nf_name:
+                            not_found_list.append(nf_name)
+                else:
+                    logger.warning(f"Scryfall collection endpoint returned status {response.status_code}")
+                    for item in identifiers:
+                        not_found_list.append(item["name"])
+            except Exception as e:
+                logger.error(f"Error during Scryfall collection lookup: {e}")
+                for item in identifiers:
+                    not_found_list.append(item["name"])
+
+        # Attempt fallback lookup for any unresolved cards using named endpoint
+        still_unresolved = []
+        for name in not_found_list:
+            if name.lower() in found_map:
+                continue
+            fallback = self.get_card_named(name)
+            if fallback:
+                found_map[name.lower()] = fallback
+                if fallback.get("name"):
+                    found_map[fallback["name"].lower()] = fallback
+            else:
+                still_unresolved.append(name)
+
+        return found_map, still_unresolved
 
     def search_card_prints(self, card_name: str) -> list[dict]:
         """Fetches all unique prints for a specific card name."""

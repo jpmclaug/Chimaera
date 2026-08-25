@@ -124,7 +124,7 @@ def main():
 
     logger.info("=" * 65)
     logger.info("CHIMAERA // STANDALONE TACTICAL INTELLIGENCE WORKER")
-    logger.info("Sector: MTG-Core | Version: 1.0 (ISD-72)")
+    logger.info("Sector: MTG-Core | Version: 1.0")
     logger.info("=" * 65)
 
     # Initialize Flask app context for DB access

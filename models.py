@@ -107,6 +107,7 @@ class WatchlistItem(db.Model):
     finish = db.Column(db.String(20), default="nonfoil")  # nonfoil, foil, etched
     target_price = db.Column(db.Float, nullable=True)
     notify_mm_stock = db.Column(db.Boolean, default=True, nullable=False)
+    tag = db.Column(db.String(100), nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=utc_now)
 
     # Relationships
@@ -241,6 +242,7 @@ class WatchlistItem(db.Model):
             "finish": self.finish,
             "target_price": self.target_price,
             "notify_mm_stock": bool(self.notify_mm_stock if self.notify_mm_stock is not None else True),
+            "tag": self.tag,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "is_any_version": self.is_any_version,
             "is_deal": self.is_deal,

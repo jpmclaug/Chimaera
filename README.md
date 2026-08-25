@@ -1,11 +1,11 @@
-# Chimaera // Imperial MTG Market Surveillance 🛸
+# Chimaera // MTG Market Surveillance 🛸
 
-**Chimaera** is a clinical, tactical, and production-ready Magic: The Gathering market surveillance and price intelligence web application. Inspired by Imperial tactical intelligence dashboards, it monitors single card prices across **TCGplayer** (via Scryfall), **MightyMeeple.com** (via BinderPOS/Shopify backend), and **eBay**, alerting collectors via **Discord Webhooks** when prices drop below customized target acquisition thresholds.
+**Chimaera** is a clinical, tactical, and production-ready Magic: The Gathering market surveillance and price intelligence web application. Inspired by tactical intelligence dashboards, it monitors single card prices across **TCGplayer** (via Scryfall), **MightyMeeple.com** (via BinderPOS/Shopify backend), and **eBay**, alerting collectors via **Discord Webhooks** when prices drop below customized target acquisition thresholds.
 
 ---
 
 ### 🎨 Visual Style Specification
-- **Design Philosophy:** Minimalist, tactical, clinical, authoritative. Inspired by Imperial intelligence dashboards with high-density data legibility.
+- **Design Philosophy:** Minimalist, tactical, clinical, authoritative. Inspired by tactical intelligence dashboards with high-density data legibility.
 - **Color Palette (Dark Mode):**
   - **Background:** Deep Tactical Blue-Gray (`#10141D`)
   - **Surface:** Bridge Gray (`#1B2230`)
@@ -51,15 +51,15 @@ Chimera/
 │   ├── mightymeeple.py     # Mighty Meeple Shopify/BinderPOS inventory scanner
 │   └── ebay.py             # eBay MTG single listings search & price extractor
 ├── templates/
-│   ├── base.html           # Imperial tactical layout with navigation, modals, and toast alerts
+│   ├── base.html           # Tactical layout with navigation, modals, and toast alerts
 │   ├── index.html          # Registry dashboard with multi-vendor price comparison matrix
 │   ├── deals.html          # Dedicated priority active deals view
 │   └── guide.html          # In-app Tactical Operations & How-To Guide (/guide)
 ├── static/
 │   ├── img/
-│   │   └── chimaera_logo.jpg # Imperial ISD Chimaera flagship wireframe sigil
+│   │   └── chimaera_logo.jpg # Chimaera wireframe sigil
 │   ├── css/
-│   │   └── custom.css      # Imperial Tactical theme variables, tactical utilities & fonts
+│   │   └── custom.css      # Tactical theme variables, tactical utilities & fonts
 │   └── js/
 │       └── app.js          # Autocomplete debounce, dynamic print loader, and async API calls
 ├── Procfile                # Multi-process definition (web + worker dynos)
@@ -165,33 +165,33 @@ http://localhost:5050
 
 ## 🎯 Features & Usage
 
-### 1. Adding Cards to Your Watchlist
-- Click **"Add Card"** in the top navigation bar.
-- Type any MTG card name into the search bar (e.g., *Lightning Bolt*, *Black Lotus*, *The One Ring*). Scryfall autocomplete delivers instant suggestions.
-- Select the specific set printing and collector number from the dropdown.
-- Choose your desired finish: **Non-foil**, **Foil**, or **Etched Foil**.
-- Enter your **Target Price ($ USD)**.
-- Click **"Add to Watchlist"**. Chimera immediately polls TCGplayer, Mighty Meeple, and eBay to fetch initial live prices.
+### 1. Adding Cards to Your Watchlist (Single & Bulk Import)
+- **Single Acquisition:** Click **"Acquire"** in the navigation bar. Type any MTG card name into the search bar with instant Scryfall autocomplete, choose Any Version or a specific printing, set a target threshold, assign an optional deck/purpose tag (select existing or type new), and save.
+- **Bulk Target Import:** Click **"Bulk Add"** in the top navigation or dashboard toolbar. Paste a semicolon-separated list of MTG card names (e.g., `"Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama"`). Chimaera batch-resolves canonical metadata via Scryfall's `/cards/collection` endpoint, applies optional 1-click deal presets (-10% / -20%), applies batch tags to all imported assets, deduplicates against your active watchlist, and initiates immediate multi-vendor market price checks.
 
-### 2. Multi-Vendor Price Comparison Pills
+### 2. Card Tagging, Deck Categorization & Filter Matrix
+- Categorize targets by deck (e.g., *"Atraxa Commander"*, *"Modern Burn"*) or purpose (*"Cube"*, *"Trade Target"*).
+- Pick from existing tags using 1-click quick-select pills or browser autocomplete, or type a new tag.
+- Interactive tag badges on cards allow 1-click instant filtering of your target registry.
+- Filter the registry by specific tags or isolate untagged cards using the toolbar dropdown.
+
+### 3. Multi-Vendor Price Comparison Matrix
 Each card on the Wishlist dashboard displays live pricing from:
 - **TCGplayer:** Current Market Price and direct checkout link.
 - **Mighty Meeple:** In-stock status (`In Stock` / `Out of Stock`), condition tier (NM/LP), price, and direct product link.
 - **eBay:** Lowest Buy-It-Now listing price and direct search link.
 
-### 3. Deal Detection & Active Deals View
+### 4. Deal Detection & Active Deals View
 - When any vendor's in-stock price is **≤ Target Price**, the card is marked with a **🔥 Deal Found** badge displaying the dollar and percentage savings.
 - Visit the **Active Deals** tab (`/deals`) to see a curated list of all active deals.
 
-### 4. Discord Deal Notifications
+### 5. Discord Deal Notifications
 When a card drops below your target price, Chimera automatically dispatches a rich Discord Webhook embed containing:
 - High-res card artwork
 - Target price vs best live deal price
 - Dollar and percentage savings
 - Multi-vendor price comparison table
 - Direct 1-click checkout URL
-
-You can test your Discord webhook anytime by clicking **"Test Discord Webhook"** in the footer.
 
 ### 5. Automated Background Polling
 APScheduler runs in the background to re-poll prices across all storefronts every `POLL_INTERVAL_HOURS` hours without requiring manual intervention. You can also trigger an immediate refresh using the **"Refresh All"** button or individual card **"Poll"** buttons.

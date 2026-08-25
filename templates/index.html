@@ -5,7 +5,7 @@
 {% block content %}
 <div class="space-y-6">
 
-    <!-- Imperial Tactical Telemetry KPI Summary Bar -->
+    <!-- Tactical Telemetry KPI Summary Bar -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <!-- Telemetry Module 1 -->
         <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
@@ -61,9 +61,9 @@
                 class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white uppercase placeholder-[#64748B] focus:border-[#00CED1] font-mono tracking-wide"
                 onkeyup="filterWatchlist()">
         </div>
-        <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+        <div class="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-end">
             <select id="watchlist-filter-deal" onchange="filterWatchlist()"
-                class="bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white focus:border-[#00CED1] uppercase font-mono font-medium">
+                class="bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] uppercase font-mono font-medium">
                 <option value="all">ALL TARGETS</option>
                 <option value="deals">DEALS ONLY</option>
                 <option value="in_stock">IN STOCK ONLY</option>
@@ -71,7 +71,20 @@
                 <option value="any_version">ANY VERSION (GENERAL)</option>
                 <option value="specific_print">SPECIFIC PRINTINGS</option>
             </select>
-            <span class="text-xs font-mono text-[#94A3B8] font-bold border-l border-[#263245] pl-3">[ {{ items|length }} ASSETS ]</span>
+            <select id="watchlist-filter-tag" onchange="filterWatchlist()"
+                class="bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-[#C084FC] focus:border-[#00CED1] uppercase font-mono font-medium">
+                <option value="all">ALL TAGS</option>
+                {% if user_tags %}
+                {% for tag in user_tags %}
+                <option value="{{ tag|lower }}">🏷️ {{ tag }}</option>
+                {% endfor %}
+                {% endif %}
+                <option value="__untagged__">[ UNTAGGED ]</option>
+            </select>
+            <button onclick="openBulkAddModal()" class="btn-bridge px-3 py-2 text-xs text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center space-x-1 uppercase font-mono font-bold" title="Bulk Register Targets">
+                <span>+ Bulk</span>
+            </button>
+            <span class="text-xs font-mono text-[#94A3B8] font-bold border-l border-[#263245] pl-3 hidden md:inline">[ {{ items|length }} ASSETS ]</span>
         </div>
     </div>
 
@@ -79,16 +92,21 @@
     {% if items|length == 0 %}
     <div class="bg-[#1B2230] border border-[#263245] p-12 text-center relative overflow-hidden">
         <div class="max-w-xs mx-auto mb-4 opacity-40">
-            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship" class="w-full object-contain filter contrast-150">
+            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Logo" class="w-full object-contain filter contrast-150">
         </div>
         <div class="text-xs font-mono text-[#00CED1] uppercase tracking-widest font-bold">// REGISTRY OFFLINE</div>
         <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">No Active Surveillance Targets</h3>
         <p class="text-sm text-[#94A3B8] mt-2 max-w-md mx-auto leading-relaxed font-sans">
             Target registry is unpopulated. Add Magic: The Gathering singles to monitor TCGplayer, Mighty Meeple, and eBay in real-time.
         </p>
-        <button onclick="openAddCardModal()" class="btn-crimson mt-5 px-5 py-2.5 text-xs">
-            + Acquire First Target
-        </button>
+        <div class="flex items-center justify-center space-x-3 mt-5">
+            <button onclick="openAddCardModal()" class="btn-crimson px-5 py-2.5 text-xs">
+                Acquire First Target
+            </button>
+            <button onclick="openBulkAddModal()" class="btn-bridge px-5 py-2.5 text-xs text-white border-[#263245] hover:border-[#00CED1]">
+                Bulk Target Import
+            </button>
+        </div>
     </div>
     {% else %}
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="watchlist-grid">
@@ -96,6 +114,7 @@
         <div class="watchlist-card bg-[#1B2230] border {% if item.is_deal %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245] hover:border-[#3D4F6B]{% endif %} p-4 flex flex-col justify-between transition-colors"
             data-name="{{ item.name|lower }}"
             data-set="{{ (item.set_code or '')|lower }}"
+            data-tag="{{ (item.tag or '')|lower }}"
             data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
             data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
@@ -125,6 +144,21 @@
                             {% endif %}
                             <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
                             
+                            <!-- Tag / Deck Badge -->
+                            {% if item.tag %}
+                            <button onclick="filterByTag('{{ item.tag|replace("'", "\\'") }}')" 
+                                class="bg-[#9333EA]/20 hover:bg-[#9333EA]/35 text-[#C084FC] hover:text-white border border-[#9333EA]/50 text-[10px] px-2 py-0.5 font-mono uppercase font-bold tracking-wider transition flex items-center space-x-1"
+                                title="Filter by tag: {{ item.tag }}">
+                                <span>🏷️ {{ item.tag }}</span>
+                            </button>
+                            {% else %}
+                            <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '')"
+                                class="bg-[#10141D] hover:bg-[#222B3D] text-[#64748B] hover:text-[#C084FC] border border-[#263245] hover:border-[#9333EA]/50 text-[10px] px-1.5 py-0.5 font-mono uppercase transition"
+                                title="Assign Tag / Deck">
+                                + Tag
+                            </button>
+                            {% endif %}
+
                             <!-- Mighty Meeple Stock Alert Toggle -->
                             <button onclick="toggleMightyMeepleAlert({{ item.id }})" id="mm-alert-btn-{{ item.id }}"
                                 class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_mm_stock %}bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
@@ -243,12 +277,16 @@
                             {% if eb and eb.price > 0 %}
                             <span class="font-bold text-white text-xs">${{ "%.2f"|format(eb.price) }}</span>
                             <div class="flex items-center space-x-1.5">
-                                <a href="{{ eb.product_url or eb.search_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold" title="Direct link to lowest price Buy-It-Now listing">Lowest</a>
+                                {% if eb.product_url and eb.search_url and eb.product_url != eb.search_url %}
+                                <a href="{{ eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold" title="Direct link to lowest price Buy-It-Now listing (incl. shipping)">Lowest</a>
                                 <span class="text-[#64748B]">|</span>
-                                <a href="{{ eb.search_url or eb.product_url }}" target="_blank" rel="noopener" class="text-[#94A3B8] hover:text-white underline text-xs uppercase font-medium" title="Search all active eBay listings">Search</a>
+                                <a href="{{ eb.search_url }}" target="_blank" rel="noopener" class="text-[#94A3B8] hover:text-white underline text-xs uppercase font-medium" title="Search all active MTG listings on eBay (Price + Shipping lowest)">Search</a>
+                                {% else %}
+                                <a href="{{ eb.search_url or eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold" title="Search active MTG listings on eBay (Price + Shipping lowest, Buy It Now)">Lowest Search</a>
+                                {% endif %}
                             </div>
                             {% elif eb and (eb.product_url or eb.search_url) %}
-                            <a href="{{ eb.search_url or eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Search</a>
+                            <a href="{{ eb.search_url or eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold" title="Search active MTG listings on eBay (Price + Shipping lowest, Buy It Now)">Lowest Search</a>
                             {% else %}
                             <span class="text-[#64748B] text-xs">N/A</span>
                             {% endif %}
@@ -267,7 +305,7 @@
                 </button>
 
                 <div class="flex items-center space-x-3">
-                    <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }})" class="text-[#00CED1] hover:text-white uppercase font-bold">
+                    <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" class="text-[#00CED1] hover:text-white uppercase font-bold">
                         Edit Target
                     </button>
                     <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">

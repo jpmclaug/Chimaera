@@ -304,7 +304,7 @@ class DealEngine:
             embed = {
                 "title": f"🎲 Mighty Meeple In-Stock: {item.name}",
                 "description": f"**Set:** {set_label} | **Finish:** {item.finish.capitalize()}",
-                "color": 0x00CED1,  # Imperial Teal
+                "color": 0x00CED1,  # Tactical Teal
                 "fields": fields,
                 "footer": {
                     "text": "Chimaera MTG Tactical Intelligence // Mighty Meeple Surveillance",
@@ -343,11 +343,11 @@ class DealEngine:
                 "embeds": [
                     {
                         "title": "🛰️ Chimaera Webhook Telemetry Test",
-                        "description": "Imperial tactical market surveillance webhook integration is successfully configured and operational!",
+                        "description": "Tactical market surveillance webhook integration is successfully configured and operational!",
                         "color": 0x008080,  # Sophisticated Teal
                         "fields": [
                             {"name": "Status", "value": "✓ Online & Monitoring", "inline": True},
-                            {"name": "Engine", "value": "Chimaera v1.0 // ISD-72", "inline": True},
+                            {"name": "Engine", "value": "Chimaera v1.0", "inline": True},
                         ],
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "footer": {"text": "Chimaera MTG Market Surveillance"},

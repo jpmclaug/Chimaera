@@ -82,6 +82,12 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_mm_stock BOOLEAN DEFAULT 1 NOT NULL"))
                         conn.commit()
 
+                    # Ensure tag column exists in watchlist_item
+                    if "tag" not in cols:
+                        logger.info("Adding tag column to watchlist_item...")
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN tag VARCHAR(100)"))
+                        conn.commit()
+
                     # Ensure search_url column exists in vendor_price
                     vp_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(vendor_price)")).fetchall()]
                     if "search_url" not in vp_cols:
@@ -96,6 +102,7 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
+                    conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
                     conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
@@ -145,6 +152,35 @@ def _migrate_db_schema(app):
 
         except Exception as e:
             logger.warning(f"Database schema migration check skipped or completed with message: {e}")
+
+
+def parse_bulk_card_names(raw_input: str) -> list[str]:
+    """
+    Parses a string of card names separated by semicolons (;) or newlines.
+    Trims whitespace and quotes, filters empty lines, and deduplicates while preserving order.
+    """
+    if not raw_input:
+        return []
+    normalized = raw_input.replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    raw_names = []
+    for line in lines:
+        if not line:
+            continue
+        parts = line.split(";")
+        for part in parts:
+            cleaned = part.strip().strip("\"'").strip()
+            if cleaned:
+                raw_names.append(cleaned)
+
+    seen = set()
+    unique_names = []
+    for name in raw_names:
+        lower = name.lower()
+        if lower not in seen:
+            seen.add(lower)
+            unique_names.append(name)
+    return unique_names
 
 
 def create_app(test_config=None):
@@ -639,6 +675,9 @@ def create_app(test_config=None):
             item.lowest_in_stock_price for item in items if item.lowest_in_stock_price is not None
         )
 
+        # Unique active tags
+        user_tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
+
         return render_template(
             "index.html",
             items=items,
@@ -646,6 +685,7 @@ def create_app(test_config=None):
             deals_count=deals_count,
             total_target_value=total_target_value,
             lowest_market_sum=lowest_market_sum,
+            user_tags=user_tags,
             active_tab="wishlist",
         )
 
@@ -658,12 +698,14 @@ def create_app(test_config=None):
         deal_items = [item for item in all_items if item.is_deal]
 
         total_savings = sum(item.savings_amount for item in deal_items)
+        user_tags = sorted(list({item.tag.strip() for item in all_items if item.tag and item.tag.strip()}))
 
         return render_template(
             "deals.html",
             deal_items=deal_items,
             deals_count=len(deal_items),
             total_savings=total_savings,
+            user_tags=user_tags,
             active_tab="deals",
         )
 
@@ -721,6 +763,7 @@ def create_app(test_config=None):
         finish = (data.get("finish") or "nonfoil").strip().lower()
         target_price_raw = data.get("target_price")
         notify_mm_stock = bool(data.get("notify_mm_stock", True))
+        tag = (data.get("tag") or "").strip() or None
 
         if not name:
             return jsonify({"error": "Card name is required."}), 400
@@ -777,6 +820,7 @@ def create_app(test_config=None):
             finish=finish,
             target_price=target_price,
             notify_mm_stock=notify_mm_stock,
+            tag=tag,
         )
         db.session.add(new_item)
         db.session.commit()
@@ -789,6 +833,131 @@ def create_app(test_config=None):
             "message": f"Successfully added {name} ({version_desc}) to watchlist.",
             "card": new_item.to_dict(),
         }), 201
+
+    @app.route("/api/watchlist/bulk-add", methods=["POST"])
+    @login_required
+    def bulk_add_cards():
+        """
+        Bulk adds multiple cards to the authenticated user's watchlist from a semicolon-separated list.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_input = data.get("cards") or data.get("raw_input") or ""
+        card_names = data.get("card_names")
+        if not card_names:
+            if isinstance(raw_input, list):
+                card_names = raw_input
+            else:
+                card_names = parse_bulk_card_names(str(raw_input))
+
+        if not card_names:
+            return jsonify({"error": "No valid card names provided in payload."}), 400
+
+        finish = (data.get("finish") or "nonfoil").strip().lower()
+        notify_mm_stock = bool(data.get("notify_mm_stock", True))
+        target_strategy = (data.get("target_strategy") or "none").strip().lower()
+        custom_target_price = data.get("target_price")
+        tag = (data.get("tag") or "").strip() or None
+
+        # Step 1: Batch resolve metadata via Scryfall collection endpoint
+        found_map, not_found = scryfall_provider.get_cards_collection(card_names)
+
+        # Fetch user's existing watchlist items for duplicate detection
+        existing_items = WatchlistItem.query.filter_by(user_id=user.id).all()
+        existing_any_set = {
+            item.name.lower()
+            for item in existing_items
+            if item.is_any_version and (item.finish or "nonfoil").lower() == finish
+        }
+
+        added_items = []
+        skipped_items = []
+        failed_items = []
+
+        for name in card_names:
+            card_info = found_map.get(name.lower())
+            canonical_name = card_info.get("name") if card_info else name
+            c_lower = canonical_name.lower()
+
+            # Check duplicate in user watchlist
+            if c_lower in existing_any_set:
+                skipped_items.append({
+                    "name": canonical_name,
+                    "reason": f"'{canonical_name}' ({finish.capitalize()}) is already on your watchlist."
+                })
+                continue
+
+            if not card_info:
+                failed_items.append({
+                    "name": name,
+                    "reason": "Card not identified in Scryfall database."
+                })
+                continue
+
+            # Calculate target price based on selected strategy
+            target_price = None
+            if target_strategy == "custom" and custom_target_price is not None and str(custom_target_price).strip() != "":
+                try:
+                    target_price = round(float(custom_target_price), 2)
+                except (ValueError, TypeError):
+                    target_price = None
+            elif target_strategy in ("good", "good_deal", "good_deal_10", "great", "great_deal", "great_deal_20"):
+                prices = card_info.get("prices", {})
+                p_val = None
+                if finish == "foil":
+                    p_val = prices.get("usd_foil") or prices.get("usd_etched") or prices.get("usd")
+                elif finish == "etched":
+                    p_val = prices.get("usd_etched") or prices.get("usd_foil") or prices.get("usd")
+                else:
+                    p_val = prices.get("usd") or prices.get("usd_foil")
+                
+                if p_val:
+                    try:
+                        num = float(p_val)
+                        if num > 0:
+                            discount = 0.80 if "great" in target_strategy else 0.90
+                            target_price = round(num * discount, 2)
+                    except (ValueError, TypeError):
+                        target_price = None
+
+            new_item = WatchlistItem(
+                user_id=user.id,
+                name=canonical_name,
+                scryfall_id=card_info.get("id"),
+                set_code=None,  # Any Version by default for bulk import
+                collector_number=None,
+                image_uri=card_info.get("image_uri"),
+                finish=finish,
+                target_price=target_price,
+                notify_mm_stock=notify_mm_stock,
+                tag=tag,
+            )
+            db.session.add(new_item)
+            added_items.append(new_item)
+            existing_any_set.add(c_lower)
+
+        if added_items:
+            db.session.commit()
+
+            # Run initial price poll across all providers for newly added items
+            for item in added_items:
+                try:
+                    deal_engine.poll_card(item, notify=True)
+                except Exception as e:
+                    logger.error(f"Error polling new bulk item {item.name}: {e}")
+
+        summary_msg = f"Successfully registered {len(added_items)} targets ({len(skipped_items)} skipped, {len(failed_items)} unresolved)."
+
+        return jsonify({
+            "message": summary_msg,
+            "total_requested": len(card_names),
+            "added_count": len(added_items),
+            "skipped_count": len(skipped_items),
+            "failed_count": len(failed_items),
+            "added": [item.to_dict() for item in added_items],
+            "skipped": skipped_items,
+            "failed": failed_items,
+        }), 201 if added_items else 200
 
     @app.route("/api/watchlist/toggle-mm-alert/<int:item_id>", methods=["POST"])
     @login_required
@@ -875,11 +1044,45 @@ def create_app(test_config=None):
         if "notify_mm_stock" in data:
             item.notify_mm_stock = bool(data["notify_mm_stock"])
 
+        if "tag" in data:
+            raw_tag = (data.get("tag") or "").strip()
+            item.tag = raw_tag or None
+
         db.session.commit()
         return jsonify({
-            "message": "Target price and alert preferences updated.",
+            "message": "Target configuration committed.",
             "card": item.to_dict(),
         })
+
+    @app.route("/api/watchlist/update-tag/<int:item_id>", methods=["POST"])
+    @login_required
+    def update_card_tag(item_id):
+        """Update tag/category for a specific card."""
+        user = get_current_user()
+        item = db.session.get(WatchlistItem, item_id)
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
+
+        data = request.get_json(silent=True) or {}
+        raw_tag = (data.get("tag") or "").strip()
+        item.tag = raw_tag or None
+        db.session.commit()
+
+        tag_label = f"'{item.tag}'" if item.tag else "removed"
+        return jsonify({
+            "message": f"Target tag updated to {tag_label} for {item.name}.",
+            "tag": item.tag,
+            "card": item.to_dict(),
+        })
+
+    @app.route("/api/watchlist/tags", methods=["GET"])
+    @login_required
+    def get_watchlist_tags():
+        """Returns distinct list of tags used across the authenticated user's watchlist."""
+        user = get_current_user()
+        items = WatchlistItem.query.filter_by(user_id=user.id).all()
+        tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
+        return jsonify({"tags": tags})
 
     @app.route("/api/watchlist/refresh/<int:item_id>", methods=["POST"])
     @login_required
@@ -1064,7 +1267,7 @@ def create_app(test_config=None):
     @app.route("/api/worker/trigger", methods=["POST"])
     @login_required
     def trigger_worker_poll():
-        """Signals the standalone worker via database flag and runs manual fleet poll."""
+        """Signals the standalone worker via database flag and runs manual price poll."""
         SystemSetting.set_val("manual_poll_requested", "true")
         results = deal_engine.poll_all_cards(notify=True)
         return jsonify({

@@ -35,12 +35,12 @@
     {% if deal_items|length == 0 %}
     <div class="bg-[#1B2230] border border-[#263245] p-12 text-center relative overflow-hidden">
         <div class="max-w-xs mx-auto mb-4 opacity-40">
-            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship" class="w-full object-contain filter contrast-150">
+            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Logo" class="w-full object-contain filter contrast-150">
         </div>
         <div class="text-xs font-mono text-[#00CED1] uppercase tracking-widest font-bold">// NO DEALS TRIGGERED</div>
         <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">Surveillance Nominal // No Active Deals</h3>
         <p class="text-sm text-[#94A3B8] mt-2 max-w-md mx-auto font-sans leading-relaxed">
-            None of your monitored cards are currently at or below their target threshold price. Adjust target prices in the Registry or poll the fleet.
+            None of your monitored cards are currently at or below their target threshold price. Adjust target prices in the Registry or poll the watchlist.
         </p>
         <a href="/" class="btn-bridge inline-block mt-5 px-5 py-2.5 text-xs uppercase tracking-wider">
             &larr; Return to Registry
@@ -70,6 +70,9 @@
                             <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold tracking-wider">ANY VERSION</span>
                             {% endif %}
                             <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
+                            {% if item.tag %}
+                            <span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-[10px] px-2 py-0.5 font-mono uppercase font-bold tracking-wider">🏷️ {{ item.tag }}</span>
+                            {% endif %}
                             {% if item.mm_in_stock %}
                             <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1] text-[10px] px-1.5 py-0.5 font-mono uppercase font-bold">Mighty Meeple In-Stock</span>
                             {% endif %}

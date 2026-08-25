@@ -1,5 +1,5 @@
 # =========================================================================
-# CHIMAERA // IMPERIAL TACTICAL INTELLIGENCE - STOP SCRIPT
+# CHIMAERA // TACTICAL INTELLIGENCE - STOP SCRIPT
 # =========================================================================
 
 $ErrorActionPreference = "SilentlyContinue"

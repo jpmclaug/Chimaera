@@ -121,12 +121,12 @@
                 <div class="flex items-center space-x-4">
                     <a href="index.html" class="flex items-center space-x-3 group">
                         <div class="h-10 w-12 bg-[#10141D] border border-[#263245] flex items-center justify-center p-1 font-mono font-black text-[#00CED1] text-base group-hover:border-[#00CED1] transition">
-                            ISD
+                            OPS
                         </div>
                         <div>
                             <div class="flex items-center space-x-2">
                                 <span class="font-heading font-black text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
-                                <span class="text-[11px] px-1.5 py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">ISD-72</span>
+                                <span class="text-[11px] px-1.5 py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">v1.0</span>
                             </div>
                             <span class="text-[11px] font-mono tracking-widest text-[#00CED1] uppercase block mt-0.5 font-semibold">Tactical Field Operations Manual</span>
                         </div>
@@ -164,7 +164,7 @@
                     <span class="px-2.5 py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] text-[11px] font-mono uppercase font-bold tracking-wider animate-tactical-pulse">
                         OPERATIONAL MANUAL // PROTOCOL 0x01
                     </span>
-                    <span class="text-[#00CED1] text-xs font-mono font-bold tracking-widest uppercase">// ISD-72 ARCHITECTURE</span>
+                    <span class="text-[#00CED1] text-xs font-mono font-bold tracking-widest uppercase">// SYSTEM ARCHITECTURE</span>
                 </div>
                 
                 <h1 class="text-2xl sm:text-4xl font-heading font-black text-white uppercase tracking-wider leading-tight">
@@ -402,7 +402,7 @@
             </div>
 
             <p class="text-sm text-[#94A3B8] leading-relaxed">
-                Clicking <span class="btn-crimson px-2 py-0.5 text-xs font-mono">+ Acquire Target</span> in the top navigation bar opens the Registration Protocol modal.
+                Clicking <span class="btn-crimson px-2 py-0.5 text-xs font-mono">Acquire Target</span> in the top navigation bar opens the Registration Protocol modal.
             </p>
 
             <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-4">
@@ -611,16 +611,16 @@
                 <!-- UI Method 1 -->
                 <div class="bg-[#1B2230] border-2 border-[#00CED1] p-5 space-y-2 relative overflow-hidden">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs font-mono text-[#00CED1] font-bold uppercase">[ METHOD 1: TOP NAV FLEET SWEEP ]</span>
+                        <span class="text-xs font-mono text-[#00CED1] font-bold uppercase">[ METHOD 1: TOP NAV WATCHLIST SWEEP ]</span>
                         <span class="px-2 py-0.5 bg-[#10141D] text-[#00CED1] text-xs font-mono font-bold border border-[#263245]">Endpoint: POST /api/watchlist/refresh-all</span>
                     </div>
-                    <h3 class="text-base font-heading font-bold text-white uppercase">"Poll Fleet" Full Surveillance Button</h3>
+                    <h3 class="text-base font-heading font-bold text-white uppercase">"Poll Watchlist" Full Surveillance Button</h3>
                     <p class="text-xs text-[#94A3B8] font-sans leading-relaxed">
-                        In the top navigation bar, click the <strong class="text-white font-mono">[ Poll Fleet ]</strong> button.
+                        In the top navigation bar, click the <strong class="text-white font-mono">[ Poll Watchlist ]</strong> button.
                     </p>
                     <ol class="list-decimal list-inside text-xs text-[#94A3B8] font-sans space-y-1 pl-1">
                         <li>The navigation icon animates into a high-speed radar spin.</li>
-                        <li>A tactical toast alert notifies: <code class="text-[#00CED1] font-mono">[SYS:TELEMETRY] Executing fleet price surveillance scan...</code>.</li>
+                        <li>A tactical toast alert notifies: <code class="text-[#00CED1] font-mono">[SYS:TELEMETRY] Executing price surveillance scan...</code>.</li>
                         <li>The backend Deal Engine iterates over every card in your database, executing live queries across TCGplayer, Mighty Meeple, and eBay.</li>
                         <li>Database price snapshots and timestamps are updated, active deals trigger Discord notifications, and the page automatically reloads with live prices.</li>
                     </ol>
@@ -670,7 +670,7 @@
                     </div>
                     <h3 class="text-base font-heading font-bold text-white uppercase">Automatic Initial Scan on Card Registration</h3>
                     <p class="text-xs text-[#94A3B8] font-sans leading-relaxed">
-                        Whenever a new card is added via "+ Acquire Target", the backend automatically executes an initial price scan before saving and returning response data, guaranteeing newly tracked cards display live market prices immediately.
+                        Whenever a new card is added via "Acquire Target", the backend automatically executes an initial price scan before saving and returning response data, guaranteeing newly tracked cards display live market prices immediately.
                     </p>
                 </div>
             </div>
@@ -959,7 +959,7 @@
                 <div class="bg-[#1B2230] border border-[#263245] p-4">
                     <div class="font-bold text-white font-mono uppercase text-sm text-[#00CED1]">// 2. Discord Webhooks Not Firing</div>
                     <p class="text-[#94A3B8] mt-1 leading-relaxed">
-                        Verify that <code class="text-white font-mono">DISCORD_WEBHOOK_URL</code> is properly formatted and added to both your local <code class="text-white font-mono">.env</code> and your GitHub repository Secrets. In the footer of the web app, click <strong class="text-white font-mono">[ Transmit Discord Comm Test ]</strong> to send an immediate verification ping.
+                        Verify that <code class="text-white font-mono">DISCORD_WEBHOOK_URL</code> is properly formatted and added to both your local <code class="text-white font-mono">.env</code> and your GitHub repository Secrets.
                     </p>
                 </div>
 
@@ -986,7 +986,7 @@
         <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div class="flex items-center space-x-3">
                 <span class="text-[#00CED1] font-bold font-heading">CHIMAERA</span>
-                <span>// ISD-72 TACTICAL MANUAL &bull; SECTOR MTG-CORE</span>
+                <span>// TACTICAL OPERATIONS MANUAL &bull; SECTOR MTG-CORE</span>
             </div>
             <div class="flex items-center space-x-4">
                 <a href="#top" class="text-[#00CED1] hover:text-white transition">

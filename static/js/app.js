@@ -1,5 +1,5 @@
 // =========================================================================
-// CHIMAERA // IMPERIAL TACTICAL INTELLIGENCE CLIENT TELEMETRY & CONTROLS
+// CHIMAERA // TACTICAL INTELLIGENCE CLIENT TELEMETRY & CONTROLS
 // =========================================================================
 
 let currentPrintsData = [];
@@ -60,11 +60,29 @@ function openAddCardModal() {
     }
 }
 
+function setModalTag(inputId, tagName) {
+    const input = document.getElementById(inputId);
+    if (input) {
+        input.value = tagName;
+        input.focus();
+    }
+}
+
+function filterByTag(tagName) {
+    const filter = document.getElementById("watchlist-filter-tag");
+    if (filter) {
+        filter.value = (tagName || "").toLowerCase().trim();
+        filterWatchlist();
+    }
+}
+
 function closeAddCardModal() {
     const modal = document.getElementById("modal-add-card");
     if (modal) {
         modal.classList.add("hidden");
         document.getElementById("card-search-input").value = "";
+        const tagInput = document.getElementById("card-tag-input");
+        if (tagInput) tagInput.value = "";
         document.getElementById("autocomplete-dropdown").classList.add("hidden");
         document.getElementById("print-selector-container").classList.add("hidden");
         document.getElementById("btn-submit-add-card").disabled = true;
@@ -73,7 +91,97 @@ function closeAddCardModal() {
     }
 }
 
-async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true) {
+function openBulkAddModal() {
+    const modal = document.getElementById("modal-bulk-add");
+    if (modal) {
+        modal.classList.remove("hidden");
+        const textarea = document.getElementById("bulk-cards-input");
+        if (textarea) {
+            textarea.focus();
+            updateBulkCount();
+        }
+    }
+}
+
+function closeBulkAddModal() {
+    const modal = document.getElementById("modal-bulk-add");
+    if (modal) {
+        modal.classList.add("hidden");
+        const tagInput = document.getElementById("bulk-tag-input");
+        if (tagInput) tagInput.value = "";
+        const progressBox = document.getElementById("bulk-progress-box");
+        if (progressBox) progressBox.classList.add("hidden");
+        const submitBtn = document.getElementById("btn-submit-bulk-add");
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = "<span>Register Targets</span>";
+        }
+    }
+}
+
+function switchToBulkAddModal() {
+    closeAddCardModal();
+    openBulkAddModal();
+}
+
+function switchToSingleAddModal() {
+    closeBulkAddModal();
+    openAddCardModal();
+}
+
+function parseCardNamesFromText(text) {
+    if (!text) return [];
+    const lines = text.split(/\r?\n/);
+    const rawNames = [];
+    lines.forEach(line => {
+        if (!line.trim()) return;
+        const parts = line.split(";");
+        parts.forEach(p => {
+            const cleaned = p.trim().replace(/^["']|["']$/g, "").trim();
+            if (cleaned) rawNames.push(cleaned);
+        });
+    });
+    const seen = new Set();
+    const unique = [];
+    rawNames.forEach(n => {
+        const lower = n.toLowerCase();
+        if (!seen.has(lower)) {
+            seen.add(lower);
+            unique.push(n);
+        }
+    });
+    return unique;
+}
+
+function updateBulkCount() {
+    const textarea = document.getElementById("bulk-cards-input");
+    const badge = document.getElementById("bulk-counter-badge");
+    if (!textarea || !badge) return;
+
+    const names = parseCardNamesFromText(textarea.value);
+    const count = names.length;
+    badge.textContent = `[ ${count} Target${count === 1 ? '' : 's'} Identified ]`;
+    if (count > 0) {
+        badge.className = "text-[11px] font-mono text-[#00CED1] font-bold bg-[#10141D] px-2 py-0.5 border border-[#00CED1]/40";
+    } else {
+        badge.className = "text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]";
+    }
+}
+
+function toggleBulkCustomTargetInput() {
+    const strategySelect = document.getElementById("bulk-target-strategy-select");
+    const container = document.getElementById("bulk-custom-price-container");
+    if (strategySelect && container) {
+        if (strategySelect.value === "custom") {
+            container.classList.remove("hidden");
+            document.getElementById("bulk-custom-target-input")?.focus();
+        } else {
+            container.classList.add("hidden");
+        }
+    }
+}
+
+async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true, currentTag = "") {
     const modal = document.getElementById("modal-edit-target");
     if (!modal) return;
 
@@ -81,6 +189,11 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
     document.getElementById("edit-target-card-name").textContent = `TARGET: ${name}`;
     document.getElementById("edit-target-price-input").value = currentTarget !== null ? currentTarget : "";
     
+    const tagInput = document.getElementById("edit-target-tag-input");
+    if (tagInput) {
+        tagInput.value = currentTag || "";
+    }
+
     const scopeElem = document.getElementById("edit-target-scope-label");
     if (scopeElem) {
         scopeElem.textContent = `Surveillance Scope: ${isAnyVersion ? 'Any Version (Card in General)' : 'Specific Printing'}`;
@@ -438,6 +551,7 @@ async function submitAddCard() {
     const finishSelect = document.getElementById("card-finish-select");
     const targetPriceInput = document.getElementById("card-target-price-input");
     const notifyMMCheckbox = document.getElementById("card-notify-mm-input");
+    const tagInput = document.getElementById("card-tag-input");
     const submitBtn = document.getElementById("btn-submit-add-card");
 
     if (!currentPrintsData || currentPrintsData.length === 0) {
@@ -446,6 +560,7 @@ async function submitAddCard() {
     }
 
     const selectedValue = printSelect ? printSelect.value : "any";
+    const tagValue = (tagInput ? tagInput.value : "").trim() || null;
     let payload = {};
 
     if (selectedValue === "any") {
@@ -460,6 +575,7 @@ async function submitAddCard() {
             finish: finishSelect.value,
             target_price: targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
+            tag: tagValue,
         };
     } else {
         const printObj = currentPrintsData.find(p => p.id === selectedValue);
@@ -477,6 +593,7 @@ async function submitAddCard() {
             finish: finishSelect.value,
             target_price: targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
+            tag: tagValue,
         };
     }
 
@@ -509,12 +626,109 @@ async function submitAddCard() {
 }
 
 // =========================================================================
+// Bulk Add Submit Action
+// =========================================================================
+async function submitBulkAdd() {
+    const textarea = document.getElementById("bulk-cards-input");
+    const finishSelect = document.getElementById("bulk-finish-select");
+    const strategySelect = document.getElementById("bulk-target-strategy-select");
+    const customTargetInput = document.getElementById("bulk-custom-target-input");
+    const notifyMMCheckbox = document.getElementById("bulk-notify-mm-input");
+    const tagInput = document.getElementById("bulk-tag-input");
+    const submitBtn = document.getElementById("btn-submit-bulk-add");
+    const progressBox = document.getElementById("bulk-progress-box");
+    const progressText = document.getElementById("bulk-progress-text");
+    const progressDetail = document.getElementById("bulk-progress-detail");
+
+    const rawText = textarea ? textarea.value : "";
+    const cardNames = parseCardNamesFromText(rawText);
+
+    if (cardNames.length === 0) {
+        showToast("Enter at least one card name separated by semicolons (;).", "error");
+        if (textarea) textarea.focus();
+        return;
+    }
+
+    const payload = {
+        card_names: cardNames,
+        finish: finishSelect ? finishSelect.value : "nonfoil",
+        target_strategy: strategySelect ? strategySelect.value : "none",
+        target_price: (strategySelect && strategySelect.value === "custom" && customTargetInput?.value) ? parseFloat(customTargetInput.value) : null,
+        notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
+        tag: (tagInput ? tagInput.value : "").trim() || null,
+    };
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+            <svg class="w-3.5 h-3.5 animate-spin mr-1.5" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span>Processing Batch (${cardNames.length})...</span>
+        `;
+    }
+
+    if (progressBox) progressBox.classList.remove("hidden");
+    if (progressText) progressText.textContent = `Acquiring ${cardNames.length} Targets via Scryfall Collection...`;
+    if (progressDetail) progressDetail.textContent = "Connecting to market telemetry & running real-time vendor price surveillance...";
+
+    try {
+        const res = await fetch("/api/watchlist/bulk-add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            const added = data.added_count || 0;
+            const skipped = data.skipped_count || 0;
+            const failed = data.failed_count || 0;
+
+            let toastType = "success";
+            if (added === 0 && failed > 0) toastType = "error";
+            else if (failed > 0 || skipped > 0) toastType = "info";
+
+            showToast(data.message || `Successfully added ${added} targets!`, toastType);
+
+            if (added > 0) {
+                setTimeout(() => window.location.reload(), 900);
+            } else {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = "<span>Register Targets</span>";
+                }
+                if (progressBox) progressBox.classList.add("hidden");
+            }
+        } else {
+            showToast(data.error || "Failed to process bulk acquisition.", "error");
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = "<span>Register Targets</span>";
+            }
+            if (progressBox) progressBox.classList.add("hidden");
+        }
+    } catch (err) {
+        console.error("Bulk add error:", err);
+        showToast("Communication failure during bulk acquisition.", "error");
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = "<span>Register Targets</span>";
+        }
+        if (progressBox) progressBox.classList.add("hidden");
+    }
+}
+
+// =========================================================================
 // Edit Target Price & Alert Settings Submit Action
 // =========================================================================
 async function submitEditTarget() {
     const itemId = document.getElementById("edit-target-item-id").value;
     const targetPriceVal = document.getElementById("edit-target-price-input").value;
     const mmAlertChecked = document.getElementById("edit-target-mm-alert")?.checked ?? true;
+    const tagInput = document.getElementById("edit-target-tag-input");
+    const tagVal = (tagInput ? tagInput.value : "").trim();
 
     try {
         const res = await fetch(`/api/watchlist/update-target/${itemId}`, {
@@ -523,6 +737,7 @@ async function submitEditTarget() {
             body: JSON.stringify({
                 target_price: targetPriceVal ? parseFloat(targetPriceVal) : null,
                 notify_mm_stock: mmAlertChecked,
+                tag: tagVal,
             }),
         });
 
@@ -600,16 +815,16 @@ async function triggerRefreshAll() {
     if (icon) icon.classList.add("animate-spin-custom");
     if (btn) btn.disabled = true;
 
-    showToast("Executing fleet price surveillance scan...", "info");
+    showToast("Executing price surveillance scan...", "info");
 
     try {
         const res = await fetch("/api/watchlist/refresh-all", { method: "POST" });
         const data = await res.json();
         if (res.ok) {
-            showToast(data.message || "Fleet telemetry synchronized", "success");
+            showToast(data.message || "Telemetry synchronized", "success");
             setTimeout(() => window.location.reload(), 600);
         } else {
-            showToast(data.error || "Fleet poll failed", "error");
+            showToast(data.error || "Price poll failed", "error");
         }
     } catch (err) {
         console.error("Refresh all error:", err);
@@ -657,32 +872,41 @@ async function deleteCard(itemId, cardName) {
 function filterWatchlist() {
     const searchVal = (document.getElementById("watchlist-search")?.value || "").toLowerCase().trim();
     const dealFilter = document.getElementById("watchlist-filter-deal")?.value || "all";
+    const tagFilter = (document.getElementById("watchlist-filter-tag")?.value || "all").toLowerCase().trim();
     const cards = document.querySelectorAll(".watchlist-card");
 
     cards.forEach(card => {
         const name = card.dataset.name || "";
         const set = card.dataset.set || "";
+        const tag = (card.dataset.tag || "").toLowerCase().trim();
         const isDeal = card.dataset.isDeal === "true";
         const inStock = card.dataset.inStock === "true";
         const mmStock = card.dataset.mmStock === "true";
         const isAny = card.dataset.isAny === "true";
 
-        const matchesSearch = !searchVal || name.includes(searchVal) || set.includes(searchVal);
-        let matchesFilter = true;
+        const matchesSearch = !searchVal || name.includes(searchVal) || set.includes(searchVal) || tag.includes(searchVal);
+        let matchesDeal = true;
 
         if (dealFilter === "deals") {
-            matchesFilter = isDeal;
+            matchesDeal = isDeal;
         } else if (dealFilter === "in_stock") {
-            matchesFilter = inStock;
+            matchesDeal = inStock;
         } else if (dealFilter === "mm_in_stock") {
-            matchesFilter = mmStock;
+            matchesDeal = mmStock;
         } else if (dealFilter === "any_version") {
-            matchesFilter = isAny;
+            matchesDeal = isAny;
         } else if (dealFilter === "specific_print") {
-            matchesFilter = !isAny;
+            matchesDeal = !isAny;
         }
 
-        if (matchesSearch && matchesFilter) {
+        let matchesTag = true;
+        if (tagFilter === "__untagged__") {
+            matchesTag = !tag;
+        } else if (tagFilter !== "all") {
+            matchesTag = (tag === tagFilter);
+        }
+
+        if (matchesSearch && matchesDeal && matchesTag) {
             card.classList.remove("hidden");
         } else {
             card.classList.add("hidden");

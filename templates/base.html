@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Chimaera // Imperial MTG Market Surveillance{% endblock %}</title>
+    <title>{% block title %}Chimaera // MTG Market Surveillance{% endblock %}</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -58,7 +58,7 @@
 </head>
 <body class="bg-[#10141D] text-[#F1F5F9] min-h-screen flex flex-col font-sans text-sm antialiased selection:bg-[#DC143C] selection:text-white">
 
-    <!-- Imperial Top Tactical Navigation -->
+    <!-- Top Tactical Navigation -->
     <nav class="bg-[#1B2230] border-b border-[#263245] sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
@@ -66,12 +66,12 @@
                 <div class="flex items-center space-x-6">
                     <a href="/" class="flex items-center space-x-3 group">
                         <div class="h-10 w-16 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#00CED1]">
-                            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship Sigil" class="h-full w-full object-contain filter contrast-125">
+                            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
                         </div>
                         <div>
                             <div class="flex items-center space-x-2">
                                 <span class="font-heading font-black text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
-                                <span class="text-[11px] px-1.5 py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">ISD-72</span>
+                                <span class="text-[11px] px-1.5 py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">v1.0</span>
                             </div>
                             <span class="text-[11px] font-mono tracking-widest text-[#00CED1] uppercase block mt-0.5 font-semibold">Tactical Intelligence // Market Surveillance</span>
                         </div>
@@ -110,18 +110,25 @@
                         <span id="nav-cadence-label" class="font-mono uppercase font-semibold hidden xl:inline">Cadence</span>
                     </button>
 
-                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1.5" title="Poll Fleet Watchlist">
+                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1.5" title="Poll Watchlist">
                         <svg id="refresh-all-icon" class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
-                        <span class="font-mono tracking-wider uppercase font-semibold hidden sm:inline">Poll Fleet</span>
+                        <span class="font-mono tracking-wider uppercase font-semibold hidden sm:inline">Poll Watchlist</span>
+                    </button>
+
+                    <button onclick="openBulkAddModal()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1.5 text-white hover:border-[#00CED1] border-[#263245]" title="Bulk Register Targets (Semicolon Delimited)">
+                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                        </svg>
+                        <span class="font-mono uppercase font-bold text-xs tracking-wider hidden sm:inline">Bulk Add</span>
                     </button>
 
                     <button onclick="openAddCardModal()" class="btn-crimson px-3.5 py-2 text-xs flex items-center space-x-1.5 shadow-none">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
                         </svg>
-                        <span>+ Acquire</span>
+                        <span>Acquire</span>
                     </button>
 
                     <!-- User Identity Pill & Logout -->
@@ -182,7 +189,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Imperial Tactical Telemetry Footer -->
+    <!-- Tactical Telemetry Footer -->
     <footer class="bg-[#1B2230] border-t border-[#263245] py-4 text-xs font-mono text-[#94A3B8]">
         <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div class="flex items-center space-x-3">
@@ -193,9 +200,6 @@
                 <a href="/guide" class="text-[#94A3B8] hover:text-[#00CED1] transition tracking-wider uppercase text-xs font-medium">
                     [ Operations Manual & Guide ]
                 </a>
-                <button onclick="testDiscordWebhook()" class="text-[#00CED1] hover:text-white transition tracking-wider uppercase text-xs underline font-medium">
-                    [ Transmit Discord Comm Test ]
-                </button>
             </div>
         </div>
     </footer>
@@ -203,7 +207,7 @@
     <!-- Toast Notification Container -->
     <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 
-    <!-- Add Card Modal (Imperial Target Registration) -->
+    <!-- Add Card Modal (Target Registration) -->
     <div id="modal-add-card" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-[#1B2230] border-2 border-[#263245] max-w-lg w-full p-6 relative">
             <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
@@ -219,7 +223,7 @@
                 <div>
                     <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Card Nomenclature / Search Query</label>
                     <div class="relative">
-                        <input type="text" id="card-search-input" placeholder="e.g. Imperial Seal, Force of Will, Black Lotus..." 
+                        <input type="text" id="card-search-input" placeholder="e.g. Rhystic Study, Force of Will, Black Lotus..." 
                             class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-sm text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono"
                             autocomplete="off">
                         <div id="autocomplete-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#10141D] border border-[#3D4F6B] max-h-56 overflow-y-auto hidden z-50 shadow-2xl"></div>
@@ -250,6 +254,25 @@
                             <input type="number" id="card-target-price-input" step="0.01" min="0" placeholder="e.g. 15.00" 
                                 class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
                         </div>
+                    </div>
+
+                    <!-- Tag / Deck / Purpose -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Tag / Deck / Category (Optional)</label>
+                            <span class="text-[10px] font-mono text-[#64748B] uppercase">[ Select or Type New ]</span>
+                        </div>
+                        <input type="text" id="card-tag-input" list="user-tags-datalist" placeholder="e.g. Atraxa Commander, Modern Burn, Cube..." 
+                            class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono">
+                        {% if user_tags %}
+                        <div class="flex flex-wrap gap-1.5 mt-1.5">
+                            {% for tag in user_tags %}
+                            <button type="button" onclick="setModalTag('card-tag-input', '{{ tag|replace("'", "\\'") }}')" class="text-[10px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#C084FC] hover:text-white border border-[#9333EA]/40 px-2 py-0.5 transition">
+                                🏷️ {{ tag }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
 
                     <!-- Price Intelligence & 1-Click Good Price Guidance Panel -->
@@ -294,21 +317,141 @@
                     </div>
                 </div>
 
-                <div class="flex justify-end space-x-2 pt-3 border-t border-[#263245]">
-                    <button type="button" onclick="closeAddCardModal()" class="btn-bridge px-4 py-2 text-xs">Cancel</button>
-                    <button type="button" id="btn-submit-add-card" onclick="submitAddCard()" disabled class="btn-crimson px-4 py-2 text-xs">Add to Watchlist</button>
+                <div class="flex items-center justify-between pt-3 border-t border-[#263245]">
+                    <button type="button" onclick="switchToBulkAddModal()" class="text-xs font-mono text-[#94A3B8] hover:text-[#00CED1] underline uppercase">
+                        &rarr; Switch to Bulk Add
+                    </button>
+                    <div class="flex space-x-2">
+                        <button type="button" onclick="closeAddCardModal()" class="btn-bridge px-4 py-2 text-xs">Cancel</button>
+                        <button type="button" id="btn-submit-add-card" onclick="submitAddCard()" disabled class="btn-crimson px-4 py-2 text-xs">Add to Watchlist</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Edit Target Price Modal -->
+    <!-- Bulk Add Cards Modal (Batch Target Registration) -->
+    <div id="modal-bulk-add" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-xl w-full p-6 relative">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">PROTOCOL // 0x4B</span>
+                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[10px] px-1.5 py-0.2 font-mono font-bold uppercase">BATCH REGISTRATION</span>
+                    </div>
+                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-0.5">Bulk Target Acquisition Protocol</h3>
+                </div>
+                <button onclick="closeBulkAddModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Textarea for semicolon-separated card names -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Target Card Manifest (Semicolon Delimited)</label>
+                        <span id="bulk-counter-badge" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">[ 0 Targets Identified ]</span>
+                    </div>
+                    <textarea id="bulk-cards-input" rows="5" placeholder="Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama"
+                        class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono leading-relaxed"
+                        oninput="updateBulkCount()"></textarea>
+                    <p class="text-[11px] text-[#64748B] font-mono mt-1">
+                        Separate card names using semicolons (<code class="text-[#00CED1] font-bold">;</code>) or line breaks. Commas inside card names (e.g. <em>Omnath, Locus of Creation</em>) are fully preserved.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <!-- Finish Variant -->
+                    <div>
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Finish Variant</label>
+                        <select id="bulk-finish-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
+                            <option value="nonfoil" selected>Non-foil</option>
+                            <option value="foil">Foil</option>
+                            <option value="etched">Etched Foil</option>
+                        </select>
+                    </div>
+
+                    <!-- Target Price Strategy -->
+                    <div>
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold Strategy</label>
+                        <select id="bulk-target-strategy-select" onchange="toggleBulkCustomTargetInput()" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
+                            <option value="none" selected>No Target Threshold (Price Monitor Only)</option>
+                            <option value="good_deal_10">★ Good Deal (-10% of Scryfall Market)</option>
+                            <option value="great_deal_20">🔥 Great Deal (-20% of Scryfall Market)</option>
+                            <option value="custom">Custom Fixed Target ($ USD)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Custom Target Price Input (hidden unless 'custom' selected) -->
+                <div id="bulk-custom-price-container" class="hidden bg-[#10141D] p-3 border border-[#263245]">
+                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Fixed Target Threshold For All Targets ($ USD)</label>
+                    <input type="number" id="bulk-custom-target-input" step="0.01" min="0" placeholder="e.g. 5.00"
+                        class="w-full bg-[#1B2230] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
+                </div>
+
+                <!-- Tag / Deck / Purpose for Bulk Import -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Tag / Deck / Category (Optional)</label>
+                        <span class="text-[10px] font-mono text-[#64748B] uppercase">[ Applied To All Targets ]</span>
+                    </div>
+                    <input type="text" id="bulk-tag-input" list="user-tags-datalist" placeholder="e.g. Atraxa Commander, Simic Lands, Cube..." 
+                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono">
+                    {% if user_tags %}
+                    <div class="flex flex-wrap gap-1.5 mt-1.5">
+                        {% for tag in user_tags %}
+                        <button type="button" onclick="setModalTag('bulk-tag-input', '{{ tag|replace("'", "\\'") }}')" class="text-[10px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#C084FC] hover:text-white border border-[#9333EA]/40 px-2 py-0.5 transition">
+                            🏷️ {{ tag }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Mighty Meeple Alert Checkbox -->
+                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                    <input type="checkbox" id="bulk-notify-mm-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                    <label for="bulk-notify-mm-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                        Send alert if cards become in stock at Mighty Meeple
+                    </label>
+                </div>
+
+                <!-- Status & Progress Feedback Box -->
+                <div id="bulk-progress-box" class="hidden bg-[#10141D] border border-[#00CED1]/40 p-3 font-mono text-xs space-y-1.5">
+                    <div class="flex items-center space-x-2 text-[#00CED1]">
+                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span id="bulk-progress-text" class="font-bold uppercase tracking-wider">Processing batch acquisition...</span>
+                    </div>
+                    <div id="bulk-progress-detail" class="text-[11px] text-[#94A3B8]">
+                        Resolving canonical identities via Scryfall batch collection and polling vendor pricing...
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-3 border-t border-[#263245]">
+                    <button type="button" onclick="switchToSingleAddModal()" class="text-xs font-mono text-[#94A3B8] hover:text-[#00CED1] underline uppercase">
+                        &larr; Single Target Mode
+                    </button>
+                    <div class="flex space-x-2">
+                        <button type="button" onclick="closeBulkAddModal()" class="btn-bridge px-4 py-2 text-xs">Cancel</button>
+                        <button type="button" id="btn-submit-bulk-add" onclick="submitBulkAdd()" class="btn-crimson px-4 py-2 text-xs flex items-center space-x-1.5">
+                            <span>Register Targets</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Target Price & Tag Modal -->
     <div id="modal-edit-target" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-6 relative">
             <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
                 <div>
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">RECALIBRATE</span>
-                    <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold & Alerts</h3>
+                    <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold, Tag & Alerts</h3>
                 </div>
                 <button onclick="closeEditTargetModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
@@ -323,6 +466,25 @@
                     <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold Price ($ USD)</label>
                     <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
                         class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
+                </div>
+
+                <!-- Tag / Deck / Purpose for Edit Target -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Tag / Deck / Category</label>
+                        <span class="text-[10px] font-mono text-[#64748B] uppercase">[ Select or Type New ]</span>
+                    </div>
+                    <input type="text" id="edit-target-tag-input" list="user-tags-datalist" placeholder="e.g. Atraxa Commander, Modern Burn..." 
+                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono">
+                    {% if user_tags %}
+                    <div class="flex flex-wrap gap-1.5 mt-1.5">
+                        {% for tag in user_tags %}
+                        <button type="button" onclick="setModalTag('edit-target-tag-input', '{{ tag|replace("'", "\\'") }}')" class="text-[10px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#C084FC] hover:text-white border border-[#9333EA]/40 px-2 py-0.5 transition">
+                            🏷️ {{ tag }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- Edit Modal 1-Click Presets -->
@@ -359,6 +521,15 @@
         </div>
     </div>
 
+    <!-- Global Datalist for Tags Autocomplete -->
+    <datalist id="user-tags-datalist">
+        {% if user_tags %}
+        {% for tag in user_tags %}
+        <option value="{{ tag }}">
+        {% endfor %}
+        {% endif %}
+    </datalist>
+
     <!-- Surveillance Protocol & Cadence Settings Modal -->
     <div id="modal-cadence-settings" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-6 relative">
@@ -378,7 +549,7 @@
                         <span id="telemetry-worker-status" class="font-bold text-[#00CED1] uppercase">[ STANDALONE READY ]</span>
                     </div>
                     <div class="flex items-center justify-between">
-                        <span class="text-[#94A3B8]">Last Fleet Sweep:</span>
+                        <span class="text-[#94A3B8]">Last Sweep:</span>
                         <span id="telemetry-last-poll" class="text-white">--</span>
                     </div>
                     <div class="border-t border-[#263245]/60 pt-1.5 text-[11px] text-[#94A3B8]" id="telemetry-status-message">

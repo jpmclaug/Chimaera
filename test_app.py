@@ -1,6 +1,6 @@
 import unittest
 import json
-from app import create_app
+from app import create_app, parse_bulk_card_names
 from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting
 from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider
 from deal_engine import DealEngine
@@ -138,16 +138,49 @@ class ChimeraTestSuite(unittest.TestCase):
         self.assertIn("product_url", res)
 
     def test_04_ebay_provider_url_builder(self):
-        """Tests eBay URL construction and fallback."""
+        """Tests eBay URL construction, proxy filtering, shipping sort parameters, and title validation."""
         ebay = EbayProvider()
+
+        # 1. Standard search URL with proxy exclusions and shipping sort
         url = ebay.build_search_url("Mox Diamond", set_code="STH", finish="foil")
         self.assertIn("Mox+Diamond", url)
         self.assertIn("STH", url)
         self.assertIn("LH_BIN=1", url)
+        self.assertIn("_sop=15", url)
+        self.assertIn("LH_PrefLoc=1", url)
+        self.assertIn("proxy", url)
+        self.assertIn("custom", url)
 
+        # 2. Dynamic keyword preservation: 'Pack Leader' should NOT exclude 'pack'
+        query_pack = ebay.build_search_query("Pack Leader")
+        self.assertIn('"Pack Leader"', query_pack)
+        self.assertIn("-(", query_pack)
+        # Verify 'pack' is not in the negative exclusion group
+        negative_group = query_pack[query_pack.index("-("):]
+        self.assertNotIn("pack,", negative_group)
+        self.assertNotIn(",pack", negative_group)
+        self.assertIn("proxy", negative_group)
+
+        # 3. Double-faced / Split cards use primary face
+        query_dfc = ebay.build_search_query("Fable of the Mirror-Breaker // Reflections of Kiki-Jiki", set_code="NEO")
+        self.assertIn('"Fable of the Mirror-Breaker"', query_dfc)
+        self.assertNotIn("//", query_dfc)
+
+        # 4. Proxy and Junk Title Detector
+        self.assertTrue(ebay._is_proxy_or_junk("Ragavan, Nimble Pilferer MTG Proxy Custom Card Foil", "Ragavan, Nimble Pilferer"))
+        self.assertTrue(ebay._is_proxy_or_junk("Sol Ring Art Card Modern Horizons", "Sol Ring"))
+        self.assertTrue(ebay._is_proxy_or_junk("Black Lotus Playtest Reproduction Fake", "Black Lotus"))
+        self.assertTrue(ebay._is_proxy_or_junk("100 MTG Card Lot with chance of Mox Diamond", "Mox Diamond"))
+        self.assertTrue(ebay._is_proxy_or_junk("Force of Will MTG Playmat", "Force of Will"))
+        self.assertFalse(ebay._is_proxy_or_junk("Ragavan, Nimble Pilferer - Modern Horizons 2 - NM", "Ragavan, Nimble Pilferer"))
+        self.assertFalse(ebay._is_proxy_or_junk("Pack Leader - M21 - Mint", "Pack Leader"))
+
+        # 5. Fallback search_card
         res = ebay.search_card("Mox Diamond", reference_price=500.0)
         self.assertEqual(res["vendor_name"], "eBay")
         self.assertGreater(res["price"], 0.0)
+        self.assertIn("_sop=15", res["product_url"])
+        self.assertIn("LH_PrefLoc=1", res["product_url"])
 
     def test_05_api_endpoints_and_workflow(self):
         """Tests end-to-end API routes: add card, edit target, refresh, delete."""
@@ -502,7 +535,7 @@ class ChimeraTestSuite(unittest.TestCase):
 
             user = User(
                 email="scout@gmail.com",
-                name="Fleet Scout",
+                name="Field Scout",
                 is_admin=False,
                 is_active=True,
             )
@@ -511,7 +544,7 @@ class ChimeraTestSuite(unittest.TestCase):
 
             u_dict = user.to_dict()
             self.assertEqual(u_dict["email"], "scout@gmail.com")
-            self.assertEqual(u_dict["name"], "Fleet Scout")
+            self.assertEqual(u_dict["name"], "Field Scout")
             self.assertFalse(u_dict["is_admin"])
             self.assertTrue(u_dict["is_active"])
             self.assertEqual(u_dict["card_count"], 0)
@@ -592,8 +625,8 @@ class ChimeraTestSuite(unittest.TestCase):
         resp = self.client.post(
             "/api/admin/whitelist/add",
             data=json.dumps({
-                "email": "admiral_piett@gmail.com",
-                "notes": "Fleet Commander",
+                "email": "lead_analyst@gmail.com",
+                "notes": "Lead Analyst",
                 "is_admin": True,
             }),
             content_type="application/json",
@@ -612,7 +645,7 @@ class ChimeraTestSuite(unittest.TestCase):
         resp = self.client.post(f"/api/admin/whitelist/delete/{new_id}")
         self.assertEqual(resp.status_code, 200)
         with self.app.app_context():
-            self.assertFalse(AllowedEmail.is_allowed("admiral_piett@gmail.com"))
+            self.assertFalse(AllowedEmail.is_allowed("lead_analyst@gmail.com"))
 
         # Admin cannot revoke their own clearance
         with self.app.app_context():
@@ -672,6 +705,204 @@ class ChimeraTestSuite(unittest.TestCase):
         self.assertIn(b"Mox Pearl", resp.data)
         self.assertNotIn(b"Underground Sea", resp.data)
 
+    def test_18_bulk_card_name_parser(self):
+        """Tests parsing of semicolon-separated and multi-line card names."""
+        # 1. Exact prompt query (semicolon separated)
+        input_str = "Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama"
+        parsed = parse_bulk_card_names(input_str)
+        self.assertEqual(len(parsed), 9)
+        self.assertEqual(parsed[0], "Simic Growth Chamber")
+        self.assertEqual(parsed[8], "Bant Panorama")
+
+        # 2. Preserves commas inside card names
+        comma_input = "Omnath, Locus of Creation; Ragavan, Nimble Pilferer; Atraxa, Praetors' Voice"
+        parsed_comma = parse_bulk_card_names(comma_input)
+        self.assertEqual(len(parsed_comma), 3)
+        self.assertEqual(parsed_comma[0], "Omnath, Locus of Creation")
+        self.assertEqual(parsed_comma[1], "Ragavan, Nimble Pilferer")
+        self.assertEqual(parsed_comma[2], "Atraxa, Praetors' Voice")
+
+        # 3. Handles mixed newlines, trailing semicolons, quotes, and deduplication
+        messy_input = """
+        "Lightning Bolt"; Counterspell;
+        Lightning Bolt; 
+        "Force of Will"
+        
+        Sol Ring;
+        """
+        parsed_messy = parse_bulk_card_names(messy_input)
+        self.assertEqual(parsed_messy, ["Lightning Bolt", "Counterspell", "Force of Will", "Sol Ring"])
+
+        # 4. Empty input
+        self.assertEqual(parse_bulk_card_names(""), [])
+        self.assertEqual(parse_bulk_card_names("   ;  ;; \n\n  "), [])
+
+    def test_19_scryfall_batch_collection(self):
+        """Tests live Scryfall /cards/collection batch endpoint."""
+        scryfall = ScryfallProvider()
+        test_cards = ["Simic Growth Chamber", "Tangled Islet", "Rimewood Falls"]
+        found, not_found = scryfall.get_cards_collection(test_cards)
+        self.assertEqual(len(found), 3)
+        self.assertEqual(len(not_found), 0)
+        self.assertIn("simic growth chamber", found)
+        self.assertTrue(found["simic growth chamber"]["image_uri"].startswith("http"))
+        self.assertIsNotNone(found["simic growth chamber"]["id"])
+
+    def test_20_bulk_add_api_endpoint(self):
+        """Tests /api/watchlist/bulk-add with semicolon separated card manifest."""
+        with self.app.app_context():
+            payload = {
+                "cards": "Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama",
+                "finish": "nonfoil",
+                "target_strategy": "none",
+                "notify_mm_stock": True,
+            }
+            resp = self.client.post("/api/watchlist/bulk-add", data=json.dumps(payload), content_type="application/json")
+            self.assertEqual(resp.status_code, 201)
+            data = resp.get_json()
+            self.assertEqual(data["added_count"], 9)
+            self.assertEqual(data["skipped_count"], 0)
+            self.assertEqual(data["failed_count"], 0)
+            self.assertEqual(len(data["added"]), 9)
+
+            # Verify in DB
+            db_cards = WatchlistItem.query.filter_by(user_id=self.admin_user.id).all()
+            self.assertEqual(len(db_cards), 9)
+            for card in db_cards:
+                self.assertTrue(card.is_any_version)
+                self.assertEqual(card.finish, "nonfoil")
+                self.assertTrue(card.notify_mm_stock)
+                self.assertIsNotNone(card.image_uri)
+
+    def test_21_bulk_add_duplicates_and_presets(self):
+        """Tests duplicate skipping, target pricing presets, and validation in bulk add."""
+        with self.app.app_context():
+            # 1. Bulk add first time
+            p1 = {
+                "cards": "Sol Ring; Mana Vault",
+                "finish": "nonfoil",
+                "target_strategy": "good_deal_10",
+                "notify_mm_stock": True,
+            }
+            resp1 = self.client.post("/api/watchlist/bulk-add", data=json.dumps(p1), content_type="application/json")
+            self.assertEqual(resp1.status_code, 201)
+            d1 = resp1.get_json()
+            self.assertEqual(d1["added_count"], 2)
+
+            # Target prices should be computed from Scryfall market price (-10%)
+            sol_ring = WatchlistItem.query.filter_by(user_id=self.admin_user.id, name="Sol Ring").first()
+            self.assertIsNotNone(sol_ring)
+
+            # 2. Re-adding the same cards should skip them
+            resp2 = self.client.post("/api/watchlist/bulk-add", data=json.dumps(p1), content_type="application/json")
+            self.assertEqual(resp2.status_code, 200)
+            d2 = resp2.get_json()
+            self.assertEqual(d2["added_count"], 0)
+            self.assertEqual(d2["skipped_count"], 2)
+
+            # 3. Empty input should return 400
+            resp3 = self.client.post("/api/watchlist/bulk-add", data=json.dumps({"cards": ""}), content_type="application/json")
+            self.assertEqual(resp3.status_code, 400)
+
+    def test_22_card_tagging_single_and_bulk(self):
+        """Tests card tagging in WatchlistItem model, single add, and bulk add."""
+        with self.app.app_context():
+            # 1. Single card acquisition with tag
+            payload_single = {
+                "name": "Doubling Season",
+                "is_any_version": True,
+                "finish": "nonfoil",
+                "target_price": 40.00,
+                "tag": "Atraxa Commander",
+            }
+            resp = self.client.post("/api/watchlist/add", data=json.dumps(payload_single), content_type="application/json")
+            self.assertEqual(resp.status_code, 201)
+            data = resp.get_json()
+            self.assertEqual(data["card"]["tag"], "Atraxa Commander")
+
+            # Check DB item
+            card = WatchlistItem.query.filter_by(user_id=self.admin_user.id, name="Doubling Season").first()
+            self.assertIsNotNone(card)
+            self.assertEqual(card.tag, "Atraxa Commander")
+            self.assertEqual(card.to_dict()["tag"], "Atraxa Commander")
+
+            # 2. Bulk acquisition with tag
+            payload_bulk = {
+                "cards": "Breeding Pool; Watery Grave; Overgrown Tomb",
+                "finish": "nonfoil",
+                "target_strategy": "none",
+                "tag": "Shocklands",
+            }
+            resp_bulk = self.client.post("/api/watchlist/bulk-add", data=json.dumps(payload_bulk), content_type="application/json")
+            self.assertEqual(resp_bulk.status_code, 201)
+            b_data = resp_bulk.get_json()
+            self.assertEqual(b_data["added_count"], 3)
+            for item in b_data["added"]:
+                self.assertEqual(item["tag"], "Shocklands")
+
+            # Query all shocklands from DB
+            shocklands = WatchlistItem.query.filter_by(user_id=self.admin_user.id, tag="Shocklands").all()
+            self.assertEqual(len(shocklands), 3)
+
+    def test_23_tag_update_api_and_filtering(self):
+        """Tests tag update endpoints, distinct tags API, and view template tags context."""
+        with self.app.app_context():
+            # Create a card for testing
+            card = WatchlistItem(
+                user_id=self.admin_user.id,
+                name="Sylvan Library",
+                finish="nonfoil",
+                target_price=25.00,
+                tag="Cube Target",
+            )
+            db.session.add(card)
+            db.session.commit()
+            card_id = card.id
+
+            # 1. Update tag via /api/watchlist/update-target/<id>
+            resp1 = self.client.post(
+                f"/api/watchlist/update-target/{card_id}",
+                data=json.dumps({"target_price": 24.00, "tag": "Modern Green"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp1.status_code, 200)
+            self.assertEqual(resp1.get_json()["card"]["tag"], "Modern Green")
+
+            # 2. Quick update tag via /api/watchlist/update-tag/<id>
+            resp2 = self.client.post(
+                f"/api/watchlist/update-tag/{card_id}",
+                data=json.dumps({"tag": "High Priority"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp2.status_code, 200)
+            self.assertEqual(resp2.get_json()["tag"], "High Priority")
+
+            # 3. Clear tag via /api/watchlist/update-tag/<id>
+            resp3 = self.client.post(
+                f"/api/watchlist/update-tag/{card_id}",
+                data=json.dumps({"tag": ""}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp3.status_code, 200)
+            self.assertIsNone(resp3.get_json()["tag"])
+
+            # Set tag back to test tag listing API
+            card.tag = "Vintage Cube"
+            db.session.commit()
+
+            # 4. Fetch distinct tags list
+            resp_tags = self.client.get("/api/watchlist/tags")
+            self.assertEqual(resp_tags.status_code, 200)
+            tags_list = resp_tags.get_json()["tags"]
+            self.assertIn("Vintage Cube", tags_list)
+
+            # 5. Verify index view renders tag filter and tag badge
+            resp_index = self.client.get("/")
+            self.assertEqual(resp_index.status_code, 200)
+            self.assertIn(b"Vintage Cube", resp_index.data)
+            self.assertIn(b"watchlist-filter-tag", resp_index.data)
+
 
 if __name__ == "__main__":
     unittest.main()
+

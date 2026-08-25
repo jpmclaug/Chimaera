@@ -8,12 +8,12 @@
     <!-- Hero Header Banner -->
     <div class="bg-[#1B2230] border-2 border-[#263245] p-6 sm:p-8 relative overflow-hidden">
         <div class="absolute -right-10 -bottom-10 opacity-10 pointer-events-none w-80">
-            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Flagship" class="w-full object-contain filter contrast-150">
+            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Logo" class="w-full object-contain filter contrast-150">
         </div>
         <div class="relative z-10 max-w-4xl">
             <div class="flex items-center space-x-2.5 mb-2">
                 <span class="px-2 py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] text-[11px] font-mono uppercase font-bold tracking-wider">DOC:0x99 // OPERATIONAL DIRECTIVE</span>
-                <span class="text-[#00CED1] text-xs font-mono font-bold tracking-widest uppercase">// ISD-72 TACTICAL MANUAL</span>
+                <span class="text-[#00CED1] text-xs font-mono font-bold tracking-widest uppercase">// TACTICAL OPERATIONS MANUAL</span>
             </div>
             <h1 class="text-2xl sm:text-3xl font-heading font-black text-white uppercase tracking-wider leading-tight">
                 Chimaera Market Surveillance // Tactical Field Manual
@@ -206,7 +206,7 @@
                 <span>Target Registration Protocol (Add Card Modal 0x4A)</span>
             </h3>
             <p class="text-sm text-[#94A3B8] leading-relaxed">
-                Clicking the crimson <span class="text-white font-bold bg-[#DC143C] px-2 py-0.5 text-xs font-mono">+ Acquire Target</span> button in the top navigation opens the registration protocol:
+                Clicking the crimson <span class="text-white font-bold bg-[#DC143C] px-2 py-0.5 text-xs font-mono">Acquire Target</span> button in the top navigation opens the registration protocol:
             </p>
 
             <div class="space-y-3 font-sans text-xs">
@@ -221,10 +221,10 @@
                 <div class="flex items-start space-x-3 bg-[#10141D] p-3 border border-[#263245]">
                     <span class="px-2 py-0.5 bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] font-mono font-bold">STEP 2</span>
                     <div>
-                        <div class="font-bold text-white">Select Tracking Scope: "Any Version" vs Specific Printing</div>
+                        <div class="font-bold text-white">Select Version Scope (Any Version vs Specific Printing)</div>
                         <div class="text-[#94A3B8] mt-0.5 leading-relaxed">
-                            <strong>★ Any Version (Default):</strong> Selects the top option. Chimaera evaluates every printed edition of the card across MTG history and continuously tracks the absolute lowest market price regardless of set.<br>
-                            <strong>Specific Edition:</strong> Pick any exact set printing (e.g. <em>Modern Horizons 3 #123</em>, <em>Alpha #45</em>, <em>Secret Lair Drop</em>) to monitor that specific collector variant.
+                            <strong class="text-white">Any Version (Default):</strong> Evaluates deals against the absolute lowest live price across every printing of that card in existence. Perfect for commander players wanting the cheapest playable copy.<br>
+                            <strong class="text-white">Specific Printing:</strong> Select a particular set (e.g. <em>Limited Edition Alpha [LEA]</em> or <em>Double Masters [2XM]</em>) to strictly monitor prices for that exact printing.
                         </div>
                     </div>
                 </div>
@@ -232,8 +232,10 @@
                 <div class="flex items-start space-x-3 bg-[#10141D] p-3 border border-[#263245]">
                     <span class="px-2 py-0.5 bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] font-mono font-bold">STEP 3</span>
                     <div>
-                        <div class="font-bold text-white">Choose Finish & Target Price</div>
-                        <div class="text-[#94A3B8] mt-0.5">Choose <strong>Non-foil</strong>, <strong>Foil</strong>, or <strong>Etched Foil</strong> (options are dynamically enabled based on what was printed). Enter your target acquisition threshold in USD ($).</div>
+                        <div class="font-bold text-white">Set Target Acquisition Threshold with 1-Click Intelligence Presets</div>
+                        <div class="text-[#94A3B8] mt-0.5 leading-relaxed">
+                            Chimaera automatically calculates the current market reference price and offers one-click buttons to set your target to <strong class="text-[#00CED1]">Great Deal (-20%)</strong>, <strong class="text-[#2DD4BF]">Good Deal (-10%)</strong>, or <strong class="text-white">Market Price (100%)</strong>. You can also manually type any custom target dollar threshold.
+                        </div>
                     </div>
                 </div>
 
@@ -247,10 +249,77 @@
             </div>
         </div>
 
+        <!-- Bulk Target Acquisition Protocol -->
+        <div id="section-bulk-adding" class="bg-[#1B2230] border border-[#00CED1]/40 p-5 space-y-4">
+            <h3 class="text-sm font-heading font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                <span class="text-[#00CED1] font-mono">02.3</span>
+                <span>Bulk Target Acquisition Protocol (Batch Registration 0x4B)</span>
+            </h3>
+            <p class="text-sm text-[#94A3B8] leading-relaxed">
+                Clicking the <span class="text-white font-bold bg-[#263245] border border-[#00CED1] px-2 py-0.5 text-xs font-mono">+ Bulk Add</span> button in the top navigation opens the batch acquisition protocol.
+            </p>
+
+            <div class="bg-[#10141D] p-3.5 border border-[#263245] font-mono text-xs space-y-2">
+                <div class="text-[#00CED1] font-bold uppercase">// SEMICOLON (;) DELIMITED SYNTAX</div>
+                <p class="text-[#94A3B8] font-sans">
+                    Paste any list of MTG card names separated by semicolons (<code class="text-white font-bold">;</code>) or line breaks. Internal card commas are preserved so names like <em>"Omnath, Locus of Creation"</em> are never broken.
+                </p>
+                <div class="bg-[#0C0F17] p-2.5 border border-[#263245] text-white select-all">
+                    Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-sans text-xs">
+                <div class="bg-[#10141D] border border-[#263245] p-3">
+                    <div class="font-bold text-white font-mono text-xs text-[#00CED1]">Scryfall Collection API</div>
+                    <div class="text-[#94A3B8] mt-1 leading-relaxed">Resolves up to 75 targets per batch in a single HTTP roundtrip with high-res artwork and canonical Scryfall IDs.</div>
+                </div>
+                <div class="bg-[#10141D] border border-[#263245] p-3">
+                    <div class="font-bold text-white font-mono text-xs text-[#00CED1]">Automated Target Presets</div>
+                    <div class="text-[#94A3B8] mt-1 leading-relaxed">Optionally apply <strong>Good Deal (-10%)</strong> or <strong>Great Deal (-20%)</strong> target price thresholds automatically to all imported targets.</div>
+                </div>
+                <div class="bg-[#10141D] border border-[#263245] p-3">
+                    <div class="font-bold text-white font-mono text-xs text-[#00CED1]">Immediate Multi-Vendor Sweep</div>
+                    <div class="text-[#94A3B8] mt-1 leading-relaxed">Ingests cards into your registry and immediately executes live market surveillance across TCGplayer, Mighty Meeple, and eBay.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card Tagging & Deck Categorization -->
+        <div id="section-card-tagging" class="bg-[#1B2230] border border-[#9333EA]/40 p-5 space-y-3">
+            <h3 class="text-sm font-heading font-bold text-white uppercase tracking-wider flex items-center space-x-2">
+                <span class="text-[#C084FC] font-mono">02.4</span>
+                <span>Card Tagging & Deck Categorization</span>
+            </h3>
+            <p class="text-sm text-[#94A3B8] leading-relaxed">
+                Organize your watchlist cards by deck name (e.g., <em>"Atraxa Commander"</em>, <em>"Modern Burn"</em>) or strategic purpose (<em>"Cube"</em>, <em>"Trade Target"</em>, <em>"High Priority"</em>).
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                <div class="bg-[#10141D] border border-[#9333EA]/30 p-3 space-y-1">
+                    <div class="text-[#C084FC] font-bold">1-Click Autocomplete & Quick Pills</div>
+                    <p class="text-[#94A3B8] font-sans text-xs">
+                        When acquiring single cards, bulk importing, or editing cards, select from your existing tags with 1-click quick pills or browser autocomplete, or type a brand new tag name.
+                    </p>
+                </div>
+                <div class="bg-[#10141D] border border-[#9333EA]/30 p-3 space-y-1">
+                    <div class="text-[#C084FC] font-bold">Interactive Tag Badges</div>
+                    <p class="text-[#94A3B8] font-sans text-xs">
+                        Every card displays its tag badge in the dashboard. Clicking any tag badge instantly filters the entire registry to cards matching that tag.
+                    </p>
+                </div>
+                <div class="bg-[#10141D] border border-[#9333EA]/30 p-3 space-y-1">
+                    <div class="text-[#C084FC] font-bold">Registry Toolbar Tag Filter</div>
+                    <p class="text-[#94A3B8] font-sans text-xs">
+                        Filter your watchlist by specific tags or isolate untagged cards with the dedicated Tag Filter dropdown and real-time search bar.
+                    </p>
+                </div>
+            </div>
+        </div>
+
         <!-- Priority Deals & Arbitrage -->
         <div id="section-deals-engine" class="bg-[#1B2230] border border-[#DC143C]/50 p-5 space-y-3">
             <h3 class="text-sm font-heading font-bold text-white uppercase tracking-wider flex items-center space-x-2">
-                <span class="text-[#FF3358] font-mono">02.3</span>
+                <span class="text-[#FF3358] font-mono">02.5</span>
                 <span>Priority Deals Dashboard & Arbitrage Evaluation (`/deals`)</span>
             </h3>
             <p class="text-sm text-[#94A3B8] leading-relaxed">
@@ -288,11 +357,6 @@
                 <li>Full Multi-Vendor breakdown table (TCGplayer, Mighty Meeple, eBay with stock & condition)</li>
                 <li>Direct 1-click checkout URL</li>
             </ul>
-            <div class="pt-2">
-                <button onclick="testDiscordWebhook()" class="btn-bridge px-3.5 py-2 text-xs text-[#00CED1] font-mono uppercase">
-                    [ Transmit Discord Comm Test Now ]
-                </button>
-            </div>
         </div>
     </section>
 
@@ -310,14 +374,14 @@
 
         <div class="space-y-4">
             <!-- Method 1 -->
-            <div class="bg-[#1B2230] border border-[#00CED1]/50 p-5 space-y-2">
+            <div class="bg-[#1B2230] border-2 border-[#00CED1] p-5 space-y-2 relative overflow-hidden">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-mono text-[#00CED1] font-bold uppercase">[ METHOD 1: TOP NAVIGATION BAR ]</span>
                     <span class="px-2 py-0.5 bg-[#10141D] text-[#00CED1] text-xs font-mono font-bold border border-[#263245]">POST /api/watchlist/refresh-all</span>
                 </div>
-                <h3 class="text-sm font-heading font-bold text-white uppercase">"Poll Fleet" Full Surveillance Sweep</h3>
+                <h3 class="text-sm font-heading font-bold text-white uppercase">"Poll Watchlist" Full Surveillance Sweep</h3>
                 <p class="text-xs text-[#94A3B8] leading-relaxed">
-                    Click the <strong>"Poll Fleet"</strong> button in the top navigation bar at any time. The icon will spin while the backend scans all cards in your database across TCGplayer, Mighty Meeple, and eBay in sequence. As soon as the sweep completes, the page automatically refreshes and displays the new prices, deal badges, and sends Discord notifications for newly identified deals.
+                    Click the <strong>"Poll Watchlist"</strong> button in the top navigation bar at any time. The icon will spin while the backend scans all cards in your database across TCGplayer, Mighty Meeple, and eBay in sequence. As soon as the sweep completes, the page automatically refreshes and displays the new prices, deal badges, and sends Discord notifications for newly identified deals.
                 </p>
             </div>
 
@@ -329,7 +393,7 @@
                 </div>
                 <h3 class="text-sm font-heading font-bold text-white uppercase">Single Target "Poll" Button</h3>
                 <p class="text-xs text-[#94A3B8] leading-relaxed">
-                    On any card card in either the Registry (<code class="text-white font-mono">/</code>) or Priority Deals (<code class="text-white font-mono">/deals</code>) view, click the <strong>"Poll"</strong> button located in the card footer. This performs a fast, targeted refresh for only that single card across all 3 providers without having to rescan the entire fleet.
+                    On any card card in either the Registry (<code class="text-white font-mono">/</code>) or Priority Deals (<code class="text-white font-mono">/deals</code>) view, click the <strong>"Poll"</strong> button located in the card footer. This performs a fast, targeted refresh for only that single card across all 3 providers without having to rescan the entire watchlist.
                 </p>
             </div>
 
@@ -341,7 +405,7 @@
                 </div>
                 <h3 class="text-sm font-heading font-bold text-white uppercase">Surveillance Cadence Modal "⚡ Poll Now"</h3>
                 <p class="text-xs text-[#94A3B8] leading-relaxed">
-                    Click the <strong>"Cadence"</strong> button in the top navigation bar to open the Surveillance Protocol configuration modal (<code class="text-white font-mono">CONFIG // 0x7E</code>). Click the <strong>"⚡ Poll Now"</strong> button. This immediately runs a full fleet scan, records the timestamp and telemetry into the database, and flags any background daemon workers to synchronize.
+                    Click the <strong>"Cadence"</strong> button in the top navigation bar to open the Surveillance Protocol configuration modal (<code class="text-white font-mono">CONFIG // 0x7E</code>). Click the <strong>"⚡ Poll Now"</strong> button. This immediately runs a full watchlist scan, records the timestamp and telemetry into the database, and flags any background daemon workers to synchronize.
                 </p>
             </div>
 
@@ -366,7 +430,7 @@
                 </div>
                 <h3 class="text-sm font-heading font-bold text-white uppercase">Auto-Refresh on Card Creation</h3>
                 <p class="text-xs text-[#94A3B8] leading-relaxed">
-                    Whenever a new card is registered via the "+ Acquire Target" modal, the system immediately executes a live poll across Scryfall, Mighty Meeple, and eBay before redirecting you back to the registry, ensuring brand-new cards always display live market data from second one.
+                    Whenever a new card is registered via the "Acquire Target" modal, the system immediately executes a live poll across Scryfall, Mighty Meeple, and eBay before redirecting you back to the registry, ensuring brand-new cards always display live market data from second one.
                 </p>
             </div>
         </div>
@@ -631,7 +695,7 @@
             <div class="bg-[#1B2230] border border-[#263245] p-4">
                 <div class="font-bold text-white font-mono uppercase text-sm text-[#00CED1]">// 2. Discord Webhooks Not Triggering</div>
                 <p class="text-[#94A3B8] mt-1 leading-relaxed">
-                    Verify that <code class="text-white font-mono">DISCORD_WEBHOOK_URL</code> is correctly set in <code class="text-white font-mono">.env</code> or GitHub Secrets. Use the footer <strong class="text-white">[ Transmit Discord Comm Test ]</strong> button to test your webhook connectivity immediately.
+                    Verify that <code class="text-white font-mono">DISCORD_WEBHOOK_URL</code> is correctly set in <code class="text-white font-mono">.env</code> or GitHub Secrets.
                 </p>
             </div>
 

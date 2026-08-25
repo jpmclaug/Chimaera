@@ -1,5 +1,5 @@
 # =========================================================================
-# CHIMAERA // IMPERIAL TACTICAL INTELLIGENCE - STANDALONE WORKER START SCRIPT
+# CHIMAERA // TACTICAL INTELLIGENCE - STANDALONE WORKER START SCRIPT
 # =========================================================================
 
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -8,7 +8,7 @@ Set-Location $PSScriptRoot
 Write-Host ""
 Write-Host " ========================================================" -ForegroundColor Cyan
 Write-Host "   CHIMAERA // STANDALONE SURVEILLANCE WORKER" -ForegroundColor White
-Write-Host "   Sector: MTG-Core | Version: 1.0 (ISD-72)" -ForegroundColor DarkGray
+Write-Host "   Sector: MTG-Core | Version: 1.0" -ForegroundColor DarkGray
 Write-Host " ========================================================" -ForegroundColor Cyan
 Write-Host ""
 
