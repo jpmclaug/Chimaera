@@ -60,99 +60,129 @@
 
     <!-- Top Tactical Navigation -->
     <nav class="bg-[#1B2230] border-b border-[#263245] sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-14 sm:h-16">
-                <!-- Brand / Chimaera Logo -->
-                <div class="flex items-center space-x-3 sm:space-x-6 min-w-0">
-                    <a href="/" class="flex items-center space-x-2 sm:space-x-3 group min-w-0">
-                        <div class="h-8 w-11 sm:h-10 sm:w-16 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#00CED1] flex-shrink-0">
+                <!-- Brand / Logo with Tactical Dropdown Trigger -->
+                <div class="relative">
+                    <button onclick="toggleLogoMenu()" id="btn-logo-menu" class="flex items-center space-x-2 sm:space-x-3 group focus:outline-none text-left p-1 -ml-1 border border-transparent hover:border-[#263245] transition rounded-none" title="Open Chimaera Tactical Menu">
+                        <div class="h-8 w-11 sm:h-10 sm:w-14 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#00CED1] flex-shrink-0">
                             <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
                         </div>
-                        <div class="min-w-0">
-                            <div class="flex items-center space-x-1.5 sm:space-x-2">
-                                <span class="font-heading font-black text-base sm:text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
-                                <span class="text-[9px] sm:text-[11px] px-1 sm:px-1.5 py-0.2 sm:py-0.5 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase tracking-wider font-bold">v1.0</span>
-                            </div>
-                            <span class="text-[10px] sm:text-[11px] font-mono tracking-widest text-[#00CED1] uppercase hidden sm:block mt-0.5 font-semibold">Tactical Intelligence // Market Surveillance</span>
+                        <div class="min-w-0 flex items-center space-x-1.5">
+                            <span class="font-heading font-black text-base sm:text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
+                            <span class="text-[9px] sm:text-[10px] px-1 py-0.2 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase font-bold">v1.0</span>
+                            <svg class="w-3 h-3 text-[#94A3B8] group-hover:text-[#00CED1] transition-transform duration-200" id="logo-menu-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
                         </div>
-                    </a>
-                    <div class="hidden md:flex space-x-1">
+                    </button>
+
+                    <!-- Tactical Dropdown Menu from Logo -->
+                    <div id="logo-dropdown-menu" class="hidden absolute left-0 top-full mt-2 w-72 sm:w-80 bg-[#1B2230] border-2 border-[#263245] shadow-2xl z-50 p-3 space-y-3 font-mono text-xs">
                         {% if current_user %}
-                        <a href="/" class="px-3 py-2 text-xs font-mono font-medium tracking-wide uppercase transition border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
-                            01 // Registry
-                        </a>
-                        <a href="/deals" class="px-3 py-2 text-xs font-mono font-medium tracking-wide uppercase transition border flex items-center space-x-2 {% if active_tab == 'deals' %}bg-[#10141D] text-white border-[#DC143C] font-bold{% else %}text-[#94A3B8] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
-                            <span>02 // Deals</span>
-                            {% if deals_count is defined and deals_count > 0 %}
-                            <span class="bg-[#DC143C] text-white text-xs px-1.5 py-0.5 font-mono font-bold">{{ deals_count }}</span>
+                        <!-- User Status & ID Header -->
+                        <div class="bg-[#10141D] p-2.5 border border-[#263245] flex items-center justify-between">
+                            <div class="flex items-center space-x-2 min-w-0">
+                                {% if current_user.picture %}
+                                <img src="{{ current_user.picture }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-full border border-[#263245] flex-shrink-0">
+                                {% else %}
+                                <div class="w-5 h-5 rounded-full bg-[#263245] flex items-center justify-center text-[10px] font-bold text-[#00CED1] flex-shrink-0">
+                                    {{ (current_user.name or current_user.email)[0]|upper }}
+                                </div>
+                                {% endif %}
+                                <div class="min-w-0">
+                                    <div class="text-white font-bold truncate text-[11px]">{{ current_user.name or current_user.email.split('@')[0] }}</div>
+                                    <div class="text-[9px] text-[#94A3B8] truncate">{{ current_user.email }}</div>
+                                </div>
+                            </div>
+                            {% if current_user.is_admin %}
+                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-1.5 py-0.2 text-[9px] uppercase font-bold flex-shrink-0">ADMIN</span>
                             {% endif %}
+                        </div>
+
+                        <!-- Section: Sector Navigation -->
+                        <div class="space-y-1">
+                            <div class="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">// SECTOR NAVIGATION</div>
+                            <a href="/" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                <span class="font-bold">01 // Registry Dashboard</span>
+                                <span class="text-[#00CED1]">&rarr;</span>
+                            </a>
+                            <a href="/deals" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deals' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold">02 // Priority Deals</span>
+                                    {% if deals_count is defined and deals_count > 0 %}
+                                    <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
+                                    {% endif %}
+                                </div>
+                                <span class="text-[#FF3358]">&rarr;</span>
+                            </a>
+                            <a href="/guide" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'guide' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                <span class="font-bold">03 // Tactical Guide</span>
+                                <span class="text-[#00CED1]">&rarr;</span>
+                            </a>
+                            {% if current_user.is_admin %}
+                            <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
+                                <span class="font-bold">04 // Admin Console</span>
+                                <span class="text-[#00CED1]">&rarr;</span>
+                            </a>
+                            {% endif %}
+                        </div>
+
+                        <!-- Section: Tactical Operations -->
+                        <div class="space-y-1 pt-2 border-t border-[#263245]">
+                            <div class="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">// SYSTEM OPERATIONS</div>
+                            <button onclick="toggleLogoMenu(); openBulkAddModal();" class="w-full flex items-center justify-between p-2 text-left hover:bg-[#10141D] text-[#94A3B8] hover:text-white transition">
+                                <div class="flex items-center space-x-2">
+                                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                                    </svg>
+                                    <span>Bulk Target Import</span>
+                                </div>
+                                <span class="text-[10px] text-[#64748B]">[BATCH]</span>
+                            </button>
+                            <button onclick="toggleLogoMenu(); openCadenceModal();" class="w-full flex items-center justify-between p-2 text-left hover:bg-[#10141D] text-[#94A3B8] hover:text-white transition">
+                                <div class="flex items-center space-x-2">
+                                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                    <span>Surveillance & Alerts</span>
+                                </div>
+                                <span class="text-[10px] text-[#64748B]">[CONFIG]</span>
+                            </button>
+                        </div>
+
+                        <!-- Section: Session Logout -->
+                        <div class="pt-2 border-t border-[#263245]">
+                            <a href="{{ url_for('logout') }}" class="btn-bridge block w-full text-center py-2 text-xs text-[#94A3B8] hover:text-[#FF3358] hover:border-[#DC143C]/50 transition font-bold uppercase">
+                                Terminate Session (Exit)
+                            </a>
+                        </div>
+                        {% else %}
+                        <a href="{{ url_for('login_page') }}" class="btn-crimson block w-full text-center py-2 text-xs uppercase font-bold">
+                            Sign In &rarr;
                         </a>
-                        <a href="/guide" class="px-3 py-2 text-xs font-mono font-medium tracking-wide uppercase transition border {% if active_tab == 'guide' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent hover:text-white hover:border-[#263245] hover:bg-[#10141D]/50{% endif %}">
-                            03 // Guide
-                        </a>
-                        {% if current_user.is_admin %}
-                        <a href="/admin" class="px-3 py-2 text-xs font-mono font-medium tracking-wide uppercase transition border flex items-center space-x-1.5 {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/70 border-transparent hover:text-[#00CED1] hover:border-[#00CED1]/40 hover:bg-[#10141D]/50{% endif %}">
-                            <span class="w-1.5 h-1.5 bg-[#00CED1] inline-block"></span>
-                            <span>04 // Admin</span>
-                        </a>
-                        {% endif %}
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- Header Actions & Telemetry -->
-                <div class="flex items-center space-x-1 sm:space-x-2.5 flex-shrink-0">
+                <!-- Right Actions: Refresh & Acquire Only -->
+                <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
                     {% if current_user %}
-                    <button onclick="openCadenceModal()" id="btn-open-cadence" class="btn-bridge p-1.5 sm:px-2.5 sm:py-2 text-xs flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1]" title="Surveillance Cadence & Alerts">
-                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <span id="nav-cadence-label" class="font-mono uppercase font-semibold hidden xl:inline">Cadence</span>
-                    </button>
-
-                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge p-1.5 sm:px-3 sm:py-2 text-xs flex items-center space-x-1.5" title="Poll Watchlist">
+                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs flex items-center space-x-1.5" title="Poll Watchlist Prices">
                         <svg id="refresh-all-icon" class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
-                        <span class="font-mono tracking-wider uppercase font-semibold hidden sm:inline">Poll Watchlist</span>
+                        <span class="font-mono tracking-wider uppercase font-semibold hidden sm:inline">Poll</span>
                     </button>
 
-                    <button onclick="openBulkAddModal()" class="btn-bridge p-1.5 sm:px-3 sm:py-2 text-xs flex items-center space-x-1.5 text-white hover:border-[#00CED1] border-[#263245]" title="Bulk Register Targets (Semicolon Delimited)">
-                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
-                        </svg>
-                        <span class="font-mono uppercase font-bold text-xs tracking-wider hidden sm:inline">Bulk Add</span>
-                    </button>
-
-                    <button onclick="openAddCardModal()" class="btn-crimson px-2 sm:px-3.5 py-1.5 sm:py-2 text-xs flex items-center space-x-1 sm:space-x-1.5 shadow-none flex-shrink-0" title="Register New Target">
+                    <button onclick="openAddCardModal()" class="btn-crimson px-3 sm:px-4 py-1.5 sm:py-2 text-xs flex items-center space-x-1.5 shadow-none flex-shrink-0" title="Register New Target">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
                         </svg>
                         <span class="text-xs font-bold">Acquire</span>
                     </button>
-
-                    <!-- User Identity Pill & Logout -->
-                    <div class="flex items-center space-x-1 sm:space-x-2 pl-1 sm:pl-2 border-l border-[#263245] flex-shrink-0">
-                        <div class="hidden lg:flex items-center space-x-2 bg-[#10141D] border border-[#263245] px-2 py-1" title="{{ current_user.email }}">
-                            {% if current_user.picture %}
-                            <img src="{{ current_user.picture }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-full border border-[#263245]">
-                            {% else %}
-                            <div class="w-5 h-5 rounded-full bg-[#263245] flex items-center justify-center text-[10px] font-bold text-[#00CED1]">
-                                {{ (current_user.name or current_user.email)[0]|upper }}
-                            </div>
-                            {% endif %}
-                            <span class="text-[11px] font-mono text-white font-medium max-w-[110px] truncate">{{ current_user.name or current_user.email.split('@')[0] }}</span>
-                            {% if current_user.is_admin %}
-                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-1 py-0.2 text-[9px] font-mono font-bold uppercase">ADM</span>
-                            {% endif %}
-                        </div>
-
-                        <a href="{{ url_for('logout') }}" class="btn-bridge px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs text-[#94A3B8] hover:text-[#FF3358] hover:border-[#DC143C]/50 transition flex-shrink-0" title="Terminate Session / Sign Out">
-                            <span class="font-mono uppercase font-bold text-[10px] sm:text-[11px]">Exit</span>
-                        </a>
-                    </div>
                     {% else %}
-                    <a href="{{ url_for('login_page') }}" class="btn-crimson px-3 sm:px-4 py-1.5 sm:py-2 text-xs uppercase font-bold tracking-wider">
+                    <a href="{{ url_for('login_page') }}" class="btn-crimson px-3.5 sm:px-4 py-1.5 sm:py-2 text-xs uppercase font-bold tracking-wider">
                         Sign In &rarr;
                     </a>
                     {% endif %}
@@ -161,7 +191,7 @@
         </div>
     </nav>
 
-    <!-- Mobile Tactical Nav Bar -->
+    <!-- Mobile Tactical Secondary Tab Bar -->
     {% if current_user %}
     <div class="md:hidden bg-[#1B2230] border-b border-[#263245] px-2 sm:px-4 py-1.5 flex space-x-1 overflow-x-auto no-scrollbar">
         <a href="/" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">

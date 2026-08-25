@@ -977,8 +977,10 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn(b"btn-view-compact", resp_index.data)
             self.assertIn(b"btn-view-swipe", resp_index.data)
             self.assertIn(b"Commander Staples", resp_index.data)
+            self.assertIn(b"btn-logo-menu", resp_index.data)
+            self.assertIn(b"logo-dropdown-menu", resp_index.data)
+            self.assertIn(b"btn-refresh-all", resp_index.data)
             self.assertIn(b"Acquire", resp_index.data)
-            self.assertIn(b"Exit", resp_index.data)
 
             # 2. Check deals page contains all 3 view containers and deals tag filtering
             resp_deals = self.client.get("/deals")

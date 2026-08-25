@@ -1356,21 +1356,35 @@ document.addEventListener("DOMContentLoaded", () => {
     const savedMode = localStorage.getItem("chimaera_view_mode") || "grid";
     setViewMode(savedMode);
 
-    // Keyboard Arrow Key Navigation for Swipe Mode
-    document.addEventListener("keydown", (e) => {
-        if (activeViewMode === "swipe") {
-            // Ignore if typing in input or textarea
-            const tag = e.target.tagName.toLowerCase();
-            if (tag === "input" || tag === "textarea" || tag === "select") return;
-
-            if (e.key === "ArrowLeft") {
-                if (document.getElementById("registry-swipe-track")) swipeDeckPrev("registry-swipe-track");
-                if (document.getElementById("deals-swipe-track")) swipeDeckPrev("deals-swipe-track");
-            } else if (e.key === "ArrowRight") {
-                if (document.getElementById("registry-swipe-track")) swipeDeckNext("registry-swipe-track");
-                if (document.getElementById("deals-swipe-track")) swipeDeckNext("deals-swipe-track");
+    // Close Logo Dropdown Menu on click outside
+    document.addEventListener("click", (e) => {
+        const menu = document.getElementById("logo-dropdown-menu");
+        const btn = document.getElementById("btn-logo-menu");
+        if (menu && btn && !menu.classList.contains("hidden")) {
+            if (!menu.contains(e.target) && !btn.contains(e.target)) {
+                menu.classList.add("hidden");
+                const chevron = document.getElementById("logo-menu-chevron");
+                if (chevron) chevron.style.transform = "rotate(0deg)";
             }
         }
     });
 });
+
+// =========================================================================
+// Logo Dropdown Tactical Menu Controls
+// =========================================================================
+function toggleLogoMenu() {
+    const menu = document.getElementById("logo-dropdown-menu");
+    const chevron = document.getElementById("logo-menu-chevron");
+    if (!menu) return;
+    menu.classList.toggle("hidden");
+    if (chevron) {
+        if (menu.classList.contains("hidden")) {
+            chevron.style.transform = "rotate(0deg)";
+        } else {
+            chevron.style.transform = "rotate(180deg)";
+        }
+    }
+}
+
 
