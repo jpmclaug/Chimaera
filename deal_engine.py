@@ -34,8 +34,10 @@ class DealEngine:
         ref_price = tcg_data.get("price") if tcg_data and tcg_data.get("in_stock") else None
 
         # 2. Mighty Meeple
+        set_name = self.scryfall.get_set_name(item.set_code) if not is_any and item.set_code else None
         mm_data = self.mightymeeple.search_card(
             card_name=item.name,
+            set_name=set_name,
             set_code=None if is_any else item.set_code,
             finish=item.finish,
         )

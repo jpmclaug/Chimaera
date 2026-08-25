@@ -18,6 +18,51 @@ class ScryfallProvider:
             "Accept": "application/json;q=0.9,*/*;q=0.8",
         })
 
+    _sets_cache: dict[str, str] = {
+        "ema": "Eternal Masters",
+        "lrw": "Lorwyn",
+        "khc": "Kaldheim Commander",
+        "c14": "Commander 2014",
+        "c15": "Commander 2015",
+        "c16": "Commander 2016",
+        "c17": "Commander 2017",
+        "c18": "Commander 2018",
+        "c19": "Commander 2019",
+        "c20": "Commander 2020",
+        "c21": "Commander 2021",
+        "j22": "Jumpstart 2022",
+        "jmp": "Jumpstart",
+        "cmr": "Commander Legends",
+        "clb": "Commander Legends: Battle for Baldur's Gate",
+        "mh1": "Modern Horizons",
+        "mh2": "Modern Horizons 2",
+        "mh3": "Modern Horizons 3",
+        "2xm": "Double Masters",
+        "2x2": "Double Masters 2022",
+        "dmr": "Dominaria Remastered",
+        "rvr": "Ravnica Remastered",
+    }
+
+    def get_set_name(self, set_code: str) -> str | None:
+        """Resolves 3-letter set code to full set name (e.g. EMA -> 'Eternal Masters')."""
+        if not set_code:
+            return None
+        code_lower = set_code.lower().strip()
+        if code_lower in ScryfallProvider._sets_cache:
+            return ScryfallProvider._sets_cache[code_lower]
+
+        try:
+            url = f"{SCRYFALL_BASE_URL}/sets"
+            resp = self.session.get(url, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json().get("data", [])
+                for s in data:
+                    if s.get("code") and s.get("name"):
+                        ScryfallProvider._sets_cache[s["code"].lower()] = s["name"]
+        except Exception as e:
+            logger.error(f"Error fetching Scryfall sets: {e}")
+        return ScryfallProvider._sets_cache.get(code_lower)
+
     def autocomplete(self, query: str) -> list[str]:
         """Returns list of card name suggestions from Scryfall."""
         if not query or len(query.strip()) < 2:
@@ -63,6 +108,7 @@ class ScryfallProvider:
             "id": card.get("id"),
             "name": card.get("name"),
             "set_code": card.get("set", "").upper(),
+            "set_name": card.get("set_name", ""),
             "collector_number": card.get("collector_number", ""),
             "image_uri": image_uri,
             "prices": card.get("prices", {}),

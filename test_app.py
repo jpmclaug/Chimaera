@@ -1121,6 +1121,35 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertEqual(filtered_data["total"], 1)
             self.assertEqual(filtered_data["cards"][0]["name"], "Black Lotus")
 
+    def test_29_mightymeeple_multi_printing_and_set_resolution(self):
+        """Tests that Mighty Meeple returns the lowest market price across printings and respects set filters."""
+        mm = MightyMeepleProvider()
+        scryfall = ScryfallProvider()
+
+        # 1. Any version non-foil should return the lowest out-of-stock printing price (<= 1.50)
+        res_any = mm.search_card("Lys Alana Huntmaster", finish="nonfoil")
+        self.assertEqual(res_any["vendor_name"], "Mighty Meeple")
+        self.assertLessEqual(res_any["price"], 1.50)
+        self.assertGreater(res_any["price"], 0)
+
+        # 2. Specific set resolution: EMA (Eternal Masters) vs LRW (Lorwyn)
+        ema_set_name = scryfall.get_set_name("EMA")
+        self.assertEqual(ema_set_name, "Eternal Masters")
+        res_ema = mm.search_card("Lys Alana Huntmaster", set_name=ema_set_name, set_code="EMA", finish="nonfoil")
+        self.assertIn("eternal-masters", res_ema["product_url"])
+        self.assertLessEqual(res_ema["price"], 1.50)
+
+        lrw_set_name = scryfall.get_set_name("LRW")
+        self.assertEqual(lrw_set_name, "Lorwyn")
+        res_lrw = mm.search_card("Lys Alana Huntmaster", set_name=lrw_set_name, set_code="LRW", finish="nonfoil")
+        self.assertIn("lorwyn", res_lrw["product_url"])
+        self.assertGreaterEqual(res_lrw["price"], 2.00)
+
+        # 3. Foil search returns the in-stock foil variant (Lorwyn LP Foil $12.70)
+        res_foil = mm.search_card("Lys Alana Huntmaster", finish="foil")
+        self.assertTrue(res_foil["in_stock"])
+        self.assertGreater(res_foil["price"], 10.00)
+
 
 if __name__ == "__main__":
     unittest.main()

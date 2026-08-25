@@ -161,9 +161,10 @@ class MightyMeepleProvider:
                 return in_stock_matches[0]
 
             if out_of_stock_matches:
-                # Prefer out-of-stock matches that have a recorded positive price
+                # Prefer out-of-stock matches that have a recorded positive price, sorted by lowest price
                 priced_oos = [m for m in out_of_stock_matches if m.get("price", 0) > 0]
                 if priced_oos:
+                    priced_oos.sort(key=lambda m: m["price"])
                     return priced_oos[0]
                 return out_of_stock_matches[0]
 
@@ -205,18 +206,27 @@ class MightyMeepleProvider:
             logger.debug(f"Failed suggest query to {url}: {e}")
         return []
 
+    _variant_cache: dict[str, list[dict]] = {}
+
     def _get_product_variants(self, handle: str) -> list[dict]:
-        """Fetches Shopify product variant details via .js endpoint."""
+        """Fetches Shopify product variant details via .js endpoint with caching."""
         if not handle:
             return []
-        try:
-            url = f"{MIGHTY_MEEPLE_BASE}/products/{handle}.js"
-            r = self.session.get(url, timeout=8)
-            if r.status_code == 200:
-                data = r.json()
-                return data.get("variants", [])
-        except Exception as e:
-            logger.debug(f"Failed to fetch variants for handle {handle}: {e}")
+        if handle in MightyMeepleProvider._variant_cache:
+            return MightyMeepleProvider._variant_cache[handle]
+
+        for attempt in range(2):
+            try:
+                url = f"{MIGHTY_MEEPLE_BASE}/products/{handle}.js"
+                r = self.session.get(url, timeout=8)
+                if r.status_code == 200:
+                    data = r.json()
+                    variants = data.get("variants", [])
+                    if variants:
+                        MightyMeepleProvider._variant_cache[handle] = variants
+                        return variants
+            except Exception as e:
+                logger.debug(f"Attempt {attempt+1} failed to fetch variants for handle {handle}: {e}")
         return []
 
     def _is_card_name_match(self, title: str, card_name: str) -> bool:
@@ -264,25 +274,41 @@ class MightyMeepleProvider:
     ) -> list[dict]:
         """
         Filters products to those strictly matching card name, with optional set preference.
-        Returns empty list if no genuine matches found (never falls back to unrelated products).
+        Returns set-matched products if found, or all valid card matches as fallback.
         """
-        matched = []
+        set_matched = []
+        fallback_matched = []
         primary_name = card_name.split(" // ")[0].strip()
+
+        target_set_terms = []
+        if set_name:
+            target_set_terms.append(set_name.lower().strip())
+        if set_code:
+            clean_code = set_code.lower().strip()
+            target_set_terms.append(f"[{clean_code}]")
+            target_set_terms.append(clean_code)
 
         for p in products:
             title = p.get("title", "")
 
             # Verify genuine card name match
             if self._is_card_name_match(title, card_name) or self._is_card_name_match(title, primary_name):
-                # Score set match preference
-                if set_name and set_name.lower() in title.lower():
-                    matched.insert(0, p)
-                elif set_code and f"[{set_code.lower()}]" in title.lower():
-                    matched.insert(0, p)
-                else:
-                    matched.append(p)
+                title_lower = title.lower()
+                is_set_match = False
+                if target_set_terms:
+                    for st in target_set_terms:
+                        if st in title_lower:
+                            is_set_match = True
+                            break
 
-        return matched
+                if is_set_match:
+                    set_matched.append(p)
+                else:
+                    fallback_matched.append(p)
+
+        if set_matched:
+            return set_matched
+        return fallback_matched
 
     def _match_variant(self, variants: list[dict], is_foil_target: bool) -> dict | None:
         """
@@ -323,6 +349,9 @@ class MightyMeepleProvider:
             elif "heavily played" in title_lower or "hp" in title_lower:
                 cond_score = 1
                 cond_label = "HP"
+            elif "damaged" in title_lower or "dmg" in title_lower:
+                cond_score = 0
+                cond_label = "Damaged"
             else:
                 cond_score = 2
                 cond_label = "Played"
