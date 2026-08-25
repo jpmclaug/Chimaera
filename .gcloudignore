@@ -1,0 +1,14 @@
+﻿.gcloudignore
+.git/
+.gitignore
+.env
+.env.*
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.sqlite
+.chimaera.pid
+.vscode/
+.idea/
