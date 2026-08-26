@@ -20,23 +20,34 @@
             </p>
         </div>
 
-        <!-- Telemetry Summary KPI Cards -->
+        <!-- Telemetry Summary KPI Cards & Trade-in Cart Drawer Trigger -->
         <div class="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
-            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-1 sm:flex-initial min-w-[120px]">
+            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-1 sm:flex-initial min-w-[110px]">
                 <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Cards Quoted</div>
                 <div id="kpi-buylist-count" class="text-lg sm:text-xl font-mono font-bold text-white">0</div>
             </div>
-            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#2DD4BF]/50 flex-1 sm:flex-initial min-w-[140px]">
+            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#2DD4BF]/50 flex-1 sm:flex-initial min-w-[130px]">
                 <div class="flex items-center justify-between">
                     <span class="text-[10px] sm:text-xs font-mono text-[#2DD4BF] uppercase tracking-wider font-bold">Store Credit</span>
                     <span class="text-[9px] bg-[#2DD4BF]/20 text-[#2DD4BF] px-1 font-mono font-bold">+30-40%</span>
                 </div>
                 <div id="kpi-buylist-credit" class="text-lg sm:text-xl font-mono font-bold text-[#2DD4BF]">$0.00</div>
             </div>
-            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-1 sm:flex-initial min-w-[130px]">
+            <div class="bg-[#10141D] px-3 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-1 sm:flex-initial min-w-[120px]">
                 <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Cash Payout</div>
                 <div id="kpi-buylist-cash" class="text-lg sm:text-xl font-mono font-bold text-[#F1F5F9]">$0.00</div>
             </div>
+            <!-- Trade-In Batch Cart Trigger Button -->
+            <button onclick="toggleBuylistCartDrawer()" id="btn-buylist-cart-toggle" 
+                class="bg-[#10141D] hover:bg-[#222B3D] border-2 border-[#2DD4BF] text-[#2DD4BF] hover:text-white px-3.5 py-2 sm:py-2.5 flex items-center justify-between sm:justify-start space-x-2 font-mono text-xs font-bold transition flex-1 sm:flex-initial shadow-lg">
+                <div class="flex items-center space-x-1.5">
+                    <svg class="w-4 h-4 text-[#2DD4BF]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                    </svg>
+                    <span>Trade-In Batch</span>
+                </div>
+                <span id="buylist-cart-badge" class="bg-[#2DD4BF] text-[#10141D] px-2 py-0.5 text-[11px] font-black rounded-none ml-1">0</span>
+            </button>
         </div>
     </div>
 
@@ -261,7 +272,13 @@
                         0 / 0 Cards Matched
                     </span>
                 </div>
-                <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    <button onclick="addAllBulkQuotesToCart()" class="btn-crimson px-3 py-1.5 text-xs flex items-center space-x-1.5 font-bold uppercase bg-[#2DD4BF] hover:bg-[#00CED1] text-[#10141D] border-[#2DD4BF]" title="Add all matched cards to Trade-In Batch">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        </svg>
+                        <span>+ Add All to Batch</span>
+                    </button>
                     <button onclick="copyBulkBuylistSummary()" class="btn-bridge px-3 py-1.5 text-xs flex items-center space-x-1.5 font-bold uppercase" title="Copy Text Summary to Clipboard">
                         <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
@@ -340,4 +357,69 @@
     </div>
 </div>
 
+<!-- ========================================================================= -->
+<!-- TRADE-IN BATCH CART DRAWER / MODAL -->
+<!-- ========================================================================= -->
+<div id="modal-buylist-cart" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center sm:justify-end p-2 sm:p-4 transition-all">
+    <div class="bg-[#1B2230] border-2 border-[#2DD4BF] w-full max-w-xl h-full max-h-[92vh] sm:max-h-[96vh] p-4 sm:p-5 flex flex-col justify-between shadow-2xl relative">
+        <!-- Drawer Header -->
+        <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 flex-shrink-0">
+            <div class="flex items-center space-x-2.5">
+                <span class="w-3 h-3 bg-[#2DD4BF] inline-block"></span>
+                <div>
+                    <span class="text-[10px] font-mono text-[#2DD4BF] uppercase tracking-widest block font-bold">TRADE-IN BATCH // MANIFEST</span>
+                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Active Buylist Order</h3>
+                </div>
+            </div>
+            <button onclick="toggleBuylistCartDrawer()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+        </div>
+
+        <!-- Itemized Cart List -->
+        <div id="buylist-cart-items-container" class="overflow-y-auto flex-1 space-y-2.5 pr-1 font-mono text-xs">
+            <!-- Items rendered via renderBuylistCart() in app.js -->
+        </div>
+
+        <!-- Drawer Summary & Action Footer -->
+        <div class="pt-3 border-t border-[#263245] space-y-3 flex-shrink-0 mt-3">
+            <!-- Live Totals Bar -->
+            <div class="bg-[#10141D] border border-[#2DD4BF]/50 p-3 grid grid-cols-3 gap-2 text-center font-mono">
+                <div>
+                    <span class="text-[9px] text-[#94A3B8] uppercase block">Total Cards</span>
+                    <span id="cart-total-qty" class="text-base font-bold text-white">0</span>
+                </div>
+                <div class="border-l border-r border-[#263245]">
+                    <span class="text-[9px] text-[#2DD4BF] uppercase block font-bold">Store Credit</span>
+                    <span id="cart-total-credit" class="text-base font-bold text-[#2DD4BF]">$0.00</span>
+                </div>
+                <div>
+                    <span class="text-[9px] text-[#94A3B8] uppercase block">Cash Payout</span>
+                    <span id="cart-total-cash" class="text-base font-bold text-white">$0.00</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <button type="button" onclick="clearBuylistCart()" class="btn-bridge px-3 py-2 text-xs text-[#FF3358] border-[#FF3358]/40 hover:bg-[#FF3358]/20 font-bold uppercase">
+                    Clear Batch
+                </button>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="copyBuylistCartSummary()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1 font-bold uppercase text-white">
+                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+                        </svg>
+                        <span>Copy Summary</span>
+                    </button>
+                    <button type="button" onclick="exportBuylistCartCSV()" class="btn-crimson px-4 py-2 text-xs flex items-center space-x-1.5 font-bold uppercase bg-[#2DD4BF] hover:bg-[#00CED1] text-[#10141D] border-[#2DD4BF]">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        <span>Export CSV</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
+

@@ -1400,6 +1400,401 @@ let buylistSearchResults = [];
 let bulkBuylistQuotes = [];
 let bulkBuylistSummary = null;
 let currentModalVariants = [];
+let buylistCart = [];
+
+function initBuylistCart() {
+    try {
+        const saved = localStorage.getItem("chimaera_buylist_cart");
+        if (saved) {
+            buylistCart = JSON.parse(saved);
+        }
+    } catch (e) {
+        console.error("Failed to load buylist cart:", e);
+        buylistCart = [];
+    }
+    renderBuylistCart();
+}
+
+function saveBuylistCart() {
+    try {
+        localStorage.setItem("chimaera_buylist_cart", JSON.stringify(buylistCart));
+    } catch (e) {
+        console.error("Failed to save buylist cart:", e);
+    }
+    renderBuylistCart();
+}
+
+function toggleBuylistCartDrawer() {
+    const modal = document.getElementById("modal-buylist-cart");
+    if (!modal) return;
+    modal.classList.toggle("hidden");
+    if (!modal.classList.contains("hidden")) {
+        renderBuylistCart();
+    }
+}
+
+function addToBuylistCart(item) {
+    if (!item || !item.card_name) return;
+
+    const cardName = item.card_name.trim();
+    const setName = item.set_name ? item.set_name.trim() : "Unknown Set";
+    const condition = item.condition || "Lightly Played";
+    const finish = item.finish || "nonfoil";
+    const creditPrice = parseFloat(item.credit_price || 0);
+    const cashPrice = parseFloat(item.cash_price || 0);
+    const sellPrice = parseFloat(item.store_sell_price || 0);
+    const imageUrl = item.image_url || "";
+    const addQty = parseInt(item.qty || 1, 10);
+
+    const existingIndex = buylistCart.findIndex(c => 
+        c.card_name.toLowerCase() === cardName.toLowerCase() &&
+        c.set_name.toLowerCase() === setName.toLowerCase() &&
+        c.condition.toLowerCase() === condition.toLowerCase() &&
+        c.finish.toLowerCase() === finish.toLowerCase()
+    );
+
+    if (existingIndex > -1) {
+        buylistCart[existingIndex].qty += addQty;
+    } else {
+        buylistCart.push({
+            card_name: cardName,
+            set_name: setName,
+            condition: condition,
+            finish: finish,
+            credit_price: creditPrice,
+            cash_price: cashPrice,
+            store_sell_price: sellPrice,
+            image_url: imageUrl,
+            qty: addQty
+        });
+    }
+
+    saveBuylistCart();
+    showToast(`Added ${addQty}x ${cardName} (${condition}) to Trade-In Batch ($${(creditPrice * addQty).toFixed(2)} Store Credit)`, "success");
+
+    // Re-render search results to show active batch counts if present
+    if (activeBuylistMode === "single" && buylistSearchResults.length > 0) {
+        renderSingleBuylistResults();
+    } else if (activeBuylistMode === "bulk" && bulkBuylistQuotes.length > 0) {
+        renderBulkBuylistResults();
+    }
+}
+
+function getCardCartQty(cardName, setName = null, condition = null) {
+    if (!buylistCart || buylistCart.length === 0) return 0;
+    const nameLower = cardName.toLowerCase().trim();
+    let count = 0;
+    for (const c of buylistCart) {
+        if (c.card_name.toLowerCase() === nameLower) {
+            if (!setName || c.set_name.toLowerCase() === setName.toLowerCase()) {
+                if (!condition || c.condition.toLowerCase() === condition.toLowerCase()) {
+                    count += c.qty;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+function addSingleResultToCart(idx) {
+    const card = buylistSearchResults[idx];
+    if (!card) return;
+
+    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
+    const vMatch = getMatchingVariant(card.variants, selectedCond, "nonfoil");
+
+    addToBuylistCart({
+        card_name: card.card_name,
+        set_name: card.set_name,
+        condition: vMatch ? vMatch.condition : selectedCond,
+        finish: vMatch ? vMatch.finish : "Normal",
+        credit_price: vMatch ? vMatch.credit_price : 0,
+        cash_price: vMatch ? vMatch.cash_price : 0,
+        store_sell_price: vMatch ? vMatch.store_sell_price : 0,
+        image_url: card.image_url || "",
+        qty: 1
+    });
+}
+
+function addVariantToCart(cardName, setName, condition, finish, creditPrice, cashPrice, sellPrice, imgUrl) {
+    addToBuylistCart({
+        card_name: cardName,
+        set_name: setName,
+        condition: condition,
+        finish: finish,
+        credit_price: creditPrice,
+        cash_price: cashPrice,
+        store_sell_price: sellPrice,
+        image_url: imgUrl,
+        qty: 1
+    });
+}
+
+function addBulkQuoteToCart(idx) {
+    const q = bulkBuylistQuotes[idx];
+    if (!q || !q.matched) return;
+
+    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
+    let cPrice = q.credit_price;
+    let kPrice = q.cash_price;
+    let sPrice = q.store_sell_price;
+    let cond = q.condition || selectedCond;
+    let finish = q.finish || "Normal";
+
+    if (q.all_prints && q.all_prints.length > 0) {
+        const v = getMatchingVariant(q.all_prints[0].variants, selectedCond, "nonfoil");
+        if (v) {
+            cPrice = v.credit_price;
+            kPrice = v.cash_price;
+            sPrice = v.store_sell_price;
+            cond = v.condition;
+            finish = v.finish;
+        }
+    }
+
+    addToBuylistCart({
+        card_name: q.card_name,
+        set_name: q.set_name,
+        condition: cond,
+        finish: finish,
+        credit_price: cPrice,
+        cash_price: kPrice,
+        store_sell_price: sPrice,
+        image_url: q.image_url || "",
+        qty: 1
+    });
+}
+
+function addAllBulkQuotesToCart() {
+    if (!bulkBuylistQuotes || bulkBuylistQuotes.length === 0) {
+        showToast("No bulk quotes available to add", "info");
+        return;
+    }
+
+    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
+    let addedCount = 0;
+
+    bulkBuylistQuotes.forEach(q => {
+        if (q.matched) {
+            let cPrice = q.credit_price;
+            let kPrice = q.cash_price;
+            let sPrice = q.store_sell_price;
+            let cond = q.condition || selectedCond;
+            let finish = q.finish || "Normal";
+
+            if (q.all_prints && q.all_prints.length > 0) {
+                const v = getMatchingVariant(q.all_prints[0].variants, selectedCond, "nonfoil");
+                if (v) {
+                    cPrice = v.credit_price;
+                    kPrice = v.cash_price;
+                    sPrice = v.store_sell_price;
+                    cond = v.condition;
+                    finish = v.finish;
+                }
+            }
+
+            const existingIndex = buylistCart.findIndex(c => 
+                c.card_name.toLowerCase() === q.card_name.toLowerCase() &&
+                c.set_name.toLowerCase() === (q.set_name || '').toLowerCase() &&
+                c.condition.toLowerCase() === cond.toLowerCase() &&
+                c.finish.toLowerCase() === finish.toLowerCase()
+            );
+
+            if (existingIndex > -1) {
+                buylistCart[existingIndex].qty += 1;
+            } else {
+                buylistCart.push({
+                    card_name: q.card_name,
+                    set_name: q.set_name || "Unknown Set",
+                    condition: cond,
+                    finish: finish,
+                    credit_price: cPrice,
+                    cash_price: kPrice,
+                    store_sell_price: sPrice,
+                    image_url: q.image_url || "",
+                    qty: 1
+                });
+            }
+            addedCount++;
+        }
+    });
+
+    saveBuylistCart();
+    showToast(`Added ${addedCount} cards to Trade-In Batch!`, "success");
+    renderBulkBuylistResults();
+}
+
+function updateBuylistCartQty(idx, delta) {
+    if (!buylistCart[idx]) return;
+    buylistCart[idx].qty += delta;
+    if (buylistCart[idx].qty <= 0) {
+        buylistCart.splice(idx, 1);
+    }
+    saveBuylistCart();
+}
+
+function removeFromBuylistCart(idx) {
+    if (!buylistCart[idx]) return;
+    const removed = buylistCart.splice(idx, 1)[0];
+    saveBuylistCart();
+    showToast(`Removed ${removed.card_name} from Trade-In Batch`, "info");
+}
+
+function clearBuylistCart() {
+    if (buylistCart.length === 0) return;
+    buylistCart = [];
+    saveBuylistCart();
+    showToast("Trade-In Batch cleared", "info");
+}
+
+function renderBuylistCart() {
+    const badge = document.getElementById("buylist-cart-badge");
+    const container = document.getElementById("buylist-cart-items-container");
+    const totalQtyEl = document.getElementById("cart-total-qty");
+    const totalCreditEl = document.getElementById("cart-total-credit");
+    const totalCashEl = document.getElementById("cart-total-cash");
+
+    let totalQty = 0;
+    let totalCredit = 0.0;
+    let totalCash = 0.0;
+
+    buylistCart.forEach(item => {
+        totalQty += item.qty;
+        totalCredit += (item.credit_price * item.qty);
+        totalCash += (item.cash_price * item.qty);
+    });
+
+    if (badge) badge.textContent = totalQty;
+    if (totalQtyEl) totalQtyEl.textContent = totalQty;
+    if (totalCreditEl) totalCreditEl.textContent = `$${totalCredit.toFixed(2)}`;
+    if (totalCashEl) totalCashEl.textContent = `$${totalCash.toFixed(2)}`;
+
+    if (!container) return;
+
+    if (buylistCart.length === 0) {
+        container.innerHTML = `
+            <div class="bg-[#10141D] border border-[#263245] p-8 text-center text-[#94A3B8] space-y-2">
+                <div class="w-10 h-10 bg-[#1B2230] border border-[#263245] flex items-center justify-center mx-auto text-[#2DD4BF] text-lg font-bold">📦</div>
+                <div class="text-xs font-bold text-white uppercase tracking-wider">Trade-In Batch Empty</div>
+                <p class="text-[11px] text-[#64748B] max-w-xs mx-auto">
+                    Click <strong>+ Trade-In</strong> on any single card quote or bulk manifest search to build your trade-in order.
+                </p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = "";
+    buylistCart.forEach((item, idx) => {
+        const itemCreditSubtotal = (item.credit_price * item.qty).toFixed(2);
+        const itemCashSubtotal = (item.cash_price * item.qty).toFixed(2);
+
+        html += `
+            <div class="bg-[#10141D] border border-[#263245] hover:border-[#2DD4BF]/50 p-2.5 flex items-center justify-between gap-3 transition">
+                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                    ${item.image_url ? `
+                    <img src="${item.image_url}" alt="" class="w-9 h-12 object-cover border border-[#263245] bg-[#0C0F17] flex-shrink-0" onerror="this.style.display='none'">
+                    ` : ''}
+                    <div class="min-w-0 flex-1">
+                        <div class="font-bold text-white text-xs truncate" title="${item.card_name}">
+                            ${item.card_name}
+                        </div>
+                        <div class="text-[10px] text-[#94A3B8] truncate">
+                            ${item.set_name} &bull; <span class="text-[#2DD4BF] font-bold">${item.condition}</span> (${item.finish})
+                        </div>
+                        <div class="text-[10px] text-[#64748B] mt-0.5">
+                            Unit: <span class="text-[#2DD4BF] font-bold">$${item.credit_price.toFixed(2)}</span> Credit &bull; $${item.cash_price.toFixed(2)} Cash
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quantity and Subtotals -->
+                <div class="flex items-center space-x-3 flex-shrink-0">
+                    <!-- Qty Controls -->
+                    <div class="flex items-center border border-[#263245] bg-[#1B2230]">
+                        <button onclick="updateBuylistCartQty(${idx}, -1)" class="px-2 py-0.5 text-xs text-[#94A3B8] hover:text-white hover:bg-[#263245]">-</button>
+                        <span class="px-2 text-xs font-bold text-white">${item.qty}</span>
+                        <button onclick="updateBuylistCartQty(${idx}, 1)" class="px-2 py-0.5 text-xs text-[#94A3B8] hover:text-white hover:bg-[#263245]">+</button>
+                    </div>
+
+                    <!-- Price Subtotal -->
+                    <div class="text-right min-w-[70px]">
+                        <div class="font-bold text-xs text-[#2DD4BF]">$${itemCreditSubtotal}</div>
+                        <div class="text-[10px] text-[#94A3B8]">$${itemCashSubtotal} Cash</div>
+                    </div>
+
+                    <!-- Remove Item -->
+                    <button onclick="removeFromBuylistCart(${idx})" class="text-[#64748B] hover:text-[#FF3358] text-base font-bold px-1" title="Remove item">&times;</button>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function exportBuylistCartCSV() {
+    if (!buylistCart || buylistCart.length === 0) {
+        showToast("Trade-In Batch is currently empty", "info");
+        return;
+    }
+
+    let csvContent = "\uFEFF"; // UTF-8 BOM
+    csvContent += "Card Name,Set,Condition Grade,Finish,Quantity,Unit Store Credit ($),Total Store Credit ($),Unit Cash Buy ($),Total Cash Buy ($)\n";
+
+    buylistCart.forEach(item => {
+        const cleanName = `"${(item.card_name || '').replace(/"/g, '""')}"`;
+        const cleanSet = `"${(item.set_name || '').replace(/"/g, '""')}"`;
+        const totalCredit = (item.credit_price * item.qty).toFixed(2);
+        const totalCash = (item.cash_price * item.qty).toFixed(2);
+        csvContent += `${cleanName},${cleanSet},${item.condition},${item.finish},${item.qty},${item.credit_price.toFixed(2)},${totalCredit},${item.cash_price.toFixed(2)},${totalCash}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `mightymeeple_trade_in_batch_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Downloaded Trade-In Batch CSV", "success");
+}
+
+function copyBuylistCartSummary() {
+    if (!buylistCart || buylistCart.length === 0) {
+        showToast("Trade-In Batch is currently empty", "info");
+        return;
+    }
+
+    let summaryText = `MIGHTY MEEPLE TRADE-IN BATCH MANIFEST\n`;
+    summaryText += `Generated: ${new Date().toLocaleString()}\n`;
+    summaryText += `--------------------------------------------------\n`;
+
+    let totalQty = 0;
+    let totalCredit = 0.0;
+    let totalCash = 0.0;
+
+    buylistCart.forEach(item => {
+        const itemCredit = item.credit_price * item.qty;
+        const itemCash = item.cash_price * item.qty;
+        totalQty += item.qty;
+        totalCredit += itemCredit;
+        totalCash += itemCash;
+        summaryText += `${item.qty}x ${item.card_name} [${item.set_name}] (${item.condition} - ${item.finish}) -> Credit: $${itemCredit.toFixed(2)} | Cash: $${itemCash.toFixed(2)}\n`;
+    });
+
+    summaryText += `--------------------------------------------------\n`;
+    summaryText += `TOTAL CARDS:        ${totalQty}\n`;
+    summaryText += `TOTAL STORE CREDIT: $${totalCredit.toFixed(2)}\n`;
+    summaryText += `TOTAL CASH PAYOUT:  $${totalCash.toFixed(2)}\n`;
+
+    navigator.clipboard.writeText(summaryText).then(() => {
+        showToast("Copied Trade-In Batch Summary to clipboard", "success");
+    }).catch(() => {
+        showToast("Failed to copy to clipboard", "error");
+    });
+}
 
 function setBuylistMode(mode) {
     activeBuylistMode = mode;
@@ -1568,6 +1963,7 @@ function renderSingleBuylistResults() {
         const sellPrice = vMatch ? vMatch.store_sell_price : 0.0;
         const maxQty = vMatch ? vMatch.max_quantity : 0;
         const cardImg = card.image_url || "/static/img/chimaera_logo.jpg";
+        const inBatchQty = getCardCartQty(card.card_name, card.set_name, selectedCond);
 
         // Condition Pills for quick comparison
         const nmVar = getMatchingVariant(card.variants, "Near Mint", "nonfoil");
@@ -1641,8 +2037,9 @@ function renderSingleBuylistResults() {
                         <button onclick="openBuylistVariantModal(${idx}, 'single')" class="btn-bridge px-2.5 py-1 text-[11px] font-mono">
                             All Prints (${card.variants ? card.variants.length : 0})
                         </button>
-                        <button onclick="prefillAddCardModal('${card.card_name.replace(/'/g, "\\'")}')" class="btn-crimson px-2.5 py-1 text-[11px] font-mono font-bold" title="Add to Watchlist">
-                            + Track
+                        <button onclick="addSingleResultToCart(${idx})" class="btn-crimson px-2.5 py-1 text-[11px] font-mono font-bold bg-[#2DD4BF] hover:bg-[#00CED1] text-[#10141D] border-[#2DD4BF] flex items-center space-x-1" title="Add to Trade-In Batch">
+                            <span>+ Trade-In</span>
+                            ${inBatchQty > 0 ? `<span class="bg-[#10141D] text-[#2DD4BF] px-1 text-[9px] font-black font-mono">(${inBatchQty})</span>` : ''}
                         </button>
                     </div>
                 </div>
@@ -1652,13 +2049,6 @@ function renderSingleBuylistResults() {
 
     html += `</div>`;
     container.innerHTML = html;
-}
-
-function prefillAddCardModal(cardName) {
-    if (!cardName) return;
-    const cleanName = cardName.replace(/\[.*?\]/g, "").replace(/\(.*?\)/g, "").trim();
-    openAddCardModal();
-    selectCardName(cleanName || cardName);
 }
 
 // -------------------------------------------------------------------------
@@ -1806,6 +2196,8 @@ function renderBulkBuylistResults() {
             totalCash += kPrice;
             totalSell += sPrice;
 
+            const inBatchQty = getCardCartQty(q.card_name, q.set_name, matchedGrade);
+
             rowsHtml += `
                 <tr class="hover:bg-[#10141D] transition">
                     <td class="p-3 font-bold text-white flex items-center space-x-2.5">
@@ -1841,8 +2233,8 @@ function renderBulkBuylistResults() {
                         <button onclick="openBuylistVariantModal(${idx}, 'bulk')" class="btn-bridge px-2 py-1 text-[10px]" title="View All Set Printings">
                             Prints
                         </button>
-                        <button onclick="prefillAddCardModal('${q.card_name.replace(/'/g, "\\'")}')" class="btn-crimson px-2 py-1 text-[10px]" title="Add to Watchlist">
-                            + Track
+                        <button onclick="addBulkQuoteToCart(${idx})" class="btn-crimson px-2 py-1 text-[10px] bg-[#2DD4BF] hover:bg-[#00CED1] text-[#10141D] border-[#2DD4BF] font-bold" title="Add to Trade-In Batch">
+                            + Trade-In ${inBatchQty > 0 ? `(${inBatchQty})` : ''}
                         </button>
                     </td>
                 </tr>
@@ -1853,9 +2245,7 @@ function renderBulkBuylistResults() {
                     <td class="p-3 font-bold text-[#94A3B8]">${q.requested_name}</td>
                     <td class="p-3 text-[#FF3358] italic text-[11px]" colspan="6">Not found on Mighty Meeple buylist</td>
                     <td class="p-3 text-center">
-                        <button onclick="prefillAddCardModal('${q.requested_name.replace(/'/g, "\\'")}')" class="btn-bridge px-2 py-1 text-[10px]">
-                            + Track
-                        </button>
+                        <span class="text-[#64748B] text-[10px]">Unavailable</span>
                     </td>
                 </tr>
             `;
@@ -1916,6 +2306,7 @@ function openBuylistVariantModal(idx, source = "single") {
 
     let html = "";
     allPrints.forEach(print => {
+        const printImg = print.image_url || "";
         html += `
             <div class="bg-[#10141D] border border-[#263245] p-3 space-y-2">
                 <div class="flex items-center justify-between border-b border-[#263245] pb-2">
@@ -1934,6 +2325,7 @@ function openBuylistVariantModal(idx, source = "single") {
                                 <th class="py-1 text-right">Cash Buy</th>
                                 <th class="py-1 text-right text-[#94A3B8]">Retail Sell</th>
                                 <th class="py-1 text-center">Max Qty</th>
+                                <th class="py-1 text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-[#263245]/40">
@@ -1950,6 +2342,11 @@ function openBuylistVariantModal(idx, source = "single") {
                     <td class="py-1.5 text-right font-bold text-white">$${v.cash_price.toFixed(2)}</td>
                     <td class="py-1.5 text-right text-[#94A3B8]">$${v.store_sell_price.toFixed(2)}</td>
                     <td class="py-1.5 text-center text-[#00CED1] font-bold">${v.max_quantity}</td>
+                    <td class="py-1.5 text-center">
+                        <button onclick="addVariantToCart('${print.card_name.replace(/'/g, "\\'")}', '${print.set_name.replace(/'/g, "\\'")}', '${v.condition}', '${v.finish}', ${v.credit_price}, ${v.cash_price}, ${v.store_sell_price}, '${printImg}')" class="btn-bridge px-2 py-0.5 text-[10px] text-[#2DD4BF] border-[#2DD4BF]/40 hover:bg-[#2DD4BF]/20 font-bold">
+                            + Add
+                        </button>
+                    </td>
                 </tr>
             `;
         });
@@ -2120,8 +2517,10 @@ function readManifestFile(file) {
     reader.readAsText(file);
 }
 
-// Setup Dropzone Drag-and-Drop Listeners
+// Setup Dropzone Drag-and-Drop & Cart Initialization
 document.addEventListener("DOMContentLoaded", () => {
+    initBuylistCart();
+
     const dropzone = document.getElementById("buylist-dropzone");
     const fileInput = document.getElementById("buylist-file-input");
 
@@ -2153,6 +2552,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
 
 
 
