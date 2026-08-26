@@ -651,7 +651,11 @@ async function submitAddCard() {
         if (res.ok) {
             showToast(data.message || `Target acquired: ${payload.name}`, "success");
             closeAddCardModal();
-            setTimeout(() => window.location.reload(), 500);
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Add to Watchlist";
+            if (!window.location.pathname.includes("/buylist")) {
+                setTimeout(() => window.location.reload(), 500);
+            }
         } else {
             showToast(data.error || "Failed to register target", "error");
             submitBtn.disabled = false;
@@ -1651,12 +1655,10 @@ function renderSingleBuylistResults() {
 }
 
 function prefillAddCardModal(cardName) {
+    if (!cardName) return;
+    const cleanName = cardName.replace(/\[.*?\]/g, "").replace(/\(.*?\)/g, "").trim();
     openAddCardModal();
-    const input = document.getElementById("card-search-input");
-    if (input) {
-        input.value = cardName;
-        input.dispatchEvent(new Event("input"));
-    }
+    selectCardName(cleanName || cardName);
 }
 
 // -------------------------------------------------------------------------

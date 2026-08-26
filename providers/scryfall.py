@@ -1,4 +1,5 @@
 import logging
+import re
 import urllib.parse
 import requests
 
@@ -197,25 +198,59 @@ class ScryfallProvider:
         return found_map, still_unresolved
 
     def search_card_prints(self, card_name: str) -> list[dict]:
-        """Fetches all unique prints for a specific card name."""
+        """Fetches all unique prints for a specific card name with variant stripping and fuzzy fallback."""
         if not card_name:
             return []
 
+        # 1. Clean base name (strip set brackets and variant parentheticals)
+        clean_name = re.sub(r"\[.*?\]|\(.*?\)", "", card_name).strip()
+        if not clean_name:
+            clean_name = card_name.strip()
+
+        # Handle split / double-faced cards (e.g. Fire // Ice)
+        primary_name = clean_name.split(" // ")[0].strip()
+
+        candidates = [clean_name]
+        if primary_name != clean_name:
+            candidates.append(primary_name)
+        if card_name.strip() not in candidates:
+            candidates.append(card_name.strip())
+
         try:
-            # Exact card search with all prints
-            query = f'!"{card_name.strip()}"'
-            url = f"{SCRYFALL_BASE_URL}/cards/search"
-            response = self.session.get(
-                url,
-                params={"q": query, "unique": "prints", "order": "released", "dir": "desc"},
-                timeout=10,
-            )
+            cards = []
+            for cand in candidates:
+                query = f'!"{cand}"'
+                url = f"{SCRYFALL_BASE_URL}/cards/search"
+                response = self.session.get(
+                    url,
+                    params={"q": query, "unique": "prints", "order": "released", "dir": "desc"},
+                    timeout=10,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    cards = data.get("data", [])
+                    if cards:
+                        break
 
-            if response.status_code == 200:
-                data = response.json()
-                cards = data.get("data", [])
+            # 2. If exact matches failed, attempt fuzzy named lookup
+            if not cards:
+                named_url = f"{SCRYFALL_BASE_URL}/cards/named"
+                named_resp = self.session.get(named_url, params={"fuzzy": clean_name}, timeout=10)
+                if named_resp.status_code == 200:
+                    canonical_name = named_resp.json().get("name")
+                    if canonical_name:
+                        query = f'!"{canonical_name}"'
+                        url = f"{SCRYFALL_BASE_URL}/cards/search"
+                        search_resp = self.session.get(
+                            url,
+                            params={"q": query, "unique": "prints", "order": "released", "dir": "desc"},
+                            timeout=10,
+                        )
+                        if search_resp.status_code == 200:
+                            cards = search_resp.json().get("data", [])
+
+            if cards:
                 formatted_prints = []
-
                 for card in cards:
                     # Resolve image
                     image_uri = None
@@ -251,7 +286,7 @@ class ScryfallProvider:
                     })
                 return formatted_prints
 
-            logger.warning(f"Scryfall search prints returned status {response.status_code}")
+            logger.warning(f"Scryfall search prints found no matches for '{card_name}'")
         except Exception as e:
             logger.error(f"Error searching card prints for '{card_name}': {e}")
         return []
