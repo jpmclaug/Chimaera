@@ -1221,6 +1221,244 @@ class ChimeraTestSuite(unittest.TestCase):
         resp_sets = self.client.get("/api/buylist/sets?game=mtg")
         self.assertEqual(resp_sets.status_code, 200)
 
+    def test_31_specific_variant_matching_mightymeeple(self):
+        """Tests precise variant matching on Mighty Meeple across multiple card printings."""
+        mm = MightyMeepleProvider()
+
+        # 1. Test Elesh Norn, Mother of Machines - Borderless Manga (ONE #415)
+        res_manga = mm.search_card(
+            card_name="Elesh Norn, Mother of Machines",
+            set_name="Phyrexia: All Will Be One",
+            set_code="ONE",
+            collector_number="415",
+            finish="nonfoil",
+        )
+        self.assertIn("borderless-manga", res_manga.get("product_url", ""))
+        self.assertEqual(res_manga.get("vendor_name"), "Mighty Meeple")
+
+        # 2. Test Elesh Norn, Mother of Machines - Regular (ONE #10)
+        res_regular = mm.search_card(
+            card_name="Elesh Norn, Mother of Machines",
+            set_name="Phyrexia: All Will Be One",
+            set_code="ONE",
+            collector_number="10",
+            finish="nonfoil",
+        )
+        self.assertNotIn("manga", res_regular.get("product_url", ""))
+        self.assertNotIn("oil-slick", res_regular.get("product_url", ""))
+        self.assertNotIn("concept", res_regular.get("product_url", ""))
+        self.assertIn("elesh-norn-mother-of-machines-phyrexia-all-will-be-one", res_regular.get("product_url", ""))
+
+        # 3. Test Elesh Norn, Mother of Machines - Oil Slick Raised Foil (ONE #345)
+        res_oilslick = mm.search_card(
+            card_name="Elesh Norn, Mother of Machines",
+            set_name="Phyrexia: All Will Be One",
+            set_code="ONE",
+            collector_number="345",
+            finish="foil",
+        )
+        self.assertIn("oil-slick-raised-foil", res_oilslick.get("product_url", ""))
+
+        # 4. Test Elesh Norn, Mother of Machines - Promo Pack (PONE #10p)
+        res_promo_pack = mm.search_card(
+            card_name="Elesh Norn, Mother of Machines",
+            set_name="Phyrexia: All Will Be One Promos",
+            set_code="PONE",
+            collector_number="10p",
+            finish="nonfoil",
+        )
+        self.assertIn("promo-pack", res_promo_pack.get("product_url", ""))
+
+        # 5. Test Elesh Norn, Mother of Machines - Prerelease Promo (PONE #10s)
+        res_prerelease = mm.search_card(
+            card_name="Elesh Norn, Mother of Machines",
+            set_name="Phyrexia: All Will Be One Promos",
+            set_code="PONE",
+            collector_number="10s",
+            finish="foil",
+        )
+        self.assertIn("prerelease", res_prerelease.get("product_url", ""))
+
+        # 6. Test Elesh Norn, Mother of Machines - Any Version (Fallback)
+        res_any = mm.search_card(
+            card_name="Elesh Norn, Mother of Machines",
+            set_name=None,
+            set_code=None,
+            collector_number=None,
+            finish="nonfoil",
+        )
+        self.assertIsNotNone(res_any.get("product_url"))
+        self.assertGreater(res_any.get("price", 0), 0)
+
+        # 7. Test DealEngine.poll_card for a specific variant WatchlistItem
+        with self.app.app_context():
+            user = User.query.first()
+            item_manga = WatchlistItem(
+                user_id=user.id if user else None,
+                name="Elesh Norn, Mother of Machines",
+                scryfall_id="8673ccb2-e960-44a9-917b-c53c91e61a94",
+                set_code="ONE",
+                collector_number="415",
+                finish="nonfoil",
+                target_price=80.0,
+            )
+            db.session.add(item_manga)
+            db.session.commit()
+
+            engine = DealEngine(app=self.app)
+            poll_res = engine.poll_card(item_manga, notify=False)
+            self.assertEqual(poll_res["card_name"], "Elesh Norn, Mother of Machines")
+            mm_vp = item_manga.mm_vendor_price
+            self.assertIsNotNone(mm_vp)
+            self.assertIn("borderless-manga", mm_vp.product_url)
+
+    def test_32_discord_webhook_validation(self):
+        """Tests validation of Discord webhook URLs against valid patterns and malicious/invalid inputs."""
+        # Valid URLs
+        valid_standard = "https://discord.com/api/webhooks/123456789012345678/abcdef_ABCDEF-12345"
+        valid_app = "https://discordapp.com/api/webhooks/987654321098765432/token_ABC-123"
+        valid_canary = "https://canary.discord.com/api/webhooks/112233445566778899/tokenXYZ"
+        valid_ptb = "https://ptb.discord.com/api/webhooks/998877665544332211/token_123"
+
+        for url in (valid_standard, valid_app, valid_canary, valid_ptb):
+            is_valid, sanitized = User.validate_discord_webhook_url(url)
+            self.assertTrue(is_valid, f"Expected {url} to be valid")
+            self.assertEqual(sanitized, url)
+
+        # Valid empty/None (clearing webhook)
+        self.assertTrue(User.validate_discord_webhook_url(None)[0])
+        self.assertTrue(User.validate_discord_webhook_url("")[0])
+        self.assertTrue(User.validate_discord_webhook_url("   ")[0])
+
+        # Invalid URLs
+        invalid_urls = [
+            "http://discord.com/api/webhooks/12345/abcdef",  # Insecure HTTP
+            "https://attacker.com/api/webhooks/12345/abcdef",  # Wrong domain
+            "https://discord.com/api/webhooks/nonnumeric/abcdef",  # Non-numeric ID
+            "https://discord.com/api/webhooks/12345",  # Missing token
+            "https://discord.com/channels/123/456",  # Channel link not webhook
+            "javascript:alert(1)",  # XSS probe
+            "not a url",
+        ]
+        for url in invalid_urls:
+            is_valid, err = User.validate_discord_webhook_url(url)
+            self.assertFalse(is_valid, f"Expected {url} to be rejected")
+            self.assertIn("Invalid Discord webhook", err)
+
+    def test_33_discord_webhook_routing_priority(self):
+        """Tests the webhook routing priority: Override > Test Environment > User Webhook > System Fallback."""
+        with self.app.app_context():
+            engine = DealEngine(app=self.app)
+
+            # Create test users
+            user_with_wh = User(
+                email="user_with_wh@example.com",
+                discord_webhook_url="https://discord.com/api/webhooks/1111111111/user_channel_token",
+            )
+            user_no_wh = User(
+                email="user_no_wh@example.com",
+                discord_webhook_url=None,
+            )
+            db.session.add_all([user_with_wh, user_no_wh])
+            db.session.commit()
+
+            # 1. Override URL takes highest priority
+            override = "https://discord.com/api/webhooks/9999999999/override_token"
+            resolved = engine.get_effective_webhook_url(user=user_with_wh, override_url=override)
+            self.assertEqual(resolved, override)
+
+            # 2. Test Environment routing (when app is in non-testing mode vs testing mode)
+            self.app.config["TESTING"] = True
+            self.app.config["DISCORD_TEST_WEBHOOK_URL"] = "https://discord.com/api/webhooks/8888888888/test_channel_token"
+            test_resolved = engine.get_effective_webhook_url(user=user_with_wh, is_test_event=True)
+            self.assertEqual(test_resolved, "https://discord.com/api/webhooks/8888888888/test_channel_token")
+
+            # Reset TESTING to test production routing
+            self.app.config["TESTING"] = False
+            self.app.config["DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/0000000000/global_default_token"
+
+            # 3. User with custom webhook routes to their personal channel
+            user_resolved = engine.get_effective_webhook_url(user=user_with_wh)
+            self.assertEqual(user_resolved, user_with_wh.discord_webhook_url)
+
+            # 4. User without custom webhook falls back to global default
+            fallback_resolved = engine.get_effective_webhook_url(user=user_no_wh)
+            self.assertEqual(fallback_resolved, "https://discord.com/api/webhooks/0000000000/global_default_token")
+
+            # Restore TESTING
+            self.app.config["TESTING"] = True
+
+    def test_34_user_webhook_api_endpoints(self):
+        """Tests the user settings and webhook update REST API endpoints."""
+        # 1. GET /api/user/settings
+        resp = self.client.get("/api/user/settings")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("user", data)
+        self.assertIn("discord_webhook_url", data)
+
+        # 2. POST /api/user/settings/webhook with valid URL
+        valid_wh = "https://discord.com/api/webhooks/222333444555/valid_token_xyz"
+        resp_post = self.client.post(
+            "/api/user/settings/webhook",
+            json={"discord_webhook_url": valid_wh},
+        )
+        self.assertEqual(resp_post.status_code, 200)
+        post_data = resp_post.get_json()
+        self.assertEqual(post_data["discord_webhook_url"], valid_wh)
+
+        # Verify persisted in database
+        with self.app.app_context():
+            current_admin = User.query.filter_by(email="jpmclaug@gmail.com").first()
+            self.assertEqual(current_admin.discord_webhook_url, valid_wh)
+
+        # 3. POST /api/user/settings/webhook with invalid URL
+        resp_invalid = self.client.post(
+            "/api/user/settings/webhook",
+            json={"discord_webhook_url": "https://malicious-site.com/fake-hook"},
+        )
+        self.assertEqual(resp_invalid.status_code, 400)
+        self.assertIn("error", resp_invalid.get_json())
+
+        # 4. POST /api/user/settings/webhook to clear webhook
+        resp_clear = self.client.post(
+            "/api/user/settings/webhook",
+            json={"discord_webhook_url": ""},
+        )
+        self.assertEqual(resp_clear.status_code, 200)
+        self.assertIsNone(resp_clear.get_json()["discord_webhook_url"])
+
+    def test_35_discord_test_notification_dispatch_and_error_handling(self):
+        """Tests test notification dispatch and graceful error handling for 429 and connection failures."""
+        from unittest.mock import patch, MagicMock
+
+        # Mock successful request
+        mock_success = MagicMock()
+        mock_success.status_code = 204
+
+        with patch("requests.post", return_value=mock_success) as mock_post:
+            test_wh = "https://discord.com/api/webhooks/333444555666/test_token"
+            resp = self.client.post("/api/discord/test", json={"webhook_url": test_wh})
+            self.assertEqual(resp.status_code, 200)
+            mock_post.assert_called_once()
+            called_url = mock_post.call_args[0][0]
+            self.assertEqual(called_url, test_wh)
+
+        # Mock 429 rate limit error
+        mock_429 = MagicMock()
+        mock_429.status_code = 429
+        mock_429.text = "You are being rate limited."
+        with patch("requests.post", return_value=mock_429):
+            resp_429 = self.client.post("/api/discord/test", json={"webhook_url": test_wh})
+            self.assertEqual(resp_429.status_code, 400)
+            self.assertIn("Rate Limit", resp_429.get_json().get("error", ""))
+
+        # Mock connection error
+        with patch("requests.post", side_effect=Exception("Connection timed out")):
+            resp_err = self.client.post("/api/discord/test", json={"webhook_url": test_wh})
+            self.assertEqual(resp_err.status_code, 400)
+            self.assertIn("Connection failed", resp_err.get_json().get("error", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

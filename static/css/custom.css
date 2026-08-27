@@ -320,10 +320,25 @@ input:focus, select:focus, textarea:focus {
     font-weight: 700;
 }
 
-/* Buylist Drag-and-Drop Active State */
-#buylist-dropzone.drag-active {
-    border-color: #2DD4BF !important;
-    background-color: rgba(45, 212, 191, 0.12) !important;
+/* Modal and Scrollable Touch Behavior */
+.modal-scrollable {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* Custom modal scrollbar styling */
+.modal-scrollable::-webkit-scrollbar {
+    width: 5px;
+}
+.modal-scrollable::-webkit-scrollbar-track {
+    background: #10141D;
+}
+.modal-scrollable::-webkit-scrollbar-thumb {
+    background: #263245;
+    border-radius: 2px;
+}
+.modal-scrollable::-webkit-scrollbar-thumb:hover {
+    background: #3D4F6B;
 }
 
 

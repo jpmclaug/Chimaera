@@ -95,15 +95,23 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN search_url TEXT"))
                         conn.commit()
 
+                    # Ensure discord_webhook_url column exists in user table
+                    user_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(user)")).fetchall()]
+                    if "discord_webhook_url" not in user_cols:
+                        logger.info("Adding discord_webhook_url column to user table...")
+                        conn.execute(db.text("ALTER TABLE user ADD COLUMN discord_webhook_url VARCHAR(500)"))
+                        conn.commit()
+
             elif dialect in ("postgresql", "postgres"):
                 with db.engine.connect() as conn:
-                    logger.info("Verifying PostgreSQL watchlist_item constraints and columns...")
+                    logger.info("Verifying PostgreSQL watchlist_item and user constraints and columns...")
                     conn.execute(db.text("ALTER TABLE watchlist_item ALTER COLUMN scryfall_id DROP NOT NULL"))
                     conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
                     conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
+                    conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
 
@@ -1421,11 +1429,50 @@ def create_app(test_config=None):
             }
         })
 
+    @app.route("/api/user/settings", methods=["GET"])
+    @login_required
+    def get_user_settings():
+        """Returns the authenticated user's profile and notification settings."""
+        user = get_current_user()
+        return jsonify({
+            "user": user.to_dict(),
+            "discord_webhook_url": user.discord_webhook_url,
+            "global_discord_webhook_set": bool(Config.DISCORD_WEBHOOK_URL),
+        })
+
+    @app.route("/api/user/settings/webhook", methods=["POST"])
+    @login_required
+    def update_user_discord_webhook():
+        """Updates or clears the authenticated user's private Discord Webhook URL."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_url = data.get("discord_webhook_url")
+
+        if raw_url is not None and str(raw_url).strip() != "":
+            valid, clean_url_or_err = User.validate_discord_webhook_url(raw_url)
+            if not valid:
+                return jsonify({"error": clean_url_or_err}), 400
+            user.discord_webhook_url = clean_url_or_err
+        else:
+            user.discord_webhook_url = None
+
+        db.session.commit()
+        log_activity("SETTINGS_UPDATE", details="Updated Discord Webhook configuration", user=user)
+        return jsonify({
+            "message": "Discord webhook configuration saved successfully.",
+            "discord_webhook_url": user.discord_webhook_url,
+            "user": user.to_dict(),
+        }), 200
+
     @app.route("/api/discord/test", methods=["POST"])
     @login_required
     def test_discord_webhook():
-        """Test Discord webhook integration."""
-        success, msg = deal_engine.send_test_discord_notification()
+        """Test Discord webhook integration with optional candidate URL."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        target_url = data.get("webhook_url") or data.get("discord_webhook_url")
+
+        success, msg = deal_engine.send_test_discord_notification(webhook_url=target_url, user=user)
         if success:
             return jsonify({"message": msg}), 200
         return jsonify({"error": msg}), 400
@@ -1434,6 +1481,7 @@ def create_app(test_config=None):
     @login_required
     def get_telemetry():
         """Returns current surveillance cadence, worker heartbeat, and telemetry status."""
+        user = get_current_user()
         interval_hours = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
         auto_enabled = SystemSetting.get_bool("auto_poll_enabled", default=True)
         notify_mm_stock = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
@@ -1456,6 +1504,8 @@ def create_app(test_config=None):
             "last_poll_deals": int(last_poll_deals) if str(last_poll_deals).isdigit() else 0,
             "worker_heartbeat": worker_heartbeat,
             "worker_status": worker_status,
+            "user_discord_webhook_url": user.discord_webhook_url if user else None,
+            "global_discord_webhook_set": bool(Config.DISCORD_WEBHOOK_URL),
         })
 
     @app.route("/api/settings/cadence", methods=["POST"])

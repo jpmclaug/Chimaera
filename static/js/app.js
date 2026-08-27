@@ -443,6 +443,38 @@ document.addEventListener("DOMContentLoaded", () => {
             dropdown.classList.add("hidden");
         }
     });
+
+    // Close modals on backdrop click
+    const modalIds = ["modal-add-card", "modal-bulk-add", "modal-edit-target", "modal-cadence-settings", "modal-buylist-variants"];
+    modalIds.forEach(id => {
+        const modal = document.getElementById(id);
+        if (modal) {
+            modal.addEventListener("click", (e) => {
+                if (e.target === modal) {
+                    if (id === "modal-add-card") closeAddCardModal();
+                    else if (id === "modal-bulk-add") closeBulkAddModal();
+                    else if (id === "modal-edit-target") closeEditTargetModal();
+                    else if (id === "modal-cadence-settings") closeCadenceModal();
+                    else if (id === "modal-buylist-variants" && typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
+                }
+            });
+        }
+    });
+
+    // Close modals on Escape key
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            closeAddCardModal();
+            closeBulkAddModal();
+            closeEditTargetModal();
+            closeCadenceModal();
+            if (typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
+            const logoMenu = document.getElementById("logo-dropdown-menu");
+            if (logoMenu && !logoMenu.classList.contains("hidden")) {
+                logoMenu.classList.add("hidden");
+            }
+        }
+    });
 });
 
 async function selectCardName(cardName) {
@@ -1287,6 +1319,25 @@ async function fetchCadenceTelemetry() {
             }
         }
 
+        const webhookInput = document.getElementById("user-discord-webhook-input");
+        const routingBadge = document.getElementById("webhook-routing-badge");
+
+        if (webhookInput) {
+            webhookInput.value = data.user_discord_webhook_url || "";
+        }
+        if (routingBadge) {
+            if (data.user_discord_webhook_url) {
+                routingBadge.textContent = "Personal Channel";
+                routingBadge.className = "text-[9px] font-mono px-1.5 py-0.2 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 uppercase font-bold";
+            } else if (data.global_discord_webhook_set) {
+                routingBadge.textContent = "Default / Fallback";
+                routingBadge.className = "text-[9px] font-mono px-1.5 py-0.2 bg-[#263245] text-[#94A3B8] uppercase font-bold";
+            } else {
+                routingBadge.textContent = "Unconfigured";
+                routingBadge.className = "text-[9px] font-mono px-1.5 py-0.2 bg-[#DC143C]/20 text-[#FF3358] uppercase font-bold";
+            }
+        }
+
         if (statusMsgElem) {
             statusMsgElem.textContent = data.last_poll_status || "Surveillance nominal.";
         }
@@ -1296,11 +1347,46 @@ async function fetchCadenceTelemetry() {
     }
 }
 
+async function testUserDiscordWebhook() {
+    const input = document.getElementById("user-discord-webhook-input");
+    const btn = document.getElementById("btn-test-user-webhook");
+    const url = input ? input.value.trim() : "";
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span>⏳ Verifying...</span>`;
+    }
+
+    try {
+        const payload = url ? { webhook_url: url } : {};
+        const res = await fetch("/api/discord/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || "Test webhook delivered successfully!", "success");
+        } else {
+            showToast(data.error || "Discord webhook verification failed.", "error");
+        }
+    } catch (err) {
+        console.error("Test webhook error:", err);
+        showToast("Connection to server failed during webhook test.", "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<span>🔔 Test Webhook</span>`;
+        }
+    }
+}
+
 async function saveCadenceSettings() {
     const select = document.getElementById("cadence-interval-select");
     const autoCheck = document.getElementById("cadence-auto-enabled");
     const mmCheck = document.getElementById("cadence-notify-mm");
     const ebaySelect = document.getElementById("cadence-ebay-mode");
+    const webhookInput = document.getElementById("user-discord-webhook-input");
     const btn = document.getElementById("btn-save-cadence");
 
     if (btn) {
@@ -1309,6 +1395,20 @@ async function saveCadenceSettings() {
     }
 
     try {
+        if (webhookInput) {
+            const webhookUrl = webhookInput.value.trim();
+            const whRes = await fetch("/api/user/settings/webhook", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ discord_webhook_url: webhookUrl }),
+            });
+            if (!whRes.ok) {
+                const whData = await whRes.json();
+                showToast(whData.error || "Invalid Discord webhook format", "error");
+                return;
+            }
+        }
+
         const payload = {
             poll_interval_hours: select ? parseFloat(select.value) : 6.0,
             auto_poll_enabled: autoCheck ? autoCheck.checked : true,
@@ -1324,7 +1424,7 @@ async function saveCadenceSettings() {
 
         const data = await res.json();
         if (res.ok) {
-            showToast(data.message || "Surveillance settings committed", "success");
+            showToast(data.message || "Surveillance & notification settings committed", "success");
             closeCadenceModal();
             await fetchCadenceTelemetry();
         } else {

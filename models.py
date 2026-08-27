@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone, timedelta
 from flask_sqlalchemy import SQLAlchemy
 
@@ -20,6 +21,7 @@ class User(db.Model):
     picture = db.Column(db.Text, nullable=True)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    discord_webhook_url = db.Column(db.String(500), nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
     last_login = db.Column(db.DateTime, nullable=True)
 
@@ -31,6 +33,23 @@ class User(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+
+    DISCORD_WEBHOOK_REGEX = re.compile(
+        r"^https://(?:(?:canary|ptb)\.)?discord(?:app)?\.com/api/webhooks/\d+/[A-Za-z0-9_-]+/?$"
+    )
+
+    @staticmethod
+    def validate_discord_webhook_url(url: str | None) -> tuple[bool, str]:
+        """
+        Validates whether a URL is a valid, secure Discord webhook endpoint.
+        Returns (is_valid, sanitized_url_or_error_message).
+        """
+        if not url or not str(url).strip():
+            return True, ""
+        clean = str(url).strip()
+        if not User.DISCORD_WEBHOOK_REGEX.match(clean):
+            return False, "Invalid Discord webhook URL format. Expected: https://discord.com/api/webhooks/<id>/<token>"
+        return True, clean
 
     @property
     def card_count(self):
@@ -72,6 +91,7 @@ class User(db.Model):
             "picture": self.picture,
             "is_admin": self.is_admin,
             "is_active": self.is_active,
+            "discord_webhook_url": self.discord_webhook_url,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "last_active": last_active.isoformat() if last_active else None,

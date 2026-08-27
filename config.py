@@ -34,6 +34,7 @@ class Config:
     # Notifications & Background Job Settings
     PORT = int(os.getenv("PORT", 5050))
     DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    DISCORD_TEST_WEBHOOK_URL = os.getenv("DISCORD_TEST_WEBHOOK_URL", "").strip()
     try:
         POLL_INTERVAL_HOURS = float(os.getenv("POLL_INTERVAL_HOURS", 6))
     except (ValueError, TypeError):

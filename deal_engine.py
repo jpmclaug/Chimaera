@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 import requests
 from config import Config
-from models import db, WatchlistItem, VendorPrice, SystemSetting
+from models import db, WatchlistItem, VendorPrice, SystemSetting, User
 from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ class DealEngine:
             card_name=item.name,
             set_name=set_name,
             set_code=None if is_any else item.set_code,
+            collector_number=None if is_any else item.collector_number,
             finish=item.finish,
         )
 
@@ -160,35 +161,90 @@ class DealEngine:
                 logger.error(f"Error polling card {item.name} (ID: {item.id}): {e}")
         return summary
 
+    def get_effective_webhook_url(
+        self,
+        user: User | None = None,
+        override_url: str | None = None,
+        is_test_event: bool = False,
+    ) -> str | None:
+        """
+        Determines the target Discord webhook URL using the following priority hierarchy:
+        1. Explicit override URL (e.g. from UI verification test field before saving)
+        2. Testing / automated test environment (routes to DISCORD_TEST_WEBHOOK_URL)
+        3. Per-user configured discord_webhook_url (if user/owner is present)
+        4. Global default DISCORD_WEBHOOK_URL from configuration / environment
+        """
+        # 1. Explicit override / testing argument
+        if override_url and str(override_url).strip():
+            valid, clean_url = User.validate_discord_webhook_url(override_url)
+            if valid and clean_url:
+                return clean_url
+
+        # Check if running in automated test mode
+        is_testing = False
+        if self.app and self.app.config.get("TESTING"):
+            is_testing = True
+        elif is_test_event:
+            is_testing = True
+
+        # 2. Automated test environment
+        if is_testing:
+            test_url = (
+                (self.app.config.get("DISCORD_TEST_WEBHOOK_URL") if self.app else "")
+                or Config.DISCORD_TEST_WEBHOOK_URL
+            )
+            if test_url:
+                return test_url
+            if self.app and self.app.config.get("TESTING"):
+                return None  # In testing without test webhook configured, avoid hitting production URLs
+
+        # 3. Per-user configured webhook
+        if user and user.discord_webhook_url:
+            valid, clean_url = User.validate_discord_webhook_url(user.discord_webhook_url)
+            if valid and clean_url:
+                return clean_url
+
+        # 4. System default fallback
+        global_url = (
+            (self.app.config.get("DISCORD_WEBHOOK_URL") if self.app else "")
+            or Config.DISCORD_WEBHOOK_URL
+        )
+        return global_url if global_url else None
+
     def send_discord_deal_alert(
         self,
         item: WatchlistItem,
         best_vendor: VendorPrice,
         savings_amount: float,
         savings_percent: float,
+        user: User | None = None,
+        webhook_url: str | None = None,
     ) -> bool:
         """Dispatches a rich Discord Webhook embed for an active deal."""
-        webhook_url = Config.DISCORD_WEBHOOK_URL
-        if not webhook_url:
-            logger.debug("Discord Webhook URL not configured; skipping deal alert.")
+        target_user = user or (item.user if item else None)
+        dest_url = self.get_effective_webhook_url(user=target_user, override_url=webhook_url)
+
+        if not dest_url:
+            logger.debug(f"No Discord webhook configured for user/system; skipping deal alert for {item.name if item else 'target'}.")
             return False
 
         try:
             # Build multi-vendor price comparison string
             comparison_lines = []
-            for vp in item.vendor_prices:
-                stock_tag = "✓ In Stock" if vp.in_stock else "✗ Out of Stock"
-                price_tag = f"${vp.price:.2f}" if vp.price > 0 else "N/A"
-                prefix = "★ **" if vp.id == best_vendor.id else ""
-                suffix = "** (Best Deal)" if vp.id == best_vendor.id else ""
-                comparison_lines.append(f"{prefix}{vp.vendor_name}: {price_tag} [{stock_tag}] ({vp.condition}){suffix}")
+            if item:
+                for vp in item.vendor_prices:
+                    stock_tag = "✓ In Stock" if vp.in_stock else "✗ Out of Stock"
+                    price_tag = f"${vp.price:.2f}" if vp.price > 0 else "N/A"
+                    prefix = "★ **" if vp.id == best_vendor.id else ""
+                    suffix = "** (Best Deal)" if vp.id == best_vendor.id else ""
+                    comparison_lines.append(f"{prefix}{vp.vendor_name}: {price_tag} [{stock_tag}] ({vp.condition}){suffix}")
 
             comparison_text = "\n".join(comparison_lines) if comparison_lines else "No vendor data"
 
             fields = [
                 {
                     "name": "Target Price",
-                    "value": f"${item.target_price:.2f}" if item.target_price else "Not set",
+                    "value": f"${item.target_price:.2f}" if item and item.target_price else "Not set",
                     "inline": True,
                 },
                 {
@@ -215,10 +271,12 @@ class DealEngine:
                     "inline": False,
                 })
 
-            set_label = "Any Version" if item.is_any_version else (item.set_code or "Unknown")
+            set_label = "Any Version" if (item and item.is_any_version) else (item.set_code if item else "Unknown")
+            finish_label = item.finish.capitalize() if item else "Nonfoil"
+            item_name = item.name if item else "Monitored Card"
             embed = {
-                "title": f"🚨 Priority Deal: {item.name}",
-                "description": f"**Set:** {set_label} | **Finish:** {item.finish.capitalize()}",
+                "title": f"🚨 Priority Deal: {item_name}",
+                "description": f"**Set:** {set_label} | **Finish:** {finish_label}",
                 "color": 0xDC143C,  # Tactical Crimson
                 "fields": fields,
                 "footer": {
@@ -227,7 +285,7 @@ class DealEngine:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-            if item.image_uri:
+            if item and item.image_uri:
                 embed["thumbnail"] = {"url": item.image_uri}
 
             payload = {
@@ -235,10 +293,14 @@ class DealEngine:
                 "embeds": [embed],
             }
 
-            resp = requests.post(webhook_url, json=payload, timeout=8)
+            resp = requests.post(dest_url, json=payload, timeout=8)
             if resp.status_code in (200, 204):
-                logger.info(f"Discord deal alert sent successfully for {item.name}")
+                logger.info(f"Discord deal alert sent successfully for {item_name} to {dest_url[:45]}...")
                 return True
+            elif resp.status_code == 429:
+                logger.warning(f"Discord webhook rate limited (429) for {dest_url[:45]}...")
+            elif resp.status_code in (401, 404):
+                logger.warning(f"Discord webhook invalid/unauthorized ({resp.status_code}) for {dest_url[:45]}...")
             else:
                 logger.warning(f"Discord webhook failed with status code {resp.status_code}: {resp.text}")
         except Exception as e:
@@ -250,18 +312,24 @@ class DealEngine:
         self,
         item: WatchlistItem,
         mm_data: dict,
+        user: User | None = None,
+        webhook_url: str | None = None,
     ) -> bool:
         """Dispatches a rich Discord Webhook embed specifically for Mighty Meeple in-stock restocks."""
-        webhook_url = Config.DISCORD_WEBHOOK_URL
-        if not webhook_url:
-            logger.debug("Discord Webhook URL not configured; skipping Mighty Meeple stock alert.")
+        target_user = user or (item.user if item else None)
+        dest_url = self.get_effective_webhook_url(user=target_user, override_url=webhook_url)
+
+        if not dest_url:
+            logger.debug(f"No Discord Webhook URL configured; skipping Mighty Meeple stock alert for {item.name if item else 'target'}.")
             return False
 
         try:
             price_val = float(mm_data.get("price", 0.0))
             condition_val = mm_data.get("condition", "NM")
             product_url = mm_data.get("product_url")
-            set_label = "Any Version" if item.is_any_version else (item.set_code or "Unknown")
+            set_label = "Any Version" if (item and item.is_any_version) else (item.set_code if item else "Unknown")
+            item_name = item.name if item else "Monitored Card"
+            finish_label = item.finish.capitalize() if item else "Nonfoil"
 
             fields = [
                 {
@@ -276,14 +344,14 @@ class DealEngine:
                 },
             ]
 
-            if item.target_price:
+            if item and item.target_price:
                 fields.append({
                     "name": "Your Target Threshold",
                     "value": f"${item.target_price:.2f}",
                     "inline": True,
                 })
 
-            if item.market_price:
+            if item and item.market_price:
                 fields.append({
                     "name": "TCGplayer Market Ref",
                     "value": f"${item.market_price:.2f}",
@@ -304,8 +372,8 @@ class DealEngine:
             })
 
             embed = {
-                "title": f"🎲 Mighty Meeple In-Stock: {item.name}",
-                "description": f"**Set:** {set_label} | **Finish:** {item.finish.capitalize()}",
+                "title": f"🎲 Mighty Meeple In-Stock: {item_name}",
+                "description": f"**Set:** {set_label} | **Finish:** {finish_label}",
                 "color": 0x00CED1,  # Tactical Teal
                 "fields": fields,
                 "footer": {
@@ -314,7 +382,7 @@ class DealEngine:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-            if item.image_uri:
+            if item and item.image_uri:
                 embed["thumbnail"] = {"url": item.image_uri}
 
             payload = {
@@ -322,10 +390,14 @@ class DealEngine:
                 "embeds": [embed],
             }
 
-            resp = requests.post(webhook_url, json=payload, timeout=8)
+            resp = requests.post(dest_url, json=payload, timeout=8)
             if resp.status_code in (200, 204):
-                logger.info(f"Discord Mighty Meeple stock alert sent successfully for {item.name}")
+                logger.info(f"Discord Mighty Meeple stock alert sent successfully for {item_name} to {dest_url[:45]}...")
                 return True
+            elif resp.status_code == 429:
+                logger.warning(f"Discord webhook rate limited (429) for {dest_url[:45]}...")
+            elif resp.status_code in (401, 404):
+                logger.warning(f"Discord webhook invalid/unauthorized ({resp.status_code}) for {dest_url[:45]}...")
             else:
                 logger.warning(f"Discord Mighty Meeple alert failed with status code {resp.status_code}: {resp.text}")
         except Exception as e:
@@ -333,13 +405,22 @@ class DealEngine:
 
         return False
 
-    def send_test_discord_notification(self) -> tuple[bool, str]:
-        """Sends a verification ping to the configured Discord Webhook."""
-        webhook_url = Config.DISCORD_WEBHOOK_URL
-        if not webhook_url:
-            return False, "Discord Webhook URL is not set in configuration."
+    def send_test_discord_notification(
+        self,
+        webhook_url: str | None = None,
+        user: User | None = None,
+    ) -> tuple[bool, str]:
+        """Sends a verification ping to the specified, user, or test Discord Webhook."""
+        dest_url = self.get_effective_webhook_url(user=user, override_url=webhook_url, is_test_event=True)
+        if not dest_url:
+            return False, "No Discord Webhook URL is configured or provided for testing."
+
+        valid, clean_url = User.validate_discord_webhook_url(dest_url)
+        if not valid:
+            return False, clean_url
 
         try:
+            dest_label = "User Channel" if (user and user.discord_webhook_url == clean_url) else ("Custom Test Webhook" if webhook_url else "Dedicated Test Channel")
             payload = {
                 "username": "Chimaera Tactical Intelligence",
                 "embeds": [
@@ -350,15 +431,20 @@ class DealEngine:
                         "fields": [
                             {"name": "Status", "value": "✓ Online & Monitoring", "inline": True},
                             {"name": "Engine", "value": "Chimaera v1.0", "inline": True},
+                            {"name": "Routing", "value": dest_label, "inline": False},
                         ],
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "footer": {"text": "Chimaera MTG Market Surveillance"},
                     }
                 ],
             }
-            resp = requests.post(webhook_url, json=payload, timeout=8)
+            resp = requests.post(clean_url, json=payload, timeout=8)
             if resp.status_code in (200, 204):
                 return True, "Test webhook delivered successfully to Discord!"
+            elif resp.status_code == 429:
+                return False, "Discord returned Rate Limit (429). Please try again in a few seconds."
+            elif resp.status_code in (401, 404):
+                return False, f"Discord rejected webhook URL (HTTP {resp.status_code}). Please verify the webhook URL."
             return False, f"Discord returned status {resp.status_code}: {resp.text}"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"

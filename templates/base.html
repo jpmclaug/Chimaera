@@ -78,7 +78,7 @@
                     </button>
 
                     <!-- Tactical Dropdown Menu from Logo -->
-                    <div id="logo-dropdown-menu" class="hidden absolute left-0 top-full mt-2 w-72 sm:w-80 bg-[#1B2230] border-2 border-[#263245] shadow-2xl z-50 p-3 space-y-3 font-mono text-xs">
+                    <div id="logo-dropdown-menu" class="hidden absolute left-0 top-full mt-2 w-72 sm:w-80 bg-[#1B2230] border-2 border-[#263245] shadow-2xl z-50 p-3 space-y-3 font-mono text-xs max-h-[85vh] max-h-[85dvh] overflow-y-auto modal-scrollable">
                         {% if current_user %}
                         <!-- User Status & ID Header -->
                         <div class="bg-[#10141D] p-2.5 border border-[#263245] flex items-center justify-between">
@@ -239,9 +239,9 @@
     <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 
     <!-- Add Card Modal (Target Registration) -->
-    <div id="modal-add-card" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-lg w-full p-6 relative">
-            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+    <div id="modal-add-card" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-lg w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
                 <div>
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">PROTOCOL // 0x4A</span>
                     <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Target Registration Protocol</h3>
@@ -249,8 +249,9 @@
                 <button onclick="closeAddCardModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
 
-            <!-- Autocomplete Search -->
-            <div class="space-y-4">
+            <!-- Scrollable Modal Body -->
+            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 modal-scrollable">
+                <!-- Autocomplete Search -->
                 <div>
                     <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Card Nomenclature / Search Query</label>
                     <div class="relative">
@@ -347,24 +348,25 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="flex items-center justify-between pt-3 border-t border-[#263245]">
-                    <button type="button" onclick="switchToBulkAddModal()" class="text-xs font-mono text-[#94A3B8] hover:text-[#00CED1] underline uppercase">
-                        &rarr; Switch to Bulk Add
-                    </button>
-                    <div class="flex space-x-2">
-                        <button type="button" onclick="closeAddCardModal()" class="btn-bridge px-4 py-2 text-xs">Cancel</button>
-                        <button type="button" id="btn-submit-add-card" onclick="submitAddCard()" disabled class="btn-crimson px-4 py-2 text-xs">Add to Watchlist</button>
-                    </div>
+            <!-- Sticky Pinned Action Footer -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#263245] flex-shrink-0 mt-3 sm:mt-4">
+                <button type="button" onclick="switchToBulkAddModal()" class="text-xs font-mono text-[#94A3B8] hover:text-[#00CED1] underline uppercase">
+                    &rarr; Switch to Bulk Add
+                </button>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="closeAddCardModal()" class="btn-bridge px-3.5 sm:px-4 py-2 text-xs">Cancel</button>
+                    <button type="button" id="btn-submit-add-card" onclick="submitAddCard()" disabled class="btn-crimson px-3.5 sm:px-4 py-2 text-xs">Add to Watchlist</button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Bulk Add Cards Modal (Batch Target Registration) -->
-    <div id="modal-bulk-add" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-xl w-full p-6 relative">
-            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+    <div id="modal-bulk-add" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-xl w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
                 <div>
                     <div class="flex items-center space-x-2">
                         <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">PROTOCOL // 0x4B</span>
@@ -375,14 +377,15 @@
                 <button onclick="closeBulkAddModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
 
-            <div class="space-y-4">
+            <!-- Scrollable Modal Body -->
+            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 modal-scrollable">
                 <!-- Textarea for semicolon-separated card names -->
                 <div>
                     <div class="flex items-center justify-between mb-1.5">
                         <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Target Card Manifest (Semicolon Delimited)</label>
                         <span id="bulk-counter-badge" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">[ 0 Targets Identified ]</span>
                     </div>
-                    <textarea id="bulk-cards-input" rows="5" placeholder="Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama"
+                    <textarea id="bulk-cards-input" rows="4" placeholder="Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama"
                         class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono leading-relaxed"
                         oninput="updateBulkCount()"></textarea>
                     <p class="text-[11px] text-[#64748B] font-mono mt-1">
@@ -460,26 +463,27 @@
                         Resolving canonical identities via Scryfall batch collection and polling vendor pricing...
                     </div>
                 </div>
+            </div>
 
-                <div class="flex items-center justify-between pt-3 border-t border-[#263245]">
-                    <button type="button" onclick="switchToSingleAddModal()" class="text-xs font-mono text-[#94A3B8] hover:text-[#00CED1] underline uppercase">
-                        &larr; Single Target Mode
+            <!-- Sticky Pinned Action Footer -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#263245] flex-shrink-0 mt-3 sm:mt-4">
+                <button type="button" onclick="switchToSingleAddModal()" class="text-xs font-mono text-[#94A3B8] hover:text-[#00CED1] underline uppercase">
+                    &larr; Single Target Mode
+                </button>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="closeBulkAddModal()" class="btn-bridge px-3.5 sm:px-4 py-2 text-xs">Cancel</button>
+                    <button type="button" id="btn-submit-bulk-add" onclick="submitBulkAdd()" class="btn-crimson px-3.5 sm:px-4 py-2 text-xs flex items-center space-x-1.5">
+                        <span>Register Targets</span>
                     </button>
-                    <div class="flex space-x-2">
-                        <button type="button" onclick="closeBulkAddModal()" class="btn-bridge px-4 py-2 text-xs">Cancel</button>
-                        <button type="button" id="btn-submit-bulk-add" onclick="submitBulkAdd()" class="btn-crimson px-4 py-2 text-xs flex items-center space-x-1.5">
-                            <span>Register Targets</span>
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Edit Target Price & Tag Modal -->
-    <div id="modal-edit-target" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-6 relative">
-            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+    <div id="modal-edit-target" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
                 <div>
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">RECALIBRATE</span>
                     <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold, Tag & Alerts</h3>
@@ -487,7 +491,9 @@
                 <button onclick="closeEditTargetModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
             <input type="hidden" id="edit-target-item-id">
-            <div class="space-y-4 mb-4">
+            
+            <!-- Scrollable Modal Body -->
+            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 modal-scrollable">
                 <div>
                     <p id="edit-target-card-name" class="text-sm text-[#F1F5F9] font-bold font-mono"></p>
                     <span id="edit-target-scope-label" class="text-[11px] text-[#94A3B8] font-mono block mt-0.5"></span>
@@ -545,7 +551,9 @@
                     </label>
                 </div>
             </div>
-            <div class="flex justify-end space-x-2">
+
+            <!-- Sticky Pinned Action Footer -->
+            <div class="flex justify-end space-x-2 pt-3 border-t border-[#263245] flex-shrink-0 mt-3 sm:mt-4">
                 <button type="button" onclick="closeEditTargetModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
                 <button type="button" onclick="submitEditTarget()" class="btn-crimson px-4 py-2 text-xs">Commit</button>
             </div>
@@ -562,9 +570,9 @@
     </datalist>
 
     <!-- Surveillance Protocol & Cadence Settings Modal -->
-    <div id="modal-cadence-settings" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-6 relative">
-            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4">
+    <div id="modal-cadence-settings" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
                 <div>
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">CONFIG // 0x7E</span>
                     <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Surveillance & Alert Settings</h3>
@@ -572,7 +580,8 @@
                 <button onclick="closeCadenceModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
             </div>
 
-            <div class="space-y-4">
+            <!-- Scrollable Modal Body -->
+            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 modal-scrollable">
                 <!-- Status & Telemetry Readout -->
                 <div class="bg-[#10141D] border border-[#263245] p-3 space-y-2 font-mono text-xs">
                     <div class="flex items-center justify-between">
@@ -618,6 +627,29 @@
                     </label>
                 </div>
 
+                <!-- Personal Discord Webhook Alerts Configuration -->
+                <div class="bg-[#10141D] border border-[#263245] p-3 space-y-2.5">
+                    <div class="flex items-center justify-between">
+                        <label for="user-discord-webhook-input" class="text-xs font-mono font-bold text-[#F1F5F9] uppercase tracking-wider block">
+                            Personal Discord Webhook URL
+                        </label>
+                        <span id="webhook-routing-badge" class="text-[9px] font-mono px-1.5 py-0.2 bg-[#263245] text-[#94A3B8] uppercase font-bold">
+                            Default / Fallback
+                        </span>
+                    </div>
+                    <div class="space-y-2">
+                        <input type="url" id="user-discord-webhook-input" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-[#1B2230] border border-[#263245] px-3 py-2 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-[10px] text-[#94A3B8] font-mono leading-tight">
+                                Alerts for your monitored targets route to this channel.
+                            </span>
+                            <button type="button" onclick="testUserDiscordWebhook()" id="btn-test-user-webhook" class="btn-bridge px-2.5 py-1 text-[11px] font-mono flex items-center space-x-1 flex-shrink-0 text-[#00CED1] border-[#00CED1]/40 hover:bg-[#00CED1]/10">
+                                <span>🔔 Test Webhook</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- eBay Navigation Mode Preference -->
                 <div>
                     <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">eBay Default Link Navigation</label>
@@ -626,15 +658,16 @@
                         <option value="search">Open Search Results Page</option>
                     </select>
                 </div>
+            </div>
 
-                <div class="flex items-center justify-between pt-3 border-t border-[#263245]">
-                    <button type="button" onclick="triggerManualSweepFromModal()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1">
-                        <span>⚡ Poll Now</span>
-                    </button>
-                    <div class="flex space-x-2">
-                        <button type="button" onclick="closeCadenceModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
-                        <button type="button" onclick="saveCadenceSettings()" id="btn-save-cadence" class="btn-crimson px-4 py-2 text-xs">Save Settings</button>
-                    </div>
+            <!-- Sticky Pinned Action Footer -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#263245] flex-shrink-0 mt-3 sm:mt-4">
+                <button type="button" onclick="triggerManualSweepFromModal()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1">
+                    <span>⚡ Poll Now</span>
+                </button>
+                <div class="flex items-center space-x-2">
+                    <button type="button" onclick="closeCadenceModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
+                    <button type="button" onclick="saveCadenceSettings()" id="btn-save-cadence" class="btn-crimson px-4 py-2 text-xs">Save Settings</button>
                 </div>
             </div>
         </div>

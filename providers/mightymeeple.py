@@ -75,10 +75,12 @@ class MightyMeepleProvider:
         card_name: str,
         set_name: str | None = None,
         set_code: str | None = None,
+        collector_number: str | None = None,
         finish: str = "nonfoil",
     ) -> dict:
         """
         Searches Mighty Meeple inventory for card, checks condition variants and stock.
+        Accurately pairs specific card variants using SKU and collector number.
         Returns a normalized vendor price dict.
         """
         if not card_name:
@@ -91,28 +93,40 @@ class MightyMeepleProvider:
         fallback_search_url = f"{MIGHTY_MEEPLE_BASE}/search?q={urllib.parse.quote_plus(clean_name)}&type=product"
 
         try:
-            # 1. Search using exact phrase in double quotes to prevent Shopify partial word scatter
+            # 1. Search using both quoted and unquoted query to discover all variants
             quoted_q = f'"{primary_name}"'
-            suggest_url = (
+            suggest_url_quoted = (
                 f"{MIGHTY_MEEPLE_BASE}/search/suggest.json"
-                f"?q={urllib.parse.quote_plus(quoted_q)}&resources[type]=product"
+                f"?q={urllib.parse.quote_plus(quoted_q)}&resources[type]=product&resources[limit]=25"
+            )
+            suggest_url_unquoted = (
+                f"{MIGHTY_MEEPLE_BASE}/search/suggest.json"
+                f"?q={urllib.parse.quote_plus(primary_name)}&resources[type]=product&resources[limit]=25"
             )
 
-            products = self._fetch_suggest_products(suggest_url)
+            raw_prods_quoted = self._fetch_suggest_products(suggest_url_quoted)
+            raw_prods_unquoted = self._fetch_suggest_products(suggest_url_unquoted)
 
-            # 2. If exact phrase returned no products, fall back to unquoted query
-            if not products:
-                unquoted_url = (
-                    f"{MIGHTY_MEEPLE_BASE}/search/suggest.json"
-                    f"?q={urllib.parse.quote_plus(primary_name)}&resources[type]=product"
-                )
-                products = self._fetch_suggest_products(unquoted_url)
+            # Deduplicate products by handle while preserving discovery order
+            seen_handles = set()
+            products = []
+            for p in raw_prods_quoted + raw_prods_unquoted:
+                h = p.get("handle")
+                if h and h not in seen_handles:
+                    seen_handles.add(h)
+                    products.append(p)
 
             if not products:
                 return self._empty_result(card_name, fallback_search_url)
 
-            # 3. Strictly filter products to ensure legitimate card name match
-            candidate_products = self._filter_products(products, card_name, set_name, set_code)
+            # 2. Strictly filter products to match card name and specific variant / set
+            candidate_products = self._filter_products(
+                products=products,
+                card_name=card_name,
+                set_name=set_name,
+                set_code=set_code,
+                collector_number=collector_number,
+            )
             if not candidate_products:
                 return self._empty_result(card_name, fallback_search_url)
 
@@ -274,44 +288,138 @@ class MightyMeepleProvider:
         card_name: str,
         set_name: str | None,
         set_code: str | None,
+        collector_number: str | None = None,
     ) -> list[dict]:
         """
-        Filters products to those strictly matching card name, with optional set preference.
-        Returns set-matched products if found, or all valid card matches as fallback.
+        Filters products strictly matching card name, with high-precision variant matching
+        via SKU, collector number, promo types, and set name.
         """
-        set_matched = []
-        fallback_matched = []
         primary_name = card_name.split(" // ")[0].strip()
 
-        target_set_terms = []
-        if set_name:
-            target_set_terms.append(set_name.lower().strip())
-        if set_code:
-            clean_code = set_code.lower().strip()
-            target_set_terms.append(f"[{clean_code}]")
-            target_set_terms.append(clean_code)
-
+        # Step 1: Filter products that genuinely match the card name
+        valid_name_products = []
         for p in products:
             title = p.get("title", "")
-
-            # Verify genuine card name match
             if self._is_card_name_match(title, card_name) or self._is_card_name_match(title, primary_name):
-                title_lower = title.lower()
-                is_set_match = False
-                if target_set_terms:
-                    for st in target_set_terms:
-                        if st in title_lower:
-                            is_set_match = True
-                            break
+                valid_name_products.append(p)
 
-                if is_set_match:
-                    set_matched.append(p)
-                else:
-                    fallback_matched.append(p)
+        if not valid_name_products:
+            return []
+
+        # If Any Version: return all valid name matches
+        is_any = not set_code or set_code.strip().upper() in ("ANY", "")
+        if is_any:
+            return valid_name_products
+
+        target_set_code = (set_code or "").upper().strip()
+        target_coll_num = str(collector_number or "").lower().strip() if collector_number else ""
+        target_coll_digits = re.sub(r"[^\d]", "", target_coll_num)
+        target_set_name = (set_name or "").lower().strip()
+
+        # Pre-fetch product variants concurrently for all candidates to guarantee instant SKU checks
+        uncached_handles = [
+            p.get("handle") for p in valid_name_products
+            if p.get("handle") and p.get("handle") not in MightyMeepleProvider._variant_cache
+        ]
+        if uncached_handles:
+            with ThreadPoolExecutor(max_workers=min(len(uncached_handles), 8)) as executor:
+                list(executor.map(self._get_product_variants, uncached_handles))
+
+        # Step 2: Specific Version Matching via SKU (Highest Precision)
+        if target_set_code and target_coll_num:
+            for p in valid_name_products:
+                handle = p.get("handle")
+                variants = self._get_product_variants(handle)
+                title_lower = p.get("title", "").lower()
+                for v in variants:
+                    sku = (v.get("sku") or "").upper()
+                    if not sku:
+                        continue
+                    sku_lower = sku.lower()
+                    sku_parts = sku.split("-")
+                    if len(sku_parts) >= 2:
+                        sku_set = sku_parts[0]
+                        sku_num = sku_parts[1].lower()
+
+                        set_matches = (
+                            sku_set == target_set_code
+                            or (target_set_code.startswith("P") and sku_set == target_set_code)
+                            or (sku_set.startswith("P") and sku_set[1:] == target_set_code)
+                            or (target_set_code.startswith("P") and target_set_code[1:] == sku_set)
+                        )
+
+                        if set_matches:
+                            if sku_num == target_coll_num:
+                                if "promo pack" in title_lower and target_coll_num.endswith("s"):
+                                    continue
+                                if "prerelease" in title_lower and target_coll_num.endswith("p"):
+                                    continue
+                                return [p]
+
+                            if target_coll_digits and sku_num == target_coll_digits:
+                                if target_coll_num.endswith("p") and ("promo-pack" in sku_lower or "promo pack" in title_lower):
+                                    return [p]
+                                elif target_coll_num.endswith("s") and ("prerelease" in sku_lower or "prerelease" in title_lower):
+                                    return [p]
+                                elif not target_coll_num.endswith("p") and not target_coll_num.endswith("s"):
+                                    return [p]
+
+            # Step 2b: Substring SKU matching with promo guards
+            for p in valid_name_products:
+                handle = p.get("handle")
+                variants = self._get_product_variants(handle)
+                title_lower = p.get("title", "").lower()
+                for v in variants:
+                    sku = (v.get("sku") or "").upper()
+                    if not sku:
+                        continue
+                    sku_lower = sku.lower()
+                    if f"{target_set_code}-{target_coll_num.upper()}" in sku:
+                        return [p]
+                    if target_coll_digits and f"{target_set_code}-{target_coll_digits}" in sku:
+                        if target_coll_num.endswith("p") and ("promo-pack" in sku_lower or "promo pack" in title_lower):
+                            return [p]
+                        elif target_coll_num.endswith("s") and ("prerelease" in sku_lower or "prerelease" in title_lower):
+                            return [p]
+                        elif not target_coll_num.endswith("p") and not target_coll_num.endswith("s"):
+                            return [p]
+
+        # Step 3: Description HTML match (contains collector number in table)
+        if target_coll_num:
+            for p in valid_name_products:
+                desc = (p.get("description") or "").lower()
+                if f"<td>{target_coll_num}</td>" in desc or f"<td>#{target_coll_num}</td>" in desc:
+                    return [p]
+
+        # Step 4: Set matching by title brackets [Set Name] or [SET_CODE]
+        target_set_terms = []
+        if target_set_name:
+            target_set_terms.append(target_set_name)
+        if target_set_code:
+            target_set_terms.append(f"[{target_set_code.lower()}]")
+            target_set_terms.append(target_set_code.lower())
+
+        set_matched = []
+        for p in valid_name_products:
+            title_lower = p.get("title", "").lower()
+            if any(st in title_lower for st in target_set_terms):
+                set_matched.append(p)
 
         if set_matched:
+            # If multiple products in the set, and collector number is standard (not ending in promo/special letters),
+            # prefer product without variant parentheticals
+            if len(set_matched) > 1 and target_coll_num and not target_coll_num.endswith("p") and not target_coll_num.endswith("s"):
+                non_variant = []
+                for p in set_matched:
+                    title = p.get("title", "")
+                    base = re.sub(r"\[.*?\]", "", title).strip()
+                    if "(" not in base:
+                        non_variant.append(p)
+                if non_variant:
+                    return non_variant
             return set_matched
-        return fallback_matched
+
+        return valid_name_products
 
     def _match_variant(self, variants: list[dict], is_foil_target: bool) -> dict | None:
         """

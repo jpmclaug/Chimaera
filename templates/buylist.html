@@ -337,9 +337,9 @@
 </div>
 
 <!-- Modal for Viewing All Prints / Variants of a Card -->
-<div id="modal-buylist-variants" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-[#1B2230] border-2 border-[#263245] max-w-2xl w-full p-6 relative max-h-[90vh] flex flex-col">
-        <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-4 flex-shrink-0">
+<div id="modal-buylist-variants" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+    <div class="bg-[#1B2230] border-2 border-[#263245] max-w-2xl w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+        <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
             <div>
                 <span class="text-xs font-mono text-[#2DD4BF] uppercase tracking-widest block font-bold">PRINTS & VARIANTS</span>
                 <h3 id="modal-variant-card-name" class="text-base font-heading font-black text-white uppercase tracking-wider mt-0.5">Card Variants</h3>
@@ -347,11 +347,11 @@
             <button onclick="closeBuylistVariantModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
         </div>
 
-        <div id="modal-variant-content" class="overflow-y-auto flex-1 space-y-3 font-mono text-xs pr-1">
+        <div id="modal-variant-content" class="overflow-y-auto flex-1 min-h-0 space-y-3 font-mono text-xs pr-1 modal-scrollable">
             <!-- Dynamically populated variant list -->
         </div>
 
-        <div class="flex justify-end pt-3 border-t border-[#263245] mt-4 flex-shrink-0">
+        <div class="flex justify-end pt-3 border-t border-[#263245] mt-3 sm:mt-4 flex-shrink-0">
             <button type="button" onclick="closeBuylistVariantModal()" class="btn-bridge px-4 py-2 text-xs">Close</button>
         </div>
     </div>
@@ -360,8 +360,8 @@
 <!-- ========================================================================= -->
 <!-- TRADE-IN BATCH CART DRAWER / MODAL -->
 <!-- ========================================================================= -->
-<div id="modal-buylist-cart" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center sm:justify-end p-2 sm:p-4 transition-all">
-    <div class="bg-[#1B2230] border-2 border-[#2DD4BF] w-full max-w-xl h-full max-h-[92vh] sm:max-h-[96vh] p-4 sm:p-5 flex flex-col justify-between shadow-2xl relative">
+<div id="modal-buylist-cart" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center sm:justify-end p-2 sm:p-4 overflow-y-auto transition-all">
+    <div class="bg-[#1B2230] border-2 border-[#2DD4BF] w-full max-w-xl h-full max-h-[92vh] max-h-[92dvh] sm:max-h-[96vh] sm:max-h-[96dvh] p-4 sm:p-5 flex flex-col justify-between shadow-2xl relative">
         <!-- Drawer Header -->
         <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 flex-shrink-0">
             <div class="flex items-center space-x-2.5">
@@ -375,7 +375,7 @@
         </div>
 
         <!-- Itemized Cart List -->
-        <div id="buylist-cart-items-container" class="overflow-y-auto flex-1 space-y-2.5 pr-1 font-mono text-xs">
+        <div id="buylist-cart-items-container" class="overflow-y-auto flex-1 min-h-0 space-y-2.5 pr-1 font-mono text-xs modal-scrollable">
             <!-- Items rendered via renderBuylistCart() in app.js -->
         </div>
 
