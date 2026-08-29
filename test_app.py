@@ -913,6 +913,19 @@ class ChimeraTestSuite(unittest.TestCase):
         self.assertFalse(mm._is_card_name_match("Oath of Eorl [The Lord of the Rings: Tales of Middle-Earth Commander]", "The One Ring"))
         self.assertFalse(mm._is_card_name_match("Sol Ring [Commander Collection: Black]", "The One Ring"))
 
+        # Strict substring / name containment tests (Solitude vs Guardian of Solitude)
+        self.assertFalse(mm._is_card_name_match("Guardian of Solitude [Kamigawa: Neon Dynasty]", "Solitude"))
+        self.assertFalse(mm._is_card_name_match("Guardian of Solitude [Champions of Kamigawa]", "Solitude"))
+        self.assertFalse(mm._is_card_name_match("City of Solitude [Visions]", "Solitude"))
+        self.assertTrue(mm._is_card_name_match("Solitude [Modern Horizons 2]", "Solitude"))
+        self.assertTrue(mm._is_card_name_match("Solitude (Borderless) [Modern Horizons 2]", "Solitude"))
+        self.assertTrue(mm._is_card_name_match("Solitude (Retro) [Modern Horizons 2]", "Solitude"))
+        self.assertTrue(mm._is_card_name_match("Guardian of Solitude [Champions of Kamigawa]", "Guardian of Solitude"))
+        self.assertFalse(mm._is_card_name_match("Avatar of Fury [Prophecy]", "Fury"))
+        self.assertTrue(mm._is_card_name_match("Fury [Modern Horizons 2]", "Fury"))
+        self.assertFalse(mm._is_card_name_match("Monument to Endurance (Extended Art) [Aetherdrift]", "Endurance"))
+        self.assertTrue(mm._is_card_name_match("Endurance [Lorwyn Eclipsed Commander]", "Endurance"))
+
         # Accented characters (Dáin -> Dain)
         self.assertTrue(mm._is_card_name_match("Dain of the Ancient Halls (Extended Art) [The Hobbit: Eternal-Legal]", "Dáin of the Ancient Halls"))
         self.assertFalse(mm._is_card_name_match("Wall of Spears [Antiquities]", "Dáin of the Ancient Halls"))
@@ -927,11 +940,15 @@ class ChimeraTestSuite(unittest.TestCase):
         unrelated_products = [
             {"title": "Oath of Eorl [The Lord of the Rings]", "handle": "oath-of-eorl"},
             {"title": "Wall of Spears [Antiquities]", "handle": "wall-of-spears"},
+            {"title": "Guardian of Solitude [Champions of Kamigawa]", "handle": "guardian-of-solitude-champions-of-kamigawa"},
         ]
         filtered = mm._filter_products(unrelated_products, "The One Ring", None, None)
         self.assertEqual(len(filtered), 0)
 
-        # 2. Live searches for The One Ring and Dáin of the Ancient Halls
+        filtered_solitude = mm._filter_products(unrelated_products, "Solitude", None, None)
+        self.assertEqual(len(filtered_solitude), 0)
+
+        # 2. Live searches for The One Ring, Dáin of the Ancient Halls, and Solitude
         res_ring = mm.search_card("The One Ring")
         self.assertEqual(res_ring["vendor_name"], "Mighty Meeple")
         # Ensure it didn't match Oath of Eorl or Sol Ring
@@ -942,6 +959,10 @@ class ChimeraTestSuite(unittest.TestCase):
         self.assertEqual(res_dain["vendor_name"], "Mighty Meeple")
         # Ensure it didn't match Wall of Spears or Art Card
         self.assertNotIn("wall-of-spears", res_dain["product_url"])
+
+        res_solitude = mm.search_card("Solitude")
+        self.assertEqual(res_solitude["vendor_name"], "Mighty Meeple")
+        self.assertNotIn("guardian-of-solitude", res_solitude["product_url"])
     def test_25_mobile_views_and_deals_tag_filtering(self):
         """Tests responsive view modes (Grid, Compact, Swipe Deck) and tag filtering on Registry and Deals pages."""
         with self.app.app_context():

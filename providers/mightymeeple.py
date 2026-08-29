@@ -254,31 +254,40 @@ class MightyMeepleProvider:
 
         norm_title = normalize_card_text(title)
 
-        # Exclude junk / non-playable products unless target card name contains that term
+        # Exclude junk / non-playable products unless target card name contains that term (whole word matching)
         for jt in JUNK_TERMS:
-            if jt in norm_title and jt not in norm_target:
-                return False
+            jt_norm = normalize_card_text(jt)
+            if re.search(r"\b" + re.escape(jt_norm) + r"\b", norm_title):
+                if not re.search(r"\b" + re.escape(jt_norm) + r"\b", norm_target):
+                    return False
 
         # Extract base card name by stripping set brackets [ ] and variant parentheses ( )
-        extracted_name = extract_base_name_from_title(title)
-        norm_extracted = normalize_card_text(extracted_name)
+        base = extract_base_name_from_title(title)
+        if not base:
+            return False
+        norm_base = normalize_card_text(base)
 
         # 1. Exact match on extracted base card name
-        if norm_extracted == norm_target:
+        if norm_base == norm_target:
             return True
 
-        # 2. Split cards / DFC handling (e.g. Fire // Ice, Wear // Tear)
-        if "//" in card_name or "/" in card_name:
-            parts = [normalize_card_text(p) for p in re.split(r"/+", card_name) if p.strip()]
-            if parts and all(p in norm_title for p in parts):
+        # 2. Alt-names / UB skins (e.g. 'Zidane Tribal - Ragavan, Nimble Pilferer', 'Zilortha, Strength Incarnate - Godzilla...')
+        if any(sep in base for sep in (" - ", " — ", " – ")):
+            parts = [normalize_card_text(p) for p in re.split(r"\s+[-—–]\s+", base) if p.strip()]
+            if norm_target in parts:
                 return True
 
-        # 3. Match exact word boundary in the title section preceding the set brackets
-        before_set = title.split("[")[0]
-        norm_before_set = normalize_card_text(before_set)
-        pattern = rf"\b{re.escape(norm_target)}\b"
-        if re.search(pattern, norm_before_set):
+        # 3. Double-faced / Split cards / Adventures / Flip cards
+        title_faces = [normalize_card_text(f) for f in re.split(r"/+", base) if f.strip()]
+        if norm_target in title_faces:
             return True
+
+        if "//" in card_name or "/" in card_name:
+            target_faces = [normalize_card_text(f) for f in re.split(r"/+", card_name) if f.strip()]
+            if target_faces == title_faces:
+                return True
+            if len(target_faces) > 1 and len(title_faces) == 1 and title_faces[0] == target_faces[0]:
+                return True
 
         return False
 
@@ -706,16 +715,35 @@ class MightyMeepleProvider:
                 })
                 continue
 
-            # Pick the best matching card print (prefer exact name match)
-            best_card = None
-            primary_name = name.split(" // ")[0].strip().lower()
-            for itm in items:
-                itm_name = (itm.get("card_name") or "").strip().lower()
-                if itm_name == name.lower() or itm_name == primary_name:
-                    best_card = itm
-                    break
-            if not best_card:
-                best_card = items[0]
+            primary_name = name.split(" // ")[0].strip()
+            # Filter buylist items to those that genuinely match the card name
+            matching_items = [
+                itm for itm in items
+                if self._is_card_name_match(itm.get("card_name", ""), name)
+                or (primary_name and self._is_card_name_match(itm.get("card_name", ""), primary_name))
+            ]
+
+            if not matching_items:
+                unmatched_count += 1
+                quotes.append({
+                    "requested_name": name,
+                    "matched": False,
+                    "card_name": name,
+                    "set_name": "Not Found",
+                    "rarity": "",
+                    "image_url": "",
+                    "condition": default_condition,
+                    "finish": finish,
+                    "credit_price": 0.0,
+                    "cash_price": 0.0,
+                    "store_sell_price": 0.0,
+                    "max_quantity": 0,
+                    "prints_count": 0,
+                    "all_prints": [],
+                })
+                continue
+
+            best_card = matching_items[0]
 
             matched_count += 1
             v_match = self._find_variant_quote(best_card.get("variants", []), condition=default_condition, finish=finish)
@@ -741,8 +769,8 @@ class MightyMeepleProvider:
                 "cash_price": k_price,
                 "store_sell_price": s_price,
                 "max_quantity": m_qty,
-                "prints_count": len(items),
-                "all_prints": items,
+                "prints_count": len(matching_items),
+                "all_prints": matching_items,
             })
 
         return {
