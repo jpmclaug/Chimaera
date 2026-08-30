@@ -1,8 +1,8 @@
 import unittest
 import json
 from app import create_app, parse_bulk_card_names
-from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog
-from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider
+from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog, MicrocenterItem, MicrocenterHistory
+from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider, MicrocenterProvider
 from deal_engine import DealEngine
 from worker import run_worker_cycle
 
@@ -59,6 +59,8 @@ class ChimeraTestSuite(unittest.TestCase):
             db.session.query(ActivityLog).delete()
             db.session.query(VendorPrice).delete()
             db.session.query(WatchlistItem).delete()
+            db.session.query(MicrocenterHistory).delete()
+            db.session.query(MicrocenterItem).delete()
             db.session.query(User).delete()
             db.session.query(AllowedEmail).delete()
             db.session.commit()
@@ -1479,6 +1481,421 @@ class ChimeraTestSuite(unittest.TestCase):
             resp_err = self.client.post("/api/discord/test", json={"webhook_url": test_wh})
             self.assertEqual(resp_err.status_code, 400)
             self.assertIn("Connection failed", resp_err.get_json().get("error", ""))
+
+    def test_36_microcenter_models_and_day_over_day_logic(self):
+        """Tests MicrocenterItem and MicrocenterHistory model creation, calculations, and day-over-day logic."""
+        from datetime import datetime, timezone, timedelta
+
+        with self.app.app_context():
+            now = datetime.now(timezone.utc)
+            item = MicrocenterItem(
+                sku="068353",
+                product_id="713674",
+                name="Magic: The Gathering - The Hobbit (Scene Box)",
+                product_url="https://www.microcenter.com/product/713674/hobbit-scene-box",
+                image_url="https://productimages.microcenter.com/0713674_068353.jpg",
+                current_price=41.99,
+                previous_price=49.99,
+                original_price=54.99,
+                in_stock=True,
+                stock_count=25,
+                stock_text="25+ IN STOCK at Charlotte Store",
+                store_id="175",
+                store_name="Charlotte",
+                target_price=45.00,
+                first_seen_at=now - timedelta(days=3),
+                last_scanned_at=now,
+                last_price_change_at=now - timedelta(days=1),
+                is_active=True,
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            # Verify calculated properties
+            self.assertEqual(item.price_change_amount, -8.00)
+            self.assertEqual(item.price_change_percent, -16.0)
+            self.assertTrue(item.has_price_dropped)
+            self.assertEqual(item.savings_from_original, 13.00)
+            self.assertTrue(item.is_deal)
+
+            # Add historical snapshot from 2 days ago
+            hist_entry = MicrocenterHistory(
+                item_id=item.id,
+                price=49.99,
+                original_price=54.99,
+                in_stock=True,
+                stock_count=20,
+                stock_text="20 IN STOCK",
+                price_change=0.0,
+                stock_change=0,
+                recorded_at=now - timedelta(days=2),
+            )
+            db.session.add(hist_entry)
+            db.session.commit()
+
+            # Test day-over-day calculation
+            dod = item.get_day_over_day_change()
+            self.assertTrue(dod["has_baseline"])
+            self.assertEqual(dod["price_delta"], -8.00)
+            self.assertEqual(dod["baseline_price"], 49.99)
+            self.assertEqual(dod["stock_delta"], 5)  # 25 - 20
+
+            # Test serialization
+            data = item.to_dict(include_history=True)
+            self.assertEqual(data["sku"], "068353")
+            self.assertEqual(data["current_price"], 41.99)
+            self.assertEqual(data["store_id"], "175")
+            self.assertEqual(len(data["history"]), 1)
+
+    def test_37_microcenter_html_parser(self):
+        """Tests MicrocenterProvider parsing of search results HTML."""
+        provider = MicrocenterProvider(store_id="175", store_name="Charlotte")
+
+        sample_html = """
+        <ul class="list">
+            <li class="product_wrapper" id="pwrapper_0">
+                <div class="result_left">
+                    <a class="favorite" data-id="713674" data-name="Magic: The Gathering - The Hobbit (Scene Box)" href="#"></a>
+                    <a class="image2" data-id="713674" data-name="Magic: The Gathering - The Hobbit (Scene Box)" data-price="41.99" href="/product/713674/hobbit">
+                        <img class="SearchResultProductImage" src="https://productimages.microcenter.com/0713674_068353.jpg" />
+                    </a>
+                </div>
+                <div class="result_right">
+                    <div class="details">
+                        <p class="sku">SKU: 068353</p>
+                        <div class="pDescription">
+                            <a href="/product/713674/hobbit">Wizards of the Coast Magic: The Gathering - The Hobbit (Scene Box)</a>
+                        </div>
+                        <div class="price_wrapper">
+                            <div class="stock">
+                                <span class="inventoryCnt">25+ <span class="msgInStock">IN STOCK</span></span>
+                                <span class="storeName">at Charlotte Store</span>
+                            </div>
+                            <div class="price">
+                                <span itemprop="price"><span class="upper">$</span>41.99</span>
+                            </div>
+                            <div class="rebate-price">
+                                <span class="price strike">$54.99</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </li>
+            <li class="product_wrapper" id="pwrapper_1">
+                <div class="result_left">
+                    <a class="image2" data-id="712055" data-name="MTG Marvel Play Booster" data-price="5.99" href="/product/712055/marvel">
+                        <img class="SearchResultProductImage" src="https://productimages.microcenter.com/0712055_050625.jpg" />
+                    </a>
+                </div>
+                <div class="result_right">
+                    <div class="details">
+                        <p class="sku">SKU: 050625</p>
+                        <div class="pDescription">
+                            <a href="/product/712055/marvel">Magic: The Gathering - Marvel Super Heroes (Play Booster Sleeve)</a>
+                        </div>
+                        <div class="price_wrapper">
+                            <div class="stock">
+                                <span class="inventoryCnt">4 IN STOCK</span>
+                            </div>
+                            <div class="price">
+                                <span itemprop="price">$5.99</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </li>
+            <li class="product_wrapper" id="pwrapper_2">
+                <div class="result_left">
+                    <a class="image2" data-id="708000" data-name="MTG TMNT Pizza Bundle" data-price="89.99" href="/product/708000/tmnt">
+                        <img class="SearchResultProductImage" src="https://productimages.microcenter.com/0708000_999458.jpg" />
+                    </a>
+                </div>
+                <div class="result_right">
+                    <div class="details">
+                        <p class="sku">SKU: 999458</p>
+                        <div class="pDescription">
+                            <a href="/product/708000/tmnt">Magic: The Gathering - TMNT (Pizza Bundle)</a>
+                        </div>
+                        <div class="price_wrapper">
+                            <div class="stock">
+                                Sold Out at Charlotte Store
+                            </div>
+                            <div class="price">
+                                <span itemprop="price">$89.99</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </li>
+        </ul>
+        """
+
+        products = provider.parse_search_html(sample_html)
+        self.assertEqual(len(products), 3)
+
+        # Item 1: In stock 25+, discounted
+        p1 = products[0]
+        self.assertEqual(p1["sku"], "068353")
+        self.assertEqual(p1["product_id"], "713674")
+        self.assertEqual(p1["price"], 41.99)
+        self.assertEqual(p1["original_price"], 54.99)
+        self.assertTrue(p1["in_stock"])
+        self.assertEqual(p1["stock_count"], 25)
+        self.assertEqual(p1["product_url"], "https://www.microcenter.com/product/713674/hobbit")
+        self.assertEqual(p1["image_url"], "https://productimages.microcenter.com/0713674_068353.jpg")
+
+        # Item 2: Low stock (4)
+        p2 = products[1]
+        self.assertEqual(p2["sku"], "050625")
+        self.assertEqual(p2["price"], 5.99)
+        self.assertTrue(p2["in_stock"])
+        self.assertEqual(p2["stock_count"], 4)
+
+        # Item 3: Sold out
+        p3 = products[2]
+        self.assertEqual(p3["sku"], "999458")
+        self.assertEqual(p3["price"], 89.99)
+        self.assertFalse(p3["in_stock"])
+        self.assertEqual(p3["stock_count"], 0)
+
+    def test_38_microcenter_sync_and_change_detection(self):
+        """Tests MicrocenterProvider sync_inventory detecting new items, price drops, and restocks."""
+        from unittest.mock import patch
+
+        provider = MicrocenterProvider(store_id="175", store_name="Charlotte")
+        mock_products_initial = [
+            {
+                "sku": "111222",
+                "product_id": "800001",
+                "name": "MTG Modern Horizons 3 Bundle",
+                "price": 69.99,
+                "original_price": 79.99,
+                "in_stock": False,
+                "stock_count": 0,
+                "stock_text": "Sold Out",
+                "product_url": "https://www.microcenter.com/product/800001/mh3-bundle",
+                "image_url": "https://productimages.microcenter.com/0800001_111222.jpg",
+                "store_id": "175",
+                "store_name": "Charlotte",
+            }
+        ]
+
+        with self.app.app_context():
+            # Initial Sync: New item inserted
+            with patch.object(provider, "scrape_charlotte_inventory", return_value=mock_products_initial):
+                res1 = provider.sync_inventory(notify=False)
+                self.assertTrue(res1["success"])
+                self.assertEqual(res1["new_items"], 1)
+
+            item = MicrocenterItem.query.filter_by(sku="111222").first()
+            self.assertIsNotNone(item)
+            self.assertEqual(item.current_price, 69.99)
+            self.assertFalse(item.in_stock)
+
+            # Second Sync: Price drop + Restock
+            mock_products_updated = [
+                {
+                    "sku": "111222",
+                    "product_id": "800001",
+                    "name": "MTG Modern Horizons 3 Bundle",
+                    "price": 59.99,  # $10 drop
+                    "original_price": 79.99,
+                    "in_stock": True,  # Restocked
+                    "stock_count": 10,
+                    "stock_text": "10 IN STOCK",
+                    "product_url": "https://www.microcenter.com/product/800001/mh3-bundle",
+                    "image_url": "https://productimages.microcenter.com/0800001_111222.jpg",
+                    "store_id": "175",
+                    "store_name": "Charlotte",
+                }
+            ]
+
+            with patch.object(provider, "scrape_charlotte_inventory", return_value=mock_products_updated):
+                res2 = provider.sync_inventory(notify=False)
+                self.assertTrue(res2["success"])
+                self.assertEqual(res2["price_changes"], 1)
+                self.assertEqual(res2["restocks"], 1)
+
+            updated_item = MicrocenterItem.query.filter_by(sku="111222").first()
+            self.assertEqual(updated_item.current_price, 59.99)
+            self.assertEqual(updated_item.previous_price, 69.99)
+            self.assertTrue(updated_item.in_stock)
+            self.assertEqual(updated_item.stock_count, 10)
+
+            # Verify history records created
+            history_rows = MicrocenterHistory.query.filter_by(item_id=updated_item.id).all()
+            self.assertGreaterEqual(len(history_rows), 2)
+
+    def test_39_microcenter_discord_alert_embeds(self):
+        """Tests DealEngine dispatching Discord embeds for MicroCenter price drops and restocks."""
+        from unittest.mock import patch, MagicMock
+
+        deal_engine = DealEngine(app=self.app)
+
+        with self.app.app_context():
+            item = MicrocenterItem(
+                sku="333444",
+                name="MTG Commander Masters Set Booster Box",
+                product_url="https://www.microcenter.com/product/900001/cmm-box",
+                image_url="https://productimages.microcenter.com/0900001_333444.jpg",
+                current_price=249.99,
+                previous_price=299.99,
+                in_stock=True,
+                stock_count=6,
+                stock_text="6 IN STOCK at Charlotte Store",
+                store_id="175",
+                store_name="Charlotte",
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            # Mock successful Discord post
+            mock_resp = MagicMock()
+            mock_resp.status_code = 204
+
+            test_wh = "https://discord.com/api/webhooks/777888999/microcenter_token"
+
+            with patch("requests.post", return_value=mock_resp) as mock_post:
+                # 1. Price Alert
+                sent_price = deal_engine.send_discord_microcenter_price_alert(
+                    item=item,
+                    old_price=299.99,
+                    new_price=249.99,
+                    webhook_url=test_wh,
+                )
+                self.assertTrue(sent_price)
+                mock_post.assert_called_once()
+                call_args = mock_post.call_args[1]["json"]
+                self.assertIn("MicroCenter Price Alert", call_args["embeds"][0]["title"])
+                self.assertIn("Price Drop", call_args["embeds"][0]["description"])
+
+            with patch("requests.post", return_value=mock_resp) as mock_post:
+                # 2. Restock Alert
+                sent_restock = deal_engine.send_discord_microcenter_restock_alert(
+                    item=item,
+                    webhook_url=test_wh,
+                )
+                self.assertTrue(sent_restock)
+                mock_post.assert_called_once()
+                call_args = mock_post.call_args[1]["json"]
+                self.assertIn("MicroCenter Restock", call_args["embeds"][0]["title"])
+
+    def test_40_microcenter_web_routes_and_api(self):
+        """Tests all MicroCenter HTTP endpoints (/microcenter and /api/microcenter/*)."""
+        from unittest.mock import patch
+
+        with self.app.app_context():
+            item1 = MicrocenterItem(
+                sku="068353",
+                product_id="713674",
+                name="Magic: The Gathering - The Hobbit (Scene Box)",
+                product_url="https://www.microcenter.com/product/713674/hobbit",
+                image_url="https://productimages.microcenter.com/0713674_068353.jpg",
+                current_price=41.99,
+                previous_price=49.99,
+                original_price=54.99,
+                in_stock=True,
+                stock_count=25,
+                stock_text="25+ IN STOCK at Charlotte Store",
+                store_id="175",
+                store_name="Charlotte",
+                target_price=45.00,
+            )
+            item2 = MicrocenterItem(
+                sku="999458",
+                product_id="708000",
+                name="Magic: The Gathering - TMNT (Pizza Bundle)",
+                product_url="https://www.microcenter.com/product/708000/tmnt",
+                image_url="https://productimages.microcenter.com/0708000_999458.jpg",
+                current_price=89.99,
+                in_stock=False,
+                stock_count=0,
+                stock_text="Sold Out",
+                store_id="175",
+                store_name="Charlotte",
+            )
+            db.session.add_all([item1, item2])
+            db.session.commit()
+
+            # Add a history entry for item1 with non-zero change
+            hist = MicrocenterHistory(
+                item_id=item1.id,
+                price=41.99,
+                original_price=54.99,
+                in_stock=True,
+                stock_count=25,
+                price_change=-8.00,
+                stock_change=5,
+            )
+            db.session.add(hist)
+            db.session.commit()
+
+        # 1. GET /microcenter
+        resp_page = self.client.get("/microcenter")
+        self.assertEqual(resp_page.status_code, 200)
+        self.assertIn(b"MicroCenter Magic: The Gathering Intelligence", resp_page.data)
+        self.assertIn(b"Store #175", resp_page.data)
+
+        # 2. GET /api/microcenter/items
+        resp_items = self.client.get("/api/microcenter/items")
+        self.assertEqual(resp_items.status_code, 200)
+        items_data = resp_items.get_json()
+        self.assertEqual(items_data["count"], 2)
+        self.assertEqual(items_data["in_stock_tracked"], 1)
+
+        # Search filter
+        resp_search = self.client.get("/api/microcenter/items?q=Hobbit")
+        self.assertEqual(resp_search.status_code, 200)
+        self.assertEqual(resp_search.get_json()["count"], 1)
+
+        # In-Stock filter
+        resp_stock = self.client.get("/api/microcenter/items?filter=in_stock")
+        self.assertEqual(resp_stock.status_code, 200)
+        self.assertEqual(resp_stock.get_json()["count"], 1)
+
+        # 3. GET /api/microcenter/history/<id>
+        with self.app.app_context():
+            i1 = MicrocenterItem.query.filter_by(sku="068353").first()
+            item1_id = i1.id
+
+        resp_hist = self.client.get(f"/api/microcenter/history/{item1_id}")
+        self.assertEqual(resp_hist.status_code, 200)
+        hist_data = resp_hist.get_json()
+        self.assertEqual(hist_data["item"]["sku"], "068353")
+        self.assertEqual(len(hist_data["history"]), 1)
+
+        # 4. POST /api/microcenter/item/<id>/update
+        resp_update = self.client.post(
+            f"/api/microcenter/item/{item1_id}/update",
+            json={"target_price": 39.99, "notify_on_price_change": True, "notify_on_restock": False},
+        )
+        self.assertEqual(resp_update.status_code, 200)
+        updated_json = resp_update.get_json()
+        self.assertTrue(updated_json["success"])
+        self.assertEqual(updated_json["item"]["target_price"], 39.99)
+        self.assertFalse(updated_json["item"]["notify_on_restock"])
+
+        # 5. GET /api/microcenter/changes
+        resp_changes = self.client.get("/api/microcenter/changes")
+        self.assertEqual(resp_changes.status_code, 200)
+        changes_data = resp_changes.get_json()
+        self.assertGreaterEqual(changes_data["count"], 1)
+        self.assertEqual(changes_data["events"][0]["sku"], "068353")
+
+        # 6. POST /api/microcenter/sync
+        mock_sync_result = {
+            "success": True,
+            "message": "Synchronized 23 items",
+            "total_scanned": 23,
+            "new_items": 0,
+            "updated_items": 23,
+            "price_changes": 0,
+            "restocks": 0,
+        }
+        with patch.object(DealEngine, "sync_microcenter", return_value=mock_sync_result):
+            resp_sync = self.client.post("/api/microcenter/sync")
+            self.assertEqual(resp_sync.status_code, 200)
+            self.assertTrue(resp_sync.get_json()["success"])
 
 
 if __name__ == "__main__":

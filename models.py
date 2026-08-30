@@ -443,3 +443,222 @@ class ActivityLog(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
+
+class MicrocenterItem(db.Model):
+    """Magic: The Gathering product monitored at MicroCenter (Charlotte Store #175)."""
+
+    __tablename__ = "microcenter_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), unique=True, index=True, nullable=False)
+    product_id = db.Column(db.String(50), index=True, nullable=True)
+    name = db.Column(db.String(255), index=True, nullable=False)
+    product_url = db.Column(db.Text, nullable=True)
+    image_url = db.Column(db.Text, nullable=True)
+    current_price = db.Column(db.Float, default=0.0, nullable=False)
+    previous_price = db.Column(db.Float, nullable=True)
+    original_price = db.Column(db.Float, nullable=True)  # List / strike price if discounted
+    in_stock = db.Column(db.Boolean, default=True, nullable=False)
+    stock_count = db.Column(db.Integer, nullable=True)  # e.g. 25, 4, 0
+    stock_text = db.Column(db.String(100), nullable=True)  # e.g. "25+ IN STOCK at Charlotte Store"
+    store_id = db.Column(db.String(20), default="175", nullable=False)  # 175 = Charlotte
+    store_name = db.Column(db.String(100), default="Charlotte", nullable=False)
+    category = db.Column(db.String(100), default="Tabletop Games / Trading Card Game", nullable=True)
+    target_price = db.Column(db.Float, nullable=True)
+    notify_on_price_change = db.Column(db.Boolean, default=True, nullable=False)
+    notify_on_restock = db.Column(db.Boolean, default=True, nullable=False)
+    first_seen_at = db.Column(db.DateTime, default=utc_now)
+    last_scanned_at = db.Column(db.DateTime, default=utc_now)
+    last_price_change_at = db.Column(db.DateTime, nullable=True)
+    last_stock_change_at = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Relationships
+    history_entries = db.relationship(
+        "MicrocenterHistory",
+        backref=db.backref("item", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+        order_by="MicrocenterHistory.recorded_at.desc()",
+    )
+
+    @property
+    def price_change_amount(self) -> float:
+        """Returns monetary difference from previous price (negative indicates a price drop)."""
+        if self.previous_price is not None and self.previous_price > 0:
+            return round(self.current_price - self.previous_price, 2)
+        return 0.0
+
+    @property
+    def price_change_percent(self) -> float:
+        """Returns percentage difference from previous price (negative indicates a price drop)."""
+        if self.previous_price is not None and self.previous_price > 0:
+            diff = self.current_price - self.previous_price
+            return round((diff / self.previous_price) * 100.0, 1)
+        return 0.0
+
+    @property
+    def has_price_dropped(self) -> bool:
+        """Returns True if current price is lower than previous price or original price."""
+        if self.previous_price is not None and self.current_price < self.previous_price:
+            return True
+        if self.original_price is not None and self.current_price < self.original_price:
+            return True
+        return False
+
+    @property
+    def savings_from_original(self) -> float:
+        """Returns dollar savings compared to original list price if discounted."""
+        if self.original_price is not None and self.original_price > self.current_price:
+            return round(self.original_price - self.current_price, 2)
+        return 0.0
+
+    @property
+    def savings_from_original_percent(self) -> float:
+        """Returns percentage savings compared to original list price."""
+        if self.original_price is not None and self.original_price > 0 and self.original_price > self.current_price:
+            diff = self.original_price - self.current_price
+            return round((diff / self.original_price) * 100.0, 1)
+        return 0.0
+
+    @property
+    def is_deal(self) -> bool:
+        """Returns True if item meets user target price or has a recorded price drop."""
+        if self.target_price is not None and self.target_price > 0:
+            return bool(self.in_stock and self.current_price <= self.target_price)
+        return self.has_price_dropped
+
+    def get_day_over_day_change(self) -> dict:
+        """
+        Calculates day-over-day price and stock level differences
+        by looking for historical snapshot entries from ~24 hours ago.
+        """
+        try:
+            now = datetime.now(timezone.utc)
+            one_day_ago = now - timedelta(hours=24)
+            # Find history entry closest to 24h ago
+            past_entry = (
+                MicrocenterHistory.query.filter(
+                    MicrocenterHistory.item_id == self.id,
+                    MicrocenterHistory.recorded_at <= one_day_ago,
+                )
+                .order_by(MicrocenterHistory.recorded_at.desc())
+                .first()
+            )
+            # If no entry >=24h ago, pick the oldest available entry
+            if not past_entry:
+                past_entry = (
+                    MicrocenterHistory.query.filter(MicrocenterHistory.item_id == self.id)
+                    .order_by(MicrocenterHistory.recorded_at.asc())
+                    .first()
+                )
+
+            if past_entry and past_entry.recorded_at:
+                past_rec = past_entry.recorded_at
+                if past_rec.tzinfo is None:
+                    past_rec = past_rec.replace(tzinfo=timezone.utc)
+                if (now - past_rec).total_seconds() > 3600:
+                    price_delta = round(self.current_price - past_entry.price, 2)
+                    stock_delta = 0
+                    if self.stock_count is not None and past_entry.stock_count is not None:
+                        stock_delta = self.stock_count - past_entry.stock_count
+                    return {
+                        "has_baseline": True,
+                        "baseline_date": past_entry.recorded_at.isoformat(),
+                        "baseline_price": past_entry.price,
+                        "price_delta": price_delta,
+                        "price_delta_percent": round((price_delta / past_entry.price) * 100.0, 1) if past_entry.price > 0 else 0.0,
+                        "baseline_stock": past_entry.stock_count,
+                        "stock_delta": stock_delta,
+                    }
+        except Exception:
+            pass
+
+        return {
+            "has_baseline": False,
+            "baseline_date": None,
+            "baseline_price": self.current_price,
+            "price_delta": 0.0,
+            "price_delta_percent": 0.0,
+            "baseline_stock": self.stock_count,
+            "stock_delta": 0,
+        }
+
+    def to_dict(self, include_history: bool = False, history_limit: int = 30) -> dict:
+        """Serializes MicroCenter product item into a dict."""
+        dod = self.get_day_over_day_change()
+        data = {
+            "id": self.id,
+            "sku": self.sku,
+            "product_id": self.product_id,
+            "name": self.name,
+            "product_url": self.product_url,
+            "image_url": self.image_url,
+            "current_price": self.current_price,
+            "previous_price": self.previous_price,
+            "original_price": self.original_price,
+            "in_stock": self.in_stock,
+            "stock_count": self.stock_count,
+            "stock_text": self.stock_text,
+            "store_id": self.store_id,
+            "store_name": self.store_name,
+            "category": self.category,
+            "target_price": self.target_price,
+            "notify_on_price_change": self.notify_on_price_change,
+            "notify_on_restock": self.notify_on_restock,
+            "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
+            "last_scanned_at": self.last_scanned_at.isoformat() if self.last_scanned_at else None,
+            "last_price_change_at": self.last_price_change_at.isoformat() if self.last_price_change_at else None,
+            "last_stock_change_at": self.last_stock_change_at.isoformat() if self.last_stock_change_at else None,
+            "is_active": self.is_active,
+            "price_change_amount": self.price_change_amount,
+            "price_change_percent": self.price_change_percent,
+            "has_price_dropped": self.has_price_dropped,
+            "savings_from_original": self.savings_from_original,
+            "savings_from_original_percent": self.savings_from_original_percent,
+            "is_deal": self.is_deal,
+            "day_over_day": dod,
+        }
+        if include_history:
+            entries = self.history_entries[:history_limit]
+            data["history"] = [h.to_dict() for h in entries]
+        return data
+
+
+class MicrocenterHistory(db.Model):
+    """Historical timestamped snapshot of price and inventory for a MicroCenter product."""
+
+    __tablename__ = "microcenter_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("microcenter_item.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    price = db.Column(db.Float, nullable=False)
+    original_price = db.Column(db.Float, nullable=True)
+    in_stock = db.Column(db.Boolean, default=True, nullable=False)
+    stock_count = db.Column(db.Integer, nullable=True)
+    stock_text = db.Column(db.String(100), nullable=True)
+    price_change = db.Column(db.Float, default=0.0, nullable=False)
+    stock_change = db.Column(db.Integer, default=0, nullable=False)
+    recorded_at = db.Column(db.DateTime, default=utc_now, index=True)
+
+    def to_dict(self):
+        """Serializes historical snapshot into a dict."""
+        return {
+            "id": self.id,
+            "item_id": self.item_id,
+            "price": self.price,
+            "original_price": self.original_price,
+            "in_stock": self.in_stock,
+            "stock_count": self.stock_count,
+            "stock_text": self.stock_text,
+            "price_change": self.price_change,
+            "stock_change": self.stock_change,
+            "recorded_at": self.recorded_at.isoformat() if self.recorded_at else None,
+        }
+

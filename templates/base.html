@@ -123,9 +123,16 @@
                                 </div>
                                 <span class="text-[#2DD4BF]">&rarr;</span>
                             </a>
+                            <a href="/microcenter" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'microcenter' %}border-[#F59E0B] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold">04 // MicroCenter Charlotte</span>
+                                    <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">STORE 175</span>
+                                </div>
+                                <span class="text-[#F59E0B]">&rarr;</span>
+                            </a>
                             {% if current_user.is_admin %}
                             <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
-                                <span class="font-bold">04 // Admin Console</span>
+                                <span class="font-bold">05 // Admin Console</span>
                                 <span class="text-[#00CED1]">&rarr;</span>
                             </a>
                             {% endif %}
@@ -209,9 +216,12 @@
         <a href="/buylist" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'buylist' %}bg-[#10141D] text-white border-[#2DD4BF] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
             <span>03 // Buylist</span>
         </a>
+        <a href="/microcenter" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'microcenter' %}bg-[#10141D] text-white border-[#F59E0B] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+            <span>04 // MicroCenter</span>
+        </a>
         {% if current_user.is_admin %}
         <a href="/admin" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/80 border-transparent{% endif %} whitespace-nowrap">
-            04 // Admin
+            05 // Admin
         </a>
         {% endif %}
     </div>

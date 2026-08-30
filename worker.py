@@ -63,6 +63,17 @@ def run_worker_cycle(deal_engine: DealEngine, notify: bool = True) -> dict:
         SystemSetting.set_val("worker_status", "running")
 
         results = deal_engine.poll_all_cards(notify=notify)
+
+        # MicroCenter Charlotte Surveillance Sync
+        mc_summary = None
+        if SystemSetting.get_bool("microcenter_poll_enabled", default=True):
+            try:
+                logger.info("Executing MicroCenter Charlotte inventory sweep in worker...")
+                mc_summary = deal_engine.sync_microcenter(notify=notify)
+                logger.info(f"MicroCenter sync finished: {mc_summary.get('message', 'Complete')}")
+            except Exception as mc_err:
+                logger.error(f"Error syncing MicroCenter in worker cycle: {mc_err}")
+
         duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         
         deals_count = sum(1 for r in results if r.get("is_deal"))
@@ -76,6 +87,7 @@ def run_worker_cycle(deal_engine: DealEngine, notify: bool = True) -> dict:
             "success": True,
             "count": len(results),
             "deals": deals_count,
+            "microcenter": mc_summary,
             "duration": duration,
         }
     except Exception as e:

@@ -156,6 +156,28 @@ body {
     border-color: var(--accent-teal-hover);
 }
 
+.btn-amber {
+    background-color: #F59E0B;
+    color: #000000;
+    border: 1px solid #F59E0B;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-amber:hover {
+    background-color: #D97706;
+    border-color: #D97706;
+    color: #FFFFFF;
+}
+
+.btn-amber:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .btn-bridge {
     background-color: var(--surface-bridge);
     color: var(--text-data);

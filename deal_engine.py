@@ -2,8 +2,8 @@ import logging
 from datetime import datetime, timezone
 import requests
 from config import Config
-from models import db, WatchlistItem, VendorPrice, SystemSetting, User
-from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider
+from models import db, WatchlistItem, VendorPrice, SystemSetting, User, MicrocenterItem
+from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider, MicrocenterProvider
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,10 @@ class DealEngine:
         self.scryfall = ScryfallProvider()
         self.mightymeeple = MightyMeepleProvider()
         self.ebay = EbayProvider()
+        self.microcenter = MicrocenterProvider(
+            store_id=Config.MICROCENTER_STORE_ID,
+            store_name=Config.MICROCENTER_STORE_NAME,
+        )
 
     def poll_card(self, item: WatchlistItem, notify: bool = True) -> dict:
         """
@@ -448,3 +452,166 @@ class DealEngine:
             return False, f"Discord returned status {resp.status_code}: {resp.text}"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
+
+    def sync_microcenter(self, notify: bool = True) -> dict:
+        """Executes a full scrape and sync of MicroCenter Charlotte store inventory."""
+        logger.info("Executing MicroCenter Charlotte store synchronization...")
+        return self.microcenter.sync_inventory(notify=notify, deal_engine=self)
+
+    def send_discord_microcenter_price_alert(
+        self,
+        item: MicrocenterItem,
+        old_price: float,
+        new_price: float,
+        user: User | None = None,
+        webhook_url: str | None = None,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed when a MicroCenter product price changes."""
+        dest_url = self.get_effective_webhook_url(user=user, override_url=webhook_url)
+        if not dest_url:
+            logger.debug(f"No Discord webhook configured; skipping MicroCenter price alert for {item.name}.")
+            return False
+
+        try:
+            delta = round(new_price - old_price, 2)
+            pct = round((delta / old_price) * 100.0, 1) if old_price > 0 else 0.0
+            is_drop = delta < 0
+            change_label = f"Price Drop ({pct:+.1f}%)" if is_drop else f"Price Increase ({pct:+.1f}%)"
+            embed_color = 0xDC143C if is_drop else 0x00CED1  # Crimson for deal/drop, Teal for change
+
+            stock_label = item.stock_text or (f"{item.stock_count} IN STOCK" if item.stock_count is not None else "In Stock")
+            if not item.in_stock:
+                stock_label = "✗ OUT OF STOCK"
+
+            fields = [
+                {
+                    "name": "Previous Price",
+                    "value": f"${old_price:.2f}",
+                    "inline": True,
+                },
+                {
+                    "name": "New Price",
+                    "value": f"**${new_price:.2f}**",
+                    "inline": True,
+                },
+                {
+                    "name": "Change",
+                    "value": f"**{'-' if delta < 0 else '+'}${abs(delta):.2f}** ({pct:+.1f}%)",
+                    "inline": True,
+                },
+                {
+                    "name": "Charlotte Store Stock",
+                    "value": f"📍 {stock_label}",
+                    "inline": True,
+                },
+                {
+                    "name": "Store Location",
+                    "value": f"MicroCenter Store #{item.store_id} ({item.store_name}, NC)",
+                    "inline": True,
+                },
+                {
+                    "name": "SKU / Item ID",
+                    "value": f"`{item.sku}`",
+                    "inline": True,
+                },
+            ]
+
+            if item.product_url:
+                fields.append({
+                    "name": "Direct Product Link",
+                    "value": f"[🛒 View on MicroCenter.com]({item.product_url})",
+                    "inline": False,
+                })
+
+            embed = {
+                "title": f"🏷️ MicroCenter Price Alert: {item.name}",
+                "description": f"**{change_label}** detected at MicroCenter Charlotte store.",
+                "color": embed_color,
+                "fields": fields,
+                "footer": {
+                    "text": "Chimaera MTG Tactical Intelligence // MicroCenter Charlotte Surveillance",
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            if item.image_url:
+                embed["thumbnail"] = {"url": item.image_url}
+
+            payload = {
+                "username": "Chimaera MicroCenter Monitor",
+                "embeds": [embed],
+            }
+
+            resp = requests.post(dest_url, json=payload, timeout=8)
+            if resp.status_code in (200, 204):
+                logger.info(f"Discord MicroCenter price alert sent for {item.name} to {dest_url[:45]}...")
+                return True
+            else:
+                logger.warning(f"Discord MicroCenter alert failed with status code {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Failed to send Discord MicroCenter price alert: {e}")
+
+        return False
+
+    def send_discord_microcenter_restock_alert(
+        self,
+        item: MicrocenterItem,
+        user: User | None = None,
+        webhook_url: str | None = None,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed when a MicroCenter product restocks."""
+        dest_url = self.get_effective_webhook_url(user=user, override_url=webhook_url)
+        if not dest_url:
+            return False
+
+        try:
+            stock_label = item.stock_text or (f"{item.stock_count} IN STOCK" if item.stock_count is not None else "In Stock")
+            fields = [
+                {
+                    "name": "Current Price",
+                    "value": f"**${item.current_price:.2f}**",
+                    "inline": True,
+                },
+                {
+                    "name": "Stock Level",
+                    "value": f"✓ **{stock_label}**",
+                    "inline": True,
+                },
+                {
+                    "name": "Store Location",
+                    "value": f"MicroCenter Store #{item.store_id} ({item.store_name}, NC)",
+                    "inline": True,
+                },
+            ]
+
+            if item.product_url:
+                fields.append({
+                    "name": "Direct Product Link",
+                    "value": f"[🛒 Buy Now on MicroCenter.com]({item.product_url})",
+                    "inline": False,
+                })
+
+            embed = {
+                "title": f"📦 MicroCenter Restock: {item.name}",
+                "description": "Product is back in stock at MicroCenter Charlotte!",
+                "color": 0x00CED1,  # Tactical Teal
+                "fields": fields,
+                "footer": {
+                    "text": "Chimaera MTG Tactical Intelligence // MicroCenter Charlotte Surveillance",
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            if item.image_url:
+                embed["thumbnail"] = {"url": item.image_url}
+
+            payload = {
+                "username": "Chimaera Stock Monitor",
+                "embeds": [embed],
+            }
+
+            resp = requests.post(dest_url, json=payload, timeout=8)
+            return resp.status_code in (200, 204)
+        except Exception as e:
+            logger.error(f"Failed to send Discord MicroCenter restock alert: {e}")
+            return False

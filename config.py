@@ -50,3 +50,7 @@ class Config:
     GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
     ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "jpmclaug@gmail.com").strip().lower()
     APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
+
+    # MicroCenter Charlotte Store Surveillance Configuration
+    MICROCENTER_STORE_ID = os.getenv("MICROCENTER_STORE_ID", "175").strip()
+    MICROCENTER_STORE_NAME = os.getenv("MICROCENTER_STORE_NAME", "Charlotte").strip()

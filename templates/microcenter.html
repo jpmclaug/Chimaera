@@ -1,0 +1,863 @@
+{% extends "base.html" %}
+
+{% block title %}Chimaera // MicroCenter Charlotte MTG Surveillance{% endblock %}
+
+{% block head_extra %}
+<!-- Chart.js for Day-over-Day Price & Stock Visualizations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-4 sm:space-y-6">
+
+    <!-- MicroCenter Charlotte Telemetry Header Banner -->
+    <div class="bg-[#1B2230] border-2 border-[#F59E0B] p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative overflow-hidden">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 bg-[#F59E0B] animate-tactical-pulse inline-block"></span>
+                <span class="text-xs font-mono font-bold text-[#F59E0B] uppercase tracking-wider">
+                    MICROCENTER SURVEILLANCE // STORE #{{ store_id }} ({{ store_name|upper }}, NC)
+                </span>
+            </div>
+            <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
+                MicroCenter Magic: The Gathering Intelligence
+            </h2>
+            <p class="text-xs sm:text-sm text-[#94A3B8] mt-1 font-sans">
+                Day-over-day price tracking, stock level telemetry, and markdown deal surveillance locked strictly to the Charlotte store.
+            </p>
+        </div>
+
+        <!-- Telemetry Counters Matrix -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3 bg-[#10141D] p-2.5 sm:p-3 border border-[#263245] flex-shrink-0">
+            <div class="px-2">
+                <div class="text-[9px] sm:text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Monitored Items</div>
+                <div class="text-lg sm:text-2xl font-mono font-bold text-white" id="stat-total-items">{{ total_items }}</div>
+            </div>
+            <div class="border-l border-[#263245] px-2 sm:px-3">
+                <div class="text-[9px] sm:text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Charlotte In Stock</div>
+                <div class="text-lg sm:text-2xl font-mono font-bold text-[#00CED1]" id="stat-in-stock-items">{{ in_stock_items }}</div>
+            </div>
+            <div class="border-l border-[#263245] px-2 sm:px-3">
+                <div class="text-[9px] sm:text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Deals / Markdowns</div>
+                <div class="text-lg sm:text-2xl font-mono font-bold text-[#FF3358]" id="stat-deals-items">{{ deals_count }}</div>
+            </div>
+            <div class="border-l border-[#263245] pl-2 sm:pl-3 flex flex-col justify-center">
+                <button onclick="triggerMicrocenterSync()" id="btn-mc-sync" class="btn-amber px-3 py-1.5 text-xs flex items-center space-x-1.5 shadow-none" title="Scan MicroCenter Charlotte Store Now">
+                    <svg id="mc-sync-spinner" class="w-3.5 h-3.5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span class="font-mono font-bold uppercase tracking-wider text-[11px]">Scan Now</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clinical Toolbar: Search, Filters & View Toggles -->
+    <div class="bg-[#1B2230] border border-[#263245] p-3 sm:p-3.5 space-y-2.5">
+        <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-2.5">
+            <!-- Search Field -->
+            <div class="w-full md:w-80 lg:w-96">
+                <input type="text" id="mc-search" placeholder="SEARCH MTG PRODUCTS, SKUS, SETS..."
+                    class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white uppercase placeholder-[#64748B] focus:border-[#F59E0B] font-mono tracking-wide"
+                    onkeyup="applyFilters()">
+            </div>
+
+            <!-- Filter Pills & Sorting Controls -->
+            <div class="flex flex-wrap items-center gap-2 justify-between md:justify-end">
+                <select id="mc-filter-status" onchange="applyFilters()"
+                    class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 sm:py-2 text-xs text-[#F59E0B] focus:border-[#F59E0B] uppercase font-mono font-medium flex-1 sm:flex-initial">
+                    <option value="all">ALL STATUSES</option>
+                    <option value="in_stock">✓ IN STOCK ONLY</option>
+                    <option value="deals">🔥 DEALS & MARKDOWNS</option>
+                    <option value="low_stock">⚠️ LOW STOCK (&le; 5)</option>
+                    <option value="out_of_stock">✗ OUT OF STOCK</option>
+                </select>
+
+                <select id="mc-sort-by" onchange="applyFilters()"
+                    class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 sm:py-2 text-xs text-[#94A3B8] focus:border-[#F59E0B] uppercase font-mono font-medium flex-1 sm:flex-initial">
+                    <option value="default">SORT: DEALS & STOCK FIRST</option>
+                    <option value="price_drop">SORT: BIGGEST PRICE DROP</option>
+                    <option value="price_asc">SORT: PRICE LOW &rarr; HIGH</option>
+                    <option value="price_desc">SORT: PRICE HIGH &rarr; LOW</option>
+                    <option value="stock_desc">SORT: HIGHEST STOCK</option>
+                    <option value="name">SORT: PRODUCT NAME</option>
+                </select>
+
+                <!-- View Mode Switcher -->
+                <div class="flex items-center border border-[#263245] bg-[#10141D] p-0.5 flex-shrink-0" title="Switch Display Layout">
+                    <button onclick="setMcView('grid')" id="btn-mc-view-grid" class="view-btn active" title="Cards Grid">
+                        <span class="hidden sm:inline">Grid</span>
+                        <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                        </svg>
+                    </button>
+                    <button onclick="setMcView('table')" id="btn-mc-view-table" class="view-btn" title="Matrix Table">
+                        <span class="hidden sm:inline">Table</span>
+                        <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <button onclick="setMcView('feed')" id="btn-mc-view-feed" class="view-btn" title="Recent Day-over-Day Changes Feed">
+                        <span class="hidden sm:inline">Activity</span>
+                        <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <span class="text-xs font-mono text-[#F59E0B] font-bold border-l border-[#263245] pl-2.5 hidden lg:inline" id="mc-display-counter">
+                    [ <span id="mc-counter-val">{{ total_items }}</span> ITEMS ]
+                </span>
+            </div>
+        </div>
+
+        <!-- Quick Filter Pills -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#263245]/60">
+            <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">QUICK FILTERS:</span>
+            <button onclick="setQuickFilter('all')" class="tag-pill mc-quick-pill active flex-shrink-0" data-filter="all">
+                ALL PRODUCTS
+            </button>
+            <button onclick="setQuickFilter('in_stock')" class="tag-pill mc-quick-pill flex-shrink-0" data-filter="in_stock">
+                ✓ IN STOCK IN CHARLOTTE
+            </button>
+            <button onclick="setQuickFilter('deals')" class="tag-pill mc-quick-pill flex-shrink-0" data-filter="deals">
+                🔥 MARKDOWNS & PRICE DROPS
+            </button>
+            <button onclick="setQuickFilter('low_stock')" class="tag-pill mc-quick-pill flex-shrink-0" data-filter="low_stock">
+                ⚠️ LOW STOCK (&le; 5)
+            </button>
+        </div>
+    </div>
+
+    <!-- Scan Telemetry Feedback Bar -->
+    <div id="mc-telemetry-status" class="bg-[#10141D] border border-[#263245] px-3.5 py-2 text-[11px] font-mono text-[#94A3B8] flex items-center justify-between">
+        <div class="flex items-center space-x-2 min-w-0">
+            <span class="w-1.5 h-1.5 bg-[#00CED1] inline-block flex-shrink-0"></span>
+            <span class="truncate">
+                <span class="text-[#64748B]">LAST SURVEILLANCE SWEEP:</span>
+                <span class="text-white font-bold" id="mc-last-scan-label">
+                    {% if last_scan_time %}{{ last_scan_time|replace('T', ' ')|slice(0, 19) }} UTC{% else %}Awaiting initial sync{% endif %}
+                </span>
+            </span>
+        </div>
+        <div class="text-[10px] text-[#64748B] uppercase font-bold flex-shrink-0">
+            <a href="https://www.microcenter.com/search/search_results.aspx?fq=category:Tabletop+Games|646,brand:Wizards+of+the+Coast,Subcategory:Trading+Card+Game&storeid=175" target="_blank" rel="noopener noreferrer" class="hover:text-[#F59E0B] transition flex items-center space-x-1">
+                <span>View MicroCenter Charlotte Source &rarr;</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Loading State Skeleton -->
+    <div id="mc-loading" class="hidden bg-[#1B2230] border border-[#263245] p-12 text-center">
+        <div class="inline-block animate-spin text-[#F59E0B] mb-3">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+        </div>
+        <div class="font-mono text-sm text-white font-bold uppercase tracking-wider">Scraping MicroCenter Charlotte Store (Store #175)...</div>
+        <div class="font-mono text-xs text-[#94A3B8] mt-1">Acquiring live stock counts, pricing, and day-over-day markdown changes</div>
+    </div>
+
+    <!-- VIEW 1: Cards Grid -->
+    <div id="mc-grid-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+        <!-- Injected via JavaScript -->
+    </div>
+
+    <!-- VIEW 2: Table View -->
+    <div id="mc-table-container" class="hidden bg-[#1B2230] border border-[#263245] overflow-x-auto">
+        <table class="w-full text-left font-mono text-xs text-slate-300">
+            <thead class="bg-[#10141D] text-[#94A3B8] uppercase text-[10px] tracking-wider border-b border-[#263245]">
+                <tr>
+                    <th class="p-3">Product / Asset</th>
+                    <th class="p-3">SKU</th>
+                    <th class="p-3">Current Price</th>
+                    <th class="p-3">Original / Prev</th>
+                    <th class="p-3">Day-Over-Day Delta</th>
+                    <th class="p-3">Charlotte Stock</th>
+                    <th class="p-3 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="mc-table-body" class="divide-y divide-[#263245]/60">
+                <!-- Injected via JavaScript -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- VIEW 3: Recent Activity & Day-over-Day Changes Feed -->
+    <div id="mc-feed-container" class="hidden bg-[#1B2230] border border-[#263245] p-4 sm:p-5 space-y-3">
+        <div class="flex items-center justify-between border-b border-[#263245] pb-2">
+            <div class="text-xs font-mono font-bold text-white uppercase tracking-wider">// RECENT DAY-OVER-DAY PRICE & INVENTORY MOVEMENTS</div>
+            <button onclick="loadActivityFeed()" class="text-[11px] font-mono text-[#00CED1] hover:underline">Refresh Feed &rarr;</button>
+        </div>
+        <div id="mc-feed-list" class="space-y-2">
+            <!-- Injected via JavaScript -->
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="mc-empty-state" class="hidden bg-[#1B2230] border border-[#263245] p-12 text-center font-mono">
+        <div class="text-3xl mb-2">📦</div>
+        <div class="text-sm text-white font-bold uppercase">No MicroCenter Products Found</div>
+        <div class="text-xs text-[#94A3B8] mt-1 max-w-md mx-auto">
+            No products match the selected search or filter criteria. Click "Scan Now" to query the live Charlotte store catalog.
+        </div>
+        <button onclick="triggerMicrocenterSync()" class="btn-amber mt-4 px-4 py-2 text-xs font-bold uppercase">
+            Execute Initial Store Sweep
+        </button>
+    </div>
+
+</div>
+
+<!-- MODAL: Day-Over-Day History & Trends Chart -->
+<div id="history-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-[#1B2230] border-2 border-[#00CED1] w-full max-w-3xl p-4 sm:p-6 shadow-2xl relative space-y-4 max-h-[90vh] overflow-y-auto modal-scrollable font-mono">
+        <!-- Close Button -->
+        <button onclick="closeHistoryModal()" class="absolute top-3 right-3 text-[#94A3B8] hover:text-white text-lg font-bold p-1">
+            ✕
+        </button>
+
+        <!-- Modal Header -->
+        <div>
+            <div class="text-[10px] text-[#00CED1] uppercase font-bold tracking-wider">// HISTORICAL TELEMETRY & TRENDS</div>
+            <h3 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5" id="hist-modal-title">
+                Product Name
+            </h3>
+            <div class="text-xs text-[#94A3B8] mt-0.5" id="hist-modal-sku">
+                SKU: 000000 | Store: MicroCenter Charlotte (#175)
+            </div>
+        </div>
+
+        <!-- Day-over-Day Metrics Banner -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#10141D] p-3 border border-[#263245]">
+            <div>
+                <div class="text-[9px] text-[#94A3B8] uppercase">Current Price</div>
+                <div class="text-sm sm:text-base font-bold text-white" id="hist-stat-curr-price">$0.00</div>
+            </div>
+            <div>
+                <div class="text-[9px] text-[#94A3B8] uppercase">Day-over-Day Price</div>
+                <div class="text-sm sm:text-base font-bold" id="hist-stat-dod-price">&plusmn;$0.00</div>
+            </div>
+            <div>
+                <div class="text-[9px] text-[#94A3B8] uppercase">Charlotte Stock</div>
+                <div class="text-sm sm:text-base font-bold text-[#00CED1]" id="hist-stat-stock">0 In Stock</div>
+            </div>
+            <div>
+                <div class="text-[9px] text-[#94A3B8] uppercase">Day-over-Day Stock</div>
+                <div class="text-sm sm:text-base font-bold" id="hist-stat-dod-stock">&plusmn;0 Units</div>
+            </div>
+        </div>
+
+        <!-- Chart Container -->
+        <div class="bg-[#10141D] p-3 border border-[#263245]">
+            <div class="text-[10px] text-[#64748B] uppercase font-bold mb-2">// PRICE & INVENTORY TRAJECTORY</div>
+            <div class="h-64 sm:h-72 relative">
+                <canvas id="historyChartCanvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Historical Snapshots Log Table -->
+        <div>
+            <div class="text-[10px] text-[#64748B] uppercase font-bold mb-1.5">// DAY-OVER-DAY RECORDED SNAPSHOTS</div>
+            <div class="max-h-48 overflow-y-auto border border-[#263245] bg-[#10141D]">
+                <table class="w-full text-left text-[11px] text-slate-300">
+                    <thead class="bg-[#1B2230] text-[#94A3B8] uppercase text-[9px] sticky top-0 border-b border-[#263245]">
+                        <tr>
+                            <th class="p-2">Date / Time</th>
+                            <th class="p-2">Recorded Price</th>
+                            <th class="p-2">Price Delta</th>
+                            <th class="p-2">Stock Level</th>
+                            <th class="p-2">Stock Delta</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hist-table-body" class="divide-y divide-[#263245]/40">
+                        <!-- Injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="flex justify-end pt-2 border-t border-[#263245]">
+            <button onclick="closeHistoryModal()" class="btn-bridge px-4 py-1.5 text-xs font-bold uppercase">
+                Close Telemetry
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Alert Threshold & Preferences -->
+<div id="alert-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-[#1B2230] border-2 border-[#DC143C] w-full max-w-md p-4 sm:p-5 shadow-2xl relative space-y-4 font-mono">
+        <!-- Close Button -->
+        <button onclick="closeAlertModal()" class="absolute top-3 right-3 text-[#94A3B8] hover:text-white text-lg font-bold p-1">
+            ✕
+        </button>
+
+        <div>
+            <div class="text-[10px] text-[#FF3358] uppercase font-bold tracking-wider">// CONFIGURE SURVEILLANCE ALERTS</div>
+            <h3 class="text-sm sm:text-base font-heading font-black text-white uppercase tracking-wider mt-0.5" id="alert-modal-name">
+                Product Name
+            </h3>
+        </div>
+
+        <form id="alert-form" onsubmit="saveAlertPreferences(event)" class="space-y-3 text-xs">
+            <input type="hidden" id="alert-item-id">
+
+            <div>
+                <label class="block text-[10px] text-[#94A3B8] uppercase font-bold mb-1">Target Deal Price ($ USD)</label>
+                <div class="relative">
+                    <span class="absolute left-3 top-2 text-[#94A3B8] font-bold">$</span>
+                    <input type="number" step="0.01" min="0" id="alert-target-price" placeholder="Leave empty for all price changes"
+                        class="w-full bg-[#10141D] border border-[#263245] pl-7 pr-3 py-2 text-white font-mono text-xs focus:border-[#DC143C]">
+                </div>
+                <div class="text-[10px] text-[#64748B] mt-1">If set, deal alerts will trigger when price is at or below this amount.</div>
+            </div>
+
+            <div class="space-y-2 pt-2 border-t border-[#263245]">
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" id="alert-notify-price" class="w-4 h-4 bg-[#10141D] border-[#263245] text-[#DC143C] focus:ring-0">
+                    <span class="text-white text-[11px]">Notify via Discord on any Price Drop / Change</span>
+                </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" id="alert-notify-restock" class="w-4 h-4 bg-[#10141D] border-[#263245] text-[#00CED1] focus:ring-0">
+                    <span class="text-white text-[11px]">Notify via Discord when item Restocks in Charlotte</span>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-end space-x-2 pt-3 border-t border-[#263245]">
+                <button type="button" onclick="closeAlertModal()" class="btn-bridge px-3 py-1.5 text-xs font-bold uppercase">
+                    Cancel
+                </button>
+                <button type="submit" class="btn-crimson px-4 py-1.5 text-xs font-bold uppercase">
+                    Save Alerts
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // State Store
+    let allItems = [];
+    let currentView = 'grid';
+    let currentQuickFilter = 'all';
+    let historyChart = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+        loadItems();
+    });
+
+    async function loadItems() {
+        const loadingEl = document.getElementById("mc-loading");
+        const emptyEl = document.getElementById("mc-empty-state");
+        const gridEl = document.getElementById("mc-grid-container");
+        const tableEl = document.getElementById("mc-table-container");
+
+        try {
+            const resp = await fetch("/api/microcenter/items");
+            const data = await resp.json();
+            allItems = data.items || [];
+
+            // Update stats
+            document.getElementById("stat-total-items").innerText = data.total_tracked || allItems.length;
+            document.getElementById("stat-in-stock-items").innerText = data.in_stock_tracked || allItems.filter(i => i.in_stock).length;
+            document.getElementById("stat-deals-items").innerText = data.deals_tracked || allItems.filter(i => i.is_deal).length;
+            if (data.last_scan_time) {
+                document.getElementById("mc-last-scan-label").innerText = data.last_scan_time.replace("T", " ").slice(0, 19) + " UTC";
+            }
+
+            applyFilters();
+        } catch (err) {
+            console.error("Error loading MicroCenter items:", err);
+            showToast("Failed to load MicroCenter items", "error");
+        }
+    }
+
+    function applyFilters() {
+        const query = (document.getElementById("mc-search").value || "").toLowerCase().trim();
+        const statusFilter = document.getElementById("mc-filter-status").value;
+        const sortBy = document.getElementById("mc-sort-by").value;
+
+        let filtered = [...allItems];
+
+        // Search
+        if (query) {
+            filtered = filtered.filter(i => 
+                (i.name && i.name.toLowerCase().includes(query)) ||
+                (i.sku && i.sku.toLowerCase().includes(query))
+            );
+        }
+
+        // Status Filter
+        if (statusFilter === "in_stock") {
+            filtered = filtered.filter(i => i.in_stock);
+        } else if (statusFilter === "deals") {
+            filtered = filtered.filter(i => i.is_deal || i.has_price_dropped);
+        } else if (statusFilter === "low_stock") {
+            filtered = filtered.filter(i => i.in_stock && i.stock_count !== null && i.stock_count <= 5 && i.stock_count > 0);
+        } else if (statusFilter === "out_of_stock") {
+            filtered = filtered.filter(i => !i.in_stock);
+        }
+
+        // Quick Filter override if set
+        if (currentQuickFilter !== 'all') {
+            if (currentQuickFilter === "in_stock") filtered = filtered.filter(i => i.in_stock);
+            if (currentQuickFilter === "deals") filtered = filtered.filter(i => i.is_deal || i.has_price_dropped);
+            if (currentQuickFilter === "low_stock") filtered = filtered.filter(i => i.in_stock && i.stock_count !== null && i.stock_count <= 5 && i.stock_count > 0);
+        }
+
+        // Sorting
+        if (sortBy === "price_asc") {
+            filtered.sort((a, b) => a.current_price - b.current_price);
+        } else if (sortBy === "price_desc") {
+            filtered.sort((a, b) => b.current_price - a.current_price);
+        } else if (sortBy === "stock_desc") {
+            filtered.sort((a, b) => (b.in_stock ? (b.stock_count || 100) : -1) - (a.in_stock ? (a.stock_count || 100) : -1));
+        } else if (sortBy === "price_drop") {
+            filtered.sort((a, b) => (a.price_change_amount || 0) - (b.price_change_amount || 0));
+        } else if (sortBy === "name") {
+            filtered.sort((a, b) => a.name.localeCompare(b.name));
+        } else {
+            // Default: Deals & in-stock first
+            filtered.sort((a, b) => {
+                if (a.is_deal !== b.is_deal) return a.is_deal ? -1 : 1;
+                if (a.in_stock !== b.in_stock) return a.in_stock ? -1 : 1;
+                return a.name.localeCompare(b.name);
+            });
+        }
+
+        // Update counter
+        document.getElementById("mc-counter-val").innerText = filtered.length;
+
+        // Render
+        renderGrid(filtered);
+        renderTable(filtered);
+
+        const emptyEl = document.getElementById("mc-empty-state");
+        if (filtered.length === 0) {
+            emptyEl.classList.remove("hidden");
+        } else {
+            emptyEl.classList.add("hidden");
+        }
+    }
+
+    function renderGrid(items) {
+        const grid = document.getElementById("mc-grid-container");
+        grid.innerHTML = items.map(item => {
+            const hasDrop = item.has_price_dropped || item.price_change_amount < 0;
+            const priceDeltaText = item.price_change_amount ? (item.price_change_amount < 0 ? `-${Math.abs(item.price_change_amount).toFixed(2)}` : `+${item.price_change_amount.toFixed(2)}`) : null;
+            
+            // Stock pill formatting
+            let stockBadge = `<span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-[#DC143C]/20 border border-[#DC143C]/50 text-[#FF3358]">✗ OUT OF STOCK</span>`;
+            if (item.in_stock) {
+                if (item.stock_count !== null && item.stock_count <= 5) {
+                    stockBadge = `<span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-[#F59E0B]/20 border border-[#F59E0B]/50 text-[#F59E0B]">⚠️ ${item.stock_count} IN STOCK (LOW)</span>`;
+                } else {
+                    const countTxt = item.stock_count ? `${item.stock_count}+ IN STOCK` : 'IN STOCK';
+                    stockBadge = `<span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-[#00CED1]/20 border border-[#00CED1]/50 text-[#00CED1]">✓ ${countTxt}</span>`;
+                }
+            }
+
+            // Day over day info
+            const dod = item.day_over_day;
+            let dodHtml = `<span class="text-[10px] text-[#64748B]">Day/Day: Stable</span>`;
+            if (dod && dod.has_baseline && (dod.price_delta !== 0 || dod.stock_delta !== 0)) {
+                const pDelta = dod.price_delta < 0 ? `<span class="text-[#2DD4BF] font-bold">${dod.price_delta.toFixed(2)}</span>` : (dod.price_delta > 0 ? `<span class="text-[#FF3358] font-bold">+${dod.price_delta.toFixed(2)}</span>` : `<span class="text-[#94A3B8]">$0.00</span>`);
+                const sDelta = dod.stock_delta !== 0 ? `<span class="text-white ml-1.5">Stock: ${dod.stock_delta > 0 ? '+' : ''}${dod.stock_delta}</span>` : '';
+                dodHtml = `<div class="text-[10px] font-mono"><span class="text-[#94A3B8]">D/D:</span> ${pDelta} ${sDelta}</div>`;
+            }
+
+            return `
+            <div class="card-tactical flex flex-col justify-between p-3.5 space-y-3 ${item.is_deal ? 'border-[#DC143C] shadow-lg shadow-[#DC143C]/5' : ''}">
+                <!-- Top Header / Badges -->
+                <div>
+                    <div class="flex items-center justify-between gap-1 mb-2">
+                        <span class="text-[9px] font-mono uppercase text-[#94A3B8] tracking-wider truncate">SKU: <strong class="text-white">${item.sku}</strong></span>
+                        <div class="flex items-center space-x-1 flex-shrink-0">
+                            ${item.is_deal ? '<span class="bg-[#DC143C] text-white text-[9px] font-mono font-bold px-1.5 py-0.2 uppercase">🔥 MARKDOWN</span>' : ''}
+                            ${stockBadge}
+                        </div>
+                    </div>
+
+                    <!-- Image & Title -->
+                    <div class="flex gap-3">
+                        <div class="w-16 h-16 sm:w-20 sm:h-20 bg-[#10141D] border border-[#263245] p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                            ${item.image_url ? `<img src="${item.image_url}" alt="${item.name}" class="w-full h-full object-contain filter contrast-105" loading="lazy">` : '<span class="text-2xl">📦</span>'}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <a href="${item.product_url || '#'}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-white hover:text-[#F59E0B] transition line-clamp-2 leading-tight">
+                                ${item.name}
+                            </a>
+                            <div class="text-[10px] text-[#64748B] mt-1 font-mono">
+                                📍 Store #175 &bull; Charlotte
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Price & Day-over-Day Section -->
+                <div class="bg-[#10141D] p-2.5 border border-[#263245] space-y-1.5">
+                    <div class="flex items-baseline justify-between">
+                        <div>
+                            <span class="text-[10px] text-[#94A3B8] uppercase font-mono mr-1">PRICE:</span>
+                            <span class="text-base font-mono font-bold ${hasDrop ? 'text-[#2DD4BF]' : 'text-white'}">$${item.current_price.toFixed(2)}</span>
+                            ${item.original_price && item.original_price > item.current_price ? `<span class="text-[10px] text-[#64748B] line-through ml-1">$${item.original_price.toFixed(2)}</span>` : ''}
+                        </div>
+                        ${hasDrop ? `<span class="text-[10px] font-mono font-bold text-[#2DD4BF] bg-[#2DD4BF]/10 px-1 py-0.2 border border-[#2DD4BF]/30">${item.price_change_percent.toFixed(1)}%</span>` : ''}
+                    </div>
+                    <div class="border-t border-[#263245]/60 pt-1 flex items-center justify-between">
+                        ${dodHtml}
+                        ${item.target_price ? `<span class="text-[9px] font-mono text-[#FF3358]" title="Target Acquisition Threshold">Target: $${item.target_price.toFixed(2)}</span>` : ''}
+                    </div>
+                </div>
+
+                <!-- Action Controls -->
+                <div class="grid grid-cols-3 gap-1.5 pt-1">
+                    <button onclick="openHistoryModal(${item.id})" class="btn-bridge col-span-1 py-1.5 text-[11px] font-mono text-center flex items-center justify-center space-x-1" title="View Day-over-Day Price & Stock Trends">
+                        <svg class="w-3 h-3 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                        </svg>
+                        <span>Trends</span>
+                    </button>
+                    <button onclick="openAlertModal(${item.id})" class="btn-bridge col-span-1 py-1.5 text-[11px] font-mono text-center flex items-center justify-center space-x-1" title="Configure Alert Thresholds">
+                        <svg class="w-3 h-3 text-[#FF3358]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                        </svg>
+                        <span>Alerts</span>
+                    </button>
+                    <a href="${item.product_url || '#'}" target="_blank" rel="noopener noreferrer" class="btn-amber col-span-1 py-1.5 text-[11px] font-mono font-bold text-center flex items-center justify-center shadow-none" title="Buy on MicroCenter.com">
+                        <span>Buy &rarr;</span>
+                    </a>
+                </div>
+            </div>
+            `;
+        }).join("");
+    }
+
+    function renderTable(items) {
+        const tbody = document.getElementById("mc-table-body");
+        tbody.innerHTML = items.map(item => {
+            const hasDrop = item.has_price_dropped || item.price_change_amount < 0;
+            const dod = item.day_over_day;
+            const pDelta = (dod && dod.has_baseline && dod.price_delta !== 0) ? (dod.price_delta < 0 ? `<span class="text-[#2DD4BF]">${dod.price_delta.toFixed(2)}</span>` : `<span class="text-[#FF3358]">+${dod.price_delta.toFixed(2)}</span>`) : `<span class="text-[#64748B]">$0.00</span>`;
+            
+            let stockHtml = `<span class="text-[#FF3358] font-bold">✗ Out of Stock</span>`;
+            if (item.in_stock) {
+                stockHtml = `<span class="text-[#00CED1] font-bold">✓ ${item.stock_count ? item.stock_count + ' In Stock' : 'In Stock'}</span>`;
+            }
+
+            return `
+            <tr class="hover:bg-[#10141D] transition">
+                <td class="p-3">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-8 h-8 bg-[#10141D] border border-[#263245] p-0.5 flex-shrink-0 flex items-center justify-center">
+                            ${item.image_url ? `<img src="${item.image_url}" alt="" class="w-full h-full object-contain">` : '📦'}
+                        </div>
+                        <div class="min-w-0">
+                            <a href="${item.product_url || '#'}" target="_blank" class="text-white hover:text-[#F59E0B] font-bold truncate block max-w-xs sm:max-w-md">
+                                ${item.name}
+                            </a>
+                        </div>
+                    </div>
+                </td>
+                <td class="p-3 text-[#94A3B8]">${item.sku}</td>
+                <td class="p-3 text-white font-bold">$${item.current_price.toFixed(2)}</td>
+                <td class="p-3 text-[#94A3B8]">
+                    ${item.original_price ? `<span class="line-through">$${item.original_price.toFixed(2)}</span>` : (item.previous_price ? `$${item.previous_price.toFixed(2)}` : '-')}
+                </td>
+                <td class="p-3">${pDelta}</td>
+                <td class="p-3">${stockHtml}</td>
+                <td class="p-3 text-right">
+                    <div class="flex items-center justify-end space-x-1.5">
+                        <button onclick="openHistoryModal(${item.id})" class="btn-bridge px-2 py-1 text-[10px] text-[#00CED1]">Trends</button>
+                        <button onclick="openAlertModal(${item.id})" class="btn-bridge px-2 py-1 text-[10px] text-[#FF3358]">Alerts</button>
+                        <a href="${item.product_url || '#'}" target="_blank" class="btn-amber px-2 py-1 text-[10px]">Buy</a>
+                    </div>
+                </td>
+            </tr>
+            `;
+        }).join("");
+    }
+
+    function setMcView(mode) {
+        currentView = mode;
+        document.getElementById("btn-mc-view-grid").classList.toggle("active", mode === 'grid');
+        document.getElementById("btn-mc-view-table").classList.toggle("active", mode === 'table');
+        document.getElementById("btn-mc-view-feed").classList.toggle("active", mode === 'feed');
+
+        document.getElementById("mc-grid-container").classList.toggle("hidden", mode !== 'grid');
+        document.getElementById("mc-table-container").classList.toggle("hidden", mode !== 'table');
+        document.getElementById("mc-feed-container").classList.toggle("hidden", mode !== 'feed');
+
+        if (mode === 'feed') {
+            loadActivityFeed();
+        }
+    }
+
+    function setQuickFilter(mode) {
+        currentQuickFilter = mode;
+        document.querySelectorAll(".mc-quick-pill").forEach(p => {
+            p.classList.toggle("active", p.dataset.filter === mode);
+        });
+        applyFilters();
+    }
+
+    async function triggerMicrocenterSync() {
+        const btn = document.getElementById("btn-mc-sync");
+        const spinner = document.getElementById("mc-sync-spinner");
+        btn.disabled = true;
+        spinner.classList.add("animate-spin");
+        showToast("Initiating MicroCenter Charlotte store inventory sweep...", "info");
+
+        try {
+            const resp = await fetch("/api/microcenter/sync", { method: "POST" });
+            const data = await resp.json();
+            if (data.success) {
+                showToast(data.message || "MicroCenter sync completed successfully!", "success");
+                await loadItems();
+            } else {
+                showToast(data.error || "Sync encountered an error", "error");
+            }
+        } catch (err) {
+            console.error("Sync error:", err);
+            showToast("Failed to connect for MicroCenter sync", "error");
+        } finally {
+            btn.disabled = false;
+            spinner.classList.remove("animate-spin");
+        }
+    }
+
+    // History Modal & Chart.js Integration
+    async function openHistoryModal(itemId) {
+        const modal = document.getElementById("history-modal");
+        modal.classList.remove("hidden");
+
+        try {
+            const resp = await fetch(`/api/microcenter/history/${itemId}`);
+            const data = await resp.json();
+            const item = data.item;
+            const history = data.history || [];
+            const dod = data.day_over_day || {};
+
+            document.getElementById("hist-modal-title").innerText = item.name;
+            document.getElementById("hist-modal-sku").innerText = `SKU: ${item.sku} | Store: MicroCenter ${item.store_name} (#${item.store_id})`;
+            document.getElementById("hist-stat-curr-price").innerText = `$${item.current_price.toFixed(2)}`;
+            
+            // DOD Price
+            const dodPriceEl = document.getElementById("hist-stat-dod-price");
+            if (dod.has_baseline && dod.price_delta !== 0) {
+                dodPriceEl.innerText = `${dod.price_delta < 0 ? '-' : '+'}$${Math.abs(dod.price_delta).toFixed(2)} (${dod.price_delta_percent > 0 ? '+' : ''}${dod.price_delta_percent}%)`;
+                dodPriceEl.className = dod.price_delta < 0 ? "text-sm sm:text-base font-bold text-[#2DD4BF]" : "text-sm sm:text-base font-bold text-[#FF3358]";
+            } else {
+                dodPriceEl.innerText = "$0.00 (Stable)";
+                dodPriceEl.className = "text-sm sm:text-base font-bold text-[#94A3B8]";
+            }
+
+            // DOD Stock
+            document.getElementById("hist-stat-stock").innerText = item.in_stock ? (item.stock_count ? `${item.stock_count} In Stock` : 'In Stock') : 'Out of Stock';
+            const dodStockEl = document.getElementById("hist-stat-dod-stock");
+            if (dod.has_baseline && dod.stock_delta !== 0) {
+                dodStockEl.innerText = `${dod.stock_delta > 0 ? '+' : ''}${dod.stock_delta} Units`;
+                dodStockEl.className = dod.stock_delta > 0 ? "text-sm sm:text-base font-bold text-[#00CED1]" : "text-sm sm:text-base font-bold text-[#FF3358]";
+            } else {
+                dodStockEl.innerText = "0 (Unchanged)";
+                dodStockEl.className = "text-sm sm:text-base font-bold text-[#94A3B8]";
+            }
+
+            // Render Table Rows
+            const tbody = document.getElementById("hist-table-body");
+            tbody.innerHTML = history.map(h => {
+                const dateStr = h.recorded_at ? h.recorded_at.replace("T", " ").slice(0, 16) : '-';
+                const pDelta = h.price_change !== 0 ? (h.price_change < 0 ? `<span class="text-[#2DD4BF]">${h.price_change.toFixed(2)}</span>` : `<span class="text-[#FF3358]">+${h.price_change.toFixed(2)}</span>`) : `<span class="text-[#64748B]">0.00</span>`;
+                const sDelta = h.stock_change !== 0 ? (h.stock_change > 0 ? `<span class="text-[#00CED1]">+${h.stock_change}</span>` : `<span class="text-[#FF3358]">${h.stock_change}</span>`) : `<span class="text-[#64748B]">0</span>`;
+                return `
+                <tr class="hover:bg-[#1B2230]">
+                    <td class="p-2 text-[#94A3B8] font-mono">${dateStr}</td>
+                    <td class="p-2 font-bold text-white font-mono">$${h.price.toFixed(2)}</td>
+                    <td class="p-2 font-mono">${pDelta}</td>
+                    <td class="p-2 font-mono ${h.in_stock ? 'text-[#00CED1]' : 'text-[#FF3358]'}">${h.in_stock ? (h.stock_count || 'In Stock') : 'Out'}</td>
+                    <td class="p-2 font-mono">${sDelta}</td>
+                </tr>
+                `;
+            }).join("");
+
+            // Render Chart
+            renderHistoryChart(history, item);
+
+        } catch (err) {
+            console.error("Error opening history modal:", err);
+            showToast("Failed to load historical timeline", "error");
+        }
+    }
+
+    function renderHistoryChart(history, item) {
+        const ctx = document.getElementById("historyChartCanvas").getContext("2d");
+        if (historyChart) {
+            historyChart.destroy();
+        }
+
+        const labels = history.map(h => h.recorded_at ? h.recorded_at.replace("T", " ").slice(5, 16) : '');
+        const prices = history.map(h => h.price);
+        const stocks = history.map(h => h.stock_count !== null ? h.stock_count : (h.in_stock ? 25 : 0));
+
+        historyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Price ($ USD)',
+                        data: prices,
+                        borderColor: '#00CED1',
+                        backgroundColor: 'rgba(0, 206, 209, 0.1)',
+                        borderWidth: 2,
+                        yAxisID: 'yPrice',
+                        stepped: true,
+                        tension: 0,
+                    },
+                    {
+                        label: 'Charlotte Stock Count',
+                        data: stocks,
+                        borderColor: '#F59E0B',
+                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                        borderWidth: 2,
+                        yAxisID: 'yStock',
+                        type: 'bar',
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        ticks: { color: '#94A3B8', font: { family: 'monospace', size: 10 } },
+                        grid: { color: 'rgba(38, 50, 69, 0.6)' }
+                    },
+                    yPrice: {
+                        type: 'linear',
+                        position: 'left',
+                        ticks: { color: '#00CED1', font: { family: 'monospace', size: 10 }, callback: v => '$' + v },
+                        grid: { color: 'rgba(38, 50, 69, 0.6)' }
+                    },
+                    yStock: {
+                        type: 'linear',
+                        position: 'right',
+                        ticks: { color: '#F59E0B', font: { family: 'monospace', size: 10 } },
+                        grid: { drawOnChartArea: false }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#F1F5F9', font: { family: 'monospace', size: 11 } }
+                    }
+                }
+            }
+        });
+    }
+
+    function closeHistoryModal() {
+        document.getElementById("history-modal").classList.add("hidden");
+    }
+
+    // Alert Preferences Modal
+    function openAlertModal(itemId) {
+        const item = allItems.find(i => i.id === itemId);
+        if (!item) return;
+
+        document.getElementById("alert-item-id").value = item.id;
+        document.getElementById("alert-modal-name").innerText = item.name;
+        document.getElementById("alert-target-price").value = item.target_price || '';
+        document.getElementById("alert-notify-price").checked = item.notify_on_price_change !== false;
+        document.getElementById("alert-notify-restock").checked = item.notify_on_restock !== false;
+
+        document.getElementById("alert-modal").classList.remove("hidden");
+    }
+
+    function closeAlertModal() {
+        document.getElementById("alert-modal").classList.add("hidden");
+    }
+
+    async function saveAlertPreferences(e) {
+        e.preventDefault();
+        const itemId = document.getElementById("alert-item-id").value;
+        const targetPrice = document.getElementById("alert-target-price").value;
+        const notifyPrice = document.getElementById("alert-notify-price").checked;
+        const notifyRestock = document.getElementById("alert-notify-restock").checked;
+
+        try {
+            const resp = await fetch(`/api/microcenter/item/${itemId}/update`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    target_price: targetPrice,
+                    notify_on_price_change: notifyPrice,
+                    notify_on_restock: notifyRestock,
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                showToast("Alert preferences updated successfully!", "success");
+                closeAlertModal();
+                await loadItems();
+            } else {
+                showToast(data.error || "Failed to update alert settings", "error");
+            }
+        } catch (err) {
+            console.error("Error saving alert preferences:", err);
+            showToast("Failed to save alert preferences", "error");
+        }
+    }
+
+    // Activity Feed
+    async function loadActivityFeed() {
+        const feedList = document.getElementById("mc-feed-list");
+        feedList.innerHTML = `<div class="text-xs text-[#94A3B8] font-mono py-4 text-center">Loading activity feed...</div>`;
+
+        try {
+            const resp = await fetch("/api/microcenter/changes");
+            const data = await resp.json();
+            const events = data.events || [];
+
+            if (events.length === 0) {
+                feedList.innerHTML = `<div class="text-xs text-[#64748B] font-mono py-6 text-center">No recent price or stock changes recorded yet. Changes will be logged across daily surveillance cycles.</div>`;
+                return;
+            }
+
+            feedList.innerHTML = events.map(ev => {
+                const isDrop = ev.price_change < 0;
+                const isRestock = ev.stock_change > 0;
+                const dateStr = ev.recorded_at ? ev.recorded_at.replace("T", " ").slice(0, 16) : '';
+                return `
+                <div class="p-3 bg-[#10141D] border border-[#263245] flex items-center justify-between font-mono text-xs">
+                    <div class="flex items-center space-x-3 min-w-0">
+                        <div class="w-10 h-10 bg-[#1B2230] border border-[#263245] flex-shrink-0 flex items-center justify-center">
+                            ${ev.image_url ? `<img src="${ev.image_url}" class="w-full h-full object-contain">` : '📦'}
+                        </div>
+                        <div class="min-w-0">
+                            <div class="text-white font-bold truncate">${ev.name}</div>
+                            <div class="text-[10px] text-[#94A3B8]">SKU: ${ev.sku} &bull; ${dateStr}</div>
+                        </div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                        ${ev.price_change !== 0 ? `
+                            <div class="${isDrop ? 'text-[#2DD4BF]' : 'text-[#FF3358]'} font-bold">
+                                ${isDrop ? 'Price Drop' : 'Price Rise'}: ${ev.price_change < 0 ? '-' : '+'}$${Math.abs(ev.price_change).toFixed(2)} &rarr; $${ev.price.toFixed(2)}
+                            </div>
+                        ` : ''}
+                        ${ev.stock_change !== 0 ? `
+                            <div class="${isRestock ? 'text-[#00CED1]' : 'text-[#94A3B8]'} text-[11px]">
+                                Stock ${ev.stock_change > 0 ? '+' : ''}${ev.stock_change} &bull; ${ev.stock_count || 0} In Stock
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+                `;
+            }).join("");
+        } catch (err) {
+            console.error("Error loading activity feed:", err);
+            feedList.innerHTML = `<div class="text-xs text-[#FF3358] font-mono py-4 text-center">Failed to load activity feed.</div>`;
+        }
+    }
+</script>
+{% endblock %}

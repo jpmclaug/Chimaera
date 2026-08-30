@@ -17,9 +17,9 @@ from flask import (
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from config import Config
-from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog
+from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog, MicrocenterItem, MicrocenterHistory
 from deal_engine import DealEngine
-from providers import ScryfallProvider, MightyMeepleProvider
+from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider
 
 # Configure logging
 logging.basicConfig(
@@ -102,6 +102,51 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE user ADD COLUMN discord_webhook_url VARCHAR(500)"))
                         conn.commit()
 
+                    # Ensure microcenter_item table exists in SQLite
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS microcenter_item (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            sku VARCHAR(50) NOT NULL UNIQUE,
+                            product_id VARCHAR(50),
+                            name VARCHAR(255) NOT NULL,
+                            product_url TEXT,
+                            image_url TEXT,
+                            current_price FLOAT NOT NULL DEFAULT 0.0,
+                            previous_price FLOAT,
+                            original_price FLOAT,
+                            in_stock BOOLEAN NOT NULL DEFAULT 1,
+                            stock_count INTEGER,
+                            stock_text VARCHAR(100),
+                            store_id VARCHAR(20) NOT NULL DEFAULT '175',
+                            store_name VARCHAR(100) NOT NULL DEFAULT 'Charlotte',
+                            category VARCHAR(100),
+                            target_price FLOAT,
+                            notify_on_price_change BOOLEAN NOT NULL DEFAULT 1,
+                            notify_on_restock BOOLEAN NOT NULL DEFAULT 1,
+                            first_seen_at DATETIME,
+                            last_scanned_at DATETIME,
+                            last_price_change_at DATETIME,
+                            last_stock_change_at DATETIME,
+                            is_active BOOLEAN NOT NULL DEFAULT 1
+                        )
+                    """))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS microcenter_history (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            item_id INTEGER NOT NULL,
+                            price FLOAT NOT NULL,
+                            original_price FLOAT,
+                            in_stock BOOLEAN NOT NULL DEFAULT 1,
+                            stock_count INTEGER,
+                            stock_text VARCHAR(100),
+                            price_change FLOAT NOT NULL DEFAULT 0.0,
+                            stock_change INTEGER NOT NULL DEFAULT 0,
+                            recorded_at DATETIME,
+                            FOREIGN KEY (item_id) REFERENCES microcenter_item(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.commit()
+
             elif dialect in ("postgresql", "postgres"):
                 with db.engine.connect() as conn:
                     logger.info("Verifying PostgreSQL watchlist_item and user constraints and columns...")
@@ -112,6 +157,47 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
                     conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                     conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS microcenter_item (
+                            id SERIAL PRIMARY KEY,
+                            sku VARCHAR(50) NOT NULL UNIQUE,
+                            product_id VARCHAR(50),
+                            name VARCHAR(255) NOT NULL,
+                            product_url TEXT,
+                            image_url TEXT,
+                            current_price FLOAT NOT NULL DEFAULT 0.0,
+                            previous_price FLOAT,
+                            original_price FLOAT,
+                            in_stock BOOLEAN NOT NULL DEFAULT TRUE,
+                            stock_count INTEGER,
+                            stock_text VARCHAR(100),
+                            store_id VARCHAR(20) NOT NULL DEFAULT '175',
+                            store_name VARCHAR(100) NOT NULL DEFAULT 'Charlotte',
+                            category VARCHAR(100),
+                            target_price FLOAT,
+                            notify_on_price_change BOOLEAN NOT NULL DEFAULT TRUE,
+                            notify_on_restock BOOLEAN NOT NULL DEFAULT TRUE,
+                            first_seen_at TIMESTAMP,
+                            last_scanned_at TIMESTAMP,
+                            last_price_change_at TIMESTAMP,
+                            last_stock_change_at TIMESTAMP,
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE
+                        )
+                    """))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS microcenter_history (
+                            id SERIAL PRIMARY KEY,
+                            item_id INTEGER NOT NULL REFERENCES microcenter_item(id) ON DELETE CASCADE,
+                            price FLOAT NOT NULL,
+                            original_price FLOAT,
+                            in_stock BOOLEAN NOT NULL DEFAULT TRUE,
+                            stock_count INTEGER,
+                            stock_text VARCHAR(100),
+                            price_change FLOAT NOT NULL DEFAULT 0.0,
+                            stock_change INTEGER NOT NULL DEFAULT 0,
+                            recorded_at TIMESTAMP
+                        )
+                    """))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
 
@@ -201,10 +287,14 @@ def create_app(test_config=None):
     # Initialize Database
     db.init_app(app)
 
-    # Initialize Deal Engine, Scryfall provider, and Mighty Meeple provider
+    # Initialize Deal Engine and External Store Providers
     deal_engine = DealEngine(app=app)
     scryfall_provider = ScryfallProvider()
     mightymeeple_provider = MightyMeepleProvider()
+    microcenter_provider = MicrocenterProvider(
+        store_id=Config.MICROCENTER_STORE_ID,
+        store_name=Config.MICROCENTER_STORE_NAME,
+    )
 
     with app.app_context():
         db.create_all()
@@ -338,6 +428,12 @@ def create_app(test_config=None):
                 with app.app_context():
                     logger.info("Running scheduled MTG price check via in-process scheduler...")
                     deal_engine.poll_all_cards(notify=True)
+                    if SystemSetting.get_bool("microcenter_poll_enabled", default=True):
+                        try:
+                            logger.info("Running scheduled MicroCenter Charlotte inventory sync...")
+                            deal_engine.sync_microcenter(notify=True)
+                        except Exception as e:
+                            logger.error(f"Error syncing MicroCenter in scheduled poll: {e}")
 
             scheduler = BackgroundScheduler(daemon=True)
             with app.app_context():
@@ -882,6 +978,208 @@ def create_app(test_config=None):
             supported_games=supported_games,
             active_tab="buylist",
         )
+
+    @app.route("/microcenter")
+    @login_required
+    def microcenter():
+        """MicroCenter Charlotte Store MTG inventory & price tracking view."""
+        user = get_current_user()
+        store_id = Config.MICROCENTER_STORE_ID
+        store_name = Config.MICROCENTER_STORE_NAME
+
+        # Aggregate statistics
+        total_items = MicrocenterItem.query.filter_by(store_id=store_id).count()
+        in_stock_items = MicrocenterItem.query.filter_by(store_id=store_id, in_stock=True).count()
+        all_items = MicrocenterItem.query.filter_by(store_id=store_id).all()
+        deals_count = sum(1 for item in all_items if item.is_deal)
+        last_scan_time = SystemSetting.get_val("microcenter_last_scan_time")
+        last_scan_status = SystemSetting.get_val("microcenter_last_scan_status")
+
+        log_activity("PAGE_VIEW", details=f"Accessed MicroCenter {store_name} Surveillance Dashboard", user=user)
+
+        return render_template(
+            "microcenter.html",
+            store_id=store_id,
+            store_name=store_name,
+            total_items=total_items,
+            in_stock_items=in_stock_items,
+            deals_count=deals_count,
+            last_scan_time=last_scan_time,
+            last_scan_status=last_scan_status,
+            active_tab="microcenter",
+        )
+
+    # ---------------------------------------------------------
+    # API Routes: MicroCenter Charlotte Endpoints
+    # ---------------------------------------------------------
+    @app.route("/api/microcenter/items")
+    @login_required
+    def microcenter_items():
+        """Returns list of tracked MicroCenter Charlotte MTG products with filters and sorting."""
+        store_id = (request.args.get("store_id") or Config.MICROCENTER_STORE_ID).strip()
+        search_query = (request.args.get("q") or request.args.get("search") or "").strip().lower()
+        filter_mode = (request.args.get("filter") or "all").strip().lower()
+        sort_by = (request.args.get("sort") or "default").strip().lower()
+
+        query = MicrocenterItem.query.filter_by(store_id=store_id)
+
+        if search_query:
+            query = query.filter(
+                db.or_(
+                    db.func.lower(MicrocenterItem.name).like(f"%{search_query}%"),
+                    db.func.lower(MicrocenterItem.sku).like(f"%{search_query}%"),
+                )
+            )
+
+        if filter_mode == "in_stock":
+            query = query.filter(MicrocenterItem.in_stock == True)
+        elif filter_mode == "low_stock":
+            query = query.filter(
+                MicrocenterItem.in_stock == True,
+                MicrocenterItem.stock_count.isnot(None),
+                MicrocenterItem.stock_count <= 5,
+                MicrocenterItem.stock_count > 0,
+            )
+        elif filter_mode == "out_of_stock":
+            query = query.filter(MicrocenterItem.in_stock == False)
+        elif filter_mode == "deals":
+            pass
+
+        items = query.all()
+
+        if filter_mode == "deals":
+            items = [item for item in items if item.is_deal]
+
+        # Sorting
+        if sort_by == "price_asc":
+            items.sort(key=lambda x: x.current_price)
+        elif sort_by == "price_desc":
+            items.sort(key=lambda x: x.current_price, reverse=True)
+        elif sort_by == "stock_desc":
+            items.sort(key=lambda x: (x.in_stock, x.stock_count if x.stock_count is not None else -1), reverse=True)
+        elif sort_by == "price_drop":
+            items.sort(key=lambda x: x.price_change_amount)
+        elif sort_by == "name":
+            items.sort(key=lambda x: x.name.lower())
+        else:
+            # Default: Deals and in-stock first, then by name
+            items.sort(key=lambda x: (not x.is_deal, not x.in_stock, x.name.lower()))
+
+        total_tracked = MicrocenterItem.query.filter_by(store_id=store_id).count()
+        in_stock_tracked = MicrocenterItem.query.filter_by(store_id=store_id, in_stock=True).count()
+        deals_tracked = sum(1 for item in MicrocenterItem.query.filter_by(store_id=store_id).all() if item.is_deal)
+
+        return jsonify({
+            "items": [item.to_dict(include_history=False) for item in items],
+            "count": len(items),
+            "total_tracked": total_tracked,
+            "in_stock_tracked": in_stock_tracked,
+            "deals_tracked": deals_tracked,
+            "last_scan_time": SystemSetting.get_val("microcenter_last_scan_time"),
+            "last_scan_status": SystemSetting.get_val("microcenter_last_scan_status"),
+        })
+
+    @app.route("/api/microcenter/history/<int:item_id>")
+    @login_required
+    def microcenter_history(item_id: int):
+        """Returns full historical price and inventory time series for a specific item."""
+        item = MicrocenterItem.query.get_or_404(item_id)
+        entries = (
+            MicrocenterHistory.query.filter_by(item_id=item.id)
+            .order_by(MicrocenterHistory.recorded_at.asc())
+            .all()
+        )
+
+        return jsonify({
+            "item": item.to_dict(include_history=False),
+            "history": [h.to_dict() for h in entries],
+            "day_over_day": item.get_day_over_day_change(),
+        })
+
+    @app.route("/api/microcenter/sync", methods=["POST"])
+    @login_required
+    def microcenter_sync():
+        """Triggers on-demand synchronization of MicroCenter Charlotte store inventory."""
+        user = get_current_user()
+        try:
+            result = deal_engine.sync_microcenter(notify=True)
+            log_activity("MICROCENTER_SYNC", details=result.get("message"), user=user)
+            return jsonify(result)
+        except Exception as e:
+            logger.error(f"Manual MicroCenter sync failed: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    @app.route("/api/microcenter/item/<int:item_id>/update", methods=["POST"])
+    @login_required
+    def microcenter_item_update(item_id: int):
+        """Updates alert configuration and target price for a MicroCenter product."""
+        user = get_current_user()
+        item = MicrocenterItem.query.get_or_404(item_id)
+        data = request.get_json(silent=True) or {}
+
+        if "target_price" in data:
+            raw_tp = data.get("target_price")
+            if raw_tp is None or str(raw_tp).strip() == "":
+                item.target_price = None
+            else:
+                try:
+                    tp = float(raw_tp)
+                    item.target_price = max(0.0, tp) if tp > 0 else None
+                except (ValueError, TypeError):
+                    pass
+
+        if "notify_on_price_change" in data:
+            item.notify_on_price_change = bool(data.get("notify_on_price_change"))
+
+        if "notify_on_restock" in data:
+            item.notify_on_restock = bool(data.get("notify_on_restock"))
+
+        db.session.commit()
+        log_activity(
+            "CARD_UPDATE",
+            details=f"Updated alert settings for MicroCenter item: {item.name} (Target: {item.target_price})",
+            user=user,
+        )
+        return jsonify({"success": True, "item": item.to_dict()})
+
+    @app.route("/api/microcenter/changes", methods=["GET"])
+    @login_required
+    def microcenter_changes():
+        """Returns recent day-over-day price and stock change events across all items."""
+        store_id = (request.args.get("store_id") or Config.MICROCENTER_STORE_ID).strip()
+        limit = min(int(request.args.get("limit", 50)), 100)
+
+        # Query recent history entries with non-zero changes
+        history_rows = (
+            db.session.query(MicrocenterHistory, MicrocenterItem)
+            .join(MicrocenterItem, MicrocenterHistory.item_id == MicrocenterItem.id)
+            .filter(MicrocenterItem.store_id == store_id)
+            .filter(db.or_(MicrocenterHistory.price_change != 0, MicrocenterHistory.stock_change != 0))
+            .order_by(MicrocenterHistory.recorded_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        events = []
+        for hist, item in history_rows:
+            events.append({
+                "history_id": hist.id,
+                "item_id": item.id,
+                "sku": item.sku,
+                "name": item.name,
+                "image_url": item.image_url,
+                "product_url": item.product_url,
+                "price": hist.price,
+                "price_change": hist.price_change,
+                "price_change_percent": round((hist.price_change / (hist.price - hist.price_change)) * 100.0, 1) if (hist.price - hist.price_change) > 0 else 0.0,
+                "stock_count": hist.stock_count,
+                "stock_change": hist.stock_change,
+                "stock_text": hist.stock_text,
+                "in_stock": hist.in_stock,
+                "recorded_at": hist.recorded_at.isoformat() if hist.recorded_at else None,
+            })
+
+        return jsonify({"events": events, "count": len(events)})
 
     # ---------------------------------------------------------
     # API Routes: Mighty Meeple Buylist Endpoints
