@@ -321,6 +321,10 @@
                     <input type="checkbox" id="alert-notify-restock" class="w-4 h-4 bg-[#10141D] border-[#263245] text-[#00CED1] focus:ring-0">
                     <span class="text-white text-[11px]">Notify via Discord when item Restocks in Charlotte</span>
                 </label>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" id="alert-notify-low-stock" class="w-4 h-4 bg-[#10141D] border-[#263245] text-[#F59E0B] focus:ring-0">
+                    <span class="text-white text-[11px]">Notify via Discord when item hits Low Stock (&le; 5 units)</span>
+                </label>
             </div>
 
             <div class="flex items-center justify-end space-x-2 pt-3 border-t border-[#263245]">
@@ -381,10 +385,11 @@
 
         // Search
         if (query) {
-            filtered = filtered.filter(i => 
-                (i.name && i.name.toLowerCase().includes(query)) ||
-                (i.sku && i.sku.toLowerCase().includes(query))
-            );
+            filtered = filtered.filter(i => {
+                const nameMatch = (i.display_name || i.name || "").toLowerCase().includes(query);
+                const skuMatch = (i.sku || "").toLowerCase().includes(query);
+                return nameMatch || skuMatch;
+            });
         }
 
         // Status Filter
@@ -415,13 +420,13 @@
         } else if (sortBy === "price_drop") {
             filtered.sort((a, b) => (a.price_change_amount || 0) - (b.price_change_amount || 0));
         } else if (sortBy === "name") {
-            filtered.sort((a, b) => a.name.localeCompare(b.name));
+            filtered.sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name));
         } else {
             // Default: Deals & in-stock first
             filtered.sort((a, b) => {
                 if (a.is_deal !== b.is_deal) return a.is_deal ? -1 : 1;
                 if (a.in_stock !== b.in_stock) return a.in_stock ? -1 : 1;
-                return a.name.localeCompare(b.name);
+                return (a.display_name || a.name).localeCompare(b.display_name || b.name);
             });
         }
 
@@ -445,7 +450,8 @@
         grid.innerHTML = items.map(item => {
             const hasDrop = item.has_price_dropped || item.price_change_amount < 0;
             const priceDeltaText = item.price_change_amount ? (item.price_change_amount < 0 ? `-${Math.abs(item.price_change_amount).toFixed(2)}` : `+${item.price_change_amount.toFixed(2)}`) : null;
-            
+            const displayName = item.display_name || item.name;
+
             // Stock pill formatting
             let stockBadge = `<span class="px-2 py-0.5 text-[10px] font-mono font-bold bg-[#DC143C]/20 border border-[#DC143C]/50 text-[#FF3358]">✗ OUT OF STOCK</span>`;
             if (item.in_stock) {
@@ -478,18 +484,13 @@
                         </div>
                     </div>
 
-                    <!-- Image & Title -->
-                    <div class="flex gap-3">
-                        <div class="w-16 h-16 sm:w-20 sm:h-20 bg-[#10141D] border border-[#263245] p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                            ${item.image_url ? `<img src="${item.image_url}" alt="${item.name}" class="w-full h-full object-contain filter contrast-105" loading="lazy">` : '<span class="text-2xl">📦</span>'}
-                        </div>
-                        <div class="min-w-0 flex-1">
-                            <a href="${item.product_url || '#'}" target="_blank" rel="noopener noreferrer" class="text-xs font-bold text-white hover:text-[#F59E0B] transition line-clamp-2 leading-tight">
-                                ${item.name}
-                            </a>
-                            <div class="text-[10px] text-[#64748B] mt-1 font-mono">
-                                📍 Store #175 &bull; Charlotte
-                            </div>
+                    <!-- Clean Product Title -->
+                    <div class="min-w-0">
+                        <a href="${item.product_url || '#'}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-white hover:text-[#F59E0B] transition line-clamp-2 leading-snug">
+                            ${displayName}
+                        </a>
+                        <div class="text-[10px] text-[#64748B] mt-1 font-mono flex items-center space-x-1">
+                            <span>📍 Store #175 &bull; Charlotte</span>
                         </div>
                     </div>
                 </div>
@@ -510,23 +511,20 @@
                     </div>
                 </div>
 
-                <!-- Action Controls -->
-                <div class="grid grid-cols-3 gap-1.5 pt-1">
-                    <button onclick="openHistoryModal(${item.id})" class="btn-bridge col-span-1 py-1.5 text-[11px] font-mono text-center flex items-center justify-center space-x-1" title="View Day-over-Day Price & Stock Trends">
-                        <svg class="w-3 h-3 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <!-- Action Controls: Trends & Alerts -->
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <button onclick="openHistoryModal(${item.id})" class="btn-bridge col-span-1 py-1.5 text-xs font-mono text-center flex items-center justify-center space-x-1.5" title="View Day-over-Day Price & Stock Trends">
+                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                         </svg>
                         <span>Trends</span>
                     </button>
-                    <button onclick="openAlertModal(${item.id})" class="btn-bridge col-span-1 py-1.5 text-[11px] font-mono text-center flex items-center justify-center space-x-1" title="Configure Alert Thresholds">
-                        <svg class="w-3 h-3 text-[#FF3358]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button onclick="openAlertModal(${item.id})" class="btn-bridge col-span-1 py-1.5 text-xs font-mono text-center flex items-center justify-center space-x-1.5" title="Configure Alert Thresholds">
+                        <svg class="w-3.5 h-3.5 text-[#FF3358]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
                         </svg>
                         <span>Alerts</span>
                     </button>
-                    <a href="${item.product_url || '#'}" target="_blank" rel="noopener noreferrer" class="btn-amber col-span-1 py-1.5 text-[11px] font-mono font-bold text-center flex items-center justify-center shadow-none" title="Buy on MicroCenter.com">
-                        <span>Buy &rarr;</span>
-                    </a>
                 </div>
             </div>
             `;
@@ -539,24 +537,24 @@
             const hasDrop = item.has_price_dropped || item.price_change_amount < 0;
             const dod = item.day_over_day;
             const pDelta = (dod && dod.has_baseline && dod.price_delta !== 0) ? (dod.price_delta < 0 ? `<span class="text-[#2DD4BF]">${dod.price_delta.toFixed(2)}</span>` : `<span class="text-[#FF3358]">+${dod.price_delta.toFixed(2)}</span>`) : `<span class="text-[#64748B]">$0.00</span>`;
-            
+            const displayName = item.display_name || item.name;
+
             let stockHtml = `<span class="text-[#FF3358] font-bold">✗ Out of Stock</span>`;
             if (item.in_stock) {
-                stockHtml = `<span class="text-[#00CED1] font-bold">✓ ${item.stock_count ? item.stock_count + ' In Stock' : 'In Stock'}</span>`;
+                if (item.stock_count !== null && item.stock_count <= 5) {
+                    stockHtml = `<span class="text-[#F59E0B] font-bold">⚠️ ${item.stock_count} In Stock</span>`;
+                } else {
+                    stockHtml = `<span class="text-[#00CED1] font-bold">✓ ${item.stock_count ? item.stock_count + ' In Stock' : 'In Stock'}</span>`;
+                }
             }
 
             return `
             <tr class="hover:bg-[#10141D] transition">
                 <td class="p-3">
-                    <div class="flex items-center space-x-2.5">
-                        <div class="w-8 h-8 bg-[#10141D] border border-[#263245] p-0.5 flex-shrink-0 flex items-center justify-center">
-                            ${item.image_url ? `<img src="${item.image_url}" alt="" class="w-full h-full object-contain">` : '📦'}
-                        </div>
-                        <div class="min-w-0">
-                            <a href="${item.product_url || '#'}" target="_blank" class="text-white hover:text-[#F59E0B] font-bold truncate block max-w-xs sm:max-w-md">
-                                ${item.name}
-                            </a>
-                        </div>
+                    <div class="min-w-0">
+                        <a href="${item.product_url || '#'}" target="_blank" class="text-white hover:text-[#F59E0B] font-bold truncate block max-w-md">
+                            ${displayName}
+                        </a>
                     </div>
                 </td>
                 <td class="p-3 text-[#94A3B8]">${item.sku}</td>
@@ -567,10 +565,9 @@
                 <td class="p-3">${pDelta}</td>
                 <td class="p-3">${stockHtml}</td>
                 <td class="p-3 text-right">
-                    <div class="flex items-center justify-end space-x-1.5">
-                        <button onclick="openHistoryModal(${item.id})" class="btn-bridge px-2 py-1 text-[10px] text-[#00CED1]">Trends</button>
-                        <button onclick="openAlertModal(${item.id})" class="btn-bridge px-2 py-1 text-[10px] text-[#FF3358]">Alerts</button>
-                        <a href="${item.product_url || '#'}" target="_blank" class="btn-amber px-2 py-1 text-[10px]">Buy</a>
+                    <div class="flex items-center justify-end space-x-2">
+                        <button onclick="openHistoryModal(${item.id})" class="btn-bridge px-2.5 py-1 text-xs text-[#00CED1]">Trends</button>
+                        <button onclick="openAlertModal(${item.id})" class="btn-bridge px-2.5 py-1 text-xs text-[#FF3358]">Alerts</button>
                     </div>
                 </td>
             </tr>
@@ -638,7 +635,7 @@
             const history = data.history || [];
             const dod = data.day_over_day || {};
 
-            document.getElementById("hist-modal-title").innerText = item.name;
+            document.getElementById("hist-modal-title").innerText = item.display_name || item.name;
             document.getElementById("hist-modal-sku").innerText = `SKU: ${item.sku} | Store: MicroCenter ${item.store_name} (#${item.store_id})`;
             document.getElementById("hist-stat-curr-price").innerText = `$${item.current_price.toFixed(2)}`;
             
@@ -766,10 +763,11 @@
         if (!item) return;
 
         document.getElementById("alert-item-id").value = item.id;
-        document.getElementById("alert-modal-name").innerText = item.name;
+        document.getElementById("alert-modal-name").innerText = item.display_name || item.name;
         document.getElementById("alert-target-price").value = item.target_price || '';
         document.getElementById("alert-notify-price").checked = item.notify_on_price_change !== false;
         document.getElementById("alert-notify-restock").checked = item.notify_on_restock !== false;
+        document.getElementById("alert-notify-low-stock").checked = item.notify_on_low_stock !== false;
 
         document.getElementById("alert-modal").classList.remove("hidden");
     }
@@ -784,6 +782,7 @@
         const targetPrice = document.getElementById("alert-target-price").value;
         const notifyPrice = document.getElementById("alert-notify-price").checked;
         const notifyRestock = document.getElementById("alert-notify-restock").checked;
+        const notifyLowStock = document.getElementById("alert-notify-low-stock").checked;
 
         try {
             const resp = await fetch(`/api/microcenter/item/${itemId}/update`, {
@@ -793,6 +792,7 @@
                     target_price: targetPrice,
                     notify_on_price_change: notifyPrice,
                     notify_on_restock: notifyRestock,
+                    notify_on_low_stock: notifyLowStock,
                 })
             });
             const data = await resp.json();
@@ -830,16 +830,11 @@
                 const dateStr = ev.recorded_at ? ev.recorded_at.replace("T", " ").slice(0, 16) : '';
                 return `
                 <div class="p-3 bg-[#10141D] border border-[#263245] flex items-center justify-between font-mono text-xs">
-                    <div class="flex items-center space-x-3 min-w-0">
-                        <div class="w-10 h-10 bg-[#1B2230] border border-[#263245] flex-shrink-0 flex items-center justify-center">
-                            ${ev.image_url ? `<img src="${ev.image_url}" class="w-full h-full object-contain">` : '📦'}
-                        </div>
-                        <div class="min-w-0">
-                            <div class="text-white font-bold truncate">${ev.name}</div>
-                            <div class="text-[10px] text-[#94A3B8]">SKU: ${ev.sku} &bull; ${dateStr}</div>
-                        </div>
+                    <div class="min-w-0">
+                        <div class="text-white font-bold truncate">${ev.name}</div>
+                        <div class="text-[10px] text-[#94A3B8]">SKU: ${ev.sku} &bull; ${dateStr}</div>
                     </div>
-                    <div class="text-right flex-shrink-0">
+                    <div class="text-right flex-shrink-0 ml-3">
                         ${ev.price_change !== 0 ? `
                             <div class="${isDrop ? 'text-[#2DD4BF]' : 'text-[#FF3358]'} font-bold">
                                 ${isDrop ? 'Price Drop' : 'Price Rise'}: ${ev.price_change < 0 ? '-' : '+'}$${Math.abs(ev.price_change).toFixed(2)} &rarr; $${ev.price.toFixed(2)}

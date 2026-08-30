@@ -123,6 +123,7 @@ def _migrate_db_schema(app):
                             target_price FLOAT,
                             notify_on_price_change BOOLEAN NOT NULL DEFAULT 1,
                             notify_on_restock BOOLEAN NOT NULL DEFAULT 1,
+                            notify_on_low_stock BOOLEAN NOT NULL DEFAULT 1,
                             first_seen_at DATETIME,
                             last_scanned_at DATETIME,
                             last_price_change_at DATETIME,
@@ -130,6 +131,12 @@ def _migrate_db_schema(app):
                             is_active BOOLEAN NOT NULL DEFAULT 1
                         )
                     """))
+                    # Add column if table existed previously without it
+                    try:
+                        conn.execute(db.text("ALTER TABLE microcenter_item ADD COLUMN notify_on_low_stock BOOLEAN DEFAULT 1 NOT NULL"))
+                        conn.commit()
+                    except Exception:
+                        pass
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS microcenter_history (
                             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -177,6 +184,7 @@ def _migrate_db_schema(app):
                             target_price FLOAT,
                             notify_on_price_change BOOLEAN NOT NULL DEFAULT TRUE,
                             notify_on_restock BOOLEAN NOT NULL DEFAULT TRUE,
+                            notify_on_low_stock BOOLEAN NOT NULL DEFAULT TRUE,
                             first_seen_at TIMESTAMP,
                             last_scanned_at TIMESTAMP,
                             last_price_change_at TIMESTAMP,
@@ -184,6 +192,7 @@ def _migrate_db_schema(app):
                             is_active BOOLEAN NOT NULL DEFAULT TRUE
                         )
                     """))
+                    conn.execute(db.text("ALTER TABLE microcenter_item ADD COLUMN IF NOT EXISTS notify_on_low_stock BOOLEAN DEFAULT TRUE NOT NULL"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS microcenter_history (
                             id SERIAL PRIMARY KEY,
@@ -1133,6 +1142,9 @@ def create_app(test_config=None):
 
         if "notify_on_restock" in data:
             item.notify_on_restock = bool(data.get("notify_on_restock"))
+
+        if "notify_on_low_stock" in data:
+            item.notify_on_low_stock = bool(data.get("notify_on_low_stock"))
 
         db.session.commit()
         log_activity(

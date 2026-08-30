@@ -266,6 +266,7 @@ class MicrocenterProvider:
         updated_count = 0
         price_changes = []
         restocks = []
+        low_stock_alerts = []
         scraped_skus = set()
 
         for item_data in scraped_products:
@@ -282,7 +283,8 @@ class MicrocenterProvider:
             new_stock_text = item_data.get("stock_text") or ""
             product_url = item_data.get("product_url")
             image_url = item_data.get("image_url")
-            name = item_data.get("name")
+            raw_name = item_data.get("name")
+            cleaned_name = MicrocenterItem.clean_name_text(raw_name) or raw_name
             prod_id = item_data.get("product_id")
 
             if not existing:
@@ -290,7 +292,7 @@ class MicrocenterProvider:
                 new_item = MicrocenterItem(
                     sku=sku,
                     product_id=prod_id,
-                    name=name,
+                    name=cleaned_name,
                     product_url=product_url,
                     image_url=image_url,
                     current_price=new_price,
@@ -325,12 +327,17 @@ class MicrocenterProvider:
                 db.session.add(init_hist)
                 new_count += 1
 
+                # Check if brand new item is already low stock (<= 5 units)
+                if new_in_stock and (new_stock_count is not None and 0 < new_stock_count <= 5) and new_item.notify_on_low_stock:
+                    low_stock_alerts.append(new_item)
+
             else:
                 # Existing item - check for price and stock changes
                 price_changed = False
                 stock_changed = False
                 was_out_of_stock = not existing.in_stock
                 old_price = existing.current_price
+                old_stock_count = existing.stock_count
 
                 # Price Change Detection
                 if abs(new_price - existing.current_price) >= 0.01:
@@ -353,8 +360,14 @@ class MicrocenterProvider:
                     if was_out_of_stock and new_in_stock:
                         restocks.append(existing)
 
+                # Low Stock Alert Detection (First time hitting <= 5 units)
+                is_low_stock = new_in_stock and (new_stock_count is not None and 0 < new_stock_count <= 5)
+                was_not_low_stock = (not existing.in_stock) or (old_stock_count is None) or (old_stock_count > 5)
+                if is_low_stock and was_not_low_stock and existing.notify_on_low_stock:
+                    low_stock_alerts.append(existing)
+
                 # Update metadata fields
-                existing.name = name or existing.name
+                existing.name = cleaned_name or existing.name
                 existing.product_id = prod_id or existing.product_id
                 existing.product_url = product_url or existing.product_url
                 if image_url:
@@ -368,7 +381,6 @@ class MicrocenterProvider:
                 existing.is_active = True
 
                 # Check if we should record a historical snapshot
-                # (on change, or if no snapshot recorded in the last 20 hours for day-over-day charting)
                 latest_hist = (
                     MicrocenterHistory.query.filter_by(item_id=existing.id)
                     .order_by(MicrocenterHistory.recorded_at.desc())
@@ -378,8 +390,12 @@ class MicrocenterProvider:
                 should_record_hist = False
                 if price_changed or stock_changed or not latest_hist:
                     should_record_hist = True
-                elif (now - latest_hist.recorded_at).total_seconds() >= 72000:  # 20 hours
-                    should_record_hist = True
+                elif latest_hist and latest_hist.recorded_at:
+                    rec_time = latest_hist.recorded_at
+                    if rec_time.tzinfo is None:
+                        rec_time = rec_time.replace(tzinfo=timezone.utc)
+                    if (now - rec_time).total_seconds() >= 72000:  # 20 hours
+                        should_record_hist = True
 
                 if should_record_hist:
                     hist_price_change = round(new_price - (latest_hist.price if latest_hist else new_price), 2)
@@ -432,6 +448,13 @@ class MicrocenterProvider:
                         deal_engine.send_discord_microcenter_restock_alert(item=r_item)
                     except Exception as e:
                         logger.error(f"Failed to dispatch MicroCenter restock alert for {r_item.name}: {e}")
+
+            for ls_item in low_stock_alerts:
+                if ls_item.notify_on_low_stock:
+                    try:
+                        deal_engine.send_discord_microcenter_low_stock_alert(item=ls_item)
+                    except Exception as e:
+                        logger.error(f"Failed to dispatch MicroCenter low stock alert for {ls_item.name}: {e}")
 
         # Update telemetry in SystemSetting
         total_tracked = MicrocenterItem.query.filter_by(store_id=self.store_id).count()

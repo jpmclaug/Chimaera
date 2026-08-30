@@ -467,6 +467,7 @@ class MicrocenterItem(db.Model):
     target_price = db.Column(db.Float, nullable=True)
     notify_on_price_change = db.Column(db.Boolean, default=True, nullable=False)
     notify_on_restock = db.Column(db.Boolean, default=True, nullable=False)
+    notify_on_low_stock = db.Column(db.Boolean, default=True, nullable=False)
     first_seen_at = db.Column(db.DateTime, default=utc_now)
     last_scanned_at = db.Column(db.DateTime, default=utc_now)
     last_price_change_at = db.Column(db.DateTime, nullable=True)
@@ -482,6 +483,30 @@ class MicrocenterItem(db.Model):
         passive_deletes=True,
         order_by="MicrocenterHistory.recorded_at.desc()",
     )
+
+    @staticmethod
+    def clean_name_text(raw_name: str | None) -> str:
+        """Strips redundant company/brand prefixes like 'Wizards of the Coast Magic: The Gathering -'."""
+        if not raw_name:
+            return ""
+        name = str(raw_name).strip()
+        # Strip common verbose brand prefixes from MicroCenter titles
+        prefixes = [
+            r"^Wizards\s+of\s+the\s+Coast\s+Magic:\s+The\s+Gathering\s*[-–—:]\s*",
+            r"^Wizards\s+of\s+the\s+Coast\s+Magic\s+The\s+Gathering\s*[-–—:]\s*",
+            r"^Wizards\s+of\s+the\s+Coast\s*",
+            r"^Magic:\s+The\s+Gathering\s*[-–—:]\s*",
+            r"^Magic\s+The\s+Gathering\s*[-–—:]\s*",
+            r"^MTG\s*[-–—:]\s*",
+        ]
+        for pattern in prefixes:
+            name = re.sub(pattern, "", name, flags=re.IGNORECASE).strip()
+        return name
+
+    @property
+    def display_name(self) -> str:
+        """Returns clean human-readable product title without verbose brand prefixes."""
+        return self.clean_name_text(self.name) or self.name
 
     @property
     def price_change_amount(self) -> float:
@@ -593,6 +618,7 @@ class MicrocenterItem(db.Model):
             "sku": self.sku,
             "product_id": self.product_id,
             "name": self.name,
+            "display_name": self.display_name,
             "product_url": self.product_url,
             "image_url": self.image_url,
             "current_price": self.current_price,
@@ -607,6 +633,7 @@ class MicrocenterItem(db.Model):
             "target_price": self.target_price,
             "notify_on_price_change": self.notify_on_price_change,
             "notify_on_restock": self.notify_on_restock,
+            "notify_on_low_stock": self.notify_on_low_stock,
             "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
             "last_scanned_at": self.last_scanned_at.isoformat() if self.last_scanned_at else None,
             "last_price_change_at": self.last_price_change_at.isoformat() if self.last_price_change_at else None,

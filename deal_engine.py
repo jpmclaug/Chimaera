@@ -615,3 +615,69 @@ class DealEngine:
         except Exception as e:
             logger.error(f"Failed to send Discord MicroCenter restock alert: {e}")
             return False
+
+    def send_discord_microcenter_low_stock_alert(
+        self,
+        item: MicrocenterItem,
+        user: User | None = None,
+        webhook_url: str | None = None,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed when a MicroCenter product first hits low stock (<= 5 units)."""
+        dest_url = self.get_effective_webhook_url(user=user, override_url=webhook_url)
+        if not dest_url:
+            return False
+
+        try:
+            stock_count_val = item.stock_count if item.stock_count is not None else "Low"
+            item_display = item.display_name if hasattr(item, "display_name") else item.name
+            fields = [
+                {
+                    "name": "Current Price",
+                    "value": f"**${item.current_price:.2f}**",
+                    "inline": True,
+                },
+                {
+                    "name": "Charlotte Inventory Level",
+                    "value": f"⚠️ **{stock_count_val} UNITS REMAINING**",
+                    "inline": True,
+                },
+                {
+                    "name": "Store Location",
+                    "value": f"MicroCenter Store #{item.store_id} ({item.store_name}, NC)",
+                    "inline": True,
+                },
+                {
+                    "name": "SKU / Item ID",
+                    "value": f"`{item.sku}`",
+                    "inline": True,
+                },
+            ]
+
+            if item.product_url:
+                fields.append({
+                    "name": "MicroCenter Product Link",
+                    "value": f"[🛒 View on MicroCenter.com]({item.product_url})",
+                    "inline": False,
+                })
+
+            embed = {
+                "title": f"⚠️ MicroCenter Low Stock Alert: {item_display}",
+                "description": f"Inventory running low at MicroCenter Charlotte! Only **{stock_count_val} units left** in store.",
+                "color": 0xF59E0B,  # Tactical Amber
+                "fields": fields,
+                "footer": {
+                    "text": "Chimaera MTG Tactical Intelligence // MicroCenter Charlotte Surveillance",
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            payload = {
+                "username": "Chimaera Stock Monitor",
+                "embeds": [embed],
+            }
+
+            resp = requests.post(dest_url, json=payload, timeout=8)
+            return resp.status_code in (200, 204)
+        except Exception as e:
+            logger.error(f"Failed to send Discord MicroCenter low stock alert: {e}")
+            return False

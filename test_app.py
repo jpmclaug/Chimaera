@@ -1540,10 +1540,19 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertEqual(dod["baseline_price"], 49.99)
             self.assertEqual(dod["stock_delta"], 5)  # 25 - 20
 
+            # Test clean name extraction
+            self.assertEqual(item.display_name, "The Hobbit (Scene Box)")
+            self.assertEqual(
+                MicrocenterItem.clean_name_text("Wizards of the Coast Magic: The Gathering - Marvel Super Heroes (Bundle)"),
+                "Marvel Super Heroes (Bundle)"
+            )
+
             # Test serialization
             data = item.to_dict(include_history=True)
             self.assertEqual(data["sku"], "068353")
             self.assertEqual(data["current_price"], 41.99)
+            self.assertEqual(data["display_name"], "The Hobbit (Scene Box)")
+            self.assertTrue(data["notify_on_low_stock"])
             self.assertEqual(data["store_id"], "175")
             self.assertEqual(len(data["history"]), 1)
 
@@ -1780,6 +1789,17 @@ class ChimeraTestSuite(unittest.TestCase):
                 call_args = mock_post.call_args[1]["json"]
                 self.assertIn("MicroCenter Restock", call_args["embeds"][0]["title"])
 
+            with patch("requests.post", return_value=mock_resp) as mock_post:
+                # 3. Low Stock Alert
+                sent_low_stock = deal_engine.send_discord_microcenter_low_stock_alert(
+                    item=item,
+                    webhook_url=test_wh,
+                )
+                self.assertTrue(sent_low_stock)
+                mock_post.assert_called_once()
+                call_args = mock_post.call_args[1]["json"]
+                self.assertIn("MicroCenter Low Stock Alert", call_args["embeds"][0]["title"])
+
     def test_40_microcenter_web_routes_and_api(self):
         """Tests all MicroCenter HTTP endpoints (/microcenter and /api/microcenter/*)."""
         from unittest.mock import patch
@@ -1788,7 +1808,7 @@ class ChimeraTestSuite(unittest.TestCase):
             item1 = MicrocenterItem(
                 sku="068353",
                 product_id="713674",
-                name="Magic: The Gathering - The Hobbit (Scene Box)",
+                name="The Hobbit (Scene Box)",
                 product_url="https://www.microcenter.com/product/713674/hobbit",
                 image_url="https://productimages.microcenter.com/0713674_068353.jpg",
                 current_price=41.99,
@@ -1804,7 +1824,7 @@ class ChimeraTestSuite(unittest.TestCase):
             item2 = MicrocenterItem(
                 sku="999458",
                 product_id="708000",
-                name="Magic: The Gathering - TMNT (Pizza Bundle)",
+                name="TMNT (Pizza Bundle)",
                 product_url="https://www.microcenter.com/product/708000/tmnt",
                 image_url="https://productimages.microcenter.com/0708000_999458.jpg",
                 current_price=89.99,
@@ -1867,13 +1887,19 @@ class ChimeraTestSuite(unittest.TestCase):
         # 4. POST /api/microcenter/item/<id>/update
         resp_update = self.client.post(
             f"/api/microcenter/item/{item1_id}/update",
-            json={"target_price": 39.99, "notify_on_price_change": True, "notify_on_restock": False},
+            json={
+                "target_price": 39.99,
+                "notify_on_price_change": True,
+                "notify_on_restock": False,
+                "notify_on_low_stock": True,
+            },
         )
         self.assertEqual(resp_update.status_code, 200)
         updated_json = resp_update.get_json()
         self.assertTrue(updated_json["success"])
         self.assertEqual(updated_json["item"]["target_price"], 39.99)
         self.assertFalse(updated_json["item"]["notify_on_restock"])
+        self.assertTrue(updated_json["item"]["notify_on_low_stock"])
 
         # 5. GET /api/microcenter/changes
         resp_changes = self.client.get("/api/microcenter/changes")
