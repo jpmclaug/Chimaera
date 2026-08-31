@@ -595,11 +595,6 @@
     <div id="analyzerToastBox" class="bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono">
         <span id="analyzerToastMsg">Action completed successfully.</span>
     </div>
-</div>
-
-{% endblock %}
-
-{% block scripts %}
 <script>
 // State Management
 let currentVaultDecks = {{ recent_decks|tojson }};
