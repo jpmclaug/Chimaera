@@ -98,12 +98,28 @@ class ScryfallProvider:
     def _format_card_object(self, card: dict) -> dict:
         """Standardizes Scryfall card JSON into Chimaera card dictionary."""
         image_uri = None
-        if "image_uris" in card and card["image_uris"].get("normal"):
-            image_uri = card["image_uris"]["normal"]
+        small_image_uri = None
+        art_crop_uri = None
+        mana_cost = card.get("mana_cost", "")
+        type_line = card.get("type_line", "")
+        oracle_text = card.get("oracle_text", "")
+
+        if "image_uris" in card and card["image_uris"]:
+            image_uri = card["image_uris"].get("normal")
+            small_image_uri = card["image_uris"].get("small")
+            art_crop_uri = card["image_uris"].get("art_crop")
         elif "card_faces" in card and card["card_faces"]:
             first_face = card["card_faces"][0]
-            if "image_uris" in first_face and first_face["image_uris"].get("normal"):
-                image_uri = first_face["image_uris"]["normal"]
+            if "image_uris" in first_face and first_face["image_uris"]:
+                image_uri = first_face["image_uris"].get("normal")
+                small_image_uri = first_face["image_uris"].get("small")
+                art_crop_uri = first_face["image_uris"].get("art_crop")
+            if not mana_cost and first_face.get("mana_cost"):
+                mana_cost = first_face.get("mana_cost")
+            if not type_line and first_face.get("type_line"):
+                type_line = first_face.get("type_line")
+            if not oracle_text and first_face.get("oracle_text"):
+                oracle_text = first_face.get("oracle_text")
 
         return {
             "id": card.get("id"),
@@ -111,7 +127,16 @@ class ScryfallProvider:
             "set_code": card.get("set", "").upper(),
             "set_name": card.get("set_name", ""),
             "collector_number": card.get("collector_number", ""),
+            "mana_cost": mana_cost,
+            "cmc": card.get("cmc", 0),
+            "type_line": type_line,
+            "oracle_text": oracle_text,
+            "colors": card.get("colors", []),
+            "color_identity": card.get("color_identity", []),
+            "rarity": card.get("rarity", ""),
             "image_uri": image_uri,
+            "small_image_uri": small_image_uri,
+            "art_crop_uri": art_crop_uri,
             "prices": card.get("prices", {}),
             "tcgplayer_url": card.get("purchase_uris", {}).get("tcgplayer"),
         }

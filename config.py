@@ -54,3 +54,8 @@ class Config:
     # MicroCenter Charlotte Store Surveillance Configuration
     MICROCENTER_STORE_ID = os.getenv("MICROCENTER_STORE_ID", "175").strip()
     MICROCENTER_STORE_NAME = os.getenv("MICROCENTER_STORE_NAME", "Charlotte").strip()
+
+    # Google Gemini AI Commander Deck Analyzer Configuration
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+    GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash").strip()
+

@@ -63,80 +63,88 @@
         <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-14 sm:h-16">
                 <!-- Brand / Logo with Tactical Dropdown Trigger -->
-                <div class="relative">
-                    <button onclick="toggleLogoMenu()" id="btn-logo-menu" class="flex items-center space-x-2 sm:space-x-3 group focus:outline-none text-left p-1 -ml-1 border border-transparent hover:border-[#263245] transition rounded-none" title="Open Chimaera Tactical Menu">
-                        <div class="h-8 w-11 sm:h-10 sm:w-14 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#00CED1] flex-shrink-0">
-                            <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
-                        </div>
-                        <div class="min-w-0 flex items-center space-x-1.5">
-                            <span class="font-heading font-black text-base sm:text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
-                            <span class="text-[9px] sm:text-[10px] px-1 py-0.2 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase font-bold">v1.0</span>
-                            <svg class="w-3 h-3 text-[#94A3B8] group-hover:text-[#00CED1] transition-transform duration-200" id="logo-menu-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
-                        </div>
-                    </button>
-
-                    <!-- Tactical Dropdown Menu from Logo -->
-                    <div id="logo-dropdown-menu" class="hidden absolute left-0 top-full mt-2 w-72 sm:w-80 bg-[#1B2230] border-2 border-[#263245] shadow-2xl z-50 p-3 space-y-3 font-mono text-xs max-h-[85vh] max-h-[85dvh] overflow-y-auto modal-scrollable">
-                        {% if current_user %}
-                        <!-- User Status & ID Header -->
-                        <div class="bg-[#10141D] p-2.5 border border-[#263245] flex items-center justify-between">
-                            <div class="flex items-center space-x-2 min-w-0">
-                                {% if current_user.picture %}
-                                <img src="{{ current_user.picture }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-full border border-[#263245] flex-shrink-0">
-                                {% else %}
-                                <div class="w-5 h-5 rounded-full bg-[#263245] flex items-center justify-center text-[10px] font-bold text-[#00CED1] flex-shrink-0">
-                                    {{ (current_user.name or current_user.email)[0]|upper }}
-                                </div>
-                                {% endif %}
-                                <div class="min-w-0">
-                                    <div class="text-white font-bold truncate text-[11px]">{{ current_user.name or current_user.email.split('@')[0] }}</div>
-                                    <div class="text-[9px] text-[#94A3B8] truncate">{{ current_user.email }}</div>
-                                </div>
+                <div class="flex items-center space-x-6">
+                    <div class="relative">
+                        <button onclick="toggleLogoMenu()" id="btn-logo-menu" class="flex items-center space-x-2 sm:space-x-3 group focus:outline-none text-left p-1 -ml-1 border border-transparent hover:border-[#263245] transition rounded-none" title="Open Chimaera Tactical Menu">
+                            <div class="h-8 w-11 sm:h-10 sm:w-14 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#00CED1] flex-shrink-0">
+                                <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
                             </div>
-                            {% if current_user.is_admin %}
-                            <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-1.5 py-0.2 text-[9px] uppercase font-bold flex-shrink-0">ADMIN</span>
-                            {% endif %}
-                        </div>
+                            <div class="min-w-0 flex items-center space-x-1.5">
+                                <span class="font-heading font-black text-base sm:text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
+                                <span class="text-[9px] sm:text-[10px] px-1 py-0.2 bg-[#DC143C]/20 border border-[#DC143C]/60 text-[#FF3358] font-mono uppercase font-bold">v1.0</span>
+                                <svg class="w-3 h-3 text-[#94A3B8] group-hover:text-[#00CED1] transition-transform duration-200" id="logo-menu-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </div>
+                        </button>
 
-                        <!-- Section: Sector Navigation -->
-                        <div class="space-y-1">
-                            <div class="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">// SECTOR NAVIGATION</div>
-                            <a href="/" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                <span class="font-bold">01 // Registry Dashboard</span>
-                                <span class="text-[#00CED1]">&rarr;</span>
-                            </a>
-                            <a href="/deals" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deals' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-bold">02 // Priority Deals</span>
-                                    {% if deals_count is defined and deals_count > 0 %}
-                                    <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
+                        <!-- Tactical Dropdown Menu from Logo -->
+                        <div id="logo-dropdown-menu" class="hidden absolute left-0 top-full mt-2 w-72 sm:w-80 bg-[#1B2230] border-2 border-[#263245] shadow-2xl z-50 p-3 space-y-3 font-mono text-xs max-h-[85vh] max-h-[85dvh] overflow-y-auto modal-scrollable">
+                            {% if current_user %}
+                            <!-- User Status & ID Header -->
+                            <div class="bg-[#10141D] p-2.5 border border-[#263245] flex items-center justify-between">
+                                <div class="flex items-center space-x-2 min-w-0">
+                                    {% if current_user.picture %}
+                                    <img src="{{ current_user.picture }}" alt="{{ current_user.name }}" class="w-5 h-5 rounded-full border border-[#263245] flex-shrink-0">
+                                    {% else %}
+                                    <div class="w-5 h-5 rounded-full bg-[#263245] flex items-center justify-center text-[10px] font-bold text-[#00CED1] flex-shrink-0">
+                                        {{ (current_user.name or current_user.email)[0]|upper }}
+                                    </div>
                                     {% endif %}
+                                    <div class="min-w-0">
+                                        <div class="text-white font-bold truncate text-[11px]">{{ current_user.name or current_user.email.split('@')[0] }}</div>
+                                        <div class="text-[9px] text-[#94A3B8] truncate">{{ current_user.email }}</div>
+                                    </div>
                                 </div>
-                                <span class="text-[#FF3358]">&rarr;</span>
-                            </a>
-                            <a href="/buylist" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'buylist' %}border-[#2DD4BF] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-bold">03 // Buylist Scanner</span>
-                                    <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">LIVE</span>
-                                </div>
-                                <span class="text-[#2DD4BF]">&rarr;</span>
-                            </a>
-                            <a href="/microcenter" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'microcenter' %}border-[#F59E0B] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-bold">04 // MicroCenter Charlotte</span>
-                                    <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">STORE 175</span>
-                                </div>
-                                <span class="text-[#F59E0B]">&rarr;</span>
-                            </a>
-                            {% if current_user.is_admin %}
-                            <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
-                                <span class="font-bold">05 // Admin Console</span>
-                                <span class="text-[#00CED1]">&rarr;</span>
-                            </a>
-                            {% endif %}
-                        </div>
+                                {% if current_user.is_admin %}
+                                <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 px-1.5 py-0.2 text-[9px] uppercase font-bold flex-shrink-0">ADMIN</span>
+                                {% endif %}
+                            </div>
+
+                            <!-- Section: Sector Navigation -->
+                            <div class="space-y-1">
+                                <div class="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">// SECTOR NAVIGATION</div>
+                                <a href="/" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <span class="font-bold">01 // Registry Dashboard</span>
+                                    <span class="text-[#00CED1]">&rarr;</span>
+                                </a>
+                                <a href="/deals" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deals' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">02 // Priority Deals</span>
+                                        {% if deals_count is defined and deals_count > 0 %}
+                                        <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
+                                        {% endif %}
+                                    </div>
+                                    <span class="text-[#FF3358]">&rarr;</span>
+                                </a>
+                                <a href="/buylist" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'buylist' %}border-[#2DD4BF] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">03 // Buylist Scanner</span>
+                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">LIVE</span>
+                                    </div>
+                                    <span class="text-[#2DD4BF]">&rarr;</span>
+                                </a>
+                                <a href="/microcenter" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'microcenter' %}border-[#F59E0B] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">04 // MicroCenter Charlotte</span>
+                                        <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">STORE 175</span>
+                                    </div>
+                                    <span class="text-[#F59E0B]">&rarr;</span>
+                                </a>
+                                <a href="/deck-analyzer" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deck_analyzer' %}border-[#C084FC] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">05 // Commander Intel</span>
+                                        <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">GEMINI AI</span>
+                                    </div>
+                                    <span class="text-[#C084FC]">&rarr;</span>
+                                </a>
+                                {% if current_user.is_admin %}
+                                <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
+                                    <span class="font-bold">06 // Admin Console</span>
+                                    <span class="text-[#00CED1]">&rarr;</span>
+                                </a>
+                                {% endif %}
+                            </div>
 
                         <!-- Section: Tactical Operations -->
                         <div class="space-y-1 pt-2 border-t border-[#263245]">
@@ -219,9 +227,13 @@
         <a href="/microcenter" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'microcenter' %}bg-[#10141D] text-white border-[#F59E0B] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
             <span>04 // MicroCenter</span>
         </a>
+        <a href="/deck-analyzer" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'deck_analyzer' %}bg-[#10141D] text-[#C084FC] border-[#A855F7] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+            <span>05 // Deck Intel</span>
+            <span class="text-[9px] text-[#C084FC] font-bold">AI</span>
+        </a>
         {% if current_user.is_admin %}
         <a href="/admin" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/80 border-transparent{% endif %} whitespace-nowrap">
-            05 // Admin
+            06 // Admin
         </a>
         {% endif %}
     </div>
