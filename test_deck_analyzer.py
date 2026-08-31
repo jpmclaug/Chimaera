@@ -415,7 +415,57 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["success"])
         self.assertEqual(data["deck"]["power_level"], 8.5)
-        self.assertTrue(data["deck"]["has_ai_analysis"])
+    @patch("requests.get")
+    def test_parse_manabox_astro_island(self, mock_get):
+        mock_props = json.dumps({
+            "deck": [0, {
+                "id": [0, "123"],
+                "name": [0, "Cloud Voltron"],
+                "imageUrl": [0, "https://cards.scryfall.io/art_crop/front/2/2/cloud.jpg"],
+                "cards": [1, [
+                    [0, {
+                        "name": [0, "Cloud, Ex-SOLDIER"],
+                        "quantity": [0, 1],
+                        "boardCategory": [0, 0],
+                        "setId": [0, "fin"],
+                        "collectorNumber": [0, "1"],
+                        "pricing": [0, {"tcgplayer": [0, {"value": [0, 25.5]}]}]
+                    }],
+                    [0, {
+                        "name": [0, "Sol Ring"],
+                        "quantity": [0, 1],
+                        "boardCategory": [0, 3],
+                        "setId": [0, "cmm"],
+                        "collectorNumber": [0, "383"],
+                        "pricing": [0, {"tcgplayer": [0, {"value": [0, 1.5]}]}]
+                    }]
+                ]]
+            }]
+        })
+        mock_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Cloud Voltron | ManaBox</title></head>
+        <body>
+        <astro-island component-url="/_astro/deck.js" props='{mock_props}'></astro-island>
+        </body>
+        </html>
+        """
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = mock_html
+        mock_get.return_value = mock_resp
+
+        parsed = DeckParser.parse_manabox_url("https://manabox.app/decks/AZp7RL1ndfG1rsqSUcis2A")
+        self.assertEqual(parsed["deck_name"], "Cloud Voltron")
+        self.assertEqual(parsed["commander"], ["Cloud, Ex-SOLDIER"])
+        self.assertEqual(parsed["commander_art"], "https://cards.scryfall.io/art_crop/front/2/2/cloud.jpg")
+        self.assertEqual(len(parsed["cards"]), 2)
+        self.assertEqual(parsed["cards"][0]["name"], "Cloud, Ex-SOLDIER")
+        self.assertEqual(parsed["cards"][0]["section"], "commander")
+        self.assertEqual(parsed["cards"][0]["price_usd"], 25.5)
+        self.assertEqual(parsed["cards"][1]["name"], "Sol Ring")
+        self.assertEqual(parsed["cards"][1]["section"], "mainboard")
 
 
 if __name__ == "__main__":

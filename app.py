@@ -2017,9 +2017,16 @@ def create_app(test_config=None):
         color_identity_set = set()
 
         for c in parsed.get("cards", []):
-            name = c["name"]
+            raw_name = c["name"]
+            name = re.sub(r"<[^>]+>", "", raw_name).strip()
             qty = c.get("quantity", 1)
             meta = scryfall_map.get(name.lower(), {})
+
+            img_uri = meta.get("image_uri") or meta.get("small_image_uri") or c.get("image_uri")
+            small_img = meta.get("small_image_uri") or c.get("small_image_uri") or img_uri
+            art_crop = meta.get("art_crop_uri") or img_uri
+            price_usd = meta.get("prices", {}).get("usd") or c.get("price_usd")
+            card_cmc = meta.get("cmc") if meta.get("cmc") is not None else (c.get("cmc") if c.get("cmc") is not None else 0)
 
             card_obj = {
                 "name": name,
@@ -2027,17 +2034,17 @@ def create_app(test_config=None):
                 "section": c.get("section", "mainboard"),
                 "set_code": c.get("set_code") or meta.get("set_code", ""),
                 "collector_number": c.get("collector_number") or meta.get("collector_number", ""),
-                "image_uri": meta.get("image_uri") or meta.get("small_image_uri"),
-                "small_image_uri": meta.get("small_image_uri"),
-                "art_crop_uri": meta.get("art_crop_uri"),
+                "image_uri": img_uri,
+                "small_image_uri": small_img,
+                "art_crop_uri": art_crop,
                 "mana_cost": meta.get("mana_cost", ""),
-                "cmc": meta.get("cmc", 0),
+                "cmc": card_cmc,
                 "type_line": meta.get("type_line", "Unknown"),
                 "oracle_text": meta.get("oracle_text", ""),
                 "colors": meta.get("colors", []),
                 "color_identity": meta.get("color_identity", []),
                 "rarity": meta.get("rarity", ""),
-                "price_usd": meta.get("prices", {}).get("usd"),
+                "price_usd": price_usd,
                 "price_usd_foil": meta.get("prices", {}).get("usd_foil"),
                 "tcgplayer_url": meta.get("tcgplayer_url"),
             }
@@ -2067,10 +2074,10 @@ def create_app(test_config=None):
 
             # CMC tracking (non-lands)
             if "land" not in type_line:
-                cmc = float(card_obj["cmc"] or 0)
-                total_cmc += (cmc * qty)
+                cmc_val = float(card_obj["cmc"] or 0)
+                total_cmc += (cmc_val * qty)
                 nonland_count += qty
-                cmc_key = "7+" if cmc >= 7 else str(int(cmc))
+                cmc_key = "7+" if cmc_val >= 7 else str(int(cmc_val))
                 cmc_curve[cmc_key] = cmc_curve.get(cmc_key, 0) + qty
 
             # Price tracking
@@ -2087,12 +2094,18 @@ def create_app(test_config=None):
         avg_cmc = round(total_cmc / nonland_count, 2) if nonland_count > 0 else 0.0
 
         # Commander artwork
-        commander_art = None
-        for cmd_name in parsed.get("commander", []):
-            cmd_meta = scryfall_map.get(cmd_name.lower(), {})
-            if cmd_meta.get("image_uri"):
-                commander_art = cmd_meta["image_uri"]
-                break
+        commander_art = parsed.get("commander_art")
+        if not commander_art:
+            for cmd_name in parsed.get("commander", []):
+                cmd_meta = scryfall_map.get(cmd_name.lower(), {})
+                if cmd_meta.get("art_crop_uri"):
+                    commander_art = cmd_meta["art_crop_uri"]
+                    break
+                elif cmd_meta.get("image_uri"):
+                    commander_art = cmd_meta["image_uri"]
+                    break
+
+        clean_deck_name = re.sub(r"<[^>]+>", "", parsed.get("deck_name", "Commander Deck")).strip()
 
         stats = {
             "total_value": round(total_deck_value, 2),
@@ -2103,8 +2116,8 @@ def create_app(test_config=None):
         }
 
         return {
-            "deck_name": parsed.get("deck_name", "Commander Deck"),
-            "commander": parsed.get("commander", []),
+            "deck_name": clean_deck_name or "Commander Deck",
+            "commander": [re.sub(r"<[^>]+>", "", c).strip() for c in parsed.get("commander", [])],
             "commander_art": commander_art,
             "cards": enriched_cards,
             "total_cards": sum(c["quantity"] for c in enriched_cards) if enriched_cards else parsed.get("total_cards", 0),

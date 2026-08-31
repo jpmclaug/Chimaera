@@ -4,12 +4,14 @@ Supports ManaBox web links & exports, Moxfield, Archidekt, Scryfall, MTGGoldfish
 """
 
 import csv
+import html
 import io
 import json
 import logging
 import re
 from urllib.parse import urlparse
 import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,17 @@ class DeckParser:
     # ----------------------------------------------------------------------
 
     @staticmethod
+    def _unwrap_astro_devalue(val: any) -> any:
+        """Recursively unwraps Astro devalue structures like [0, obj], [1, [items]]"""
+        if isinstance(val, list):
+            if len(val) == 2 and isinstance(val[0], int):
+                return DeckParser._unwrap_astro_devalue(val[1])
+            return [DeckParser._unwrap_astro_devalue(x) for x in val]
+        elif isinstance(val, dict):
+            return {k: DeckParser._unwrap_astro_devalue(v) for k, v in val.items()}
+        return val
+
+    @staticmethod
     def parse_manabox_url(url: str) -> dict:
         """
         Fetches and parses a ManaBox public share link.
@@ -102,67 +115,109 @@ class DeckParser:
             if resp.status_code != 200:
                 raise DeckParseError(f"ManaBox returned HTTP {resp.status_code}. Please verify the deck link is public.")
 
-            html = resp.text
+            html_text = resp.text
+            soup = BeautifulSoup(html_text, "html.parser")
             deck_name = "ManaBox Commander Deck"
             commander_list = []
+            commander_art = None
             cards = []
 
             # 1. Try to extract deck name from <title> or <h1>
-            title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE)
-            if title_match:
-                raw_title = title_match.group(1).split("|")[0].split("-")[0].strip()
+            if soup.title and soup.title.string:
+                raw_title = soup.title.string.split("|")[0].split("-")[0].strip()
                 if raw_title and "ManaBox" not in raw_title:
                     deck_name = raw_title
 
-            h1_match = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.IGNORECASE | re.DOTALL)
-            if h1_match:
-                clean_h1 = re.sub(r"<[^>]+>", "", h1_match.group(1)).strip()
+            h1 = soup.find("h1")
+            if h1:
+                clean_h1 = h1.get_text(strip=True)
                 if clean_h1:
                     deck_name = clean_h1
 
-            # 2. Look for embedded JSON data or Astro props
-            json_scripts = re.findall(r'<script[^>]*type=["\']application/json["\'][^>]*>(.*?)</script>', html, re.DOTALL | re.IGNORECASE)
-            found_cards_in_json = False
-
-            for script_content in json_scripts:
+            # 2. Extract from Astro Island components with props
+            for isl in soup.find_all("astro-island"):
+                props_str = isl.get("props")
+                if not props_str or len(props_str) < 50:
+                    continue
                 try:
-                    data = json.loads(script_content)
-                    extracted = DeckParser._extract_cards_from_json_dict(data)
-                    if extracted and len(extracted.get("cards", [])) > 0:
-                        cards = extracted["cards"]
-                        commander_list = extracted.get("commander", [])
-                        if extracted.get("deck_name"):
-                            deck_name = extracted["deck_name"]
-                        found_cards_in_json = True
-                        break
-                except Exception:
+                    raw_props = json.loads(props_str)
+                    unwrapped = DeckParser._unwrap_astro_devalue(raw_props)
+                    deck_obj = unwrapped.get("deck")
+                    if deck_obj and isinstance(deck_obj, dict) and "cards" in deck_obj:
+                        if deck_obj.get("name"):
+                            deck_name = deck_obj["name"]
+                        if deck_obj.get("imageUrl"):
+                            commander_art = deck_obj["imageUrl"]
+
+                        for c in deck_obj.get("cards", []):
+                            if not isinstance(c, dict):
+                                continue
+                            raw_name = c.get("name") or ""
+                            clean_name = DeckParser._clean_card_name(raw_name)
+                            if not clean_name or len(clean_name) < 2:
+                                continue
+
+                            qty = int(c.get("quantity") or 1)
+                            board_cat = c.get("boardCategory")
+                            # boardCategory: 0 = commander, 3 = mainboard, 1 = sideboard, 2 = maybeboard
+                            section = "commander" if board_cat == 0 else ("sideboard" if board_cat == 1 else "mainboard")
+                            if section == "commander":
+                                commander_list.append(clean_name)
+
+                            set_code = str(c.get("setId") or c.get("set") or "").upper().strip()
+                            col_num = str(c.get("collectorNumber") or "").strip()
+
+                            pricing = c.get("pricing", {})
+                            tcg_price = None
+                            if isinstance(pricing, dict) and "tcgplayer" in pricing:
+                                try:
+                                    tcg_price = float(pricing["tcgplayer"].get("value"))
+                                except (ValueError, TypeError):
+                                    pass
+
+                            images = c.get("images", [])
+                            img_uri = None
+                            small_img = None
+                            if isinstance(images, list) and len(images) > 0 and isinstance(images[0], dict):
+                                img_uri = images[0].get("imageUrlNormal")
+                                small_img = images[0].get("imageUrlSmall")
+
+                            cards.append({
+                                "name": clean_name,
+                                "quantity": qty,
+                                "section": section,
+                                "set_code": set_code,
+                                "collector_number": col_num,
+                                "price_usd": tcg_price,
+                                "image_uri": img_uri,
+                                "small_image_uri": small_img,
+                                "cmc": c.get("manaValue"),
+                            })
+
+                        if cards:
+                            break
+                except Exception as e:
+                    logger.debug(f"Astro island parse skip: {e}")
                     continue
 
-            # 3. If not found in JSON script tags, look for Astro island props or other script variables
-            if not found_cards_in_json:
-                var_matches = re.findall(r'props=["\']({.*?})["\']', html)
-                for var_json in var_matches:
+            # 3. Fallback: Search for embedded JSON scripts
+            if not cards:
+                json_scripts = soup.find_all("script", type="application/json")
+                for script in json_scripts:
+                    if not script.string:
+                        continue
                     try:
-                        unescaped = var_json.replace("&quot;", '"').replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-                        data = json.loads(unescaped)
-                        extracted = DeckParser._extract_cards_from_json_dict(data)
+                        data = json.loads(script.string)
+                        unwrapped = DeckParser._unwrap_astro_devalue(data)
+                        extracted = DeckParser._extract_cards_from_json_dict(unwrapped)
                         if extracted and len(extracted.get("cards", [])) > 0:
                             cards = extracted["cards"]
                             commander_list = extracted.get("commander", [])
                             if extracted.get("deck_name"):
                                 deck_name = extracted["deck_name"]
-                            found_cards_in_json = True
                             break
                     except Exception:
                         continue
-
-            # 4. Fallback: Parse card elements and text patterns in the HTML DOM
-            if not cards:
-                cards, commander_list = DeckParser._extract_cards_from_html_dom(html)
-
-            # 5. If still no cards found, check if there's raw text embedded
-            if not cards:
-                cards, commander_list = DeckParser._parse_raw_lines(html)
 
             if not cards:
                 raise DeckParseError(
@@ -183,6 +238,7 @@ class DeckParser:
             return {
                 "deck_name": deck_name,
                 "commander": commander_list,
+                "commander_art": commander_art,
                 "cards": cards,
                 "total_cards": total_cards,
                 "source_type": "manabox_url",
@@ -608,6 +664,10 @@ class DeckParser:
             if not line:
                 continue
 
+            # Skip any lines that look like HTML tags or script/markup
+            if line.startswith("<") or line.endswith(">") or "</" in line or "<div" in line or "<span" in line or "<p" in line or "<script" in line:
+                continue
+
             lower_line = line.lower()
             if lower_line.startswith("//") or lower_line.startswith("#"):
                 header_text = lower_line.lstrip("/# ").strip()
@@ -665,9 +725,11 @@ class DeckParser:
 
     @staticmethod
     def _clean_card_name(name: str) -> str:
-        """Cleans card name by removing foil tags, set annotations, or extraneous symbols."""
+        """Cleans card name by removing foil tags, set annotations, HTML tags, or extraneous symbols."""
         if not name:
             return ""
+        name = re.sub(r"<[^>]+>", "", name)
+        name = html.unescape(name)
         name = re.sub(r"\s*\*.*?\*", "", name)
         name = re.sub(r"\s*\([A-Za-z0-9]+\)\s*[A-Za-z0-9]*$", "", name)
         name = name.replace("\u2019", "'").replace("\u2018", "'")
