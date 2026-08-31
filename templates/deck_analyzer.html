@@ -1,1204 +1,1323 @@
 {% extends "base.html" %}
 
-{% block title %}Chimaera // Commander Deck Intelligence & Gemini AI{% endblock %}
+{% block title %}Commander Deck Vault & AI Intel — Chimaera{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="max-w-7xl mx-auto space-y-6 pb-20">
 
-    <!-- Header Telemetry HUD -->
-    <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div class="space-y-1">
-            <div class="flex items-center space-x-2">
-                <span class="text-xs font-mono text-[#C084FC] uppercase tracking-wider font-bold">// TACTICAL INTELLIGENCE PROTOCOL</span>
-                <span class="bg-[#A855F7]/20 border border-[#A855F7]/50 text-[#C084FC] text-[10px] px-1.5 py-0.2 font-mono uppercase font-bold">GEMINI 2.5</span>
+    <!-- Top Tactical Header HUD -->
+    <div class="bg-[#10141D]/90 border border-slate-800 rounded-xl p-5 md:p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
+        <div class="absolute -right-16 -bottom-16 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+            <div>
+                <div class="flex items-center space-x-3">
+                    <span class="inline-flex items-center justify-center p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </span>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-black text-white tracking-wider uppercase font-mono flex items-center gap-2">
+                            Commander Deck Vault
+                            <span class="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Intel + Stats</span>
+                        </h1>
+                        <p class="text-xs text-slate-400 mt-0.5">ManaBox Deck Ingestion &bull; Scryfall Pricing Telemetry &bull; Mana Curves &bull; Google Gemini AI Evaluation</p>
+                    </div>
+                </div>
             </div>
-            <h1 class="text-xl sm:text-2xl font-heading font-black text-white tracking-wide uppercase flex items-center space-x-2">
-                <span>COMMANDER DECK ANALYZER</span>
-            </h1>
-            <p class="text-xs text-[#94A3B8] font-mono">
-                Ingest ManaBox share links, exports, or MTG lists for clinical Gemini AI evaluation, card-by-card 1–10 ratings, win-conditions, and tactical upgrade recommendations.
-            </p>
-        </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-            <!-- Saved Decks Button -->
-            <button onclick="openHistoryDrawer()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1.5" title="View Saved Decks History">
-                <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-                <span class="font-mono uppercase font-bold">History (<span id="saved-decks-count">{{ recent_decks|length }}</span>)</span>
-            </button>
+            <!-- View Switcher & Action Controls -->
+            <div class="flex flex-wrap items-center gap-2.5">
+                <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center">
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md">
+                        🛸 My Decks (<span id="savedDecksCount">{{ recent_decks|length }}</span>)
+                    </button>
+                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white">
+                        ➕ Import Single
+                    </button>
+                </div>
 
-            <!-- Gemini Key Config Button -->
-            <button onclick="openGeminiKeyModal()" class="btn-bridge px-3 py-2 text-xs flex items-center space-x-1.5 {% if has_gemini_key %}border-[#2DD4BF]/40 text-[#2DD4BF]{% else %}border-[#DC143C]/60 text-[#FF3358] animate-pulse{% endif %}" title="Configure Gemini API Key">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
-                </svg>
-                <span class="font-mono uppercase font-bold">{% if has_gemini_key %}API Key Active{% else %}Set API Key{% endif %}</span>
-            </button>
+                <button onclick="openBulkImportModal()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
+                    <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <span>Bulk Import Links</span>
+                </button>
+
+                <button onclick="openApiKeyModal()" class="px-3 py-1.5 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
+                    <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    <span>Gemini Key</span>
+                    <span id="geminiKeyDot" class="w-2 h-2 rounded-full {% if has_gemini_key %}bg-emerald-400 shadow-[0_0_8px_#34d399]{% else %}bg-amber-500 animate-pulse{% endif %}"></span>
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- Ingestion Station & Controls -->
-    <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-6 space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
-            <div class="flex items-center space-x-2">
-                <span class="text-xs font-mono font-bold uppercase text-[#00CED1]">// DECK INGESTION MATRIX</span>
-                <span class="text-xs text-[#64748B]">&bull; Supports ManaBox Links, Text Exports & CSV</span>
-            </div>
-            
-            <!-- Quick Sample Loaders -->
-            <div class="flex items-center space-x-2 text-xs font-mono">
-                <span class="text-[#64748B]">Load Sample:</span>
-                <button onclick="loadSampleDeck('ur_dragon')" class="text-[#00CED1] hover:underline hover:text-white">Ur-Dragon</button>
-                <span class="text-[#64748B]">&bull;</span>
-                <button onclick="loadSampleDeck('atraxa')" class="text-[#00CED1] hover:underline hover:text-white">Atraxa</button>
-                <span class="text-[#64748B]">&bull;</span>
-                <button onclick="loadSampleDeck('edgar')" class="text-[#00CED1] hover:underline hover:text-white">Edgar Markov</button>
-            </div>
-        </div>
-
-        <!-- Ingestion Tabs -->
-        <div class="flex space-x-1 border-b border-[#263245] overflow-x-auto no-scrollbar font-mono text-xs">
-            <button onclick="switchInputTab('tab-manabox')" id="btn-tab-manabox" class="px-4 py-2 border-b-2 border-[#00CED1] text-white font-bold bg-[#10141D] flex items-center space-x-1.5 whitespace-nowrap">
-                <span class="w-2 h-2 rounded-full bg-[#00CED1]"></span>
-                <span>ManaBox Link</span>
-            </button>
-            <button onclick="switchInputTab('tab-othersites')" id="btn-tab-othersites" class="px-4 py-2 border-b-2 border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap">
-                <span>Moxfield / Archidekt / Scryfall</span>
-            </button>
-            <button onclick="switchInputTab('tab-text')" id="btn-tab-text" class="px-4 py-2 border-b-2 border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap">
-                <span>Paste Text List</span>
-            </button>
-            <button onclick="switchInputTab('tab-csv')" id="btn-tab-csv" class="px-4 py-2 border-b-2 border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap">
-                <span>Upload CSV / File</span>
-            </button>
-        </div>
-
-        <!-- Tab 1: ManaBox URL Input -->
-        <div id="tab-manabox" class="space-y-3">
-            <label class="block text-xs font-mono text-[#94A3B8] uppercase">ManaBox Share Link</label>
-            <div class="relative">
-                <input type="url" id="manabox-url-input" placeholder="https://manabox.app/decks/..." class="input-tactical w-full pl-3 pr-24 py-2.5 text-sm font-mono text-white bg-[#10141D] border border-[#263245] focus:border-[#00CED1] focus:outline-none">
-                <button onclick="pasteFromClipboard('manabox-url-input')" class="absolute right-2 top-2 px-2.5 py-1 bg-[#1B2230] border border-[#263245] text-[10px] font-mono text-[#94A3B8] hover:text-white hover:border-[#00CED1] transition uppercase">Paste</button>
-            </div>
-            <p class="text-[11px] text-[#64748B] font-mono">
-                Tip: In ManaBox, tap your deck &rarr; Three-dot menu &rarr; <strong>Share &rarr; Link</strong>, then paste the link above.
-            </p>
-        </div>
-
-        <!-- Tab 2: Other Sites Input -->
-        <div id="tab-othersites" class="hidden space-y-3">
-            <label class="block text-xs font-mono text-[#94A3B8] uppercase">Deck URL (Moxfield, Archidekt, Scryfall, MTGGoldfish)</label>
-            <div class="relative">
-                <input type="url" id="other-url-input" placeholder="https://www.moxfield.com/decks/... or https://archidekt.com/decks/..." class="input-tactical w-full pl-3 pr-24 py-2.5 text-sm font-mono text-white bg-[#10141D] border border-[#263245] focus:border-[#00CED1] focus:outline-none">
-                <button onclick="pasteFromClipboard('other-url-input')" class="absolute right-2 top-2 px-2.5 py-1 bg-[#1B2230] border border-[#263245] text-[10px] font-mono text-[#94A3B8] hover:text-white hover:border-[#00CED1] transition uppercase">Paste</button>
-            </div>
-        </div>
-
-        <!-- Tab 3: Paste Text List -->
-        <div id="tab-text" class="hidden space-y-3">
-            <div class="flex items-center justify-between">
-                <label class="block text-xs font-mono text-[#94A3B8] uppercase">Raw Deck List (ManaBox text export / MTG Arena format)</label>
-                <button onclick="pasteFromClipboard('raw-text-input')" class="px-2 py-0.5 bg-[#10141D] border border-[#263245] text-[10px] font-mono text-[#00CED1] hover:text-white transition">Paste Clipboard</button>
-            </div>
-            <textarea id="raw-text-input" rows="8" placeholder="// Commander&#10;1 The Ur-Dragon&#10;&#10;// Creatures&#10;1 Utvara Hellkite&#10;1 Scion of the Ur-Dragon&#10;1 Dragonlord Dromoka&#10;&#10;// Spells & Artifacts&#10;1 Sol Ring&#10;1 Arcane Signet..." class="input-tactical w-full p-3 text-xs font-mono text-white bg-[#10141D] border border-[#263245] focus:border-[#00CED1] focus:outline-none"></textarea>
-        </div>
-
-        <!-- Tab 4: CSV Upload -->
-        <div id="tab-csv" class="hidden space-y-3">
-            <label class="block text-xs font-mono text-[#94A3B8] uppercase">ManaBox CSV Export</label>
-            <div id="dropzone" onclick="document.getElementById('csv-file-input').click()" class="border-2 border-dashed border-[#263245] hover:border-[#00CED1] p-6 text-center cursor-pointer bg-[#10141D] transition">
-                <svg class="w-8 h-8 mx-auto text-[#64748B] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+    <!-- ========================================================================= -->
+    <!-- VIEW 1: MY SAVED DECKS (DECK VAULT GRID) -->
+    <!-- ========================================================================= -->
+    <div id="deckVaultView" class="space-y-4">
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#10141D]/60 border border-slate-800 p-3 rounded-xl">
+            <div class="relative w-full sm:w-80">
+                <input type="text" id="vaultSearchInput" oninput="filterVaultDecks()" placeholder="Search saved decks or commanders..." 
+                       class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono">
+                <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <p class="text-xs font-mono text-white" id="csv-filename-label">Click to select or drag & drop ManaBox .csv file</p>
-                <p class="text-[10px] font-mono text-[#64748B] mt-1">Accepts standard ManaBox CSV collection & deck exports</p>
-                <input type="file" id="csv-file-input" accept=".csv,.txt" class="hidden" onchange="handleFileSelect(event)">
+            </div>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <span class="text-xs text-slate-400 font-mono">Sort:</span>
+                <select id="vaultSortSelect" onchange="sortVaultDecks()" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500">
+                    <option value="recent">Recently Added</option>
+                    <option value="name">Deck Name (A-Z)</option>
+                    <option value="price_desc">Market Value ($ High &rarr; Low)</option>
+                    <option value="cmc_asc">Avg CMC (Low &rarr; High)</option>
+                    <option value="power_desc">Power Level (High &rarr; Low)</option>
+                </select>
             </div>
         </div>
 
-        <!-- Evaluation Controls & Launch Trigger -->
-        <div class="pt-4 border-t border-[#263245] flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-            <div class="flex flex-wrap items-center gap-3">
-                <!-- Model Selector -->
-                <div class="flex items-center space-x-2">
-                    <label class="text-xs font-mono text-[#94A3B8] uppercase">Gemini Model:</label>
-                    <select id="gemini-model-select" class="input-tactical bg-[#10141D] border border-[#263245] text-xs font-mono text-white px-3 py-1.5 focus:border-[#C084FC] focus:outline-none">
+        <!-- Decks Grid Container -->
+        <div id="vaultGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <!-- Rendered dynamically by renderVaultGrid() -->
+        </div>
+
+        <!-- Empty Vault State -->
+        <div id="vaultEmptyState" class="hidden text-center py-16 px-4 bg-[#10141D]/40 border border-slate-800/80 rounded-2xl">
+            <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white font-mono uppercase tracking-wider">No Decks In Your Vault Yet</h3>
+            <p class="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-5">Import your ManaBox deck links to view live deck stats, mana curves, market pricing, and run Google Gemini strategic analysis.</p>
+            <div class="flex items-center justify-center gap-3">
+                <button onclick="switchMainView('ingest')" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase rounded-lg shadow-lg transition">
+                    ➕ Import Your First Deck
+                </button>
+                <button onclick="openBulkImportModal()" class="px-4 py-2 bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 font-mono font-semibold text-xs uppercase rounded-lg transition">
+                    Bulk Import ManaBox Links
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 2: SINGLE INGESTION STATION -->
+    <!-- ========================================================================= -->
+    <div id="deckIngestView" class="hidden space-y-6">
+        <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 md:p-6 shadow-xl">
+            <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-800 gap-3">
+                <div>
+                    <h2 class="text-base font-bold text-white font-mono uppercase tracking-wide flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                        Import Deck Link or Text
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Paste a ManaBox public share link, Moxfield/Archidekt link, or raw deck export text.</p>
+                </div>
+
+                <!-- Input Type Switcher Tabs -->
+                <div class="flex bg-[#1B2230] p-1 rounded-lg border border-slate-700/80">
+                    <button type="button" onclick="switchIngestTab('url')" id="tab-btn-url" class="px-3 py-1.5 text-xs font-mono font-semibold rounded-md bg-cyan-500 text-slate-950 transition">ManaBox Link</button>
+                    <button type="button" onclick="switchIngestTab('text')" id="tab-btn-text" class="px-3 py-1.5 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-white transition">Paste Text List</button>
+                    <button type="button" onclick="switchIngestTab('csv')" id="tab-btn-csv" class="px-3 py-1.5 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-white transition">Upload CSV</button>
+                </div>
+            </div>
+
+            <!-- Ingest Form -->
+            <form id="deckIngestForm" onsubmit="handleDeckSubmit(event)" class="mt-5 space-y-4">
+                <!-- URL Input Tab -->
+                <div id="tab-content-url" class="space-y-2">
+                    <label class="block text-xs font-mono text-slate-300 font-semibold uppercase">ManaBox / MTG Deck Share Link</label>
+                    <div class="relative">
+                        <input type="url" id="deckUrlInput" placeholder="https://manabox.app/decks/... or https://www.moxfield.com/decks/..." 
+                               class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono transition">
+                        <button type="button" onclick="pasteFromClipboard('deckUrlInput')" class="absolute right-2.5 top-2.5 px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-[11px] font-mono text-slate-300 transition">Paste</button>
+                    </div>
+                    <p class="text-[11px] text-slate-500 font-mono">Tip: In ManaBox, tap your deck &rarr; Share &rarr; Link, then paste here.</p>
+                </div>
+
+                <!-- Text Input Tab -->
+                <div id="tab-content-text" class="hidden space-y-2">
+                    <label class="block text-xs font-mono text-slate-300 font-semibold uppercase">Deck List (ManaBox Export / MTG Arena / Plaintext)</label>
+                    <textarea id="deckTextInput" rows="7" placeholder="// Commander&#10;1 The Ur-Dragon&#10;&#10;// Creatures&#10;1 Utvara Hellkite&#10;1 Dragonlord Dromoka&#10;1 Miirym, Sentinel Wyrm&#10;&#10;// Artifacts&#10;1 Sol Ring&#10;1 Arcane Signet"
+                              class="w-full bg-[#1B2230] border border-slate-700 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-mono transition"></textarea>
+                </div>
+
+                <!-- CSV Input Tab -->
+                <div id="tab-content-csv" class="hidden space-y-2">
+                    <label class="block text-xs font-mono text-slate-300 font-semibold uppercase">ManaBox CSV File</label>
+                    <div class="border-2 border-dashed border-slate-700 hover:border-cyan-500/60 rounded-lg p-6 text-center cursor-pointer bg-[#1B2230]/40 transition" onclick="document.getElementById('deckCsvFile').click()">
+                        <input type="file" id="deckCsvFile" accept=".csv" class="hidden" onchange="handleCsvFileSelected(event)">
+                        <svg class="w-8 h-8 text-slate-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p id="csvFileName" class="text-xs text-slate-300 font-mono">Click to choose ManaBox CSV file</p>
+                    </div>
+                </div>
+
+                <!-- Sample Deck Quick Buttons -->
+                <div class="pt-2 flex flex-wrap items-center gap-2">
+                    <span class="text-[11px] text-slate-500 font-mono uppercase">Or Load Sample:</span>
+                    <button type="button" onclick="loadSampleDeck('urdragon')" class="px-2.5 py-1 rounded bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">🐉 The Ur-Dragon</button>
+                    <button type="button" onclick="loadSampleDeck('atraxa')" class="px-2.5 py-1 rounded bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">👁️ Atraxa Superfriends</button>
+                    <button type="button" onclick="loadSampleDeck('edgar')" class="px-2.5 py-1 rounded bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">🩸 Edgar Markov Vampires</button>
+                </div>
+
+                <!-- Action Button Row -->
+                <div class="pt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/80">
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="switchMainView('vault')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs uppercase font-semibold rounded-lg transition">
+                            Cancel
+                        </button>
+                    </div>
+
+                    <div class="flex items-center gap-2.5">
+                        <button type="button" onclick="executeParseAndSave(false)" id="parseOnlyBtn" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 border border-cyan-500/30 text-cyan-400 font-mono font-bold text-xs uppercase rounded-lg shadow-lg flex items-center space-x-2 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                            <span>Inspect Stats & Save</span>
+                        </button>
+
+                        <button type="submit" id="parseAnalyzeBtn" class="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-xl shadow-cyan-500/20 flex items-center space-x-2 transition transform active:scale-95">
+                            <svg class="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            <span>⚡ Run Full Gemini Analysis</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 3: DECK INSPECTOR (STATS, CARD REGISTRY & AI INTEL) -->
+    <!-- ========================================================================= -->
+    <div id="deckInspectorView" class="hidden space-y-6">
+        
+        <!-- Commander Banner & Tactical Telemetry Header -->
+        <div id="deckHeaderBanner" class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
+            <div id="commanderBannerBg" class="absolute inset-0 bg-cover bg-center opacity-15 filter blur-sm"></div>
+            <div class="relative z-10 p-5 md:p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                
+                <!-- Left: Commander Portrait & Title -->
+                <div class="flex items-center space-x-4">
+                    <div class="relative group">
+                        <img id="inspectorCmdrArt" src="https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg" alt="Commander Art" 
+                             class="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover border-2 border-cyan-500/40 shadow-xl bg-slate-900">
+                        <div id="cmdrColorPips" class="absolute -bottom-2 -right-2 flex space-x-0.5 bg-slate-950/90 px-1.5 py-0.5 rounded-full border border-slate-700 shadow-md">
+                            <!-- Color pips injected here -->
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">Pre-AI Ready</span>
+                            <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">Commander</span>
+                            <span id="inspectorSourceBadge" class="text-[10px] text-slate-400 font-mono">ManaBox</span>
+                        </div>
+                        <h2 id="inspectorDeckName" class="text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1">Commander Deck</h2>
+                        <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono">The Ur-Dragon</p>
+                    </div>
+                </div>
+
+                <!-- Center & Right: Tactical Stats Pills & Actions -->
+                <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
+                    
+                    <!-- Power Level Stat -->
+                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3.5 py-2 text-center min-w-[90px]">
+                        <span class="block text-[10px] font-mono text-slate-400 uppercase">Power Level</span>
+                        <span id="inspectorPowerVal" class="text-base font-black text-cyan-400 font-mono">-- / 10</span>
+                    </div>
+
+                    <!-- Total Deck Value -->
+                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3.5 py-2 text-center min-w-[100px]">
+                        <span class="block text-[10px] font-mono text-slate-400 uppercase">TCG Value</span>
+                        <span id="inspectorTotalValue" class="text-base font-black text-emerald-400 font-mono">$0.00</span>
+                    </div>
+
+                    <!-- Average CMC -->
+                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3.5 py-2 text-center min-w-[80px]">
+                        <span class="block text-[10px] font-mono text-slate-400 uppercase">Avg CMC</span>
+                        <span id="inspectorAvgCmc" class="text-base font-black text-amber-400 font-mono">0.00</span>
+                    </div>
+
+                    <!-- Total Cards -->
+                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3.5 py-2 text-center min-w-[80px]">
+                        <span class="block text-[10px] font-mono text-slate-400 uppercase">Cards</span>
+                        <span id="inspectorCardCount" class="text-base font-black text-white font-mono">100</span>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center gap-2 pl-2 border-l border-slate-800">
+                        <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
+                                class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                        </button>
+                        
+                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-mono text-xs font-semibold uppercase transition">
+                            &larr; Vault
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inspector Tab Navigation Bar -->
+            <div class="flex border-t border-slate-800 bg-[#0B0F17] px-4 overflow-x-auto">
+                <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap">
+                    📊 Mana Curve & Composition
+                </button>
+                <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap">
+                    🃏 Full Card Registry (<span id="tabCardCount">100</span>)
+                </button>
+                <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap">
+                    ⚡ Gemini AI Strategic Intel
+                    <span id="aiTabBadge" class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Ready</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 1: MANA CURVE & DECK COMPOSITION -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentStats" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Mana Curve Bar Chart -->
+                <div class="lg:col-span-2 bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Mana Value (CMC) Curve (Non-Lands)
+                        </h3>
+                        <span id="curveAvgCmc" class="text-xs font-mono text-cyan-400 font-bold">Avg CMC: 3.20</span>
+                    </div>
+
+                    <!-- Bars -->
+                    <div id="manaCurveContainer" class="h-44 flex items-end justify-between gap-2 md:gap-3 pt-6 pb-2 px-2 border-b border-slate-800">
+                        <!-- Injected by renderManaCurve() -->
+                    </div>
+                    <div class="flex justify-between px-2 pt-2 text-[10px] font-mono text-slate-400">
+                        <span>0 CMC</span>
+                        <span>1</span>
+                        <span>2</span>
+                        <span>3</span>
+                        <span>4</span>
+                        <span>5</span>
+                        <span>6</span>
+                        <span>7+ CMC</span>
+                    </div>
+                </div>
+
+                <!-- Card Type Distribution -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                        Card Type Breakdown
+                    </h3>
+                    <div id="typeBreakdownList" class="space-y-2.5 pt-1">
+                        <!-- Injected by renderTypeBreakdown() -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 2: COMPLETE CARD REGISTRY TABLE -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentCards" class="hidden space-y-4">
+            
+            <!-- Filter & Search Controls -->
+            <div class="bg-[#10141D] border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-3">
+                <div class="relative w-full md:w-80">
+                    <input type="text" id="cardTableSearchInput" oninput="filterCardRegistryTable()" placeholder="Search card names or types..."
+                           class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
+                    <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+
+                <!-- Type Filters -->
+                <div class="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+                    <button type="button" onclick="setCardTypeFilter('all')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950" data-filter="all">All</button>
+                    <button type="button" onclick="setCardTypeFilter('creature')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="creature">Creatures</button>
+                    <button type="button" onclick="setCardTypeFilter('instant')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="instant">Instants</button>
+                    <button type="button" onclick="setCardTypeFilter('sorcery')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="sorcery">Sorceries</button>
+                    <button type="button" onclick="setCardTypeFilter('artifact')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="artifact">Artifacts</button>
+                    <button type="button" onclick="setCardTypeFilter('enchantment')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="enchantment">Enchantments</button>
+                    <button type="button" onclick="setCardTypeFilter('land')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="land">Lands</button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse font-mono text-xs">
+                        <thead>
+                            <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
+                                <th class="py-3 px-4 w-12">Qty</th>
+                                <th class="py-3 px-4">Card Name</th>
+                                <th class="py-3 px-4">Type Line</th>
+                                <th class="py-3 px-4">Mana Cost</th>
+                                <th class="py-3 px-4 text-center">CMC</th>
+                                <th class="py-3 px-4 text-right">TCG Market</th>
+                                <th class="py-3 px-4 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cardRegistryTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                            <!-- Injected by renderCardRegistryTable() -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 3: GEMINI AI STRATEGIC INTEL -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentAi" class="hidden space-y-6">
+            
+            <!-- If Deck NOT Analyzed Yet: AI Trigger Banner -->
+            <div id="aiUnanalyzedBanner" class="hidden bg-[#10141D] border border-cyan-500/30 rounded-xl p-6 text-center space-y-4">
+                <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto shadow-lg">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-base font-black text-white font-mono uppercase tracking-wider">Run Gemini Strategic Analysis on this Deck</h3>
+                    <p class="text-xs text-slate-400 max-w-lg mx-auto mt-1">Get card-by-card 1–10 effectiveness ratings, strategic identity evaluation, win condition breakdown, and recommended upgrades.</p>
+                </div>
+
+                <div class="max-w-md mx-auto flex flex-col sm:flex-row items-center gap-2.5">
+                    <select id="savedDeckAiModel" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
                         {% for m in supported_models %}
                         <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
                         {% endfor %}
                     </select>
+
+                    <button onclick="runAiAnalysisOnSavedDeck()" id="runSavedAiBtn" class="w-full sm:w-auto px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition whitespace-nowrap">
+                        ⚡ Analyze Now
+                    </button>
                 </div>
-
-                <!-- Custom Focus Instructions Toggle -->
-                <button onclick="toggleCustomNotes()" id="btn-toggle-notes" class="text-xs font-mono text-[#94A3B8] hover:text-[#00CED1] underline flex items-center space-x-1">
-                    <span>+ Add Custom Focus Notes</span>
-                </button>
             </div>
 
-            <div class="flex items-center space-x-3">
-                <!-- Preview Only Button -->
-                <button onclick="executeParseOnly()" id="btn-parse-only" class="btn-bridge px-4 py-2.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-2">
-                    <span>Parse Cards</span>
-                </button>
-
-                <!-- Analyze with Gemini Button -->
-                <button onclick="executeGeminiAnalysis()" id="btn-analyze-deck" class="btn-crimson px-5 py-2.5 text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-2 shadow-lg shadow-[#DC143C]/20 flex-shrink-0">
-                    <svg id="analyze-spinner" class="hidden animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span id="analyze-btn-text">⚡ Analyze Deck with Gemini</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Custom Focus Notes Collapsible -->
-        <div id="custom-notes-panel" class="hidden pt-3 border-t border-[#263245] space-y-2">
-            <label class="block text-xs font-mono text-[#94A3B8] uppercase">Custom Tactical Instructions / Playgroup Context</label>
-            <input type="text" id="custom-notes-input" placeholder="e.g. 'Focus on budget upgrades under $5' or 'Target Bracket 3 casual' or 'Exclude infinite combos'" class="input-tactical w-full p-2.5 text-xs font-mono text-white bg-[#10141D] border border-[#263245] focus:border-[#C084FC] focus:outline-none">
-        </div>
-    </div>
-
-    <!-- Processing & Scanning HUD (Shown during analysis) -->
-    <div id="scanning-hud" class="hidden bg-[#1B2230] border-2 border-[#00CED1]/40 p-8 text-center space-y-4 animate-pulse">
-        <div class="flex items-center justify-center space-x-3">
-            <div class="w-3 h-3 bg-[#00CED1] rounded-full animate-ping"></div>
-            <div class="w-3 h-3 bg-[#C084FC] rounded-full animate-ping" style="animation-delay: 200ms;"></div>
-            <div class="w-3 h-3 bg-[#DC143C] rounded-full animate-ping" style="animation-delay: 400ms;"></div>
-        </div>
-        <div class="space-y-1">
-            <h3 class="text-base font-heading font-black text-white uppercase tracking-wider" id="scanning-status-title">EXECUTING TACTICAL SCAN & GEMINI DEEP ANALYSIS</h3>
-            <p class="text-xs font-mono text-[#00CED1]" id="scanning-status-subtitle">Batch resolving Scryfall metadata & feeding commander deck archetype to Gemini...</p>
-        </div>
-        <div class="w-full max-w-md mx-auto bg-[#10141D] border border-[#263245] h-2 overflow-hidden">
-            <div class="bg-gradient-to-r from-[#00CED1] via-[#A855F7] to-[#DC143C] h-full w-full animate-pulse"></div>
-        </div>
-    </div>
-
-    <!-- Active Analysis Results Container -->
-    <div id="analysis-results" class="hidden space-y-6">
-
-        <!-- Commander Spotlight & Deck Telemetry Header -->
-        <div class="bg-[#1B2230] border border-[#263245] p-5 relative overflow-hidden">
-            <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+            <!-- If Deck IS Analyzed: Strategic Report -->
+            <div id="aiAnalyzedContent" class="space-y-6">
                 
-                <!-- Commander Portrait & Identity -->
-                <div class="flex items-center space-x-4">
-                    <div class="w-16 h-20 sm:w-20 sm:h-28 bg-[#10141D] border-2 border-[#00CED1] flex-shrink-0 overflow-hidden shadow-lg relative group">
-                        <img id="commander-avatar-img" src="" alt="Commander Art" class="w-full h-full object-cover filter contrast-110">
-                        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
-                    </div>
-
-                    <div class="space-y-1.5 min-w-0">
-                        <div class="flex items-center space-x-2">
-                            <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[10px] font-mono font-bold px-1.5 py-0.2 uppercase">COMMANDER (EDH)</span>
-                            <span id="power-bracket-badge" class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[10px] font-mono font-bold px-1.5 py-0.2 uppercase">OPTIMIZED (7-8)</span>
-                        </div>
-                        <h2 id="deck-title-heading" class="text-xl sm:text-2xl font-heading font-black text-white uppercase truncate">The Ur-Dragon's Flight</h2>
-                        <div class="flex items-center space-x-2 text-xs font-mono text-[#94A3B8]">
-                            <span>Commander:</span>
-                            <span id="commander-names-text" class="text-white font-bold">The Ur-Dragon</span>
-                            <span id="color-identity-pips" class="flex items-center space-x-1 ml-2"></span>
+                <!-- Overall Strategy & Win-Cons Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Strategic Identity -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                        <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Strategic Identity & Gameplan
+                        </h3>
+                        <p id="aiSummaryText" class="text-xs text-slate-300 leading-relaxed font-sans"></p>
+                        <div class="pt-2 border-t border-slate-800/80">
+                            <span class="block text-[11px] font-mono text-slate-400 uppercase mb-1">Mana Base Telemetry</span>
+                            <p id="aiManaBaseText" class="text-xs text-slate-400 font-sans"></p>
                         </div>
                     </div>
-                </div>
 
-                <!-- Deck Metrics & Power Gauge -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full lg:w-auto font-mono text-center">
-                    <!-- Power Level -->
-                    <div class="bg-[#10141D] border border-[#263245] p-3 flex flex-col items-center justify-center min-w-[100px]">
-                        <span class="text-[10px] text-[#64748B] uppercase font-bold">Power Level</span>
-                        <div class="text-xl font-heading font-black text-[#00CED1] mt-0.5" id="metric-power-level">7.8<span class="text-xs text-[#64748B]">/10</span></div>
-                    </div>
-
-                    <!-- Total Cards -->
-                    <div class="bg-[#10141D] border border-[#263245] p-3 flex flex-col items-center justify-center min-w-[100px]">
-                        <span class="text-[10px] text-[#64748B] uppercase font-bold">Cards</span>
-                        <div class="text-xl font-heading font-black text-white mt-0.5" id="metric-total-cards">100</div>
-                    </div>
-
-                    <!-- Avg CMC -->
-                    <div class="bg-[#10141D] border border-[#263245] p-3 flex flex-col items-center justify-center min-w-[100px]">
-                        <span class="text-[10px] text-[#64748B] uppercase font-bold">Avg CMC</span>
-                        <div class="text-xl font-heading font-black text-[#F59E0B] mt-0.5" id="metric-avg-cmc">3.24</div>
-                    </div>
-
-                    <!-- Est. Market Value -->
-                    <div class="bg-[#10141D] border border-[#263245] p-3 flex flex-col items-center justify-center min-w-[100px]">
-                        <span class="text-[10px] text-[#64748B] uppercase font-bold">TCG Value</span>
-                        <div class="text-xl font-heading font-black text-[#2DD4BF] mt-0.5" id="metric-total-value">$412.50</div>
+                    <!-- Win Conditions & Combos -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                        <h3 class="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                            Win Conditions & Finisher Packages
+                        </h3>
+                        <div id="aiWinConsList" class="space-y-3 pt-1">
+                            <!-- Injected by renderWinCons() -->
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- Detailed Results Navigation Tabs -->
-        <div class="flex space-x-1 border-b border-[#263245] overflow-x-auto no-scrollbar font-mono text-xs bg-[#1B2230] p-1">
-            <button onclick="switchResultTab('res-strategy')" id="btn-res-strategy" class="px-4 py-2 border border-[#00CED1] text-white font-bold bg-[#10141D] flex items-center space-x-1.5 whitespace-nowrap">
-                <span>01 // Strategy & Overview</span>
-            </button>
-            <button onclick="switchResultTab('res-wincons')" id="btn-res-wincons" class="px-4 py-2 border border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap">
-                <span>02 // Win Conditions & Combos</span>
-            </button>
-            <button onclick="switchResultTab('res-ratings')" id="btn-res-ratings" class="px-4 py-2 border border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap">
-                <span>03 // Card Ratings (1–10)</span>
-                <span id="ratings-count-pill" class="bg-[#00CED1]/20 text-[#00CED1] px-1 py-0.2 text-[10px] font-bold">100</span>
-            </button>
-            <button onclick="switchResultTab('res-upgrades')" id="btn-res-upgrades" class="px-4 py-2 border border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap">
-                <span>04 // Proposed Upgrades</span>
-                <span id="upgrades-count-pill" class="bg-[#DC143C]/20 text-[#FF3358] px-1 py-0.2 text-[10px] font-bold">6</span>
-            </button>
-            <button onclick="switchResultTab('res-curve')" id="btn-res-curve" class="px-4 py-2 border border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap">
-                <span>05 // Mana Curve & Stats</span>
-            </button>
-        </div>
-
-        <!-- Section 1: Executive Strategy & Overview -->
-        <div id="res-strategy" class="space-y-4">
-            <!-- Strategic Summary Card -->
-            <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-3">
-                <div class="flex items-center space-x-2 text-xs font-mono text-[#00CED1] uppercase font-bold">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    <span>Overall Strategic Assessment</span>
-                </div>
-                <p id="deck-overall-summary" class="text-sm font-sans text-[#F1F5F9] leading-relaxed whitespace-pre-line"></p>
-            </div>
-
-            <!-- Mana Base & Ramp Health Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-2">
-                    <div class="text-xs font-mono text-[#F59E0B] uppercase font-bold">// MANA BASE & FIXING HEALTH</div>
-                    <p id="deck-mana-analysis" class="text-xs font-mono text-[#94A3B8] leading-relaxed"></p>
-                </div>
-                <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-2">
-                    <div class="text-xs font-mono text-[#2DD4BF] uppercase font-bold">// ARCHETYPE & TEMPO</div>
-                    <div id="deck-archetype-details" class="text-xs font-mono text-[#94A3B8] space-y-1"></div>
-                </div>
-            </div>
-
-            <!-- Key Synergies Matrix -->
-            <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-3">
-                <div class="text-xs font-mono text-[#C084FC] uppercase font-bold">// CORE SYNERGY ENGINES</div>
-                <div id="key-synergies-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
-            </div>
-        </div>
-
-        <!-- Section 2: Win Conditions & Combos -->
-        <div id="res-wincons" class="hidden space-y-4">
-            <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-4">
-                <div class="flex items-center space-x-2 text-xs font-mono text-[#FF3358] uppercase font-bold">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                    </svg>
-                    <span>Identified Win Conditions & Finisher Packages</span>
-                </div>
-                <div id="win-conditions-container" class="space-y-4"></div>
-            </div>
-        </div>
-
-        <!-- Section 3: Card-by-Card 1-10 Ratings & Purpose (The Core Feature!) -->
-        <div id="res-ratings" class="hidden space-y-4">
-            <!-- Filter & Search Toolbar -->
-            <div class="bg-[#1B2230] border border-[#263245] p-4 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-                <!-- Search & Filters -->
-                <div class="flex flex-wrap items-center gap-3 flex-1">
-                    <div class="relative flex-1 min-w-[200px] max-w-md">
-                        <input type="text" id="card-filter-search" oninput="filterCardRatings()" placeholder="Search cards by name..." class="input-tactical w-full pl-8 pr-3 py-1.5 text-xs font-mono text-white bg-[#10141D] border border-[#263245] focus:border-[#00CED1] focus:outline-none">
-                        <svg class="w-3.5 h-3.5 absolute left-2.5 top-2 text-[#64748B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                        </svg>
+                <!-- Card Ratings & Upgrades Sections -->
+                <div class="space-y-6">
+                    
+                    <!-- Proposed Card Upgrades Matrix -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                Proposed Tactical Upgrades & Swaps
+                            </h3>
+                            <span class="text-[11px] text-slate-500 font-mono">1-Click Watchlist Integration</span>
+                        </div>
+                        <div id="aiUpgradesGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Injected by renderUpgrades() -->
+                        </div>
                     </div>
 
-                    <!-- Role Filter Dropdown -->
-                    <select id="card-filter-role" onchange="filterCardRatings()" class="input-tactical bg-[#10141D] border border-[#263245] text-xs font-mono text-white px-3 py-1.5 focus:border-[#00CED1] focus:outline-none">
-                        <option value="ALL">All Roles</option>
-                        <option value="Commander">Commander</option>
-                        <option value="Ramp">Ramp</option>
-                        <option value="Card Advantage">Card Advantage</option>
-                        <option value="Spot Removal">Spot Removal</option>
-                        <option value="Board Wipe">Board Wipe</option>
-                        <option value="Finisher">Win-Con / Finisher</option>
-                        <option value="Enabler">Enabler / Engine</option>
-                        <option value="Protection">Protection / Counter</option>
-                        <option value="Tutor">Tutor</option>
-                        <option value="Land">Lands</option>
-                        <option value="Utility">Utility</option>
-                    </select>
+                    <!-- Card-by-Card 1-10 Ratings Table -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                                Card-by-Card Effectiveness Ratings (1–10)
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <select id="ratingFilterSelect" onchange="filterCardRatings()" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono">
+                                    <option value="all">All Ratings</option>
+                                    <option value="9">Core Staples (9.0 - 10.0)</option>
+                                    <option value="7">Strong Synergizers (7.0 - 8.9)</option>
+                                    <option value="5">Solid Role Players (5.0 - 6.9)</option>
+                                    <option value="cuts">Cut Candidates (&lt; 5.0)</option>
+                                </select>
+                            </div>
+                        </div>
 
-                    <!-- Sort Dropdown -->
-                    <select id="card-sort-by" onchange="filterCardRatings()" class="input-tactical bg-[#10141D] border border-[#263245] text-xs font-mono text-white px-3 py-1.5 focus:border-[#00CED1] focus:outline-none">
-                        <option value="rating_desc">Rating: Highest First (10 &rarr; 1)</option>
-                        <option value="rating_asc">Rating: Lowest First (1 &rarr; 10)</option>
-                        <option value="name_asc">Card Name (A &rarr; Z)</option>
-                        <option value="cmc_asc">Mana Value (CMC Low &rarr; High)</option>
-                        <option value="price_desc">Market Price ($ High &rarr; Low)</option>
-                    </select>
-                </div>
-
-                <!-- Rating Legend -->
-                <div class="flex items-center space-x-2 text-[10px] font-mono">
-                    <span class="flex items-center space-x-1"><span class="w-2 h-2 bg-[#00CED1]"></span><span class="text-[#00CED1]">9–10 Core</span></span>
-                    <span class="flex items-center space-x-1"><span class="w-2 h-2 bg-[#60A5FA]"></span><span class="text-[#60A5FA]">7–8 Strong</span></span>
-                    <span class="flex items-center space-x-1"><span class="w-2 h-2 bg-[#F59E0B]"></span><span class="text-[#F59E0B]">5–6 Solid</span></span>
-                    <span class="flex items-center space-x-1"><span class="w-2 h-2 bg-[#DC143C]"></span><span class="text-[#FF3358]">1–4 Cut</span></span>
-                </div>
-            </div>
-
-            <!-- Card Ratings Registry Grid -->
-            <div id="card-ratings-container" class="space-y-2"></div>
-        </div>
-
-        <!-- Section 4: Proposed Upgrades & Swaps -->
-        <div id="res-upgrades" class="hidden space-y-4">
-            <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-4">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center space-x-2 text-xs font-mono text-[#00CED1] uppercase font-bold">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
-                        </svg>
-                        <span>Tactical Card Swap Recommendations (Card In vs Card Out)</span>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse font-mono text-xs">
+                                <thead>
+                                    <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
+                                        <th class="py-2.5 px-3">Rating</th>
+                                        <th class="py-2.5 px-3">Card Name</th>
+                                        <th class="py-2.5 px-3">Role</th>
+                                        <th class="py-2.5 px-3">Purpose & Strategic Rationale</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="aiCardRatingsBody" class="divide-y divide-slate-800/60 text-slate-300">
+                                    <!-- Injected by renderCardRatings() -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
-                <div id="upgrades-container" class="grid grid-cols-1 gap-4"></div>
-            </div>
-
-            <!-- Cut Candidates Summary -->
-            <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-3">
-                <div class="text-xs font-mono text-[#DC143C] uppercase font-bold">// IDENTIFIED CUT CANDIDATES (UNDERPERFORMERS)</div>
-                <div id="cuts-container" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
             </div>
         </div>
-
-        <!-- Section 5: Mana Curve & Statistics -->
-        <div id="res-curve" class="hidden space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Mana Curve Bar Chart -->
-                <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-3">
-                    <div class="text-xs font-mono text-[#00CED1] uppercase font-bold">// MANA VALUE (CMC) DISTRIBUTION</div>
-                    <div id="cmc-bars-container" class="space-y-2 pt-2"></div>
-                </div>
-
-                <!-- Deck Composition -->
-                <div class="bg-[#1B2230] border border-[#263245] p-5 space-y-3">
-                    <div class="text-xs font-mono text-[#2DD4BF] uppercase font-bold">// CARD TYPE COMPOSITION</div>
-                    <div id="type-counts-container" class="space-y-2 pt-2"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Action Bar: Export & Watchlist Bulk Actions -->
-        <div class="bg-[#1B2230] border border-[#263245] p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div class="text-xs font-mono text-[#94A3B8]">
-                Analysis complete. All ratings and purpose details generated specifically for this commander.
-            </div>
-            <div class="flex items-center space-x-2">
-                <button onclick="copyAnalysisMarkdown()" class="btn-bridge px-3 py-2 text-xs font-mono uppercase font-bold flex items-center space-x-1">
-                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
-                    </svg>
-                    <span>Copy Markdown Report</span>
-                </button>
-            </div>
-        </div>
-
     </div>
-
 </div>
 
-<!-- Gemini API Key Modal -->
-<div id="gemini-key-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black/80 flex items-center justify-center p-4">
-    <div class="bg-[#1B2230] border-2 border-[#263245] w-full max-w-lg p-6 space-y-4 font-mono">
-        <div class="flex items-center justify-between border-b border-[#263245] pb-3">
-            <div class="flex items-center space-x-2">
-                <span class="text-[#C084FC] font-bold">// CONFIGURE GOOGLE GEMINI API KEY</span>
-            </div>
-            <button onclick="closeGeminiKeyModal()" class="text-[#94A3B8] hover:text-white">&times;</button>
+<!-- ========================================================================= -->
+<!-- MODAL: BULK IMPORT MANABOX LINKS -->
+<!-- ========================================================================= -->
+<div id="bulkImportModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="bg-[#10141D] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="text-sm font-bold text-white font-mono uppercase flex items-center gap-2">
+                <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Bulk Import ManaBox Links
+            </h3>
+            <button onclick="closeBulkImportModal()" class="text-slate-500 hover:text-slate-300">&times;</button>
         </div>
 
-        <div class="space-y-3 text-xs">
-            <p class="text-[#94A3B8]">
-                Enter your Google Gemini API key to enable AI deck intelligence. Your key is stored securely in your database settings.
-            </p>
-            <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1">
-                <span class="text-[#64748B]">Need an API key?</span>
-                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-[#00CED1] underline block hover:text-white">
-                    Get a free Gemini API Key from Google AI Studio &rarr;
-                </a>
+        <p class="text-xs text-slate-400">Paste your ManaBox deck links below (one link per line). Chimaera will batch-fetch metadata, calculate stats, and save all decks to your Vault.</p>
+
+        <textarea id="bulkUrlsInput" rows="6" placeholder="https://manabox.app/decks/deck-1&#10;https://manabox.app/decks/deck-2&#10;https://manabox.app/d/sample-3"
+                  class="w-full bg-[#1B2230] border border-slate-700 rounded-lg p-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-mono"></textarea>
+
+        <div id="bulkImportProgress" class="hidden text-center py-2 text-xs font-mono text-cyan-400 animate-pulse">
+            Fetching deck telemetry from ManaBox & Scryfall...
+        </div>
+
+        <div class="flex items-center justify-end gap-2.5 pt-2">
+            <button onclick="closeBulkImportModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs uppercase font-semibold">Cancel</button>
+            <button onclick="executeBulkImport()" id="executeBulkImportBtn" class="px-5 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase shadow-lg">Import All Decks</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: GEMINI API KEY CONFIGURATION -->
+<!-- ========================================================================= -->
+<div id="geminiApiKeyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="bg-[#10141D] border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="text-sm font-bold text-white font-mono uppercase flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                Google Gemini API Configuration
+            </h3>
+            <button onclick="closeApiKeyModal()" class="text-slate-500 hover:text-slate-300">&times;</button>
+        </div>
+
+        <p class="text-xs text-slate-400">Configure your Google Gemini API key to enable tactical deck analyses and 1–10 card effectiveness ratings.</p>
+
+        <div class="space-y-3">
+            <div>
+                <label class="block text-[11px] font-mono text-slate-300 font-semibold uppercase mb-1">Gemini API Key</label>
+                <input type="password" id="modalGeminiApiKey" placeholder="AIzaSy..."
+                       class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-mono">
             </div>
 
-            <div class="space-y-1">
-                <label class="block text-[#94A3B8] uppercase">Gemini API Key</label>
-                <input type="password" id="gemini-api-key-input" placeholder="AIzaSy..." class="input-tactical w-full p-2.5 text-xs text-white bg-[#10141D] border border-[#263245] focus:border-[#C084FC] focus:outline-none">
-            </div>
-
-            <div class="space-y-1">
-                <label class="block text-[#94A3B8] uppercase">Default Model</label>
-                <select id="modal-model-select" class="input-tactical w-full p-2 text-xs bg-[#10141D] border border-[#263245] text-white">
+            <div>
+                <label class="block text-[11px] font-mono text-slate-300 font-semibold uppercase mb-1">Default Model</label>
+                <select id="modalGeminiModel" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
                     {% for m in supported_models %}
-                    <option value="{{ m.id }}">{{ m.name }}</option>
+                    <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
                     {% endfor %}
                 </select>
             </div>
         </div>
 
-        <div id="modal-key-status" class="hidden text-xs p-2 border"></div>
-
-        <div class="flex items-center justify-end space-x-2 pt-2 border-t border-[#263245]">
-            <button onclick="closeGeminiKeyModal()" class="btn-bridge px-3 py-1.5 text-xs uppercase">Cancel</button>
-            <button onclick="saveGeminiKey()" id="btn-save-gemini-key" class="btn-crimson px-4 py-1.5 text-xs uppercase font-bold">Verify & Save Key</button>
+        <div class="flex items-center justify-end gap-2.5 pt-2">
+            <button onclick="closeApiKeyModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs uppercase font-semibold">Cancel</button>
+            <button onclick="saveApiKeyFromModal()" id="modalSaveKeyBtn" class="px-5 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase shadow-lg">Verify & Save</button>
         </div>
     </div>
 </div>
 
-<!-- History Drawer Modal -->
-<div id="history-drawer-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-black/80 flex items-center justify-center p-4">
-    <div class="bg-[#1B2230] border-2 border-[#263245] w-full max-w-2xl max-h-[85vh] p-6 flex flex-col space-y-4 font-mono">
-        <div class="flex items-center justify-between border-b border-[#263245] pb-3 flex-shrink-0">
-            <div class="flex items-center space-x-2">
-                <span class="text-[#00CED1] font-bold">// SAVED DECK ANALYSES HISTORY</span>
-            </div>
-            <button onclick="closeHistoryDrawer()" class="text-[#94A3B8] hover:text-white">&times;</button>
-        </div>
+<!-- Floating Card Hover Preview Tooltip -->
+<div id="cardHoverPreview" class="fixed pointer-events-none z-50 hidden transition-opacity duration-150">
+    <img id="cardHoverImg" src="" alt="Card Art" class="w-56 rounded-xl shadow-2xl border border-slate-700/80 bg-slate-900">
+</div>
 
-        <div id="history-list-container" class="flex-1 overflow-y-auto space-y-2 pr-1">
-            <!-- Populated via JS -->
-            <div class="text-center py-6 text-[#64748B] text-xs">Loading history...</div>
-        </div>
-
-        <div class="pt-2 border-t border-[#263245] flex justify-end flex-shrink-0">
-            <button onclick="closeHistoryDrawer()" class="btn-bridge px-4 py-1.5 text-xs uppercase font-bold">Close</button>
-        </div>
+<!-- Toast Alert Notifications -->
+<div id="analyzerToast" class="fixed bottom-6 right-6 z-50 hidden transition-all duration-300 transform translate-y-2">
+    <div id="analyzerToastBox" class="bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono">
+        <span id="analyzerToastMsg">Action completed successfully.</span>
     </div>
 </div>
 
-<!-- Image Hover Zoom Overlay -->
-<div id="card-hover-preview" class="hidden fixed pointer-events-none z-50 w-56 rounded border-2 border-[#00CED1] bg-[#10141D] shadow-2xl overflow-hidden transition-opacity duration-150">
-    <img id="card-hover-preview-img" src="" alt="Card Art" class="w-full h-auto">
-</div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-// State Store
-let activeInputTab = 'manabox';
-let currentParsedDeck = null;
-let currentAnalysis = null;
-let allCardRatings = [];
+// State Management
+let currentVaultDecks = {{ recent_decks|tojson }};
+let activeDeck = null;
+let currentIngestTab = 'url';
+let currentCardTypeFilter = 'all';
 
-// Sample Decks for Instant Testing
-const SAMPLE_DECKS = {
-    ur_dragon: `// Commander\n1 The Ur-Dragon\n\n// Creatures\n1 Utvara Hellkite\n1 Scion of the Ur-Dragon\n1 Dragonlord Dromoka\n1 Miirym, Sentinel Wyrm\n1 Goldspan Dragon\n1 Terror of the Peaks\n1 Old Gnawbone\n1 Klauth, Unrivaled Ancient\n1 Tiamat\n1 Dragon Tempest\n1 Ramos, Dragon Engine\n1 Scalelord Reckoner\n1 Lathliss, Dragon Queen\n1 Scourge of Valkas\n1 Atarka, World Render\n1 Bladewing the Risen\n1 Hellkite Tyrant\n1 Rivaz of the Claw\n1 Birds of Paradise\n1 Bloom Tender\n1 Faeburrow Elder\n1 Selvala, Heart of the Wilds\n1 Ignoble Hierarch\n1 Noble Hierarch\n\n// Instants & Sorceries\n1 Swords to Plowshares\n1 Cyclonic Rift\n1 Heroic Intervention\n1 Teferi's Protection\n1 Counterspell\n1 Fierce Guardianship\n1 Deflecting Swat\n1 Cultivate\n1 Kodama's Reach\n1 Farseek\n1 Nature's Lore\n1 Three Visits\n1 Rishkar's Expertise\n1 Toxic Deluge\n1 Blasphemous Act\n\n// Artifacts & Enchantments\n1 Sol Ring\n1 Arcane Signet\n1 Chromatic Lantern\n1 Fellwar Stone\n1 Dragon's Hoard\n1 The Great Henge\n1 Rhystic Study\n1 Smothering Tithe\n1 Sylvan Library\n1 Temur Ascendancy\n1 Garruk's Uprising\n1 Crucible of Fire\n\n// Lands\n1 Command Tower\n1 Haven of the Spirit Dragon\n1 Crucible of the Spirit Dragon\n1 Path of Ancestry\n1 Cavern of Souls\n1 Exotic Orchard\n1 Reflecting Pool\n1 Ketria Triome\n1 Zagoth Triome\n1 Raugrin Triome\n1 Savai Triome\n1 Indatha Triome\n1 Spara's Headquarters\n1 Jetmir's Garden\n1 Ziatora's Proving Ground\n1 Xander's Lounge\n1 Raffine's Tower\n3 Forest\n2 Mountain\n2 Island\n2 Plains\n2 Swamp`,
-    atraxa: `// Commander\n1 Atraxa, Praetors' Voice\n\n// Creatures\n1 Deepglow Skate\n1 Evolution Sage\n1 Flux Channeler\n1 Vorinclex, Monstrous Raider\n1 Tekuthal, Inquiry Dominus\n1 Thrummingbird\n1 Roalesk, Apex Hybrid\n1 Crystalline Crawler\n1 Astral Cornucopia\n1 Bloom Tender\n\n// Planeswalkers\n1 Doubling Season\n1 Tezzeret's Gambit\n1 Inexorable Tide\n1 Contagion Engine\n1 Sol Ring\n1 Arcane Signet\n1 Swords to Plowshares\n1 Cyclonic Rift\n1 Toxic Deluge\n1 Command Tower\n5 Plains\n5 Island\n5 Swamp\n5 Forest`,
-    edgar: `// Commander\n1 Edgar Markov\n\n// Creatures\n1 Cordial Vampire\n1 Captivating Vampire\n1 Stromkirk Captain\n1 Vampire Nighthawk\n1 Bloodline Keeper\n1 Champion of Dusk\n1 Welcoming Vampire\n1 Twilight Prophet\n1 Sanctum Seeker\n1 Forerunner of the Legion\n1 Knight of the Ebon Legion\n1 Viscera Seer\n1 Blood Artist\n1 Cruel Celebrant\n1 Elenda, the Dusk Rose\n\n// Spells & Artifacts\n1 Skullclamp\n1 Sol Ring\n1 Arcane Signet\n1 Boros Signet\n1 Orzhov Signet\n1 Rakdos Signet\n1 Swords to Plowshares\n1 Anguished Unmaking\n1 Teferi's Protection\n1 Boros Charm\n1 Black Market Connections\n1 Phyrexian Arena\n1 Shared Animosity\n1 Command Tower\n6 Swamp\n4 Plains\n4 Mountain`
-};
+document.addEventListener('DOMContentLoaded', () => {
+    renderVaultGrid(currentVaultDecks);
+    if (currentVaultDecks.length === 0) {
+        switchMainView('ingest');
+    }
+});
 
-function loadSampleDeck(key) {
-    if (SAMPLE_DECKS[key]) {
-        switchInputTab('tab-text');
-        document.getElementById('raw-text-input').value = SAMPLE_DECKS[key];
-        showToast(`Loaded ${key.replace('_', ' ').toUpperCase()} sample deck.`, 'success');
+// View Navigation Switcher
+function switchMainView(viewName) {
+    const vaultView = document.getElementById('deckVaultView');
+    const ingestView = document.getElementById('deckIngestView');
+    const inspectorView = document.getElementById('deckInspectorView');
+    const vaultBtn = document.getElementById('viewVaultBtn');
+    const ingestBtn = document.getElementById('viewIngestBtn');
+
+    if (viewName === 'vault') {
+        vaultView.classList.remove('hidden');
+        ingestView.classList.add('hidden');
+        inspectorView.classList.add('hidden');
+        vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md";
+        ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white";
+        renderVaultGrid(currentVaultDecks);
+    } else if (viewName === 'ingest') {
+        vaultView.classList.add('hidden');
+        ingestView.classList.remove('hidden');
+        inspectorView.classList.add('hidden');
+        ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md";
+        vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white";
+    } else if (viewName === 'inspector') {
+        vaultView.classList.add('hidden');
+        ingestView.classList.add('hidden');
+        inspectorView.classList.remove('hidden');
     }
 }
 
-function switchInputTab(tabId) {
-    activeInputTab = tabId;
-    ['tab-manabox', 'tab-othersites', 'tab-text', 'tab-csv'].forEach(t => {
-        const el = document.getElementById(t);
-        const btn = document.getElementById('btn-' + t);
-        if (t === tabId) {
-            el.classList.remove('hidden');
-            btn.className = 'px-4 py-2 border-b-2 border-[#00CED1] text-white font-bold bg-[#10141D] flex items-center space-x-1.5 whitespace-nowrap';
+// Ingest Tab Switcher
+function switchIngestTab(tab) {
+    currentIngestTab = tab;
+    ['url', 'text', 'csv'].forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const content = document.getElementById(`tab-content-${t}`);
+        if (t === tab) {
+            btn.className = "px-3 py-1.5 text-xs font-mono font-semibold rounded-md bg-cyan-500 text-slate-950 transition";
+            content.classList.remove('hidden');
         } else {
-            el.classList.add('hidden');
-            btn.className = 'px-4 py-2 border-b-2 border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap';
+            btn.className = "px-3 py-1.5 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-white transition";
+            content.classList.add('hidden');
         }
     });
 }
 
-function switchResultTab(tabId) {
-    ['res-strategy', 'res-wincons', 'res-ratings', 'res-upgrades', 'res-curve'].forEach(t => {
-        const el = document.getElementById(t);
-        const btn = document.getElementById('btn-' + t);
-        if (t === tabId) {
-            el.classList.remove('hidden');
-            btn.className = 'px-4 py-2 border border-[#00CED1] text-white font-bold bg-[#10141D] flex items-center space-x-1.5 whitespace-nowrap';
+// Inspector Tabs
+function switchInspectorTab(tab) {
+    const tabs = ['stats', 'cards', 'ai'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`insp-tab-${t}`);
+        const content = document.getElementById(`inspectorTabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (t === tab) {
+            btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap";
+            content.classList.remove('hidden');
         } else {
-            el.classList.add('hidden');
-            btn.className = 'px-4 py-2 border border-transparent text-[#94A3B8] hover:text-white flex items-center space-x-1.5 whitespace-nowrap';
+            btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap";
+            content.classList.add('hidden');
         }
     });
 }
 
-function toggleCustomNotes() {
-    const el = document.getElementById('custom-notes-panel');
-    el.classList.toggle('hidden');
+// Render Saved Decks Vault Grid
+function renderVaultGrid(decks) {
+    const grid = document.getElementById('vaultGrid');
+    const emptyState = document.getElementById('vaultEmptyState');
+    document.getElementById('savedDecksCount').innerText = decks.length;
+
+    if (!decks || decks.length === 0) {
+        grid.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+    }
+
+    emptyState.classList.add('hidden');
+    grid.innerHTML = decks.map(d => {
+        const stats = d.stats || {};
+        const val = (d.total_value || stats.total_value || 0).toFixed(2);
+        const cmc = (d.avg_cmc || stats.avg_cmc || 0).toFixed(2);
+        const art = d.commander_art || 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg';
+        const hasAi = d.has_ai_analysis;
+        const pwr = d.power_level ? d.power_level.toFixed(1) : null;
+
+        const colorPipsHtml = (d.color_identity || []).map(c => {
+            const colors = { 'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E' };
+            return `<span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color:${colors[c] || '#888'}"></span>`;
+        }).join('');
+
+        return `
+            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl overflow-hidden shadow-xl hover:shadow-cyan-500/10 transition group flex flex-col justify-between">
+                <div>
+                    <!-- Commander Portrait Header -->
+                    <div class="relative h-28 overflow-hidden bg-slate-900">
+                        <img src="${art}" alt="${escapeHtml(d.deck_name)}" class="w-full h-full object-cover object-center group-hover:scale-105 transition duration-300">
+                        <div class="absolute inset-0 bg-gradient-to-t from-[#10141D] via-[#10141D]/40 to-transparent"></div>
+                        
+                        <!-- Badges -->
+                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                            <span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-[10px] font-mono text-slate-300 font-bold">${d.total_cards || 100} Cards</span>
+                            ${hasAi ? `<span class="px-2 py-0.5 rounded bg-cyan-500/90 text-slate-950 text-[10px] font-mono font-black">AI Power: ${pwr || '7.5'}</span>` : `<span class="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-mono">Stats Ready</span>`}
+                        </div>
+
+                        <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between">
+                            <span class="text-xs text-cyan-300 font-mono truncate font-semibold">${escapeHtml(d.commander_name || 'Commander')}</span>
+                            <div class="flex items-center gap-0.5 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800">
+                                ${colorPipsHtml || '<span class="text-[9px] text-slate-500 font-mono">Colorless</span>'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Body -->
+                    <div class="p-4 space-y-3">
+                        <h4 class="text-sm font-bold text-white font-mono uppercase tracking-wide truncate group-hover:text-cyan-300 transition">${escapeHtml(d.deck_name)}</h4>
+                        
+                        <!-- Telemetry Grid -->
+                        <div class="grid grid-cols-2 gap-2 bg-[#1B2230]/60 p-2 rounded-lg border border-slate-800 font-mono text-xs">
+                            <div>
+                                <span class="text-[10px] text-slate-400 uppercase block">TCG Value</span>
+                                <span class="text-emerald-400 font-bold">$${val}</span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400 uppercase block">Avg Nonland CMC</span>
+                                <span class="text-amber-400 font-bold">${cmc}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Actions Footer -->
+                <div class="p-4 pt-0 flex items-center justify-between gap-2 border-t border-slate-800/60 mt-2">
+                    <button onclick="loadSavedDeckIntoInspector(${d.id})" class="flex-1 px-3 py-2 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 font-mono text-xs font-bold uppercase rounded-lg border border-slate-700 hover:border-cyan-500 transition text-center">
+                        Inspect Deck
+                    </button>
+                    ${d.source_url ? `
+                    <button onclick="syncSavedDeck(${d.id})" title="Sync from ManaBox link" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    </button>
+                    ` : ''}
+                    <button onclick="deleteSavedDeck(${d.id}, '${escapeHtml(d.deck_name)}')" title="Delete from vault" class="p-2 bg-slate-800/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-lg border border-slate-800 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
-async function pasteFromClipboard(targetId) {
+// Load Deck into Inspector
+async function loadSavedDeckIntoInspector(deckId) {
     try {
-        const text = await navigator.clipboard.readText();
-        if (text) {
-            document.getElementById(targetId).value = text;
-            showToast("Pasted from clipboard", "success");
-        }
+        const resp = await fetch(`/api/deck/history/${deckId}`);
+        if (!resp.ok) throw new Error("Failed to load saved deck");
+        const deck = await resp.json();
+        displayDeckInInspector(deck);
     } catch (e) {
-        showToast("Please press Ctrl+V to paste", "info");
+        showToast(`Error: ${e.message}`, 'error');
     }
 }
 
-function handleFileSelect(evt) {
-    const file = evt.target.files[0];
-    if (file) {
-        document.getElementById('csv-filename-label').textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            document.getElementById('raw-text-input').value = e.target.result;
-            showToast(`Loaded ${file.name}`, 'success');
-        };
-        reader.readAsText(file);
+// Display Deck in Inspector
+function displayDeckInInspector(deck) {
+    activeDeck = deck;
+    switchMainView('inspector');
+
+    const stats = deck.stats || {};
+    const cards = deck.cards_data || deck.cards || [];
+    const analysis = deck.analysis || {};
+
+    // Populate Header
+    document.getElementById('inspectorDeckName').innerText = deck.deck_name || "Commander Deck";
+    document.getElementById('inspectorCmdrName').innerText = deck.commander_name || (deck.commander ? deck.commander.join(', ') : "Commander");
+    document.getElementById('inspectorCardCount').innerText = deck.total_cards || cards.length;
+    document.getElementById('tabCardCount').innerText = deck.total_cards || cards.length;
+    document.getElementById('inspectorTotalValue').innerText = `$${(deck.total_value || stats.total_value || 0).toFixed(2)}`;
+    document.getElementById('inspectorAvgCmc').innerText = (deck.avg_cmc || stats.avg_cmc || 0).toFixed(2);
+    document.getElementById('curveAvgCmc').innerText = `Avg CMC: ${(deck.avg_cmc || stats.avg_cmc || 0).toFixed(2)}`;
+    
+    // Commander Art & Background
+    const art = deck.commander_art || (cards[0] && cards[0].image_uri) || 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg';
+    document.getElementById('inspectorCmdrArt').src = art;
+    document.getElementById('commanderBannerBg').style.backgroundImage = `url('${art}')`;
+
+    // Color Pips
+    const pipsContainer = document.getElementById('cmdrColorPips');
+    const colors = { 'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E' };
+    pipsContainer.innerHTML = (deck.color_identity || stats.color_identity || []).map(c => 
+        `<span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color:${colors[c] || '#888'}"></span>`
+    ).join('');
+
+    // Power Bracket & Archetype
+    if (deck.has_ai_analysis && analysis) {
+        document.getElementById('inspectorPowerVal').innerText = `${(deck.power_level || analysis.estimated_power_level || 7.5).toFixed(1)} / 10`;
+        document.getElementById('inspectorPowerBracket').innerText = deck.power_bracket || analysis.power_bracket || "Optimized (7-8)";
+        document.getElementById('inspectorArchetype').innerText = deck.archetype || analysis.archetype || "Synergy";
+        document.getElementById('aiTabBadge').innerText = "Analyzed";
+        document.getElementById('aiTabBadge').className = "text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30";
+        document.getElementById('aiUnanalyzedBanner').classList.add('hidden');
+        document.getElementById('aiAnalyzedContent').classList.remove('hidden');
+        renderAiAnalysis(analysis);
+    } else {
+        document.getElementById('inspectorPowerVal').innerText = `-- / 10`;
+        document.getElementById('inspectorPowerBracket').innerText = "Stats Ready";
+        document.getElementById('inspectorArchetype').innerText = "Commander";
+        document.getElementById('aiTabBadge').innerText = "Ready";
+        document.getElementById('aiTabBadge').className = "text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30";
+        document.getElementById('aiUnanalyzedBanner').classList.remove('hidden');
+        document.getElementById('aiAnalyzedContent').classList.add('hidden');
     }
+
+    // Render Mana Curve & Type Breakdowns
+    renderManaCurve(stats.cmc_curve || {});
+    renderTypeBreakdown(stats.type_counts || {}, deck.total_cards || cards.length);
+
+    // Render Full Card Table
+    renderCardRegistryTable(cards);
+    switchInspectorTab('stats');
 }
 
-function getActiveSourcePayload() {
-    if (activeInputTab === 'tab-manabox') {
-        const url = document.getElementById('manabox-url-input').value.trim();
-        return { source: url, source_type: 'manabox_url' };
-    } else if (activeInputTab === 'tab-othersites') {
-        const url = document.getElementById('other-url-input').value.trim();
-        return { source: url, source_type: 'auto' };
-    } else if (activeInputTab === 'tab-text') {
-        const text = document.getElementById('raw-text-input').value.trim();
-        return { source: text, source_type: 'text' };
-    } else if (activeInputTab === 'tab-csv') {
-        const text = document.getElementById('raw-text-input').value.trim();
-        return { source: text, source_type: 'csv' };
-    }
-    return { source: '', source_type: 'auto' };
+// Render Mana Curve Bar Chart
+function renderManaCurve(curve) {
+    const container = document.getElementById('manaCurveContainer');
+    const maxVal = Math.max(1, ...Object.values(curve));
+    const keys = ["0", "1", "2", "3", "4", "5", "6", "7+"];
+
+    container.innerHTML = keys.map(k => {
+        const count = curve[k] || 0;
+        const heightPct = Math.max(8, Math.round((count / maxVal) * 100));
+        return `
+            <div class="flex-1 flex flex-col items-center h-full justify-end group">
+                <span class="text-[10px] font-mono text-cyan-400 font-bold mb-1 opacity-0 group-hover:opacity-100 transition">${count}</span>
+                <div class="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 hover:from-cyan-500 hover:to-cyan-300 rounded-t transition-all duration-300 shadow-lg shadow-cyan-500/10"
+                     style="height: ${heightPct}%;"></div>
+            </div>
+        `;
+    }).join('');
 }
 
-// -------------------------------------------------------------
-// Execution Pipelines: Parse & Gemini Analysis
-// -------------------------------------------------------------
+// Render Card Type Breakdown List
+function renderTypeBreakdown(types, totalCards) {
+    const container = document.getElementById('typeBreakdownList');
+    const total = totalCards || 100;
 
-async function executeParseOnly() {
-    const payload = getActiveSourcePayload();
-    if (!payload.source) {
-        showToast("Please provide a ManaBox link, URL, or deck list.", "error");
+    container.innerHTML = Object.entries(types).map(([typeName, count]) => {
+        const pct = Math.round((count / total) * 100);
+        return `
+            <div>
+                <div class="flex justify-between text-xs font-mono mb-1">
+                    <span class="text-slate-300">${typeName}</span>
+                    <span class="text-cyan-400 font-bold">${count} <span class="text-slate-500 font-normal">(${pct}%)</span></span>
+                </div>
+                <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-cyan-500 rounded-full" style="width: ${pct}%;"></div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Render Full Card Registry Table
+function renderCardRegistryTable(cards) {
+    const tbody = document.getElementById('cardRegistryTableBody');
+    if (!cards || cards.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-500 font-mono">No card telemetry available.</td></tr>`;
         return;
     }
 
-    const btn = document.getElementById('btn-parse-only');
-    btn.disabled = true;
-    btn.textContent = "Parsing...";
+    tbody.innerHTML = cards.map(c => {
+        const price = c.price_usd ? `$${parseFloat(c.price_usd).toFixed(2)}` : '--';
+        const img = c.image_uri || c.small_image_uri || '';
+        return `
+            <tr class="hover:bg-[#1B2230]/50 transition group card-row" data-name="${escapeHtml((c.name || '').toLowerCase())}" data-type="${escapeHtml((c.type_line || '').toLowerCase())}">
+                <td class="py-2.5 px-4 font-bold text-cyan-400">${c.quantity || 1}x</td>
+                <td class="py-2.5 px-4 font-semibold text-white">
+                    <span class="cursor-pointer hover:text-cyan-300 hover:underline inline-flex items-center gap-1.5"
+                          onmouseenter="showCardHover(event, '${img}')" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                        ${escapeHtml(c.name)}
+                        ${c.section === 'commander' ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">Commander</span>' : ''}
+                    </span>
+                </td>
+                <td class="py-2.5 px-4 text-slate-400 text-[11px] truncate max-w-[200px]">${escapeHtml(c.type_line || 'Card')}</td>
+                <td class="py-2.5 px-4 text-slate-300 font-sans text-xs">${escapeHtml(c.mana_cost || '')}</td>
+                <td class="py-2.5 px-4 text-center text-amber-400 font-bold">${c.cmc !== undefined ? c.cmc : 0}</td>
+                <td class="py-2.5 px-4 text-right font-bold text-emerald-400">${price}</td>
+                <td class="py-2.5 px-4 text-center">
+                    <button onclick="addCardToWatchlist('${escapeHtml(c.name)}', '${c.set_code || ''}')" title="Track in Watchlist"
+                            class="px-2 py-1 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition">
+                        + Watch
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
 
-    try {
-        const resp = await fetch('/api/deck/parse', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || "Failed to parse deck list.");
+// Filter Card Registry Table
+function filterCardRegistryTable() {
+    const query = (document.getElementById('cardTableSearchInput').value || '').toLowerCase();
+    const rows = document.querySelectorAll('.card-row');
+    rows.forEach(row => {
+        const name = row.getAttribute('data-name') || '';
+        const type = row.getAttribute('data-type') || '';
+        const matchesQuery = name.includes(query) || type.includes(query);
+        const matchesType = currentCardTypeFilter === 'all' || type.includes(currentCardTypeFilter);
+        row.style.display = (matchesQuery && matchesType) ? '' : 'none';
+    });
+}
+
+function setCardTypeFilter(type) {
+    currentCardTypeFilter = type;
+    document.querySelectorAll('.card-type-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-filter') === type) {
+            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950";
+        } else {
+            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white";
         }
-
-        currentParsedDeck = data;
-        renderParsedDeckOverview(data);
-        showToast(`Parsed ${data.total_cards} cards with Scryfall metadata!`, "success");
-    } catch (err) {
-        showToast(err.message, "error");
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "Parse Cards";
-    }
+    });
+    filterCardRegistryTable();
 }
 
-async function executeGeminiAnalysis() {
-    const payload = getActiveSourcePayload();
-    if (!payload.source && !currentParsedDeck) {
-        showToast("Please provide a ManaBox link, URL, or deck list.", "error");
-        return;
-    }
+// Render AI Strategic Analysis
+function renderAiAnalysis(analysis) {
+    if (!analysis) return;
+    document.getElementById('aiSummaryText').innerText = analysis.overall_summary || "Strategic analysis complete.";
+    document.getElementById('aiManaBaseText').innerText = analysis.mana_base_analysis || "Balanced land and ramp acceleration profile.";
 
-    const model = document.getElementById('gemini-model-select').value;
-    const customNotes = document.getElementById('custom-notes-input').value.trim();
+    // Win conditions
+    const winConsContainer = document.getElementById('aiWinConsList');
+    winConsContainer.innerHTML = (analysis.win_conditions || []).map(wc => `
+        <div class="bg-[#1B2230]/70 p-3 rounded-lg border border-slate-800 space-y-1.5">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-white uppercase">${escapeHtml(wc.title || 'Win Condition')}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">${escapeHtml(wc.type || 'Combat')}</span>
+            </div>
+            <p class="text-xs text-slate-300 font-sans">${escapeHtml(wc.description || '')}</p>
+            ${wc.key_cards ? `<div class="text-[11px] text-cyan-400 font-mono pt-1">Key Cards: ${(wc.key_cards || []).join(', ')}</div>` : ''}
+        </div>
+    `).join('');
 
-    const btn = document.getElementById('btn-analyze-deck');
-    const spinner = document.getElementById('analyze-spinner');
-    const btnText = document.getElementById('analyze-btn-text');
-    const scanningHud = document.getElementById('scanning-hud');
-    const resultsContainer = document.getElementById('analysis-results');
+    // Upgrades
+    const upgradesContainer = document.getElementById('aiUpgradesGrid');
+    upgradesContainer.innerHTML = (analysis.upgrades || []).map(u => `
+        <div class="bg-[#1B2230]/80 p-3.5 rounded-xl border border-slate-700/80 flex flex-col justify-between space-y-3">
+            <div class="flex items-start justify-between gap-2">
+                <div>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 uppercase font-bold">${escapeHtml(u.category || 'Upgrade')}</span>
+                    <span class="text-[10px] text-slate-400 ml-1">Impact: <strong class="text-emerald-400">${escapeHtml(u.estimated_impact || 'High')}</strong></span>
+                </div>
+            </div>
 
-    btn.disabled = true;
-    spinner.classList.remove('hidden');
-    btnText.textContent = "Analyzing with Gemini...";
-    scanningHud.classList.remove('hidden');
-    resultsContainer.classList.add('hidden');
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="bg-emerald-950/30 border border-emerald-500/30 p-2 rounded">
+                    <span class="text-[10px] text-emerald-400 uppercase font-bold block">&darr; IN</span>
+                    <span class="font-bold text-white">${escapeHtml(u.card_in || '')}</span>
+                </div>
+                <div class="bg-rose-950/30 border border-rose-500/30 p-2 rounded">
+                    <span class="text-[10px] text-rose-400 uppercase font-bold block">&uarr; OUT</span>
+                    <span class="text-slate-300">${escapeHtml(u.card_out || '')}</span>
+                </div>
+            </div>
 
-    try {
-        const bodyData = {
-            ...payload,
-            model: model,
-            custom_instructions: customNotes,
-            save: true,
-            deck_data: currentParsedDeck,
-        };
+            <p class="text-[11px] text-slate-300 font-sans">${escapeHtml(u.rationale || '')}</p>
 
-        const resp = await fetch('/api/deck/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(bodyData),
-        });
+            <button onclick="addCardToWatchlist('${escapeHtml(u.card_in || '')}')" class="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
+                + Track in Watchlist
+            </button>
+        </div>
+    `).join('');
 
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            if (data.error && data.error.includes("API key")) {
-                openGeminiKeyModal();
-            }
-            throw new Error(data.error || "Gemini analysis failed.");
-        }
-
-        currentAnalysis = data.analysis;
-        currentParsedDeck = data.deck;
-
-        renderFullAnalysisDashboard(data);
-        showToast("Commander tactical evaluation complete!", "success");
-        loadHistoryList(); // Refresh saved decks count
-    } catch (err) {
-        showToast(err.message, "error");
-    } finally {
-        btn.disabled = false;
-        spinner.classList.add('hidden');
-        btnText.textContent = "⚡ Analyze Deck with Gemini";
-        scanningHud.classList.add('hidden');
-    }
+    // Ratings
+    renderCardRatings(analysis.card_ratings || []);
 }
 
-// -------------------------------------------------------------
-// UI Rendering Engine
-// -------------------------------------------------------------
+function renderCardRatings(ratings) {
+    const tbody = document.getElementById('aiCardRatingsBody');
+    tbody.innerHTML = ratings.map(r => {
+        const score = parseFloat(r.rating || 7.0);
+        let colorClass = "text-amber-400";
+        if (score >= 9.0) colorClass = "text-cyan-400";
+        else if (score >= 7.0) colorClass = "text-blue-400";
+        else if (score < 5.0) colorClass = "text-rose-400";
 
-function renderParsedDeckOverview(deck) {
-    document.getElementById('analysis-results').classList.remove('hidden');
-    document.getElementById('deck-title-heading').textContent = deck.deck_name || "Commander Deck";
-    document.getElementById('commander-names-text').textContent = (deck.commander || []).join(", ") || "Unknown";
-    document.getElementById('metric-total-cards').textContent = deck.total_cards || deck.cards.length;
-    document.getElementById('metric-avg-cmc').textContent = deck.stats ? deck.stats.avg_cmc : "--";
-    document.getElementById('metric-total-value').textContent = deck.stats ? `$${deck.stats.total_value.toFixed(2)}` : "--";
-
-    if (deck.commander_art) {
-        document.getElementById('commander-avatar-img').src = deck.commander_art;
-    }
-
-    renderColorIdentityPips(deck.stats ? deck.stats.color_identity : []);
-    renderCurveAndComposition(deck.stats);
-}
-
-function renderFullAnalysisDashboard(data) {
-    const analysis = data.analysis;
-    const deck = data.deck;
-
-    document.getElementById('analysis-results').classList.remove('hidden');
-
-    // Header HUD
-    document.getElementById('deck-title-heading').textContent = analysis.deck_name || deck.deck_name || "Commander Deck";
-    document.getElementById('commander-names-text').textContent = (analysis.commander || deck.commander || []).join(", ");
-    
-    const powerLevel = analysis.estimated_power_level || 7.0;
-    document.getElementById('metric-power-level').innerHTML = `${powerLevel.toFixed(1)}<span class="text-xs text-[#64748B]">/10</span>`;
-    document.getElementById('power-bracket-badge').textContent = analysis.power_bracket || "OPTIMIZED";
-
-    // Set Commander Avatar Art
-    let cmdArt = null;
-    if (analysis.card_ratings) {
-        const cmdCard = analysis.card_ratings.find(c => (analysis.commander || []).includes(c.card_name) || c.role === 'Commander');
-        if (cmdCard && cmdCard.image_uri) cmdArt = cmdCard.image_uri;
-    }
-    if (!cmdArt && deck && deck.cards) {
-        const cmdCard = deck.cards.find(c => c.section === 'commander' && c.image_uri);
-        if (cmdCard) cmdArt = cmdCard.image_uri;
-    }
-    if (cmdArt) {
-        document.getElementById('commander-avatar-img').src = cmdArt;
-    }
-
-    // Tab 1: Strategy & Overview
-    document.getElementById('deck-overall-summary').textContent = analysis.overall_summary || "Strategic summary complete.";
-    document.getElementById('deck-mana-analysis').textContent = analysis.mana_base_analysis || "Standard mana base configuration.";
-    
-    const archContainer = document.getElementById('deck-archetype-details');
-    archContainer.innerHTML = `
-        <div class="flex justify-between py-1 border-b border-[#263245]">
-            <span class="text-[#64748B]">Archetype:</span>
-            <span class="text-white font-bold">${analysis.archetype || "Midrange / Synergy"}</span>
-        </div>
-        <div class="flex justify-between py-1 border-b border-[#263245]">
-            <span class="text-[#64748B]">Power Tier:</span>
-            <span class="text-[#00CED1] font-bold">${analysis.power_bracket || "Optimized"}</span>
-        </div>
-    `;
-
-    // Key Synergies
-    const synContainer = document.getElementById('key-synergies-grid');
-    synContainer.innerHTML = (analysis.key_synergies || []).map(s => `
-        <div class="bg-[#10141D] border border-[#263245] p-3 space-y-1">
-            <div class="text-xs font-mono font-bold text-[#C084FC]">${escapeHtml(s.name)}</div>
-            <div class="text-[11px] font-mono text-white flex flex-wrap gap-1">
-                ${(s.cards || []).map(c => `<span class="bg-[#1B2230] border border-[#263245] px-1 py-0.2 text-[10px] text-[#00CED1]">${escapeHtml(c)}</span>`).join('')}
-            </div>
-            <p class="text-[11px] text-[#94A3B8] font-sans pt-1">${escapeHtml(s.description)}</p>
-        </div>
-    `).join('') || '<div class="text-xs text-[#64748B] font-mono">No specific synergy engines extracted.</div>';
-
-    // Tab 2: Win Conditions & Combos
-    const winContainer = document.getElementById('win-conditions-container');
-    winContainer.innerHTML = (analysis.win_conditions || []).map(w => `
-        <div class="bg-[#10141D] border border-[#263245] p-4 space-y-2">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-                <div class="flex items-center space-x-2">
-                    <span class="text-sm font-heading font-black text-white uppercase">${escapeHtml(w.title)}</span>
-                    <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[10px] font-mono font-bold px-1.5 py-0.2 uppercase">${escapeHtml(w.type || 'Primary Win-Con')}</span>
-                </div>
-                ${w.difficulty_or_speed ? `<span class="text-[10px] font-mono text-[#F59E0B] border border-[#F59E0B]/40 px-1.5 py-0.2 uppercase">${escapeHtml(w.difficulty_or_speed)}</span>` : ''}
-            </div>
-            <p class="text-xs text-[#F1F5F9] font-sans leading-relaxed">${escapeHtml(w.description)}</p>
-            ${w.key_cards && w.key_cards.length ? `
-                <div class="flex items-center space-x-2 pt-1">
-                    <span class="text-[10px] font-mono text-[#64748B] uppercase">Key Cards:</span>
-                    <div class="flex flex-wrap gap-1">
-                        ${w.key_cards.map(k => `<span class="bg-[#1B2230] border border-[#00CED1]/40 text-[#00CED1] text-[10px] font-mono px-1.5 py-0.2 font-bold">${escapeHtml(k)}</span>`).join('')}
-                    </div>
-                </div>
-            ` : ''}
-        </div>
-    `).join('') || '<div class="text-xs text-[#64748B] font-mono">No specific combo lines detected.</div>';
-
-    // Tab 3: Card Ratings (1-10) Registry
-    allCardRatings = analysis.card_ratings || [];
-    document.getElementById('ratings-count-pill').textContent = allCardRatings.length;
-    filterCardRatings();
-
-    // Tab 4: Upgrades & Swaps
-    const upgContainer = document.getElementById('upgrades-container');
-    const upgrades = analysis.upgrades || [];
-    document.getElementById('upgrades-count-pill').textContent = upgrades.length;
-
-    upgContainer.innerHTML = upgrades.map(u => `
-        <div class="bg-[#10141D] border border-[#263245] p-4 space-y-3">
-            <div class="flex items-center justify-between flex-wrap gap-2 border-b border-[#263245] pb-2">
-                <div class="flex items-center space-x-2">
-                    <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[10px] font-mono font-bold px-1.5 py-0.2 uppercase">${escapeHtml(u.category || 'Upgrade')}</span>
-                    <span class="text-xs font-mono text-[#64748B]">Impact: <strong class="text-white">${escapeHtml(u.estimated_impact || 'High')}</strong></span>
-                </div>
-                <button onclick="addCardToWatchlist('${escapeHtml(u.card_in)}', '${escapeHtml(u.card_in_price || '')}')" class="btn-crimson px-2.5 py-1 text-[11px] font-mono uppercase font-bold flex items-center space-x-1" title="Add to Chimaera Price Surveillance">
-                    <span>+ Track '${escapeHtml(u.card_in)}' in Watchlist</span>
-                </button>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Recommended IN -->
-                <div class="bg-[#1B2230] border border-[#2DD4BF]/40 p-3 space-y-1.5 flex items-start space-x-3">
-                    ${u.card_in_image ? `<img src="${u.card_in_image}" alt="${escapeHtml(u.card_in)}" class="w-12 h-16 object-cover border border-[#2DD4BF] flex-shrink-0">` : ''}
-                    <div class="min-w-0">
-                        <div class="flex items-center space-x-1.5">
-                            <span class="text-[10px] font-mono text-[#2DD4BF] font-bold uppercase">[ADD IN]</span>
-                            <span class="text-sm font-bold text-white truncate">${escapeHtml(u.card_in)}</span>
-                        </div>
-                        ${u.card_in_price ? `<div class="text-xs font-mono text-[#2DD4BF] font-bold">~$${u.card_in_price} (TCGplayer)</div>` : ''}
-                    </div>
-                </div>
-
-                <!-- Recommended OUT (Cut) -->
-                <div class="bg-[#1B2230] border border-[#DC143C]/40 p-3 space-y-1.5 flex items-start space-x-3">
-                    ${u.card_out_image ? `<img src="${u.card_out_image}" alt="${escapeHtml(u.card_out)}" class="w-12 h-16 object-cover border border-[#DC143C] opacity-75 flex-shrink-0">` : ''}
-                    <div class="min-w-0">
-                        <div class="flex items-center space-x-1.5">
-                            <span class="text-[10px] font-mono text-[#FF3358] font-bold uppercase">[CUT OUT]</span>
-                            <span class="text-sm font-bold text-[#94A3B8] line-through truncate">${escapeHtml(u.card_out)}</span>
-                        </div>
-                        ${u.card_out_price ? `<div class="text-xs font-mono text-[#64748B]">~$${u.card_out_price}</div>` : ''}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Rationale -->
-            <p class="text-xs text-[#F1F5F9] font-sans leading-relaxed pt-1">
-                <strong class="font-mono text-[#00CED1] uppercase text-[11px]">Rationale:</strong> ${escapeHtml(u.rationale)}
-            </p>
-        </div>
-    `).join('') || '<div class="text-xs text-[#64748B] font-mono">No card upgrades suggested.</div>';
-
-    // Cuts Summary
-    const cutsContainer = document.getElementById('cuts-container');
-    cutsContainer.innerHTML = (analysis.cut_recommendations || []).map(c => `
-        <div class="bg-[#10141D] border border-[#263245] p-3 space-y-1">
-            <div class="text-xs font-mono font-bold text-[#FF3358] flex items-center space-x-1.5">
-                <span>&bull;</span>
-                <span>${escapeHtml(c.card_name)}</span>
-            </div>
-            <p class="text-[11px] text-[#94A3B8] font-sans">${escapeHtml(c.reason)}</p>
-        </div>
-    `).join('') || '<div class="text-xs text-[#64748B] font-mono">No specific cut recommendations.</div>';
-
-    // Tab 5: Curve & Composition
-    if (data.deck && data.deck.stats) {
-        renderCurveAndComposition(data.deck.stats);
-    }
+        return `
+            <tr class="hover:bg-[#1B2230]/50 transition rating-row" data-rating="${score}">
+                <td class="py-2.5 px-3 font-black ${colorClass} text-sm">${score.toFixed(1)}</td>
+                <td class="py-2.5 px-3 font-semibold text-white">${escapeHtml(r.card_name || '')}</td>
+                <td class="py-2.5 px-3 text-slate-400 text-xs">${escapeHtml(r.role || 'Utility')}</td>
+                <td class="py-2.5 px-3 text-slate-300 font-sans text-xs">${escapeHtml(r.purpose || '')}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function filterCardRatings() {
-    const query = (document.getElementById('card-filter-search').value || '').toLowerCase().trim();
-    const roleFilter = document.getElementById('card-filter-role').value;
-    const sortBy = document.getElementById('card-sort-by').value;
-
-    let filtered = allCardRatings.filter(c => {
-        const matchesQuery = !query || c.card_name.toLowerCase().includes(query) || (c.purpose && c.purpose.toLowerCase().includes(query));
-        const matchesRole = roleFilter === 'ALL' || (c.role && c.role.toLowerCase().includes(roleFilter.toLowerCase()));
-        return matchesQuery && matchesRole;
+    const val = document.getElementById('ratingFilterSelect').value;
+    const rows = document.querySelectorAll('.rating-row');
+    rows.forEach(r => {
+        const score = parseFloat(r.getAttribute('data-rating') || 0);
+        if (val === 'all') r.style.display = '';
+        else if (val === '9') r.style.display = score >= 9.0 ? '' : 'none';
+        else if (val === '7') r.style.display = (score >= 7.0 && score < 9.0) ? '' : 'none';
+        else if (val === '5') r.style.display = (score >= 5.0 && score < 7.0) ? '' : 'none';
+        else if (val === 'cuts') r.style.display = score < 5.0 ? '' : 'none';
     });
+}
 
-    // Sorting
-    filtered.sort((a, b) => {
-        if (sortBy === 'rating_desc') return (b.rating || 0) - (a.rating || 0);
-        if (sortBy === 'rating_asc') return (a.rating || 0) - (b.rating || 0);
-        if (sortBy === 'name_asc') return a.card_name.localeCompare(b.card_name);
-        if (sortBy === 'cmc_asc') return (a.cmc || 0) - (b.cmc || 0);
-        if (sortBy === 'price_desc') return parseFloat(b.price_usd || 0) - parseFloat(a.price_usd || 0);
-        return 0;
-    });
+// Ingestion Handlers
+async function executeParseAndSave(runAi = false) {
+    let source = '';
+    let sourceType = 'auto';
 
-    const container = document.getElementById('card-ratings-container');
-    if (!filtered.length) {
-        container.innerHTML = '<div class="bg-[#1B2230] border border-[#263245] p-6 text-center text-xs font-mono text-[#64748B]">No cards match the active filters.</div>';
+    if (currentIngestTab === 'url') {
+        source = document.getElementById('deckUrlInput').value.trim();
+        sourceType = 'auto';
+    } else if (currentIngestTab === 'text') {
+        source = document.getElementById('deckTextInput').value.trim();
+        sourceType = 'text';
+    } else if (currentIngestTab === 'csv') {
+        source = window.uploadedCsvContent || '';
+        sourceType = 'csv';
+    }
+
+    if (!source) {
+        showToast("Please provide a ManaBox deck link or card list.", "error");
         return;
     }
 
-    container.innerHTML = filtered.map(c => {
-        const rating = c.rating || 7.0;
-        let ratingColorClass = 'bg-[#00CED1]/20 text-[#00CED1] border-[#00CED1]';
-        let ratingLabel = 'CORE';
-        if (rating >= 9.0) {
-            ratingColorClass = 'bg-[#00CED1]/20 text-[#00CED1] border-[#00CED1]';
-            ratingLabel = 'CORE PILLAR';
-        } else if (rating >= 7.0) {
-            ratingColorClass = 'bg-[#3B82F6]/20 text-[#60A5FA] border-[#3B82F6]';
-            ratingLabel = 'STRONG';
-        } else if (rating >= 5.0) {
-            ratingColorClass = 'bg-[#F59E0B]/20 text-[#FBBF24] border-[#F59E0B]';
-            ratingLabel = 'SOLID';
-        } else {
-            ratingColorClass = 'bg-[#DC143C]/20 text-[#FF3358] border-[#DC143C]';
-            ratingLabel = 'CUT CANDIDATE';
-        }
+    const btn = runAi ? document.getElementById('parseAnalyzeBtn') : document.getElementById('parseOnlyBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Processing...</span>`;
 
-        return `
-        <div class="bg-[#10141D] border border-[#263245] hover:border-[#3D4F6B] p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition">
-            <!-- Card Thumbnail & Identity -->
-            <div class="flex items-start space-x-3 min-w-0 flex-1">
-                <!-- Thumbnail with Hover Zoom -->
-                <div class="w-10 h-14 bg-[#1B2230] border border-[#263245] flex-shrink-0 overflow-hidden cursor-pointer"
-                     onmouseenter="showCardPreview(event, '${c.image_uri || c.small_image_uri || ''}')"
-                     onmouseleave="hideCardPreview()">
-                    ${c.image_uri || c.small_image_uri ? `<img src="${c.small_image_uri || c.image_uri}" alt="${escapeHtml(c.card_name)}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-[9px] font-mono text-[#64748B]">MTG</div>`}
-                </div>
-
-                <div class="space-y-1 min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <span class="text-sm font-bold text-white truncate">${escapeHtml(c.card_name)}</span>
-                        ${c.mana_cost ? `<span class="text-xs font-mono text-[#00CED1] font-bold">${escapeHtml(c.mana_cost)}</span>` : ''}
-                        ${c.role ? `<span class="bg-[#1B2230] text-[#94A3B8] border border-[#263245] text-[10px] font-mono px-1.5 py-0.2 uppercase font-bold">${escapeHtml(c.role)}</span>` : ''}
-                        ${c.price_usd ? `<span class="text-[11px] font-mono text-[#2DD4BF] font-bold">~$${c.price_usd}</span>` : ''}
-                    </div>
-                    <p class="text-xs text-[#94A3B8] font-sans leading-relaxed">${escapeHtml(c.purpose || 'Role in commander strategy.')}</p>
-                </div>
-            </div>
-
-            <!-- Rating & Action Button -->
-            <div class="flex items-center space-x-3 flex-shrink-0 self-end md:self-center">
-                <!-- Rating Score Pill -->
-                <div class="border ${ratingColorClass} px-3 py-1.5 text-center min-w-[75px]">
-                    <div class="text-sm font-heading font-black">${rating.toFixed(1)}<span class="text-[10px] opacity-75">/10</span></div>
-                    <div class="text-[8px] font-mono uppercase font-bold tracking-wider">${ratingLabel}</div>
-                </div>
-
-                <!-- Add to Watchlist -->
-                <button onclick="addCardToWatchlist('${escapeHtml(c.card_name)}', '${escapeHtml(c.price_usd || '')}')" class="btn-bridge p-2 text-xs" title="Track in Chimaera Watchlist">
-                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                    </svg>
-                </button>
-            </div>
-        </div>
-        `;
-    }).join('');
-}
-
-function renderColorIdentityPips(colors) {
-    const container = document.getElementById('color-identity-pips');
-    const colorMap = {
-        'W': { bg: 'bg-[#F9FAFB]', text: 'text-black', border: 'border-yellow-200' },
-        'U': { bg: 'bg-[#3B82F6]', text: 'text-white', border: 'border-blue-400' },
-        'B': { bg: 'bg-[#1F2937]', text: 'text-purple-300', border: 'border-gray-600' },
-        'R': { bg: 'bg-[#EF4444]', text: 'text-white', border: 'border-red-400' },
-        'G': { bg: 'bg-[#10B981]', text: 'text-white', border: 'border-green-400' },
-    };
-    container.innerHTML = (colors || []).map(c => {
-        const item = colorMap[c] || { bg: 'bg-[#64748B]', text: 'text-white', border: 'border-gray-500' };
-        return `<span class="w-4 h-4 rounded-full ${item.bg} ${item.text} ${item.border} border text-[9px] font-bold flex items-center justify-center font-mono">${c}</span>`;
-    }).join('');
-}
-
-function renderCurveAndComposition(stats) {
-    if (!stats) return;
-
-    // CMC Curve
-    const cmcContainer = document.getElementById('cmc-bars-container');
-    const curve = stats.cmc_curve || {};
-    const maxVal = Math.max(...Object.values(curve), 1);
-
-    cmcContainer.innerHTML = Object.entries(curve).map(([cmc, count]) => {
-        const pct = ((count / maxVal) * 100).toFixed(0);
-        return `
-            <div class="flex items-center space-x-2 text-xs font-mono">
-                <span class="w-6 text-right text-[#64748B] font-bold">${cmc}</span>
-                <div class="flex-1 bg-[#10141D] border border-[#263245] h-5 relative overflow-hidden">
-                    <div class="bg-[#00CED1] h-full transition-all duration-500" style="width: ${pct}%"></div>
-                    <span class="absolute right-2 top-0.5 text-[10px] text-white font-bold">${count}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    // Type Counts
-    const typeContainer = document.getElementById('type-counts-container');
-    const types = stats.type_counts || {};
-    typeContainer.innerHTML = Object.entries(types).map(([type, count]) => `
-        <div class="flex items-center justify-between p-2 bg-[#10141D] border border-[#263245] text-xs font-mono">
-            <span class="text-[#94A3B8]">${escapeHtml(type)}</span>
-            <span class="text-white font-bold">${count}</span>
-        </div>
-    `).join('');
-}
-
-// -------------------------------------------------------------
-// Watchlist Integration & Hover Zoom
-// -------------------------------------------------------------
-
-async function addCardToWatchlist(cardName, priceUsd) {
     try {
-        const targetPrice = priceUsd ? parseFloat(priceUsd) * 0.9 : 5.00;
+        if (runAi) {
+            const resp = await fetch('/api/deck/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source, source_type: sourceType, save: true })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || "Analysis failed");
+            showToast("Deck analyzed and saved to Vault!", "success");
+            await refreshVaultList();
+            displayDeckInInspector(data.deck ? { ...data.deck, analysis: data.analysis, has_ai_analysis: true } : data);
+        } else {
+            const resp = await fetch('/api/deck/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source, source_type: sourceType })
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || "Failed to save deck");
+            showToast("Deck saved to Vault with Scryfall stats!", "success");
+            await refreshVaultList();
+            displayDeckInInspector(data.deck);
+        }
+    } catch (e) {
+        showToast(`Error: ${e.message}`, "error");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+}
+
+function handleDeckSubmit(e) {
+    e.preventDefault();
+    executeParseAndSave(true);
+}
+
+// Bulk Import Handlers
+function openBulkImportModal() {
+    document.getElementById('bulkImportModal').classList.remove('hidden');
+}
+function closeBulkImportModal() {
+    document.getElementById('bulkImportModal').classList.add('hidden');
+}
+
+async function executeBulkImport() {
+    const text = document.getElementById('bulkUrlsInput').value.trim();
+    if (!text) {
+        showToast("Please enter at least one ManaBox link.", "error");
+        return;
+    }
+
+    const btn = document.getElementById('executeBulkImportBtn');
+    const progress = document.getElementById('bulkImportProgress');
+    btn.disabled = true;
+    progress.classList.remove('hidden');
+
+    try {
+        const resp = await fetch('/api/deck/bulk-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || "Bulk import failed");
+
+        showToast(`Successfully imported ${data.imported_count} decks!`, 'success');
+        closeBulkImportModal();
+        await refreshVaultList();
+        switchMainView('vault');
+    } catch (e) {
+        showToast(`Error: ${e.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        progress.classList.add('hidden');
+    }
+}
+
+// Sync Deck from Source
+async function syncSavedDeck(deckId) {
+    try {
+        const resp = await fetch(`/api/deck/${deckId}/sync`, { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || "Sync failed");
+        showToast("Deck refreshed with latest cards from ManaBox!", "success");
+        await refreshVaultList();
+    } catch (e) {
+        showToast(`Sync error: ${e.message}`, "error");
+    }
+}
+
+async function syncActiveDeckFromSource() {
+    if (!activeDeck || !activeDeck.id) return;
+    await syncSavedDeck(activeDeck.id);
+    loadSavedDeckIntoInspector(activeDeck.id);
+}
+
+// Run AI on pre-saved deck
+async function runAiAnalysisOnSavedDeck() {
+    if (!activeDeck || !activeDeck.id) return;
+    const model = document.getElementById('savedDeckAiModel').value;
+    const btn = document.getElementById('runSavedAiBtn');
+    btn.disabled = true;
+    btn.innerText = "Analyzing with Gemini...";
+
+    try {
+        const resp = await fetch(`/api/deck/${activeDeck.id}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || "Analysis failed");
+        showToast("Gemini analysis complete!", "success");
+        displayDeckInInspector(data.deck);
+        await refreshVaultList();
+    } catch (e) {
+        showToast(`AI error: ${e.message}`, "error");
+    } finally {
+        btn.disabled = false;
+        btn.innerText = "⚡ Analyze Now";
+    }
+}
+
+// Delete Deck
+async function deleteSavedDeck(deckId, deckName) {
+    if (!confirm(`Are you sure you want to delete '${deckName}' from your Vault?`)) return;
+    try {
+        const resp = await fetch(`/api/deck/history/${deckId}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error("Delete failed");
+        showToast(`Deck '${deckName}' removed from Vault.`, "success");
+        await refreshVaultList();
+        if (activeDeck && activeDeck.id === deckId) {
+            switchMainView('vault');
+        }
+    } catch (e) {
+        showToast(`Error: ${e.message}`, "error");
+    }
+}
+
+// Refresh Vault List
+async function refreshVaultList() {
+    try {
+        const resp = await fetch('/api/deck/history');
+        if (resp.ok) {
+            currentVaultDecks = await resp.json();
+            renderVaultGrid(currentVaultDecks);
+        }
+    } catch (e) {
+        console.error("Failed to refresh vault list", e);
+    }
+}
+
+// Vault Filter & Sort
+function filterVaultDecks() {
+    const query = (document.getElementById('vaultSearchInput').value || '').toLowerCase();
+    const filtered = currentVaultDecks.filter(d => 
+        (d.deck_name || '').toLowerCase().includes(query) || 
+        (d.commander_name || '').toLowerCase().includes(query)
+    );
+    renderVaultGrid(filtered);
+}
+
+function sortVaultDecks() {
+    const sort = document.getElementById('vaultSortSelect').value;
+    const sorted = [...currentVaultDecks];
+    if (sort === 'name') sorted.sort((a, b) => (a.deck_name || '').localeCompare(b.deck_name || ''));
+    else if (sort === 'price_desc') sorted.sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
+    else if (sort === 'cmc_asc') sorted.sort((a, b) => (a.avg_cmc || 0) - (b.avg_cmc || 0));
+    else if (sort === 'power_desc') sorted.sort((a, b) => (b.power_level || 0) - (a.power_level || 0));
+    renderVaultGrid(sorted);
+}
+
+// Add Card to Watchlist Helper
+async function addCardToWatchlist(cardName, setCode = '') {
+    try {
         const resp = await fetch('/api/watchlist/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: cardName,
-                target_price: parseFloat(targetPrice.toFixed(2)),
-                tag: 'Commander Upgrade',
-            }),
+            body: JSON.stringify({ name: cardName, set_code: setCode, target_price: 1.0, tag: activeDeck ? activeDeck.deck_name : 'Commander' })
         });
         const data = await resp.json();
         if (resp.ok) {
-            showToast(`Added '${cardName}' to Chimaera Watchlist!`, 'success');
+            showToast(`Added '${cardName}' to your Watchlist!`, 'success');
         } else {
-            showToast(data.error || 'Could not add to watchlist', 'error');
+            showToast(data.error || 'Failed to add card', 'error');
         }
     } catch (e) {
-        showToast(e.message, 'error');
+        showToast(`Watchlist error: ${e.message}`, 'error');
     }
 }
 
-function showCardPreview(e, imgUri) {
-    if (!imgUri) return;
-    const overlay = document.getElementById('card-hover-preview');
-    const img = document.getElementById('card-hover-preview-img');
-    img.src = imgUri;
-    overlay.classList.remove('hidden');
-
-    const x = Math.min(e.clientX + 20, window.innerWidth - 240);
-    const y = Math.min(e.clientY - 40, window.innerHeight - 340);
-    overlay.style.left = `${Math.max(10, x)}px`;
-    overlay.style.top = `${Math.max(10, y)}px`;
+// Hover Zoom Image Tooltip
+function showCardHover(e, imgUrl) {
+    if (!imgUrl) return;
+    const preview = document.getElementById('cardHoverPreview');
+    const img = document.getElementById('cardHoverImg');
+    img.src = imgUrl;
+    preview.classList.remove('hidden');
+    moveCardHover(e);
+}
+function moveCardHover(e) {
+    const preview = document.getElementById('cardHoverPreview');
+    preview.style.left = `${e.clientX + 20}px`;
+    preview.style.top = `${Math.min(window.innerHeight - 340, Math.max(10, e.clientY - 100))}px`;
+}
+function hideCardHover() {
+    document.getElementById('cardHoverPreview').classList.add('hidden');
 }
 
-function hideCardPreview() {
-    document.getElementById('card-hover-preview').classList.add('hidden');
-}
-
-// -------------------------------------------------------------
-// Markdown Report Export
-// -------------------------------------------------------------
-
-function copyAnalysisMarkdown() {
-    if (!currentAnalysis) return;
-    let md = `# ${currentAnalysis.deck_name || "Commander Deck"} // Tactical Analysis\n\n`;
-    md += `**Commander:** ${(currentAnalysis.commander || []).join(', ')}\n`;
-    md += `**Estimated Power Level:** ${currentAnalysis.estimated_power_level || 'N/A'}/10 (${currentAnalysis.power_bracket || 'N/A'})\n\n`;
-    md += `## Overall Strategy\n${currentAnalysis.overall_summary || ''}\n\n`;
-    md += `## Mana Base & Ramp\n${currentAnalysis.mana_base_analysis || ''}\n\n`;
-    md += `## Win Conditions\n`;
-    (currentAnalysis.win_conditions || []).forEach(w => {
-        md += `### ${w.title} (${w.type})\n${w.description}\nKey Cards: ${(w.key_cards || []).join(', ')}\n\n`;
-    });
-    md += `## Card-by-Card Ratings (1-10)\n`;
-    (currentAnalysis.card_ratings || []).forEach(c => {
-        md += `- **${c.card_name}** — ${c.rating}/10 [${c.role}]: ${c.purpose}\n`;
-    });
-    md += `\n## Proposed Upgrades\n`;
-    (currentAnalysis.upgrades || []).forEach(u => {
-        md += `- **+ ${u.card_in}** (Cut: ${u.card_out}) [Impact: ${u.estimated_impact}]: ${u.rationale}\n`;
-    });
-
-    navigator.clipboard.writeText(md).then(() => {
-        showToast("Analysis Markdown copied to clipboard!", "success");
-    });
-}
-
-// -------------------------------------------------------------
-// Gemini API Key Modal Management
-// -------------------------------------------------------------
-
-function openGeminiKeyModal() {
-    document.getElementById('gemini-key-modal').classList.remove('hidden');
-}
-
-function closeGeminiKeyModal() {
-    document.getElementById('gemini-key-modal').classList.add('hidden');
-}
-
-async function saveGeminiKey() {
-    const key = document.getElementById('gemini-api-key-input').value.trim();
-    const model = document.getElementById('modal-model-select').value;
-    const btn = document.getElementById('btn-save-gemini-key');
-    const statusBox = document.getElementById('modal-key-status');
-
-    if (!key) {
-        showToast("Please enter an API key", "error");
-        return;
+// Utility: Sample Decks
+function loadSampleDeck(key) {
+    switchIngestTab('text');
+    if (key === 'urdragon') {
+        document.getElementById('deckTextInput').value = `// Commander\n1 The Ur-Dragon\n\n// Creatures\n1 Utvara Hellkite\n1 Scion of the Ur-Dragon\n1 Miirym, Sentinel Wyrm\n1 Dragonlord Dromoka\n1 Goldspan Dragon\n1 Terror of the Peaks\n1 Old Gnawbone\n1 Klauth, Unrivaled Ancient\n1 Scourge of Valkas\n1 Balefire Dragon\n1 Lathliss, Dragon Queen\n1 Scalelord Reckoner\n1 Dragon Tempest\n\n// Artifacts\n1 Sol Ring\n1 Arcane Signet\n1 Chromatic Lantern\n1 Dragon's Hoard\n1 Orb of Dragonkind\n\n// Lands\n1 Command Tower\n1 Haven of the Spirit Dragon\n1 Crucible of the Spirit Dragon\n4 Forest\n4 Mountain\n3 Plains\n3 Island\n3 Swamp`;
+    } else if (key === 'atraxa') {
+        document.getElementById('deckTextInput').value = `// Commander\n1 Atraxa, Praetors' Voice\n\n// Planeswalkers\n1 Teferi, Master of Time\n1 Vraska, Betrayal's Sting\n1 Narset Transcendent\n1 Tamiyo, Field Researcher\n1 Ugin, the Spirit Dragon\n1 Oko, Thief of Crowns\n\n// Creatures\n1 Deepglow Skate\n1 Evolution Sage\n1 Flux Channeler\n1 Vorinclex, Monstrous Raider\n\n// Artifacts\n1 Sol Ring\n1 Arcane Signet\n1 Astral Cornucopia\n1 Everflowing Chalice\n1 Contagion Engine\n1 Doubling Season\n\n// Lands\n1 Command Tower\n1 Karn's Bastion\n5 Forest\n5 Island\n5 Plains\n5 Swamp`;
+    } else if (key === 'edgar') {
+        document.getElementById('deckTextInput').value = `// Commander\n1 Edgar Markov\n\n// Creatures\n1 Captivating Vampire\n1 Cordial Vampire\n1 Stromkirk Captain\n1 Vampire Nighthawk\n1 Bloodline Keeper\n1 Champion of Dusk\n1 Knight of the Ebon Legion\n1 Welcoming Vampire\n1 Falkenrath Noble\n1 Sanctum Seeker\n\n// Artifacts & Enchantments\n1 Sol Ring\n1 Arcane Signet\n1 Skullclamp\n1 Shared Animosity\n1 Phyrexian Arena\n1 Black Market Connections\n\n// Lands\n1 Command Tower\n1 Vault of the Archangel\n6 Swamp\n5 Plains\n5 Mountain`;
     }
+}
 
+// Clipboard Paste
+async function pasteFromClipboard(elemId) {
+    try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById(elemId).value = text;
+        showToast("Pasted from clipboard!", "info");
+    } catch (e) {
+        showToast("Clipboard access denied.", "error");
+    }
+}
+
+function handleCsvFileSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById('csvFileName').innerText = file.name;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        window.uploadedCsvContent = evt.target.result;
+    };
+    reader.readAsText(file);
+}
+
+// Gemini Key Modal
+function openApiKeyModal() { document.getElementById('geminiApiKeyModal').classList.remove('hidden'); }
+function closeApiKeyModal() { document.getElementById('geminiApiKeyModal').classList.add('hidden'); }
+
+async function saveApiKeyFromModal() {
+    const key = document.getElementById('modalGeminiApiKey').value.trim();
+    const model = document.getElementById('modalGeminiModel').value;
+    const btn = document.getElementById('modalSaveKeyBtn');
     btn.disabled = true;
-    btn.textContent = "Verifying...";
-    statusBox.classList.add('hidden');
+    btn.innerText = "Verifying...";
 
     try {
         const resp = await fetch('/api/deck/gemini-key', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: key, model: model }),
+            body: JSON.stringify({ api_key: key, model })
         });
         const data = await resp.json();
-        if (resp.ok && data.success) {
-            statusBox.className = "text-xs p-2.5 border border-[#2DD4BF] bg-[#2DD4BF]/10 text-[#2DD4BF] block";
-            statusBox.textContent = data.message;
-            showToast("Gemini API key verified and stored!", "success");
-            setTimeout(() => { closeGeminiKeyModal(); location.reload(); }, 1200);
-        } else {
-            statusBox.className = "text-xs p-2.5 border border-[#DC143C] bg-[#DC143C]/10 text-[#FF3358] block";
-            statusBox.textContent = data.error || "Verification failed.";
-        }
+        if (!resp.ok) throw new Error(data.error || "Verification failed");
+        showToast("Gemini API key verified & saved!", "success");
+        document.getElementById('geminiKeyDot').className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+        closeApiKeyModal();
     } catch (e) {
-        statusBox.className = "text-xs p-2.5 border border-[#DC143C] bg-[#DC143C]/10 text-[#FF3358] block";
-        statusBox.textContent = e.message;
+        showToast(`Key Error: ${e.message}`, "error");
     } finally {
         btn.disabled = false;
-        btn.textContent = "Verify & Save Key";
+        btn.innerText = "Verify & Save";
     }
 }
 
-// -------------------------------------------------------------
-// History Drawer & Reload
-// -------------------------------------------------------------
-
-function openHistoryDrawer() {
-    document.getElementById('history-drawer-modal').classList.remove('hidden');
-    loadHistoryList();
-}
-
-function closeHistoryDrawer() {
-    document.getElementById('history-drawer-modal').classList.add('hidden');
-}
-
-async function loadHistoryList() {
-    try {
-        const resp = await fetch('/api/deck/history');
-        const items = await resp.json();
-        const container = document.getElementById('history-list-container');
-        document.getElementById('saved-decks-count').textContent = items.length;
-
-        if (!items || !items.length) {
-            container.innerHTML = '<div class="text-center py-6 text-[#64748B] text-xs">No saved deck analyses found.</div>';
-            return;
-        }
-
-        container.innerHTML = items.map(item => `
-            <div class="bg-[#10141D] border border-[#263245] hover:border-[#00CED1] p-3 flex items-center justify-between gap-3 transition">
-                <div class="min-w-0 space-y-0.5">
-                    <div class="text-sm font-bold text-white truncate">${escapeHtml(item.deck_name)}</div>
-                    <div class="text-[10px] font-mono text-[#94A3B8]">
-                        Cmdr: <span class="text-white">${escapeHtml(item.commander_name || 'N/A')}</span> &bull; 
-                        Power: <span class="text-[#00CED1] font-bold">${item.power_level ? item.power_level.toFixed(1) : 'N/A'}</span> &bull; 
-                        ${item.created_at ? new Date(item.created_at).toLocaleDateString() : ''}
-                    </div>
-                </div>
-                <div class="flex items-center space-x-2 flex-shrink-0">
-                    <button onclick="loadSavedDeckAnalysis(${item.id})" class="btn-crimson px-3 py-1 text-xs uppercase font-bold">Load</button>
-                    <button onclick="deleteSavedDeckAnalysis(${item.id})" class="text-[#94A3B8] hover:text-[#FF3358] p-1">&times;</button>
-                </div>
-            </div>
-        `).join('');
-    } catch (e) {
-        console.error("Error loading history:", e);
+// Toast Alert Helper
+function showToast(msg, type = 'info') {
+    const toast = document.getElementById('analyzerToast');
+    const toastBox = document.getElementById('analyzerToastBox');
+    const toastMsg = document.getElementById('analyzerToastMsg');
+    toastMsg.innerText = msg;
+    if (type === 'error') {
+        toastBox.className = "bg-[#10141D] border border-rose-500/50 text-rose-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono";
+    } else if (type === 'success') {
+        toastBox.className = "bg-[#10141D] border border-emerald-500/50 text-emerald-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono";
+    } else {
+        toastBox.className = "bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono";
     }
-}
-
-async function loadSavedDeckAnalysis(id) {
-    try {
-        showToast("Loading saved analysis...", "info");
-        const resp = await fetch(`/api/deck/history/${id}`);
-        const data = await resp.json();
-        if (resp.ok && data.analysis) {
-            currentAnalysis = data.analysis;
-            currentParsedDeck = {
-                deck_name: data.deck_name,
-                commander: [data.commander_name],
-                cards: data.cards_data || [],
-                total_cards: data.total_cards,
-                source_type: data.source_type,
-            };
-            renderFullAnalysisDashboard({ analysis: currentAnalysis, deck: currentParsedDeck });
-            closeHistoryDrawer();
-            showToast(`Loaded '${data.deck_name}'!`, 'success');
-        } else {
-            showToast(data.error || "Failed to load deck", "error");
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
-}
-
-async function deleteSavedDeckAnalysis(id) {
-    if (!confirm("Are you sure you want to delete this saved deck analysis?")) return;
-    try {
-        const resp = await fetch(`/api/deck/history/${id}`, { method: 'DELETE' });
-        if (resp.ok) {
-            showToast("Saved deck analysis deleted.", "success");
-            loadHistoryList();
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    toast.classList.remove('hidden', 'translate-y-2');
+    setTimeout(() => { toast.classList.add('hidden', 'translate-y-2'); }, 4000);
 }
 
 function escapeHtml(str) {
     if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 </script>
 {% endblock %}

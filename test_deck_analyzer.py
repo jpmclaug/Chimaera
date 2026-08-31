@@ -257,7 +257,7 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self._login()
         resp = self.client.get("/deck-analyzer")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b"COMMANDER DECK ANALYZER", resp.data)
+        self.assertIn(b"Commander Deck Vault", resp.data)
 
     def test_api_deck_parse_text(self):
         self._login()
@@ -312,41 +312,110 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
             self.assertEqual(saved.deck_name, "Dragon Surge")
             self.assertEqual(saved.power_level, 8.0)
 
-    def test_deck_history_crud(self):
+    def test_api_deck_save_without_ai(self):
+        self._login()
+        payload = {
+            "source": "// Commander\n1 The Ur-Dragon\n// Main\n1 Sol Ring\n1 Command Tower",
+            "source_type": "text",
+        }
+        resp = self.client.post("/api/deck/save", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("deck", data)
+        self.assertEqual(data["deck"]["deck_name"], "Commander Deck")
+        self.assertFalse(data["deck"]["has_ai_analysis"])
+        self.assertIn("stats", data["deck"])
+        self.assertIn("cmc_curve", data["deck"]["stats"])
+
+    @patch("deck_parser.DeckParser.parse")
+    def test_api_deck_bulk_import(self, mock_parse):
+        mock_parse.return_value = {
+            "deck_name": "Bulk Dragon Deck",
+            "commander": ["The Ur-Dragon"],
+            "cards": [
+                {"name": "The Ur-Dragon", "quantity": 1, "section": "commander"},
+                {"name": "Sol Ring", "quantity": 1, "section": "mainboard"}
+            ],
+            "total_cards": 2,
+            "source_type": "manabox_url",
+            "raw_text": "ManaBox export",
+        }
+        self._login()
+        payload = {
+            "text": "https://manabox.app/decks/deck-1\nhttps://manabox.app/decks/deck-2",
+        }
+        resp = self.client.post("/api/deck/bulk-import", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["imported_count"], 2)
+
+    @patch("deck_parser.DeckParser.parse")
+    def test_api_deck_sync(self, mock_parse):
+        mock_parse.return_value = {
+            "deck_name": "Synced Dragon Deck",
+            "commander": ["The Ur-Dragon"],
+            "cards": [
+                {"name": "The Ur-Dragon", "quantity": 1, "section": "commander"},
+                {"name": "Sol Ring", "quantity": 1, "section": "mainboard"},
+                {"name": "Mana Crypt", "quantity": 1, "section": "mainboard"}
+            ],
+            "total_cards": 3,
+            "source_type": "manabox_url",
+            "raw_text": "ManaBox export updated",
+        }
         self._login()
         with self.app.app_context():
             entry = DeckAnalysis(
                 user_id=self.user_id,
-                deck_name="Atraxa Test",
-                commander_name="Atraxa, Praetors' Voice",
-                power_level=7.5,
-                analysis_json=json.dumps({"overall_summary": "Proliferate value engine."}),
+                deck_name="Old Name",
+                source_url="https://manabox.app/decks/deck-123",
+                source_type="manabox_url",
             )
             db.session.add(entry)
             db.session.commit()
             entry_id = entry.id
 
-        # GET history list
-        resp = self.client.get("/api/deck/history")
-        self.assertEqual(resp.status_code, 200)
-        items = resp.get_json()
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["deck_name"], "Atraxa Test")
-
-        # GET history item
-        resp = self.client.get(f"/api/deck/history/{entry_id}")
+        resp = self.client.post(f"/api/deck/{entry_id}/sync")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
-        self.assertEqual(data["deck_name"], "Atraxa Test")
-        self.assertIn("analysis", data)
+        self.assertTrue(data["success"])
+        self.assertEqual(data["deck"]["deck_name"], "Synced Dragon Deck")
 
-        # DELETE history item
-        resp = self.client.delete(f"/api/deck/history/{entry_id}")
-        self.assertEqual(resp.status_code, 200)
-
-        # Verify deletion
+    @patch("gemini_analyzer.GeminiAnalyzer.analyze_deck")
+    def test_api_deck_analyze_saved(self, mock_analyze):
+        mock_analyze.return_value = {
+            "deck_name": "Dragon Storm",
+            "commander": ["The Ur-Dragon"],
+            "estimated_power_level": 8.5,
+            "power_bracket": "Optimized (7-8)",
+            "overall_summary": "High powered dragon tribal.",
+            "card_ratings": [
+                {"card_name": "The Ur-Dragon", "rating": 9.5, "role": "Commander", "purpose": "Cost reducer."}
+            ],
+            "win_conditions": [],
+            "upgrades": [],
+            "cut_recommendations": []
+        }
+        self._login()
         with self.app.app_context():
-            self.assertIsNone(db.session.get(DeckAnalysis, entry_id))
+            entry = DeckAnalysis(
+                user_id=self.user_id,
+                deck_name="Dragon Storm",
+                commander_name="The Ur-Dragon",
+                cards_data=json.dumps([{"name": "The Ur-Dragon", "quantity": 1, "section": "commander"}]),
+            )
+            db.session.add(entry)
+            db.session.commit()
+            entry_id = entry.id
+
+        resp = self.client.post(f"/api/deck/{entry_id}/analyze", json={"model": "gemini-2.5-flash"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["deck"]["power_level"], 8.5)
+        self.assertTrue(data["deck"]["has_ai_analysis"])
 
 
 if __name__ == "__main__":

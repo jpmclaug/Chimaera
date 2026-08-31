@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import secrets
 from functools import wraps
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ from models import (
     MicrocenterItem,
     MicrocenterHistory,
     DeckAnalysis,
+    utc_now,
 )
 from deal_engine import DealEngine
 from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider
@@ -170,6 +172,44 @@ def _migrate_db_schema(app):
                             FOREIGN KEY (item_id) REFERENCES microcenter_item(id) ON DELETE CASCADE
                         )
                     """))
+                    # Ensure deck_analysis table and columns exist in SQLite
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS deck_analysis (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER,
+                            deck_name VARCHAR(255) NOT NULL DEFAULT 'Commander Deck',
+                            commander_name VARCHAR(255),
+                            commander_art TEXT,
+                            source_url TEXT,
+                            source_type VARCHAR(50) DEFAULT 'text',
+                            raw_decklist TEXT,
+                            cards_data TEXT,
+                            stats_json TEXT,
+                            analysis_json TEXT,
+                            model_used VARCHAR(100) DEFAULT 'gemini-2.5-flash',
+                            power_level FLOAT,
+                            power_bracket VARCHAR(50),
+                            archetype VARCHAR(100),
+                            total_cards INTEGER DEFAULT 100,
+                            total_value FLOAT,
+                            avg_cmc FLOAT,
+                            color_identity VARCHAR(50),
+                            created_at DATETIME,
+                            updated_at DATETIME,
+                            FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+                        )
+                    """))
+                    da_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(deck_analysis)")).fetchall()]
+                    if "commander_art" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN commander_art TEXT"))
+                    if "stats_json" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN stats_json TEXT"))
+                    if "total_value" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN total_value FLOAT"))
+                    if "avg_cmc" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN avg_cmc FLOAT"))
+                    if "color_identity" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN color_identity VARCHAR(50)"))
                     conn.commit()
 
             elif dialect in ("postgresql", "postgres"):
@@ -225,6 +265,36 @@ def _migrate_db_schema(app):
                             recorded_at TIMESTAMP
                         )
                     """))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS deck_analysis (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE,
+                            deck_name VARCHAR(255) NOT NULL DEFAULT 'Commander Deck',
+                            commander_name VARCHAR(255),
+                            commander_art TEXT,
+                            source_url TEXT,
+                            source_type VARCHAR(50) DEFAULT 'text',
+                            raw_decklist TEXT,
+                            cards_data TEXT,
+                            stats_json TEXT,
+                            analysis_json TEXT,
+                            model_used VARCHAR(100) DEFAULT 'gemini-2.5-flash',
+                            power_level FLOAT,
+                            power_bracket VARCHAR(50),
+                            archetype VARCHAR(100),
+                            total_cards INTEGER DEFAULT 100,
+                            total_value FLOAT,
+                            avg_cmc FLOAT,
+                            color_identity VARCHAR(50),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS commander_art TEXT"))
+                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS stats_json TEXT"))
+                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS total_value FLOAT"))
+                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS avg_cmc FLOAT"))
+                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
 
@@ -1933,10 +2003,122 @@ def create_app(test_config=None):
             active_tab="deck_analyzer",
         )
 
+    def _enrich_and_compute_deck_metadata(parsed: dict) -> dict:
+        """Helper to batch-enrich parsed deck cards with Scryfall metadata and calculate all tactical stats."""
+        card_names = [c["name"] for c in parsed.get("cards", [])]
+        scryfall_map, unresolved = scryfall_provider.get_cards_collection(card_names)
+
+        enriched_cards = []
+        type_counts = {}
+        cmc_curve = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7+": 0}
+        total_deck_value = 0.0
+        total_cmc = 0.0
+        nonland_count = 0
+        color_identity_set = set()
+
+        for c in parsed.get("cards", []):
+            name = c["name"]
+            qty = c.get("quantity", 1)
+            meta = scryfall_map.get(name.lower(), {})
+
+            card_obj = {
+                "name": name,
+                "quantity": qty,
+                "section": c.get("section", "mainboard"),
+                "set_code": c.get("set_code") or meta.get("set_code", ""),
+                "collector_number": c.get("collector_number") or meta.get("collector_number", ""),
+                "image_uri": meta.get("image_uri") or meta.get("small_image_uri"),
+                "small_image_uri": meta.get("small_image_uri"),
+                "art_crop_uri": meta.get("art_crop_uri"),
+                "mana_cost": meta.get("mana_cost", ""),
+                "cmc": meta.get("cmc", 0),
+                "type_line": meta.get("type_line", "Unknown"),
+                "oracle_text": meta.get("oracle_text", ""),
+                "colors": meta.get("colors", []),
+                "color_identity": meta.get("color_identity", []),
+                "rarity": meta.get("rarity", ""),
+                "price_usd": meta.get("prices", {}).get("usd"),
+                "price_usd_foil": meta.get("prices", {}).get("usd_foil"),
+                "tcgplayer_url": meta.get("tcgplayer_url"),
+            }
+            enriched_cards.append(card_obj)
+
+            # Type tracking
+            type_line = (card_obj["type_line"] or "").lower()
+            primary_type = "Other"
+            if "creature" in type_line:
+                primary_type = "Creatures"
+            elif "instant" in type_line:
+                primary_type = "Instants"
+            elif "sorcery" in type_line:
+                primary_type = "Sorceries"
+            elif "artifact" in type_line:
+                primary_type = "Artifacts"
+            elif "enchantment" in type_line:
+                primary_type = "Enchantments"
+            elif "planeswalker" in type_line:
+                primary_type = "Planeswalkers"
+            elif "land" in type_line:
+                primary_type = "Lands"
+            elif "battle" in type_line:
+                primary_type = "Battles"
+
+            type_counts[primary_type] = type_counts.get(primary_type, 0) + qty
+
+            # CMC tracking (non-lands)
+            if "land" not in type_line:
+                cmc = float(card_obj["cmc"] or 0)
+                total_cmc += (cmc * qty)
+                nonland_count += qty
+                cmc_key = "7+" if cmc >= 7 else str(int(cmc))
+                cmc_curve[cmc_key] = cmc_curve.get(cmc_key, 0) + qty
+
+            # Price tracking
+            if card_obj["price_usd"]:
+                try:
+                    total_deck_value += float(card_obj["price_usd"]) * qty
+                except (ValueError, TypeError):
+                    pass
+
+            # Color identity
+            for color in card_obj["color_identity"]:
+                color_identity_set.add(color)
+
+        avg_cmc = round(total_cmc / nonland_count, 2) if nonland_count > 0 else 0.0
+
+        # Commander artwork
+        commander_art = None
+        for cmd_name in parsed.get("commander", []):
+            cmd_meta = scryfall_map.get(cmd_name.lower(), {})
+            if cmd_meta.get("image_uri"):
+                commander_art = cmd_meta["image_uri"]
+                break
+
+        stats = {
+            "total_value": round(total_deck_value, 2),
+            "avg_cmc": avg_cmc,
+            "type_counts": type_counts,
+            "cmc_curve": cmc_curve,
+            "color_identity": sorted(list(color_identity_set)),
+        }
+
+        return {
+            "deck_name": parsed.get("deck_name", "Commander Deck"),
+            "commander": parsed.get("commander", []),
+            "commander_art": commander_art,
+            "cards": enriched_cards,
+            "total_cards": sum(c["quantity"] for c in enriched_cards) if enriched_cards else parsed.get("total_cards", 0),
+            "source_type": parsed.get("source_type", "text"),
+            "raw_text": parsed.get("raw_text", ""),
+            "unresolved_cards": unresolved,
+            "stats": stats,
+            "scryfall_map": scryfall_map,
+        }
+
     @app.route("/api/deck/parse", methods=["POST"])
     @login_required
     def api_deck_parse():
-        """Parses a deck list from ManaBox URL, other URLs, or raw text/CSV, and enriches cards with Scryfall data."""
+        """Parses a deck list and calculates instant stats & card telemetry without running AI."""
         data = request.get_json(silent=True) or {}
         source = data.get("source", "").strip()
         source_type = data.get("source_type", "auto").strip()
@@ -1946,126 +2128,288 @@ def create_app(test_config=None):
 
         try:
             parsed = DeckParser.parse(source, source_type=source_type)
-            card_names = [c["name"] for c in parsed.get("cards", [])]
-
-            # Batch lookup via Scryfall
-            scryfall_map, unresolved = scryfall_provider.get_cards_collection(card_names)
-
-            # Enrich cards & calculate stats
-            enriched_cards = []
-            type_counts = {}
-            cmc_curve = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7+": 0}
-            total_deck_value = 0.0
-            total_cmc = 0.0
-            nonland_count = 0
-            color_identity_set = set()
-
-            for c in parsed.get("cards", []):
-                name = c["name"]
-                qty = c.get("quantity", 1)
-                meta = scryfall_map.get(name.lower(), {})
-
-                card_obj = {
-                    "name": name,
-                    "quantity": qty,
-                    "section": c.get("section", "mainboard"),
-                    "set_code": c.get("set_code") or meta.get("set_code", ""),
-                    "collector_number": c.get("collector_number") or meta.get("collector_number", ""),
-                    "image_uri": meta.get("image_uri") or meta.get("small_image_uri"),
-                    "small_image_uri": meta.get("small_image_uri"),
-                    "art_crop_uri": meta.get("art_crop_uri"),
-                    "mana_cost": meta.get("mana_cost", ""),
-                    "cmc": meta.get("cmc", 0),
-                    "type_line": meta.get("type_line", "Unknown"),
-                    "oracle_text": meta.get("oracle_text", ""),
-                    "colors": meta.get("colors", []),
-                    "color_identity": meta.get("color_identity", []),
-                    "rarity": meta.get("rarity", ""),
-                    "price_usd": meta.get("prices", {}).get("usd"),
-                    "price_usd_foil": meta.get("prices", {}).get("usd_foil"),
-                    "tcgplayer_url": meta.get("tcgplayer_url"),
-                }
-                enriched_cards.append(card_obj)
-
-                # Type tracking
-                type_line = card_obj["type_line"].lower()
-                primary_type = "Other"
-                if "creature" in type_line:
-                    primary_type = "Creatures"
-                elif "instant" in type_line:
-                    primary_type = "Instants"
-                elif "sorcery" in type_line:
-                    primary_type = "Sorceries"
-                elif "artifact" in type_line:
-                    primary_type = "Artifacts"
-                elif "enchantment" in type_line:
-                    primary_type = "Enchantments"
-                elif "planeswalker" in type_line:
-                    primary_type = "Planeswalkers"
-                elif "land" in type_line:
-                    primary_type = "Lands"
-                elif "battle" in type_line:
-                    primary_type = "Battles"
-
-                type_counts[primary_type] = type_counts.get(primary_type, 0) + qty
-
-                # CMC tracking (non-lands)
-                if "land" not in type_line:
-                    cmc = card_obj["cmc"]
-                    total_cmc += (cmc * qty)
-                    nonland_count += qty
-                    cmc_key = "7+" if cmc >= 7 else str(int(cmc))
-                    cmc_curve[cmc_key] = cmc_curve.get(cmc_key, 0) + qty
-
-                # Price tracking
-                if card_obj["price_usd"]:
-                    try:
-                        total_deck_value += float(card_obj["price_usd"]) * qty
-                    except (ValueError, TypeError):
-                        pass
-
-                # Color identity
-                for color in card_obj["color_identity"]:
-                    color_identity_set.add(color)
-
-            avg_cmc = round(total_cmc / nonland_count, 2) if nonland_count > 0 else 0.0
-
-            # Commander artwork
-            commander_art = None
-            for cmd_name in parsed.get("commander", []):
-                cmd_meta = scryfall_map.get(cmd_name.lower(), {})
-                if cmd_meta.get("image_uri"):
-                    commander_art = cmd_meta["image_uri"]
-                    break
-
-            return jsonify({
-                "success": True,
-                "deck_name": parsed.get("deck_name", "Commander Deck"),
-                "commander": parsed.get("commander", []),
-                "commander_art": commander_art,
-                "cards": enriched_cards,
-                "total_cards": parsed.get("total_cards", len(enriched_cards)),
-                "source_type": parsed.get("source_type", "text"),
-                "unresolved_cards": unresolved,
-                "stats": {
-                    "total_value": round(total_deck_value, 2),
-                    "avg_cmc": avg_cmc,
-                    "type_counts": type_counts,
-                    "cmc_curve": cmc_curve,
-                    "color_identity": sorted(list(color_identity_set)),
-                }
-            })
-
+            result = _enrich_and_compute_deck_metadata(parsed)
+            result["success"] = True
+            return jsonify(result)
         except DeckParseError as e:
             return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error(f"Error in api_deck_parse: {e}", exc_info=True)
             return jsonify({"error": f"Deck parsing failed: {str(e)}"}), 500
 
+    @app.route("/api/deck/save", methods=["POST"])
+    @login_required
+    def api_deck_save():
+        """Saves a parsed deck into the user's persistent Deck Vault (with or without AI analysis)."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+
+        source = data.get("source", "").strip()
+        source_type = data.get("source_type", "auto").strip()
+        deck_data = data.get("deck_data")
+
+        try:
+            import json
+            if not deck_data or not deck_data.get("cards"):
+                if not source:
+                    return jsonify({"error": "No deck source or card data provided."}), 400
+                parsed = DeckParser.parse(source, source_type=source_type)
+                deck_data = _enrich_and_compute_deck_metadata(parsed)
+
+            stats = deck_data.get("stats", {})
+            cmdr_name = ", ".join(deck_data.get("commander", [])) or (deck_data.get("cards", [{}])[0].get("name", "Unknown Commander"))
+            color_id_str = ",".join(stats.get("color_identity", []))
+
+            entry = DeckAnalysis(
+                user_id=user.id if user else None,
+                deck_name=deck_data.get("deck_name", "Commander Deck"),
+                commander_name=cmdr_name,
+                commander_art=deck_data.get("commander_art"),
+                source_url=source if source.startswith("http") else deck_data.get("source_url"),
+                source_type=deck_data.get("source_type", source_type),
+                raw_decklist=deck_data.get("raw_text", ""),
+                cards_data=json.dumps(deck_data.get("cards", [])),
+                stats_json=json.dumps(stats),
+                analysis_json=json.dumps(data.get("analysis")) if data.get("analysis") else None,
+                total_cards=deck_data.get("total_cards", len(deck_data.get("cards", []))),
+                total_value=stats.get("total_value"),
+                avg_cmc=stats.get("avg_cmc"),
+                color_identity=color_id_str,
+            )
+            db.session.add(entry)
+            db.session.commit()
+
+            log_activity("DECK_SAVED", details=f"Saved Commander deck '{entry.deck_name}' to Vault", user=user)
+            return jsonify({
+                "success": True,
+                "message": f"Deck '{entry.deck_name}' saved to your Deck Vault.",
+                "deck": entry.to_dict(include_full=True),
+            })
+        except Exception as e:
+            logger.error(f"Error in api_deck_save: {e}", exc_info=True)
+            return jsonify({"error": f"Failed to save deck: {str(e)}"}), 500
+
+    @app.route("/api/deck/bulk-import", methods=["POST"])
+    @login_required
+    def api_deck_bulk_import():
+        """Batch-imports multiple ManaBox/Moxfield/Archidekt links into the user's Deck Vault."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_text = data.get("text", "").strip()
+        urls = data.get("urls", [])
+
+        if raw_text:
+            # Split by newlines, commas, or semicolons
+            extracted_urls = [u.strip() for u in re.split(r"[\r\n,;]+", raw_text) if u.strip().startswith("http")]
+            urls.extend(extracted_urls)
+
+        # Deduplicate URLs
+        urls = list(dict.fromkeys(urls))
+        if not urls:
+            return jsonify({"error": "No valid deck URLs provided. Please paste one or more ManaBox or MTG deck links."}), 400
+
+        imported = []
+        failed = []
+
+        import json
+        for url in urls:
+            try:
+                parsed = DeckParser.parse(url, source_type="auto")
+                enriched = _enrich_and_compute_deck_metadata(parsed)
+                stats = enriched.get("stats", {})
+                cmdr_name = ", ".join(enriched.get("commander", [])) or "Unknown Commander"
+                color_id_str = ",".join(stats.get("color_identity", []))
+
+                entry = DeckAnalysis(
+                    user_id=user.id if user else None,
+                    deck_name=enriched.get("deck_name", "Commander Deck"),
+                    commander_name=cmdr_name,
+                    commander_art=enriched.get("commander_art"),
+                    source_url=url,
+                    source_type=enriched.get("source_type", "manabox_url"),
+                    raw_decklist=enriched.get("raw_text", ""),
+                    cards_data=json.dumps(enriched.get("cards", [])),
+                    stats_json=json.dumps(stats),
+                    total_cards=enriched.get("total_cards", 100),
+                    total_value=stats.get("total_value"),
+                    avg_cmc=stats.get("avg_cmc"),
+                    color_identity=color_id_str,
+                )
+                db.session.add(entry)
+                imported.append(entry)
+            except Exception as e:
+                logger.warning(f"Failed to import deck URL {url}: {e}")
+                failed.append({"url": url, "error": str(e)})
+
+        if imported:
+            db.session.commit()
+            log_activity("DECK_BULK_IMPORT", details=f"Bulk imported {len(imported)} Commander decks into Vault", user=user)
+
+        return jsonify({
+            "success": True,
+            "imported_count": len(imported),
+            "failed_count": len(failed),
+            "imported": [d.to_dict(include_full=False) for d in imported],
+            "failed": failed,
+        })
+
+    @app.route("/api/deck/<int:deck_id>/sync", methods=["POST"])
+    @login_required
+    def api_deck_sync(deck_id):
+        """Re-fetches and updates a saved deck from its source ManaBox / web URL."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Saved deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Access denied."}), 403
+
+        if not entry.source_url:
+            return jsonify({"error": "This deck was imported from raw text and does not have an active source link to sync from."}), 400
+
+        try:
+            import json
+            parsed = DeckParser.parse(entry.source_url, source_type=entry.source_type or "auto")
+            enriched = _enrich_and_compute_deck_metadata(parsed)
+            stats = enriched.get("stats", {})
+
+            entry.deck_name = enriched.get("deck_name") or entry.deck_name
+            entry.commander_name = ", ".join(enriched.get("commander", [])) or entry.commander_name
+            if enriched.get("commander_art"):
+                entry.commander_art = enriched.get("commander_art")
+            entry.cards_data = json.dumps(enriched.get("cards", []))
+            entry.stats_json = json.dumps(stats)
+            entry.total_cards = enriched.get("total_cards", 100)
+            entry.total_value = stats.get("total_value")
+            entry.avg_cmc = stats.get("avg_cmc")
+            entry.color_identity = ",".join(stats.get("color_identity", []))
+            entry.updated_at = utc_now()
+
+            db.session.commit()
+            log_activity("DECK_SYNC", details=f"Synced deck '{entry.deck_name}' from {entry.source_url}", user=user)
+
+            return jsonify({
+                "success": True,
+                "message": f"Successfully re-synced '{entry.deck_name}' with the latest cards from ManaBox.",
+                "deck": entry.to_dict(include_full=True),
+            })
+        except Exception as e:
+            logger.error(f"Error syncing deck {deck_id}: {e}", exc_info=True)
+            return jsonify({"error": f"Failed to sync deck: {str(e)}"}), 500
+
+    @app.route("/api/deck/<int:deck_id>/analyze", methods=["POST"])
+    @login_required
+    def api_deck_analyze_saved(deck_id):
+        """Runs Gemini AI analysis on an existing saved deck and saves results in place."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Saved deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Access denied."}), 403
+
+        data = request.get_json(silent=True) or {}
+        model = data.get("model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        user_api_key = data.get("api_key", "").strip()
+        custom_instructions = data.get("custom_instructions", "").strip()
+
+        effective_key = user_api_key or SystemSetting.get_val("gemini_api_key") or app.config.get("GEMINI_API_KEY")
+        if not effective_key:
+            return jsonify({
+                "error": "Gemini API key is required. Please set GEMINI_API_KEY or configure your key in the settings modal."
+            }), 400
+
+        cards = entry.get_parsed_cards()
+        if not cards:
+            return jsonify({"error": "Saved deck contains no card entries."}), 400
+
+        try:
+            import json
+            card_names = [c["name"] for c in cards]
+            scryfall_map, _ = scryfall_provider.get_cards_collection(card_names)
+
+            deck_payload = {
+                "deck_name": entry.deck_name,
+                "commander": [c.strip() for c in entry.commander_name.split(",") if c.strip()] if entry.commander_name else [],
+                "cards": cards,
+                "total_cards": entry.total_cards,
+                "raw_text": entry.raw_decklist or "",
+            }
+
+            analyzer = GeminiAnalyzer(api_key=effective_key, model=model)
+            analysis_result = analyzer.analyze_deck(
+                deck_data=deck_payload,
+                scryfall_metadata=scryfall_map,
+                custom_instructions=custom_instructions,
+            )
+
+            # Enrich ratings and upgrades with Scryfall images & prices
+            if "card_ratings" in analysis_result and isinstance(analysis_result["card_ratings"], list):
+                for item in analysis_result["card_ratings"]:
+                    c_name = item.get("card_name", "")
+                    meta = scryfall_map.get(c_name.lower(), {})
+                    item["image_uri"] = meta.get("image_uri") or meta.get("small_image_uri")
+                    item["small_image_uri"] = meta.get("small_image_uri")
+                    item["mana_cost"] = meta.get("mana_cost", "")
+                    item["type_line"] = meta.get("type_line", "")
+                    item["cmc"] = meta.get("cmc", 0)
+                    item["price_usd"] = meta.get("prices", {}).get("usd")
+                    item["tcgplayer_url"] = meta.get("tcgplayer_url")
+
+            if "upgrades" in analysis_result and isinstance(analysis_result["upgrades"], list):
+                upgrade_names = [u.get("card_in", "") for u in analysis_result["upgrades"] if u.get("card_in")]
+                upgrade_names += [u.get("card_out", "") for u in analysis_result["upgrades"] if u.get("card_out")]
+                extra_meta, _ = scryfall_provider.get_cards_collection(upgrade_names)
+
+                for u in analysis_result["upgrades"]:
+                    card_in = u.get("card_in", "")
+                    card_out = u.get("card_out", "")
+                    in_meta = extra_meta.get(card_in.lower()) or scryfall_map.get(card_in.lower(), {})
+                    out_meta = extra_meta.get(card_out.lower()) or scryfall_map.get(card_out.lower(), {})
+
+                    u["card_in_image"] = in_meta.get("image_uri") or in_meta.get("small_image_uri")
+                    u["card_in_price"] = in_meta.get("prices", {}).get("usd")
+                    u["card_in_mana"] = in_meta.get("mana_cost", "")
+                    u["card_in_type"] = in_meta.get("type_line", "")
+                    u["card_in_tcg"] = in_meta.get("tcgplayer_url")
+
+                    u["card_out_image"] = out_meta.get("image_uri") or out_meta.get("small_image_uri")
+                    u["card_out_price"] = out_meta.get("prices", {}).get("usd")
+                    u["card_out_mana"] = out_meta.get("mana_cost", "")
+
+            # Update entry
+            power_level = analysis_result.get("estimated_power_level")
+            if power_level:
+                try:
+                    power_level = float(power_level)
+                except Exception:
+                    power_level = None
+
+            entry.analysis_json = json.dumps(analysis_result)
+            entry.model_used = model
+            entry.power_level = power_level
+            entry.power_bracket = analysis_result.get("power_bracket")
+            entry.archetype = analysis_result.get("archetype")
+            entry.updated_at = utc_now()
+            db.session.commit()
+
+            log_activity("DECK_ANALYSIS", details=f"Analyzed saved Commander deck '{entry.deck_name}' via {model}", user=user)
+
+            return jsonify({
+                "success": True,
+                "deck": entry.to_dict(include_full=True),
+                "analysis": analysis_result,
+            })
+        except GeminiAnalysisError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error in api_deck_analyze_saved: {e}", exc_info=True)
+            return jsonify({"error": f"Analysis execution failed: {str(e)}"}), 500
+
     @app.route("/api/deck/analyze", methods=["POST"])
     @login_required
     def api_deck_analyze():
-        """Runs Google Gemini analysis on a Commander deck."""
+        """Runs Google Gemini analysis on a Commander deck source."""
         user = get_current_user()
         data = request.get_json(silent=True) or {}
 
@@ -2091,7 +2435,8 @@ def create_app(test_config=None):
             else:
                 if not source:
                     return jsonify({"error": "No deck source provided for analysis."}), 400
-                deck_data = DeckParser.parse(source, source_type=source_type)
+                parsed = DeckParser.parse(source, source_type=source_type)
+                deck_data = _enrich_and_compute_deck_metadata(parsed)
 
             card_names = [c["name"] for c in deck_data.get("cards", [])]
             scryfall_map, _ = scryfall_provider.get_cards_collection(card_names)
@@ -2149,20 +2494,29 @@ def create_app(test_config=None):
                     except Exception:
                         power_level = None
 
+                stats = deck_data.get("stats", {})
+                cmdr_name = ", ".join(analysis_result.get("commander", [])) or (deck_data.get("commander", [""])[0])
+                color_id_str = ",".join(stats.get("color_identity", []))
+
                 deck_entry = DeckAnalysis(
                     user_id=user.id if user else None,
                     deck_name=analysis_result.get("deck_name") or deck_data.get("deck_name", "Commander Deck"),
-                    commander_name=", ".join(analysis_result.get("commander", [])) or (deck_data.get("commander", [""])[0]),
+                    commander_name=cmdr_name,
+                    commander_art=deck_data.get("commander_art"),
                     source_url=source if source.startswith("http") else None,
                     source_type=deck_data.get("source_type", "text"),
                     raw_decklist=deck_data.get("raw_text", ""),
                     cards_data=json.dumps(deck_data.get("cards", [])),
+                    stats_json=json.dumps(stats),
                     analysis_json=json.dumps(analysis_result),
                     model_used=model,
                     power_level=power_level,
                     power_bracket=analysis_result.get("power_bracket"),
                     archetype=analysis_result.get("archetype"),
                     total_cards=deck_data.get("total_cards", 100),
+                    total_value=stats.get("total_value"),
+                    avg_cmc=stats.get("avg_cmc"),
+                    color_identity=color_id_str,
                 )
                 db.session.add(deck_entry)
                 db.session.commit()
@@ -2187,23 +2541,23 @@ def create_app(test_config=None):
     @app.route("/api/deck/history", methods=["GET"])
     @login_required
     def api_deck_history():
-        """Returns saved deck analyses for the active user."""
+        """Returns all saved decks with telemetry summary for the active user's Deck Vault."""
         user = get_current_user()
         if not user:
             return jsonify([])
 
         query = DeckAnalysis.query.filter_by(user_id=user.id) if not user.is_admin else DeckAnalysis.query
-        entries = query.order_by(DeckAnalysis.created_at.desc()).limit(30).all()
+        entries = query.order_by(DeckAnalysis.created_at.desc()).limit(100).all()
         return jsonify([e.to_dict(include_full=False) for e in entries])
 
     @app.route("/api/deck/history/<int:analysis_id>", methods=["GET"])
     @login_required
     def api_deck_get_history(analysis_id):
-        """Returns full saved deck analysis by ID."""
+        """Returns full saved deck details, cards, stats, and AI analysis by ID."""
         user = get_current_user()
         entry = db.session.get(DeckAnalysis, analysis_id)
         if not entry:
-            return jsonify({"error": "Saved deck analysis not found."}), 404
+            return jsonify({"error": "Saved deck not found."}), 404
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
             return jsonify({"error": "Access denied."}), 403
 
@@ -2212,19 +2566,19 @@ def create_app(test_config=None):
     @app.route("/api/deck/history/<int:analysis_id>", methods=["DELETE", "POST"])
     @login_required
     def api_deck_delete_history(analysis_id):
-        """Deletes a saved deck analysis."""
+        """Deletes a saved deck from the user's Deck Vault."""
         user = get_current_user()
         entry = db.session.get(DeckAnalysis, analysis_id)
         if not entry:
-            return jsonify({"error": "Saved deck analysis not found."}), 404
+            return jsonify({"error": "Saved deck not found."}), 404
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
             return jsonify({"error": "Access denied."}), 403
 
         deck_title = entry.deck_name
         db.session.delete(entry)
         db.session.commit()
-        log_activity("DECK_DELETE", details=f"Deleted saved deck analysis '{deck_title}'", user=user)
-        return jsonify({"message": f"Saved deck analysis '{deck_title}' deleted successfully."})
+        log_activity("DECK_DELETE", details=f"Deleted saved deck '{deck_title}' from Vault", user=user)
+        return jsonify({"message": f"Saved deck '{deck_title}' deleted successfully."})
 
     @app.route("/api/deck/gemini-key", methods=["POST"])
     @login_required
