@@ -334,25 +334,44 @@
         <!-- ========================================================================= -->
         <div id="inspectorTabContentCards" class="hidden space-y-4">
             
-            <!-- Filter & Search Controls -->
-            <div class="bg-[#10141D] border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row items-center justify-between gap-3">
-                <div class="relative w-full md:w-80">
-                    <input type="text" id="cardTableSearchInput" oninput="filterCardRegistryTable()" placeholder="Search card names or types..."
-                           class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
-                    <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
+            <!-- Filter & Action Controls -->
+            <div class="bg-[#10141D] border border-slate-800 p-4 rounded-xl flex flex-col lg:flex-row items-center justify-between gap-4">
+                
+                <!-- Left: Search & Filter Pills -->
+                <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                    <div class="relative w-full sm:w-64">
+                        <input type="text" id="cardTableSearchInput" oninput="filterCardRegistryTable()" placeholder="Search cards or types..."
+                               class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
+                        <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+
+                    <!-- Type Filter Pills -->
+                    <div class="flex flex-wrap items-center gap-1 w-full sm:w-auto">
+                        <button type="button" onclick="setCardTypeFilter('all')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950" data-filter="all">All</button>
+                        <button type="button" onclick="setCardTypeFilter('creature')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="creature">Creatures</button>
+                        <button type="button" onclick="setCardTypeFilter('instant')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="instant">Instants</button>
+                        <button type="button" onclick="setCardTypeFilter('sorcery')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="sorcery">Sorceries</button>
+                        <button type="button" onclick="setCardTypeFilter('artifact')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="artifact">Artifacts</button>
+                        <button type="button" onclick="setCardTypeFilter('enchantment')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="enchantment">Enchantments</button>
+                        <button type="button" onclick="setCardTypeFilter('land')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="land">Lands</button>
+                    </div>
                 </div>
 
-                <!-- Type Filters -->
-                <div class="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-                    <button type="button" onclick="setCardTypeFilter('all')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950" data-filter="all">All</button>
-                    <button type="button" onclick="setCardTypeFilter('creature')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="creature">Creatures</button>
-                    <button type="button" onclick="setCardTypeFilter('instant')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="instant">Instants</button>
-                    <button type="button" onclick="setCardTypeFilter('sorcery')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="sorcery">Sorceries</button>
-                    <button type="button" onclick="setCardTypeFilter('artifact')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="artifact">Artifacts</button>
-                    <button type="button" onclick="setCardTypeFilter('enchantment')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="enchantment">Enchantments</button>
-                    <button type="button" onclick="setCardTypeFilter('land')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="land">Lands</button>
+                <!-- Right: Bulk Watchlist Actions -->
+                <div class="flex items-center gap-2 w-full lg:w-auto justify-end">
+                    <button type="button" onclick="addAllCardsToWatchlist(true)" id="addNonLandsWatchlistBtn" 
+                            class="px-3 py-1.5 bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-mono font-semibold transition flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>+ Watch All Spells</span>
+                    </button>
+
+                    <button type="button" onclick="addAllCardsToWatchlist(false)" id="addAllWatchlistBtn" 
+                            class="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 shadow-sm">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>+ Watch Entire Deck</span>
+                    </button>
                 </div>
             </div>
 
@@ -368,7 +387,7 @@
                                 <th class="py-3 px-4">Mana Cost</th>
                                 <th class="py-3 px-4 text-center">CMC</th>
                                 <th class="py-3 px-4 text-right">TCG Market</th>
-                                <th class="py-3 px-4 text-center">Actions</th>
+                                <th class="py-3 px-4 text-center">Watchlist</th>
                             </tr>
                         </thead>
                         <tbody id="cardRegistryTableBody" class="divide-y divide-slate-800/60 text-slate-300">
@@ -731,7 +750,7 @@ function renderVaultGrid(decks) {
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     </button>
                     ` : ''}
-                    <button onclick="deleteSavedDeck(${d.id}, '${escapeHtml(d.deck_name)}')" title="Delete from vault" class="p-2 bg-slate-800/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-lg border border-slate-800 transition">
+                    <button onclick="handleDeleteDeckClick(${d.id})" title="Delete from vault" class="p-2 bg-slate-800/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-lg border border-slate-800 transition">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>
@@ -783,7 +802,7 @@ function displayDeckInInspector(deck) {
     ).join('');
 
     // Power Bracket & Archetype
-    if (deck.has_ai_analysis && analysis) {
+    if (deck.has_ai_analysis && analysis && Object.keys(analysis).length > 0) {
         document.getElementById('inspectorPowerVal').innerText = `${(deck.power_level || analysis.estimated_power_level || 7.5).toFixed(1)} / 10`;
         document.getElementById('inspectorPowerBracket').innerText = deck.power_bracket || analysis.power_bracket || "Optimized (7-8)";
         document.getElementById('inspectorArchetype').innerText = deck.archetype || analysis.archetype || "Synergy";
@@ -859,17 +878,21 @@ function renderCardRegistryTable(cards) {
         return;
     }
 
-    tbody.innerHTML = cards.map(c => {
+    tbody.innerHTML = cards.map((c, idx) => {
         const price = c.price_usd ? `$${parseFloat(c.price_usd).toFixed(2)}` : '--';
         const img = c.image_uri || c.small_image_uri || '';
+        const setCode = c.set_code || '';
+        const name = c.name || '';
+        
         return `
-            <tr class="hover:bg-[#1B2230]/50 transition group card-row" data-name="${escapeHtml((c.name || '').toLowerCase())}" data-type="${escapeHtml((c.type_line || '').toLowerCase())}">
+            <tr class="hover:bg-[#1B2230]/50 transition group card-row" data-name="${escapeHtml(name.toLowerCase())}" data-type="${escapeHtml((c.type_line || '').toLowerCase())}">
                 <td class="py-2.5 px-4 font-bold text-cyan-400">${c.quantity || 1}x</td>
                 <td class="py-2.5 px-4 font-semibold text-white">
                     <span class="cursor-pointer hover:text-cyan-300 hover:underline inline-flex items-center gap-1.5"
-                          onmouseenter="showCardHover(event, '${img}')" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
-                        ${escapeHtml(c.name)}
-                        ${c.section === 'commander' ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">Commander</span>' : ''}
+                          data-img="${escapeHtml(img)}"
+                          onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                        ${escapeHtml(name)}
+                        ${c.section === 'commander' ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">Commander</span>' : ''}
                     </span>
                 </td>
                 <td class="py-2.5 px-4 text-slate-400 text-[11px] truncate max-w-[200px]">${escapeHtml(c.type_line || 'Card')}</td>
@@ -877,14 +900,155 @@ function renderCardRegistryTable(cards) {
                 <td class="py-2.5 px-4 text-center text-amber-400 font-bold">${c.cmc !== undefined ? c.cmc : 0}</td>
                 <td class="py-2.5 px-4 text-right font-bold text-emerald-400">${price}</td>
                 <td class="py-2.5 px-4 text-center">
-                    <button onclick="addCardToWatchlist('${escapeHtml(c.name)}', '${c.set_code || ''}')" title="Track in Watchlist"
-                            class="px-2 py-1 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition">
-                        + Watch
+                    <button onclick="handleWatchClick(this)" 
+                            data-name="${escapeHtml(name)}" 
+                            data-set="${escapeHtml(setCode)}" 
+                            title="Track in Watchlist"
+                            class="watch-card-btn px-2.5 py-1 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition flex items-center gap-1 mx-auto">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>+ Watch</span>
                     </button>
                 </td>
             </tr>
         `;
     }).join('');
+}
+
+// Watchlist Button Handler for single cards
+async function handleWatchClick(btn) {
+    const name = btn.getAttribute('data-name');
+    const setCode = btn.getAttribute('data-set') || '';
+    if (!name) return;
+
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `<svg class="animate-spin w-3 h-3 text-cyan-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+
+    try {
+        const resp = await fetch('/api/watchlist/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                set_code: setCode || null,
+                is_any_version: !setCode || setCode === 'ANY',
+                target_price: 1.0,
+                tag: activeDeck ? activeDeck.deck_name : 'Commander'
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            showToast(`Added '${name}' to your Watchlist!`, 'success');
+            btn.className = "watch-card-btn px-2.5 py-1 bg-emerald-500/20 text-emerald-300 rounded text-[10px] font-mono uppercase font-bold border border-emerald-500/40 transition flex items-center gap-1 mx-auto";
+            btn.innerHTML = `<span>✓ Watched</span>`;
+        } else if (resp.status === 409) {
+            showToast(`'${name}' is already on your Watchlist!`, 'info');
+            btn.className = "watch-card-btn px-2.5 py-1 bg-slate-800 text-slate-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition flex items-center gap-1 mx-auto";
+            btn.innerHTML = `<span>✓ In List</span>`;
+        } else {
+            showToast(data.error || 'Failed to add card to watchlist.', 'error');
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    } catch (e) {
+        showToast(`Watchlist error: ${e.message}`, 'error');
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+
+// Watchlist Button Handler for AI upgrades
+async function handleUpgradeWatchClick(btn) {
+    const name = btn.getAttribute('data-name');
+    if (!name) return;
+
+    btn.disabled = true;
+    const origText = btn.innerText;
+    btn.innerText = "Adding...";
+
+    try {
+        const resp = await fetch('/api/watchlist/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                is_any_version: true,
+                target_price: 1.0,
+                tag: activeDeck ? activeDeck.deck_name : 'Commander Upgrade'
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            showToast(`Added upgrade '${name}' to Watchlist!`, 'success');
+            btn.className = "w-full py-1.5 bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold uppercase rounded border border-emerald-500/40 text-center";
+            btn.innerText = "✓ Added to Watchlist";
+        } else if (resp.status === 409) {
+            showToast(`'${name}' is already on your Watchlist!`, 'info');
+            btn.className = "w-full py-1.5 bg-slate-800 text-slate-400 text-xs font-mono font-bold uppercase rounded border border-slate-700 text-center";
+            btn.innerText = "✓ Already in Watchlist";
+        } else {
+            showToast(data.error || 'Failed to add upgrade', 'error');
+            btn.disabled = false;
+            btn.innerText = origText;
+        }
+    } catch (e) {
+        showToast(`Watchlist error: ${e.message}`, 'error');
+        btn.disabled = false;
+        btn.innerText = origText;
+    }
+}
+
+// Add multiple cards from active deck to watchlist
+async function addAllCardsToWatchlist(excludeLands = true) {
+    if (!activeDeck) return;
+    const cards = activeDeck.cards_data || activeDeck.cards || [];
+    if (!cards.length) return;
+
+    let filtered = cards;
+    if (excludeLands) {
+        filtered = cards.filter(c => !(c.type_line || '').toLowerCase().includes('land'));
+    }
+
+    const cardNames = filtered.map(c => c.name);
+    if (!cardNames.length) {
+        showToast("No eligible cards found to add.", "error");
+        return;
+    }
+
+    const btn = document.getElementById(excludeLands ? 'addNonLandsWatchlistBtn' : 'addAllWatchlistBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "Adding to Watchlist...";
+    }
+
+    try {
+        const resp = await fetch('/api/watchlist/bulk-add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                card_names: cardNames,
+                tag: activeDeck.deck_name || 'Commander Deck'
+            })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || "Bulk add failed");
+
+        const count = data.added_count || data.added || cardNames.length;
+        showToast(`Successfully tracked ${count} cards in your Watchlist!`, 'success');
+        
+        // Update table buttons visually
+        document.querySelectorAll('.watch-card-btn').forEach(b => {
+            b.className = "watch-card-btn px-2.5 py-1 bg-emerald-500/20 text-emerald-300 rounded text-[10px] font-mono uppercase font-bold border border-emerald-500/40 transition flex items-center gap-1 mx-auto";
+            b.innerHTML = `<span>✓ Watched</span>`;
+        });
+    } catch (e) {
+        showToast(`Error: ${e.message}`, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = excludeLands ? "+ Watch All Spells" : "+ Watch Entire Deck";
+        }
+    }
 }
 
 // Filter Card Registry Table
@@ -904,9 +1068,9 @@ function setCardTypeFilter(type) {
     currentCardTypeFilter = type;
     document.querySelectorAll('.card-type-filter-btn').forEach(btn => {
         if (btn.getAttribute('data-filter') === type) {
-            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950";
+            btn.className = "card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950";
         } else {
-            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white";
+            btn.className = "card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white";
         }
     });
     filterCardRegistryTable();
@@ -955,7 +1119,8 @@ function renderAiAnalysis(analysis) {
 
             <p class="text-[11px] text-slate-300 font-sans">${escapeHtml(u.rationale || '')}</p>
 
-            <button onclick="addCardToWatchlist('${escapeHtml(u.card_in || '')}')" class="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
+            <button onclick="handleUpgradeWatchClick(this)" data-name="${escapeHtml(u.card_in || '')}" 
+                    class="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
                 + Track in Watchlist
             </button>
         </div>
@@ -1022,7 +1187,7 @@ async function executeParseAndSave(runAi = false) {
     const btn = runAi ? document.getElementById('parseAnalyzeBtn') : document.getElementById('parseOnlyBtn');
     const originalText = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Processing...</span>`;
+    btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Processing...</span>`;
 
     try {
         if (runAi) {
@@ -1149,8 +1314,14 @@ async function runAiAnalysisOnSavedDeck() {
 }
 
 // Delete Deck
-async function deleteSavedDeck(deckId, deckName) {
+function handleDeleteDeckClick(deckId) {
+    const deck = currentVaultDecks.find(d => d.id === deckId);
+    const deckName = deck ? deck.deck_name : 'this deck';
     if (!confirm(`Are you sure you want to delete '${deckName}' from your Vault?`)) return;
+    deleteSavedDeck(deckId, deckName);
+}
+
+async function deleteSavedDeck(deckId, deckName) {
     try {
         const resp = await fetch(`/api/deck/history/${deckId}`, { method: 'DELETE' });
         if (!resp.ok) throw new Error("Delete failed");
@@ -1197,27 +1368,9 @@ function sortVaultDecks() {
     renderVaultGrid(sorted);
 }
 
-// Add Card to Watchlist Helper
-async function addCardToWatchlist(cardName, setCode = '') {
-    try {
-        const resp = await fetch('/api/watchlist/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: cardName, set_code: setCode, target_price: 1.0, tag: activeDeck ? activeDeck.deck_name : 'Commander' })
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-            showToast(`Added '${cardName}' to your Watchlist!`, 'success');
-        } else {
-            showToast(data.error || 'Failed to add card', 'error');
-        }
-    } catch (e) {
-        showToast(`Watchlist error: ${e.message}`, 'error');
-    }
-}
-
 // Hover Zoom Image Tooltip
-function showCardHover(e, imgUrl) {
+function showCardHover(e, elem) {
+    const imgUrl = elem.getAttribute('data-img');
     if (!imgUrl) return;
     const preview = document.getElementById('cardHoverPreview');
     const img = document.getElementById('cardHoverImg');
