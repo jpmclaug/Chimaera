@@ -1913,7 +1913,10 @@ def create_app(test_config=None):
         user = get_current_user()
         has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
-        has_gemini_key = has_env_key or bool(db_key and db_key.strip())
+        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        has_gemini_key = bool(effective_key)
+
+        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
 
         recent_decks = []
         if user:
@@ -1924,7 +1927,7 @@ def create_app(test_config=None):
         return render_template(
             "deck_analyzer.html",
             has_gemini_key=has_gemini_key,
-            supported_models=GEMINI_SUPPORTED_MODELS,
+            supported_models=available_models,
             default_model=app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
             recent_decks=[d.to_dict(include_full=False) for d in recent_decks],
             active_tab="deck_analyzer",
@@ -2257,12 +2260,14 @@ def create_app(test_config=None):
 
         key_source = "env" if has_env else ("database" if has_db else "none")
         default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        models = GeminiAnalyzer.get_available_models(effective_key) if (has_env or has_db) else GEMINI_SUPPORTED_MODELS
 
         return jsonify({
             "has_key": has_env or has_db,
             "key_source": key_source,
             "default_model": default_model,
-            "supported_models": GEMINI_SUPPORTED_MODELS,
+            "supported_models": models,
         })
 
 

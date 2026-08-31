@@ -16,10 +16,17 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_MODEL = "gemini-2.5-flash"
 SUPPORTED_MODELS = [
     {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash (Fast, Recommended)", "description": "High speed, high accuracy tactical MTG evaluations."},
-    {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro (Deep Reasoning)", "description": "Advanced strategic depth, complex combo line analysis."},
+    {"id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview (Deep Reasoning)", "description": "Latest generation advanced strategic depth, complex combo line analysis."},
     {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "description": "Next-gen low latency model."},
     {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro", "description": "High-capacity reasoning engine."},
+    {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "description": "Blazing fast lightweight model."},
 ]
+
+MODEL_FALLBACK_MAP = {
+    "gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "models/gemini-2.5-pro": "gemini-3.1-pro-preview",
+    "gemini-pro": "gemini-1.5-pro",
+}
 
 
 class GeminiAnalysisError(Exception):
@@ -32,16 +39,51 @@ class GeminiAnalyzer:
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
-        self.model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
+        raw_model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
+        self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
+
+    @staticmethod
+    def get_available_models(api_key: str | None = None) -> list[dict]:
+        """Fetches active generation models from the Gemini API."""
+        if not api_key:
+            return SUPPORTED_MODELS
+
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key.strip()}"
+            resp = requests.get(url, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get("models", [])
+                result = []
+                for m in raw_models:
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods:
+                        m_id = m.get("name", "").replace("models/", "")
+                        # Filter out embedding / vision-only / legacy experimental models
+                        if "embedding" not in m_id and "aqa" not in m_id and "imagen" not in m_id and "whisper" not in m_id:
+                            display_name = m.get("displayName") or m_id
+                            desc = m.get("description", "")
+                            result.append({
+                                "id": m_id,
+                                "name": f"{display_name} ({m_id})",
+                                "description": desc[:100] if desc else "Gemini generation model.",
+                            })
+                if result:
+                    return result
+        except Exception as e:
+            logger.warning(f"Could not dynamically list Gemini models: {e}")
+
+        return SUPPORTED_MODELS
 
     @staticmethod
     def test_api_key(api_key: str, model: str = DEFAULT_MODEL) -> tuple[bool, str]:
-        """Tests whether a Gemini API key is valid by sending a ping request."""
+        """Tests whether a Gemini API key is valid by sending a ping request with fallback support."""
         if not api_key or not str(api_key).strip():
             return False, "Gemini API key is required."
 
         clean_key = str(api_key).strip()
-        url = f"{GEMINI_API_BASE}/{model}:generateContent?key={clean_key}"
+        test_model = MODEL_FALLBACK_MAP.get(model, model)
+        url = f"{GEMINI_API_BASE}/{test_model}:generateContent?key={clean_key}"
         payload = {
             "contents": [
                 {"parts": [{"text": "Reply with only the word: OK"}]}
@@ -62,6 +104,14 @@ class GeminiAnalyzer:
                     msg = err_json.get("error", {}).get("message", f"HTTP {resp.status_code}")
                 except Exception:
                     msg = f"HTTP {resp.status_code}: {resp.text[:150]}"
+
+                # If the specific model failed due to availability, try fallback to default flash model
+                if ("no longer available" in msg.lower() or "not found" in msg.lower()) and test_model != DEFAULT_MODEL:
+                    fallback_url = f"{GEMINI_API_BASE}/{DEFAULT_MODEL}:generateContent?key={clean_key}"
+                    fallback_resp = requests.post(fallback_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+                    if fallback_resp.status_code == 200:
+                        return True, f"API key is valid. Note: '{test_model}' was deprecated, so Chimaera will use '{DEFAULT_MODEL}'."
+
                 return False, f"Gemini API Error: {msg}"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
@@ -219,8 +269,25 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
         }
 
         try:
-            logger.info(f"Submitting deck '{deck_name}' to Gemini ({self.model})...")
+            target_model = self.model
+            url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={self.api_key}"
+            logger.info(f"Submitting deck '{deck_name}' to Gemini ({target_model})...")
             resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+
+            # Auto-fallback if the specific model is deprecated or unavailable
+            if resp.status_code != 200:
+                err_msg = ""
+                try:
+                    err_json = resp.json()
+                    err_msg = err_json.get("error", {}).get("message", "")
+                except Exception:
+                    err_msg = resp.text[:200]
+
+                if ("no longer available" in err_msg.lower() or "not found" in err_msg.lower()) and target_model != DEFAULT_MODEL:
+                    logger.warning(f"Model '{target_model}' unavailable ({err_msg}). Automatically falling back to '{DEFAULT_MODEL}'...")
+                    fallback_url = f"{GEMINI_API_BASE}/{DEFAULT_MODEL}:generateContent?key={self.api_key}"
+                    resp = requests.post(fallback_url, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+
             if resp.status_code != 200:
                 err_msg = f"Gemini API returned HTTP {resp.status_code}"
                 try:
