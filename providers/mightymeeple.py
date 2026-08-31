@@ -132,7 +132,11 @@ class MightyMeepleProvider:
 
             in_stock_matches = []
             out_of_stock_matches = []
-            is_foil_target = (finish or "nonfoil").lower() in ("foil", "etched")
+            finish_clean = (finish or "nonfoil").lower().strip()
+            if finish_clean == "any":
+                is_foil_target = None
+            else:
+                is_foil_target = finish_clean in ("foil", "etched")
 
             for prod in candidate_products:
                 handle = prod.get("handle")
@@ -430,78 +434,102 @@ class MightyMeepleProvider:
 
         return valid_name_products
 
-    def _match_variant(self, variants: list[dict], is_foil_target: bool) -> dict | None:
+    def _match_variant(self, variants: list[dict], is_foil_target: bool | None = None) -> dict | None:
         """
         Picks the best variant according to finish and condition priority:
-        1. NM In-stock matching finish
-        2. LP In-stock matching finish
-        3. MP In-stock matching finish
-        4. Any in-stock matching finish
-        5. Out-of-stock NM matching finish
+        1. In-stock matching finish: selects the lowest condition in stock (and lowest price:
+           Damaged -> HP -> MP -> LP -> NM).
+        2. Out-of-stock matching finish: defaults to the lowest positive price out-of-stock variant
+           (or NM reference variant).
         """
-        scored_variants = []
+        if not variants:
+            return None
+
+        in_stock_variants = []
+        out_of_stock_variants = []
 
         for v in variants:
             title = v.get("title", "") or v.get("name", "")
             title_lower = title.lower()
             is_foil = "foil" in title_lower
-            is_available = v.get("available", False)
+            is_available = bool(v.get("available", False))
 
-            # Filter finish compatibility
-            if is_foil_target != is_foil:
+            # Filter finish compatibility (if is_foil_target is None, accept any finish)
+            if is_foil_target is not None and is_foil_target != is_foil:
                 continue
 
             price_cents = v.get("price", 0)
             price_dollars = price_cents / 100.0 if isinstance(price_cents, (int, float)) else 0.0
 
-            # Condition ranking
-            cond_score = 0
-            cond_label = "NM"
-            if "near mint" in title_lower or "nm" in title_lower:
-                cond_score = 4
-                cond_label = "NM"
-            elif "lightly played" in title_lower or "lp" in title_lower:
-                cond_score = 3
-                cond_label = "LP"
-            elif "moderately played" in title_lower or "mp" in title_lower:
-                cond_score = 2
-                cond_label = "MP"
-            elif "heavily played" in title_lower or "hp" in title_lower:
-                cond_score = 1
-                cond_label = "HP"
-            elif "damaged" in title_lower or "dmg" in title_lower:
-                cond_score = 0
+            # Condition ranking (lower rank = lower condition)
+            # 0: Damaged, 1: HP, 2: MP/Played, 3: LP, 4: NM
+            if "damaged" in title_lower or "dmg" in title_lower:
+                cond_rank = 0
                 cond_label = "Damaged"
+            elif "heavily played" in title_lower or "hp" in title_lower:
+                cond_rank = 1
+                cond_label = "HP"
+            elif "moderately played" in title_lower or "mp" in title_lower:
+                cond_rank = 2
+                cond_label = "MP"
+            elif "lightly played" in title_lower or "lp" in title_lower:
+                cond_rank = 3
+                cond_label = "LP"
+            elif "near mint" in title_lower or "nm" in title_lower:
+                cond_rank = 4
+                cond_label = "NM"
             else:
-                cond_score = 2
+                cond_rank = 2
                 cond_label = "Played"
 
             finish_label = "Foil" if is_foil else ""
             full_cond = f"{cond_label} {finish_label}".strip()
 
-            stock_score = 10 if is_available else 0
-            total_score = stock_score + cond_score
+            entry = {
+                "price": price_dollars,
+                "condition": full_cond,
+                "cond_rank": cond_rank,
+                "in_stock": is_available,
+            }
 
-            scored_variants.append((
-                total_score,
-                is_available,
-                price_dollars,
-                full_cond,
-            ))
+            if is_available and price_dollars > 0:
+                in_stock_variants.append(entry)
+            else:
+                out_of_stock_variants.append(entry)
 
-        if not scored_variants:
-            return None
+        # 1. If in-stock variants exist, pick the lowest condition in stock (and lowest price)
+        if in_stock_variants:
+            in_stock_variants.sort(key=lambda item: (item["cond_rank"], item["price"]))
+            best = in_stock_variants[0]
+            return {
+                "vendor_name": "Mighty Meeple",
+                "price": round(best["price"], 2),
+                "condition": best["condition"],
+                "in_stock": True,
+            }
 
-        # Sort by highest score, then lowest price
-        scored_variants.sort(key=lambda item: (-item[0], item[2] if item[2] > 0 else 999999))
-        best = scored_variants[0]
+        # 2. If only out-of-stock variants exist, pick the standard NM variant or lowest positive price
+        if out_of_stock_variants:
+            priced_oos = [item for item in out_of_stock_variants if item["price"] > 0]
+            if priced_oos:
+                nm_oos = [item for item in priced_oos if item["cond_rank"] == 4]
+                if nm_oos:
+                    nm_oos.sort(key=lambda item: item["price"])
+                    best = nm_oos[0]
+                else:
+                    priced_oos.sort(key=lambda item: item["price"])
+                    best = priced_oos[0]
+            else:
+                best = out_of_stock_variants[0]
 
-        return {
-            "vendor_name": "Mighty Meeple",
-            "price": round(best[2], 2),
-            "condition": best[3],
-            "in_stock": best[1],
-        }
+            return {
+                "vendor_name": "Mighty Meeple",
+                "price": round(best["price"], 2),
+                "condition": best["condition"],
+                "in_stock": False,
+            }
+
+        return None
 
     def _empty_result(self, card_name: str, url: str | None = None) -> dict:
         """Returns empty/out-of-stock response."""

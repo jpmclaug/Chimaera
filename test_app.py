@@ -950,6 +950,55 @@ class ChimeraTestSuite(unittest.TestCase):
         filtered_solitude = mm._filter_products(unrelated_products, "Solitude", None, None)
         self.assertEqual(len(filtered_solitude), 0)
 
+        # 2. Test _match_variant lowest condition in stock selection
+        test_variants = [
+            {"title": "Near Mint", "available": True, "price": 2500},
+            {"title": "Lightly Played", "available": True, "price": 2200},
+            {"title": "Moderately Played", "available": True, "price": 1800},
+            {"title": "Heavily Played", "available": True, "price": 1400},
+            {"title": "Damaged", "available": True, "price": 1000},
+        ]
+        # When all are in stock, lowest condition (Damaged, $10.00) should be selected
+        match_all = mm._match_variant(test_variants, is_foil_target=False)
+        self.assertEqual(match_all["condition"], "Damaged")
+        self.assertEqual(match_all["price"], 10.00)
+        self.assertTrue(match_all["in_stock"])
+
+        # When Damaged and HP are OOS, MP ($18.00) should be selected
+        test_variants_mp = [
+            {"title": "Near Mint", "available": True, "price": 2500},
+            {"title": "Lightly Played", "available": True, "price": 2200},
+            {"title": "Moderately Played", "available": True, "price": 1800},
+            {"title": "Heavily Played", "available": False, "price": 1400},
+            {"title": "Damaged", "available": False, "price": 1000},
+        ]
+        match_mp = mm._match_variant(test_variants_mp, is_foil_target=False)
+        self.assertEqual(match_mp["condition"], "MP")
+        self.assertEqual(match_mp["price"], 18.00)
+        self.assertTrue(match_mp["in_stock"])
+
+        # When only NM and LP are in stock, LP ($22.00) should be selected
+        test_variants_lp = [
+            {"title": "Near Mint", "available": True, "price": 2500},
+            {"title": "Lightly Played", "available": True, "price": 2200},
+            {"title": "Moderately Played", "available": False, "price": 1800},
+        ]
+        match_lp = mm._match_variant(test_variants_lp, is_foil_target=False)
+        self.assertEqual(match_lp["condition"], "LP")
+        self.assertEqual(match_lp["price"], 22.00)
+        self.assertTrue(match_lp["in_stock"])
+
+        # When all are out of stock, should return in_stock=False with NM fallback
+        test_variants_oos = [
+            {"title": "Near Mint", "available": False, "price": 2500},
+            {"title": "Lightly Played", "available": False, "price": 2200},
+            {"title": "Damaged", "available": False, "price": 1000},
+        ]
+        match_oos = mm._match_variant(test_variants_oos, is_foil_target=False)
+        self.assertEqual(match_oos["condition"], "NM")
+        self.assertEqual(match_oos["price"], 25.00)
+        self.assertFalse(match_oos["in_stock"])
+
         # 2. Live searches for The One Ring, Dáin of the Ancient Halls, and Solitude
         res_ring = mm.search_card("The One Ring")
         self.assertEqual(res_ring["vendor_name"], "Mighty Meeple")
