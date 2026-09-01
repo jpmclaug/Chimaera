@@ -138,9 +138,16 @@
                                     </div>
                                     <span class="text-[#C084FC]">&rarr;</span>
                                 </a>
+                                <a href="/deck-overview" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deck_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">06 // Fleet Overview</span>
+                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">COMPARE</span>
+                                    </div>
+                                    <span class="text-[#00CED1]">&rarr;</span>
+                                </a>
                                 {% if current_user.is_admin %}
                                 <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
-                                    <span class="font-bold">06 // Admin Console</span>
+                                    <span class="font-bold">07 // Admin Console</span>
                                     <span class="text-[#00CED1]">&rarr;</span>
                                 </a>
                                 {% endif %}
@@ -231,9 +238,13 @@
             <span>05 // Deck Intel</span>
             <span class="text-[9px] text-[#C084FC] font-bold">AI</span>
         </a>
+        <a href="/deck-overview" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'deck_overview' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+            <span>06 // Overview</span>
+            <span class="text-[9px] text-[#00CED1] font-bold">VS</span>
+        </a>
         {% if current_user.is_admin %}
         <a href="/admin" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/80 border-transparent{% endif %} whitespace-nowrap">
-            06 // Admin
+            07 // Admin
         </a>
         {% endif %}
     </div>

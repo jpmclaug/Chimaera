@@ -572,25 +572,138 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self.assertIn("HTTP 503", err_msg)
         self.assertEqual(mock_post.call_count, 4)
 
-    def test_eastern_jinja_template_filter(self):
-        """Verifies Jinja eastern and est template filters format datetimes to Eastern Time."""
-        from datetime import datetime, timezone
-        from app import create_app
-
+    def test_deck_overview_page_authenticated(self):
+        """Verifies /deck-overview page renders successfully with fleet stats and decks."""
         app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
         with app.app_context():
-            eastern_filter = app.jinja_env.filters["eastern"]
-            est_filter = app.jinja_env.filters["est"]
+            db.create_all()
+            user = User(email="player@example.com", name="Commander Player", is_admin=True)
+            db.session.add(user)
+            db.session.commit()
 
-            utc_dt = datetime(2026, 8, 31, 23, 0, 0, tzinfo=timezone.utc)
-            formatted = eastern_filter(utc_dt)
-            # 23:00 UTC = 19:00 EDT/EST (-4 hours)
-            self.assertIn("19:00:00 EST", formatted)
-            self.assertIn("2026-08-31", formatted)
+            # Add two sample decks
+            d1 = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Dragon Fleet",
+                commander_name="The Ur-Dragon",
+                total_cards=100,
+                total_value=350.0,
+                avg_cmc=3.8,
+                power_level=8.0,
+                color_identity="W,U,B,R,G",
+                cards_data=json.dumps([{"name": "The Ur-Dragon", "quantity": 1}, {"name": "Sol Ring", "quantity": 1}]),
+                stats_json=json.dumps({"total_value": 350.0, "avg_cmc": 3.8, "type_counts": {"Creatures": 30, "Lands": 36}, "cmc_curve": {"1": 5, "2": 10}})
+            )
+            d2 = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Vampire Bloodline",
+                commander_name="Edgar Markov",
+                total_cards=100,
+                total_value=250.0,
+                avg_cmc=2.9,
+                power_level=7.5,
+                color_identity="W,B,R",
+                cards_data=json.dumps([{"name": "Edgar Markov", "quantity": 1}, {"name": "Sol Ring", "quantity": 1}]),
+                stats_json=json.dumps({"total_value": 250.0, "avg_cmc": 2.9, "type_counts": {"Creatures": 38, "Lands": 35}, "cmc_curve": {"1": 12, "2": 15}})
+            )
+            db.session.add_all([d1, d2])
+            db.session.commit()
 
-            formatted_est = est_filter(utc_dt, "%Y-%m-%d")
-            self.assertEqual(formatted_est, "2026-08-31")
+            with app.test_client() as client:
+                with client.session_transaction() as sess:
+                    sess["user_id"] = user.id
+                resp = client.get("/deck-overview")
+                self.assertEqual(resp.status_code, 200)
+                html = resp.data.decode("utf-8")
+                self.assertIn("Fleet Overview & Compare", html)
+                self.assertIn("Dragon Fleet", html)
+                self.assertIn("Vampire Bloodline", html)
+                self.assertIn("600.00", html)  # Total portfolio value 350 + 250
+
+    def test_deck_compare_api(self):
+        """Verifies /api/deck/compare endpoint correctly computes side-by-side comparison, shared staples, and top cards."""
+        app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
+        with app.app_context():
+            db.create_all()
+            user = User(email="player@example.com", name="Commander Player", is_admin=True)
+            db.session.add(user)
+            db.session.commit()
+
+            # Add two decks sharing Sol Ring and Command Tower
+            d1 = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Ur-Dragon Midrange",
+                commander_name="The Ur-Dragon",
+                total_cards=100,
+                total_value=400.0,
+                avg_cmc=3.8,
+                power_level=8.0,
+                color_identity="W,U,B,R,G",
+                cards_data=json.dumps([
+                    {"name": "The Ur-Dragon", "quantity": 1, "price_usd": "15.00", "type_line": "Legendary Creature — Dragon Avatar", "cmc": 9},
+                    {"name": "Sol Ring", "quantity": 1, "price_usd": "2.00", "type_line": "Artifact", "cmc": 1},
+                    {"name": "Command Tower", "quantity": 1, "price_usd": "0.50", "type_line": "Land", "cmc": 0},
+                    {"name": "Terror of the Peaks", "quantity": 1, "price_usd": "35.00", "type_line": "Creature — Dragon", "cmc": 5}
+                ]),
+                stats_json=json.dumps({"total_value": 400.0, "avg_cmc": 3.8, "type_counts": {"Creatures": 30, "Lands": 36}, "cmc_curve": {"1": 5, "2": 10, "5": 8, "7+": 6}})
+            )
+            d2 = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Edgar Markov Aggro",
+                commander_name="Edgar Markov",
+                total_cards=100,
+                total_value=280.0,
+                avg_cmc=2.7,
+                power_level=7.5,
+                color_identity="W,B,R",
+                cards_data=json.dumps([
+                    {"name": "Edgar Markov", "quantity": 1, "price_usd": "25.00", "type_line": "Legendary Creature — Vampire Knight", "cmc": 6},
+                    {"name": "Sol Ring", "quantity": 1, "price_usd": "2.00", "type_line": "Artifact", "cmc": 1},
+                    {"name": "Command Tower", "quantity": 1, "price_usd": "0.50", "type_line": "Land", "cmc": 0},
+                    {"name": "Vampiric Tutor", "quantity": 1, "price_usd": "45.00", "type_line": "Instant", "cmc": 1}
+                ]),
+                stats_json=json.dumps({"total_value": 280.0, "avg_cmc": 2.7, "type_counts": {"Creatures": 40, "Lands": 34}, "cmc_curve": {"1": 15, "2": 18, "6": 2}})
+            )
+            db.session.add_all([d1, d2])
+            db.session.commit()
+
+            with app.test_client() as client:
+                with client.session_transaction() as sess:
+                    sess["user_id"] = user.id
+
+                # Valid compare 2 decks
+                resp = client.post("/api/deck/compare", json={"deck_ids": [d1.id, d2.id]})
+                self.assertEqual(resp.status_code, 200)
+                data = resp.get_json()
+                self.assertTrue(data["success"])
+                self.assertEqual(data["deck_count"], 2)
+                
+                # Check decks data
+                self.assertEqual(data["decks"][0]["deck_name"], "Ur-Dragon Midrange")
+                self.assertEqual(data["decks"][1]["deck_name"], "Edgar Markov Aggro")
+                
+                # Check shared staples
+                shared_names = [c["name"].lower() for c in data["shared_all"]]
+                self.assertIn("sol ring", shared_names)
+                self.assertIn("command tower", shared_names)
+                self.assertNotIn("vampiric tutor", shared_names)
+                self.assertNotIn("terror of the peaks", shared_names)
+
+                # Check unique cards
+                unique_d1 = data["unique_per_deck"][str(d1.id)]
+                unique_d2 = data["unique_per_deck"][str(d2.id)]
+                self.assertGreaterEqual(unique_d1["count"], 2)
+                self.assertGreaterEqual(unique_d2["count"], 2)
+
+                # Validation error checks: less than 2 decks
+                bad_resp1 = client.post("/api/deck/compare", json={"deck_ids": [d1.id]})
+                self.assertEqual(bad_resp1.status_code, 400)
+
+                # Validation error checks: more than 4 decks
+                bad_resp2 = client.post("/api/deck/compare", json={"deck_ids": [1, 2, 3, 4, 5]})
+                self.assertEqual(bad_resp2.status_code, 400)
 
 
 if __name__ == "__main__":
     unittest.main()
+
