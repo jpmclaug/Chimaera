@@ -34,6 +34,9 @@ from models import (
 from deal_engine import DealEngine
 from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider
 from deck_parser import DeckParser, DeckParseError
+from card_classifier import MTGCardClassifier
+from deck_analyzer import DeckAnalyzer
+from deck_comparator import DeckComparator
 from gemini_analyzer import (
     GeminiAnalyzer,
     GeminiAnalysisError,
@@ -2031,19 +2034,15 @@ def create_app(test_config=None):
             active_tab="deck_analyzer",
         )
 
+    deck_analyzer = DeckAnalyzer()
+    deck_comparator = DeckComparator()
+
     def _enrich_and_compute_deck_metadata(parsed: dict) -> dict:
-        """Helper to batch-enrich parsed deck cards with Scryfall metadata and calculate all tactical stats."""
+        """Helper to batch-enrich parsed deck cards with Scryfall metadata and calculate all tactical stats via DeckAnalyzer."""
         card_names = [c["name"] for c in parsed.get("cards", [])]
         scryfall_map, unresolved = scryfall_provider.get_cards_collection(card_names)
 
         enriched_cards = []
-        type_counts = {}
-        cmc_curve = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7+": 0}
-        total_deck_value = 0.0
-        total_cmc = 0.0
-        nonland_count = 0
-        color_identity_set = set()
-
         for c in parsed.get("cards", []):
             raw_name = c["name"]
             name = re.sub(r"<[^>]+>", "", raw_name).strip()
@@ -2065,7 +2064,7 @@ def create_app(test_config=None):
                 "image_uri": img_uri,
                 "small_image_uri": small_img,
                 "art_crop_uri": art_crop,
-                "mana_cost": meta.get("mana_cost", ""),
+                "mana_cost": meta.get("mana_cost", "") or c.get("mana_cost", ""),
                 "cmc": card_cmc,
                 "type_line": meta.get("type_line", "Unknown"),
                 "oracle_text": meta.get("oracle_text", ""),
@@ -2075,51 +2074,11 @@ def create_app(test_config=None):
                 "price_usd": price_usd,
                 "price_usd_foil": meta.get("prices", {}).get("usd_foil"),
                 "tcgplayer_url": meta.get("tcgplayer_url"),
+                "card_faces": meta.get("card_faces", []) or c.get("card_faces", []),
+                "produced_mana": meta.get("produced_mana", []) or c.get("produced_mana", []),
+                "keywords": meta.get("keywords", []) or c.get("keywords", []),
             }
             enriched_cards.append(card_obj)
-
-            # Type tracking
-            type_line = (card_obj["type_line"] or "").lower()
-            primary_type = "Other"
-            if "creature" in type_line:
-                primary_type = "Creatures"
-            elif "instant" in type_line:
-                primary_type = "Instants"
-            elif "sorcery" in type_line:
-                primary_type = "Sorceries"
-            elif "artifact" in type_line:
-                primary_type = "Artifacts"
-            elif "enchantment" in type_line:
-                primary_type = "Enchantments"
-            elif "planeswalker" in type_line:
-                primary_type = "Planeswalkers"
-            elif "land" in type_line:
-                primary_type = "Lands"
-            elif "battle" in type_line:
-                primary_type = "Battles"
-
-            type_counts[primary_type] = type_counts.get(primary_type, 0) + qty
-
-            # CMC tracking (non-lands)
-            if "land" not in type_line:
-                cmc_val = float(card_obj["cmc"] or 0)
-                total_cmc += (cmc_val * qty)
-                nonland_count += qty
-                cmc_key = "7+" if cmc_val >= 7 else str(int(cmc_val))
-                cmc_curve[cmc_key] = cmc_curve.get(cmc_key, 0) + qty
-
-            # Price tracking
-            if card_obj["price_usd"]:
-                try:
-                    total_deck_value += float(card_obj["price_usd"]) * qty
-                except (ValueError, TypeError):
-                    pass
-
-            # Color identity
-            for color in card_obj["color_identity"]:
-                color_identity_set.add(color)
-
-        avg_cmc = round(total_cmc / nonland_count, 2) if nonland_count > 0 else 0.0
 
         # Commander artwork
         commander_art = parsed.get("commander_art")
@@ -2135,24 +2094,27 @@ def create_app(test_config=None):
 
         clean_deck_name = re.sub(r"<[^>]+>", "", parsed.get("deck_name", "Commander Deck")).strip()
 
-        stats = {
-            "total_value": round(total_deck_value, 2),
-            "avg_cmc": avg_cmc,
-            "type_counts": type_counts,
-            "cmc_curve": cmc_curve,
-            "color_identity": sorted(list(color_identity_set)),
-        }
-
-        return {
+        deck_payload = {
             "deck_name": clean_deck_name or "Commander Deck",
             "commander": [re.sub(r"<[^>]+>", "", c).strip() for c in parsed.get("commander", [])],
             "commander_art": commander_art,
             "cards": enriched_cards,
-            "total_cards": sum(c.get("quantity", 1) for c in enriched_cards) if enriched_cards else parsed.get("total_cards", 0),
+            "source_type": parsed.get("source_type", "text"),
+            "raw_text": parsed.get("raw_text", ""),
+        }
+
+        analyzed = deck_analyzer.analyze(deck_payload)
+
+        return {
+            "deck_name": analyzed["deck_name"],
+            "commander": analyzed["commander"],
+            "commander_art": commander_art,
+            "cards": analyzed["cards"],
+            "total_cards": analyzed["total_cards"],
             "source_type": parsed.get("source_type", "text"),
             "raw_text": parsed.get("raw_text", ""),
             "unresolved_cards": unresolved,
-            "stats": stats,
+            "stats": analyzed["stats"],
             "scryfall_map": scryfall_map,
         }
 
@@ -2760,122 +2722,193 @@ def create_app(test_config=None):
     @app.route("/api/deck/compare", methods=["POST"])
     @login_required
     def api_deck_compare():
-        """Computes comprehensive side-by-side comparison data for 2 to 4 selected Commander decks."""
+        """Computes comprehensive side-by-side comparison data for 2 to 4 selected Commander decks or raw decklists."""
         user = get_current_user()
         data = request.get_json(silent=True) or {}
-        deck_ids = data.get("deck_ids", [])
+        deck_ids = data.get("deck_ids")
 
-        if not isinstance(deck_ids, list) or len(deck_ids) < 2:
-            return jsonify({"error": "Please select at least 2 decks to compare."}), 400
-        if len(deck_ids) > 4:
-            return jsonify({"error": "You can compare up to 4 decks simultaneously."}), 400
+        # Check if raw decklists or payload objects were supplied
+        deck_a_raw = data.get("deck_a") or data.get("deck_a_text")
+        deck_b_raw = data.get("deck_b") or data.get("deck_b_text")
+        deck_a_id = data.get("deck_a_id")
+        deck_b_id = data.get("deck_b_id")
 
-        # Fetch decks
-        decks = []
-        for did in deck_ids:
-            try:
-                did_int = int(did)
-            except (ValueError, TypeError):
-                continue
-            entry = db.session.get(DeckAnalysis, did_int)
-            if entry and (user.is_admin or not entry.user_id or entry.user_id == user.id):
-                decks.append(entry)
+        if not deck_ids and deck_a_id and deck_b_id:
+            deck_ids = [deck_a_id, deck_b_id]
 
-        if len(decks) < 2:
-            return jsonify({"error": "Could not find at least 2 authorized decks to compare."}), 404
-
-        # Compute full comparative payload
         comparison_decks = []
-        deck_card_sets = []  # list of dicts with deck_id, deck_name, card_set, cards_by_name
+        deck_card_sets = []
+        all_unique_cards = {}
 
-        all_unique_cards = {}  # card_name -> card metadata
+        if deck_ids:
+            if not isinstance(deck_ids, list) or len(deck_ids) < 2:
+                return jsonify({"error": "Please select at least 2 decks to compare."}), 400
+            if len(deck_ids) > 4:
+                return jsonify({"error": "You can compare up to 4 decks simultaneously."}), 400
 
-        for d in decks:
-            cards = d.get_parsed_cards()
-            stats = d.get_stats()
-            analysis = d.get_analysis()
+            # Fetch decks
+            decks = []
+            for did in deck_ids:
+                try:
+                    did_int = int(did)
+                except (ValueError, TypeError):
+                    continue
+                entry = db.session.get(DeckAnalysis, did_int)
+                if entry and (user.is_admin or not entry.user_id or entry.user_id == user.id):
+                    decks.append(entry)
 
-            card_names_set = set()
-            cards_by_name = {}
-            for c in cards:
-                cname = (c.get("name") or "").strip()
-                if cname:
-                    cname_key = cname.lower()
-                    card_names_set.add(cname_key)
-                    cards_by_name[cname_key] = c
-                    if cname_key not in all_unique_cards:
-                        all_unique_cards[cname_key] = c
+            if len(decks) < 2:
+                return jsonify({"error": "Could not find at least 2 authorized decks to compare."}), 404
 
-            deck_card_sets.append({
-                "id": d.id,
-                "name": d.deck_name,
-                "card_set": card_names_set,
-                "cards_by_name": cards_by_name,
-            })
+            for d in decks:
+                cards = d.get_parsed_cards()
+                stats = d.get_stats()
+                analysis = d.get_analysis()
 
-            # Top 5 most expensive cards in this deck
-            priced_cards = []
-            for c in cards:
-                p = c.get("price_usd")
-                if p is not None:
-                    try:
-                        p_val = float(p)
-                        priced_cards.append({
-                            "name": c.get("name"),
-                            "price": p_val,
-                            "type_line": c.get("type_line", ""),
-                            "cmc": c.get("cmc", 0),
-                            "image_uri": c.get("image_uri") or c.get("small_image_uri"),
-                            "tcgplayer_url": c.get("tcgplayer_url"),
-                        })
-                    except (ValueError, TypeError):
-                        pass
-            priced_cards.sort(key=lambda x: x["price"], reverse=True)
-            top_cards = priced_cards[:5]
+                card_names_set = set()
+                cards_by_name = {}
+                for c in cards:
+                    cname = (c.get("name") or "").strip()
+                    if cname:
+                        cname_key = cname.lower()
+                        card_names_set.add(cname_key)
+                        cards_by_name[cname_key] = c
+                        if cname_key not in all_unique_cards:
+                            all_unique_cards[cname_key] = c
 
-            # Type breakdown normalized
-            total_cards_count = d.total_cards or sum(c.get("quantity", 1) for c in cards) or 100
-            type_counts = stats.get("type_counts", {})
+                deck_card_sets.append({
+                    "id": d.id,
+                    "name": d.deck_name,
+                    "card_set": card_names_set,
+                    "cards_by_name": cards_by_name,
+                })
 
-            # Land vs Non-land count
-            land_count = type_counts.get("Lands", 0)
-            nonland_count = total_cards_count - land_count
+                # Top 5 most expensive cards
+                priced_cards = []
+                for c in cards:
+                    p = c.get("price_usd")
+                    if p is not None:
+                        try:
+                            p_val = float(p)
+                            priced_cards.append({
+                                "name": c.get("name"),
+                                "price": p_val,
+                                "type_line": c.get("type_line", ""),
+                                "cmc": c.get("cmc", 0),
+                                "image_uri": c.get("image_uri") or c.get("small_image_uri"),
+                                "tcgplayer_url": c.get("tcgplayer_url"),
+                            })
+                        except (ValueError, TypeError):
+                            pass
+                priced_cards.sort(key=lambda x: x["price"], reverse=True)
+                top_cards = priced_cards[:5]
 
-            deck_item = {
-                "id": d.id,
-                "deck_name": d.deck_name,
-                "commander_name": d.commander_name or "Commander",
-                "commander_art": d.commander_art or (cards[0].get("image_uri") if cards else None),
-                "power_level": d.power_level or (analysis.get("estimated_power_level") if analysis else None),
-                "power_bracket": d.power_bracket or (analysis.get("power_bracket") if analysis else "Pre-AI Ready"),
-                "archetype": d.archetype or (analysis.get("archetype") if analysis else "Synergy"),
-                "total_cards": total_cards_count,
-                "land_count": land_count,
-                "nonland_count": nonland_count,
-                "total_value": d.total_value if d.total_value is not None else stats.get("total_value", 0.0),
-                "avg_cmc": d.avg_cmc if d.avg_cmc is not None else stats.get("avg_cmc", 0.0),
-                "color_identity": d.get_color_identity_list(),
-                "cmc_curve": stats.get("cmc_curve", {}),
-                "type_counts": type_counts,
-                "top_cards": top_cards,
-                "has_ai_analysis": d.has_ai_analysis,
-                "summary": analysis.get("overall_summary") if analysis else None,
-                "win_conditions": analysis.get("win_conditions") if analysis else [],
-            }
-            comparison_decks.append(deck_item)
+                total_cards_count = d.total_cards or sum(c.get("quantity", 1) for c in cards) or 100
+                type_counts = stats.get("type_counts", {})
+                land_count = type_counts.get("Lands", stats.get("land_count", 0))
+                nonland_count = total_cards_count - land_count
+
+                # Heuristic archetype
+                archetype = stats.get("archetype") or deck_comparator.determine_archetype(stats)
+
+                deck_item = {
+                    "id": d.id,
+                    "deck_name": d.deck_name,
+                    "commander_name": d.commander_name or "Commander",
+                    "commander_art": d.commander_art or (cards[0].get("image_uri") if cards else None),
+                    "power_level": d.power_level or (analysis.get("estimated_power_level") if analysis else None),
+                    "power_bracket": d.power_bracket or (analysis.get("power_bracket") if analysis else "Pre-AI Ready"),
+                    "archetype": archetype,
+                    "total_cards": total_cards_count,
+                    "land_count": land_count,
+                    "nonland_count": nonland_count,
+                    "total_value": d.total_value if d.total_value is not None else stats.get("total_value", 0.0),
+                    "avg_cmc": d.avg_cmc if d.avg_cmc is not None else stats.get("avg_cmc", 0.0),
+                    "color_identity": d.get_color_identity_list(),
+                    "cmc_curve": stats.get("cmc_curve", {}),
+                    "type_counts": type_counts,
+                    "stats": stats,
+                    "top_cards": top_cards,
+                    "cards": cards,
+                    "has_ai_analysis": d.has_ai_analysis,
+                    "summary": analysis.get("overall_summary") if analysis else None,
+                    "win_conditions": analysis.get("win_conditions") if analysis else [],
+                }
+                comparison_decks.append(deck_item)
+
+        elif deck_a_raw and deck_b_raw:
+            # Parse raw decklists
+            def parse_raw_or_payload(raw):
+                if isinstance(raw, dict) and "cards" in raw:
+                    return _enrich_and_compute_deck_metadata(raw)
+                parsed = DeckParser.parse(str(raw), source_type="auto")
+                return _enrich_and_compute_deck_metadata(parsed)
+
+            deck_a_meta = parse_raw_or_payload(deck_a_raw)
+            deck_b_meta = parse_raw_or_payload(deck_b_raw)
+
+            for idx, d_meta in enumerate([deck_a_meta, deck_b_meta], start=1):
+                cards = d_meta.get("cards", [])
+                stats = d_meta.get("stats", {})
+                card_names_set = set()
+                cards_by_name = {}
+                for c in cards:
+                    cname = (c.get("name") or "").strip()
+                    if cname:
+                        cname_key = cname.lower()
+                        card_names_set.add(cname_key)
+                        cards_by_name[cname_key] = c
+                        if cname_key not in all_unique_cards:
+                            all_unique_cards[cname_key] = c
+
+                deck_card_sets.append({
+                    "id": idx,
+                    "name": d_meta.get("deck_name", f"Deck {idx}"),
+                    "card_set": card_names_set,
+                    "cards_by_name": cards_by_name,
+                })
+
+                type_counts = stats.get("type_counts", {})
+                total_cards_count = d_meta.get("total_cards", len(cards))
+                land_count = type_counts.get("Lands", stats.get("land_count", 0))
+                nonland_count = total_cards_count - land_count
+                archetype = stats.get("archetype") or deck_comparator.determine_archetype(stats)
+
+                deck_item = {
+                    "id": idx,
+                    "deck_name": d_meta.get("deck_name", f"Deck {idx}"),
+                    "commander_name": ", ".join(d_meta.get("commander", [])) or "Commander",
+                    "commander_art": d_meta.get("commander_art"),
+                    "power_level": None,
+                    "power_bracket": "Pre-AI Ready",
+                    "archetype": archetype,
+                    "total_cards": total_cards_count,
+                    "land_count": land_count,
+                    "nonland_count": nonland_count,
+                    "total_value": stats.get("total_value", 0.0),
+                    "avg_cmc": stats.get("avg_cmc", 0.0),
+                    "color_identity": stats.get("color_identity", []),
+                    "cmc_curve": stats.get("cmc_curve", {}),
+                    "type_counts": type_counts,
+                    "stats": stats,
+                    "top_cards": [],
+                    "cards": cards,
+                    "has_ai_analysis": False,
+                    "summary": None,
+                    "win_conditions": [],
+                }
+                comparison_decks.append(deck_item)
+        else:
+            return jsonify({"error": "Please provide either deck_ids or two decklists to compare."}), 400
 
         # Compute Shared Cards Analysis
-        # 1. Cards in ALL selected decks (intersection of all sets)
         shared_in_all = set.intersection(*[ds["card_set"] for ds in deck_card_sets]) if deck_card_sets else set()
-
-        # 2. Cards in 2+ decks (if comparing >=3 decks)
         all_deck_sets = [ds["card_set"] for ds in deck_card_sets]
         shared_in_multiple = set()
         for i in range(len(all_deck_sets)):
             for j in range(i + 1, len(all_deck_sets)):
                 shared_in_multiple.update(all_deck_sets[i].intersection(all_deck_sets[j]))
 
-        # Format shared cards helper
         def format_card_list(names_set):
             res = []
             for n in sorted(list(names_set)):
@@ -2899,7 +2932,6 @@ def create_app(test_config=None):
         shared_all_list = format_card_list(shared_in_all)
         shared_multiple_list = format_card_list(shared_in_multiple - shared_in_all)
 
-        # Unique cards per deck
         unique_per_deck = {}
         for ds in deck_card_sets:
             other_sets = [other["card_set"] for other in deck_card_sets if other["id"] != ds["id"]]
@@ -2910,14 +2942,29 @@ def create_app(test_config=None):
                 "sample": format_card_list(unique_names)[:12],
             }
 
-        return jsonify({
+        resp_payload = {
             "success": True,
             "deck_count": len(comparison_decks),
             "decks": comparison_decks,
             "shared_all": shared_all_list,
             "shared_multiple": shared_multiple_list,
             "unique_per_deck": unique_per_deck,
-        })
+        }
+
+        # If comparing exactly 2 decks, compute complete comparator delta matrix and profiles
+        if len(comparison_decks) == 2:
+            comp_diff = deck_comparator.compare(
+                {"cards": comparison_decks[0].get("cards", []), "stats": comparison_decks[0].get("stats", {})},
+                {"cards": comparison_decks[1].get("cards", []), "stats": comparison_decks[1].get("stats", {})},
+            )
+            resp_payload["delta_matrix"] = comp_diff.get("delta_matrix")
+            resp_payload["interaction_profile"] = comp_diff.get("interaction_profile")
+            resp_payload["card_advantage_profile"] = comp_diff.get("card_advantage_profile")
+            resp_payload["velocity_profile"] = comp_diff.get("velocity_profile")
+            resp_payload["archetype_a"] = comp_diff.get("archetype_a")
+            resp_payload["archetype_b"] = comp_diff.get("archetype_b")
+
+        return jsonify(resp_payload)
 
 
     return app

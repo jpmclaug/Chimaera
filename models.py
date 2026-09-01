@@ -750,73 +750,78 @@ class DeckAnalysis(db.Model):
         import json
         if self.stats_json:
             try:
-                return json.loads(self.stats_json)
+                data = json.loads(self.stats_json)
+                if isinstance(data, dict) and "pip_breakdown" in data:
+                    return data
             except Exception:
                 pass
 
-        # Calculate stats dynamically if missing
+        # Calculate stats dynamically using DeckAnalyzer if missing or partial
         cards = self.get_parsed_cards()
         if not cards:
             return {}
 
-        type_counts = {}
-        cmc_curve = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7+": 0}
-        total_val = 0.0
-        total_cmc_val = 0.0
-        nonland_count = 0
-        colors_set = set()
+        try:
+            from deck_analyzer import DeckAnalyzer
+            analyzer = DeckAnalyzer()
+            res = analyzer.analyze({"cards": cards, "deck_name": self.deck_name, "commander": [self.commander_name] if self.commander_name else []})
+            return res.get("stats", {})
+        except Exception:
+            # Fallback basic calculation
+            type_counts = {}
+            cmc_curve = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7+": 0}
+            total_val = 0.0
+            total_cmc_val = 0.0
+            nonland_count = 0
+            colors_set = set()
 
-        for c in cards:
-            qty = c.get("quantity", 1)
-            t_line = (c.get("type_line") or "").lower()
+            for c in cards:
+                qty = c.get("quantity", 1)
+                t_line = (c.get("type_line") or "").lower()
 
-            # Type
-            primary = "Other"
-            if "creature" in t_line:
-                primary = "Creatures"
-            elif "instant" in t_line:
-                primary = "Instants"
-            elif "sorcery" in t_line:
-                primary = "Sorceries"
-            elif "artifact" in t_line:
-                primary = "Artifacts"
-            elif "enchantment" in t_line:
-                primary = "Enchantments"
-            elif "planeswalker" in t_line:
-                primary = "Planeswalkers"
-            elif "land" in t_line:
-                primary = "Lands"
-            elif "battle" in t_line:
-                primary = "Battles"
-            type_counts[primary] = type_counts.get(primary, 0) + qty
+                primary = "Other"
+                if "creature" in t_line:
+                    primary = "Creatures"
+                elif "instant" in t_line:
+                    primary = "Instants"
+                elif "sorcery" in t_line:
+                    primary = "Sorceries"
+                elif "artifact" in t_line:
+                    primary = "Artifacts"
+                elif "enchantment" in t_line:
+                    primary = "Enchantments"
+                elif "planeswalker" in t_line:
+                    primary = "Planeswalkers"
+                elif "land" in t_line:
+                    primary = "Lands"
+                elif "battle" in t_line:
+                    primary = "Battles"
+                type_counts[primary] = type_counts.get(primary, 0) + qty
 
-            # CMC
-            if "land" not in t_line:
-                cmc = float(c.get("cmc", 0))
-                total_cmc_val += (cmc * qty)
-                nonland_count += qty
-                cmc_key = "7+" if cmc >= 7 else str(int(cmc))
-                cmc_curve[cmc_key] = cmc_curve.get(cmc_key, 0) + qty
+                if "land" not in t_line:
+                    cmc = float(c.get("cmc", 0))
+                    total_cmc_val += (cmc * qty)
+                    nonland_count += qty
+                    cmc_key = "7+" if cmc >= 7 else str(int(cmc))
+                    cmc_curve[cmc_key] = cmc_curve.get(cmc_key, 0) + qty
 
-            # Price
-            price_usd = c.get("price_usd")
-            if price_usd:
-                try:
-                    total_val += float(price_usd) * qty
-                except Exception:
-                    pass
+                price_usd = c.get("price_usd")
+                if price_usd:
+                    try:
+                        total_val += float(price_usd) * qty
+                    except Exception:
+                        pass
 
-            # Colors
-            for col in c.get("color_identity", []):
-                colors_set.add(col)
+                for col in c.get("color_identity", []):
+                    colors_set.add(col)
 
-        return {
-            "total_value": round(total_val, 2),
-            "avg_cmc": round(total_cmc_val / nonland_count, 2) if nonland_count > 0 else 0.0,
-            "type_counts": type_counts,
-            "cmc_curve": cmc_curve,
-            "color_identity": sorted(list(colors_set)),
-        }
+            return {
+                "total_value": round(total_val, 2),
+                "avg_cmc": round(total_cmc_val / nonland_count, 2) if nonland_count > 0 else 0.0,
+                "type_counts": type_counts,
+                "cmc_curve": cmc_curve,
+                "color_identity": sorted(list(colors_set)),
+            }
 
     def get_color_identity_list(self) -> list[str]:
         """Returns list of color identity letters e.g. ['W', 'U', 'B']."""

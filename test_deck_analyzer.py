@@ -11,6 +11,9 @@ from app import create_app
 from models import db, User, DeckAnalysis, SystemSetting
 from deck_parser import DeckParser, DeckParseError
 from gemini_analyzer import GeminiAnalyzer, GeminiAnalysisError
+from card_classifier import MTGCardClassifier
+from deck_analyzer import DeckAnalyzer
+from deck_comparator import DeckComparator
 
 
 class TestDeckParser(unittest.TestCase):
@@ -704,6 +707,374 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
                 self.assertEqual(bad_resp2.status_code, 400)
 
 
+
+class TestCardClassifier(unittest.TestCase):
+    """Verifies MTGCardClassifier assigns functional roles, tags staples, handles multi-face cards, and ignores land tap abilities."""
+
+    def setUp(self):
+        self.classifier = MTGCardClassifier()
+
+    def test_ramp_classification_staples(self):
+        # Fast Ramp: CMC <= 2
+        sol_ring = self.classifier.classify({
+            "name": "Sol Ring", "cmc": 1, "type_line": "Artifact", "oracle_text": "{T}: Add {C}{C}."
+        })
+        self.assertTrue(sol_ring["is_ramp"])
+        self.assertEqual(sol_ring["ramp_tier"], "fast")
+
+        llanowar = self.classifier.classify({
+            "name": "Llanowar Elves", "cmc": 1, "type_line": "Creature — Elf Druid", "oracle_text": "{T}: Add {G}."
+        })
+        self.assertTrue(llanowar["is_ramp"])
+        self.assertEqual(llanowar["ramp_tier"], "fast")
+
+        signet = self.classifier.classify({
+            "name": "Arcane Signet", "cmc": 2, "type_line": "Artifact", "oracle_text": "{T}: Add one mana of any color in your commander's color identity."
+        })
+        self.assertTrue(signet["is_ramp"])
+        self.assertEqual(signet["ramp_tier"], "fast")
+
+        three_visits = self.classifier.classify({
+            "name": "Three Visits", "cmc": 2, "type_line": "Sorcery", "oracle_text": "Search your library for a Forest card, put that card onto the battlefield, then shuffle."
+        })
+        self.assertTrue(three_visits["is_ramp"])
+        self.assertEqual(three_visits["ramp_tier"], "fast")
+
+        # Standard Ramp: CMC >= 3
+        cultivate = self.classifier.classify({
+            "name": "Cultivate", "cmc": 3, "type_line": "Sorcery", "oracle_text": "Search your library for up to two basic land cards, reveal them, put one onto the battlefield tapped and the other into your hand."
+        })
+        self.assertTrue(cultivate["is_ramp"])
+        self.assertEqual(cultivate["ramp_tier"], "standard")
+
+        tithe = self.classifier.classify({
+            "name": "Smothering Tithe", "cmc": 4, "type_line": "Enchantment", "oracle_text": "Whenever an opponent draws a card, that player may pay {2}. If the player doesn't, you create a Treasure token."
+        })
+        self.assertTrue(tithe["is_ramp"])
+        self.assertEqual(tithe["ramp_tier"], "standard")
+
+    def test_lands_excluded_from_ramp(self):
+        forest = self.classifier.classify({
+            "name": "Forest", "cmc": 0, "type_line": "Basic Land — Forest", "oracle_text": "{T}: Add {G}."
+        })
+        self.assertFalse(forest["is_ramp"])
+
+        tower = self.classifier.classify({
+            "name": "Command Tower", "cmc": 0, "type_line": "Land", "oracle_text": "{T}: Add one mana of any color in your commander's color identity."
+        })
+        self.assertFalse(tower["is_ramp"])
+
+    def test_removal_classification_staples(self):
+        # Targeted Removal
+        stp = self.classifier.classify({
+            "name": "Swords to Plowshares", "cmc": 1, "type_line": "Instant", "oracle_text": "Exile target creature. Its controller gains life equal to its power."
+        })
+        self.assertTrue(stp["is_targeted_removal"])
+        self.assertFalse(stp["is_board_wipe"])
+
+        beast_within = self.classifier.classify({
+            "name": "Beast Within", "cmc": 3, "type_line": "Instant", "oracle_text": "Destroy target permanent. Its controller creates a 3/3 green Beast creature token."
+        })
+        self.assertTrue(beast_within["is_targeted_removal"])
+
+        chaos_warp = self.classifier.classify({
+            "name": "Chaos Warp", "cmc": 3, "type_line": "Instant", "oracle_text": "The owner of target permanent shuffles it into their library, then reveals the top card of their library."
+        })
+        self.assertTrue(chaos_warp["is_targeted_removal"])
+
+        # Board Wipes
+        blasphemous = self.classifier.classify({
+            "name": "Blasphemous Act", "cmc": 9, "type_line": "Sorcery", "oracle_text": "This spell costs {1} less to cast for each creature on the battlefield. Deals 13 damage to each creature."
+        })
+        self.assertTrue(blasphemous["is_board_wipe"])
+        self.assertFalse(blasphemous["is_targeted_removal"])
+
+        toxic = self.classifier.classify({
+            "name": "Toxic Deluge", "cmc": 3, "type_line": "Sorcery", "oracle_text": "As an additional cost to cast this spell, pay X life. All creatures get -X/-X until end of turn."
+        })
+        self.assertTrue(toxic["is_board_wipe"])
+
+        farewell = self.classifier.classify({
+            "name": "Farewell", "cmc": 6, "type_line": "Sorcery", "oracle_text": "Choose one or more — Exile all artifacts; Exile all creatures; Exile all enchantments; Exile all graveyards."
+        })
+        self.assertTrue(farewell["is_board_wipe"])
+
+        supreme_verdict = self.classifier.classify({
+            "name": "Supreme Verdict", "cmc": 4, "type_line": "Sorcery", "oracle_text": "This spell can't be countered. Destroy all creatures."
+        })
+        self.assertTrue(supreme_verdict["is_board_wipe"])
+
+        # Overload / Modal (Targeted + Wipe)
+        cyc_rift = self.classifier.classify({
+            "name": "Cyclonic Rift", "cmc": 2, "type_line": "Instant", "oracle_text": "Return target nonland permanent you don't control to its owner's hand. Overload {6}{U} (Return each nonland permanent you don't control to its owner's hand.)"
+        })
+        self.assertTrue(cyc_rift["is_targeted_removal"])
+        self.assertTrue(cyc_rift["is_board_wipe"])
+
+    def test_draw_classification_staples(self):
+        # Engines
+        rhystic = self.classifier.classify({
+            "name": "Rhystic Study", "cmc": 3, "type_line": "Enchantment", "oracle_text": "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}."
+        })
+        self.assertTrue(rhystic["is_draw"])
+        self.assertEqual(rhystic["draw_type"], "engine")
+
+        whisperer = self.classifier.classify({
+            "name": "Beast Whisperer", "cmc": 4, "type_line": "Creature — Elf Druid", "oracle_text": "Whenever you cast a creature spell, draw a card."
+        })
+        self.assertTrue(whisperer["is_draw"])
+        self.assertEqual(whisperer["draw_type"], "engine")
+
+        sylvan = self.classifier.classify({
+            "name": "Sylvan Library", "cmc": 2, "type_line": "Enchantment", "oracle_text": "At the beginning of your draw step, you may draw two additional cards. If you do, choose two cards in your hand drawn this turn. For each of those cards, pay 4 life or put it back."
+        })
+        self.assertTrue(sylvan["is_draw"])
+        self.assertEqual(sylvan["draw_type"], "engine")
+
+        # Burst Draw
+        harmonize = self.classifier.classify({
+            "name": "Harmonize", "cmc": 4, "type_line": "Sorcery", "oracle_text": "Draw three cards."
+        })
+        self.assertTrue(harmonize["is_draw"])
+        self.assertEqual(harmonize["draw_type"], "burst")
+
+        nights_whisper = self.classifier.classify({
+            "name": "Night's Whisper", "cmc": 2, "type_line": "Sorcery", "oracle_text": "You draw two cards and you lose 2 life."
+        })
+        self.assertTrue(nights_whisper["is_draw"])
+        self.assertEqual(nights_whisper["draw_type"], "burst")
+
+        # Cantrips
+        gitaxian = self.classifier.classify({
+            "name": "Gitaxian Probe", "cmc": 1, "type_line": "Sorcery", "oracle_text": "Look at target player's hand. Draw a card."
+        })
+        self.assertTrue(gitaxian["is_draw"])
+        self.assertEqual(gitaxian["draw_type"], "cantrip")
+
+        ponder = self.classifier.classify({
+            "name": "Ponder", "cmc": 1, "type_line": "Sorcery", "oracle_text": "Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card."
+        })
+        self.assertTrue(ponder["is_draw"])
+        self.assertEqual(ponder["draw_type"], "cantrip")
+
+    def test_tutor_classification_staples(self):
+        demonic = self.classifier.classify({
+            "name": "Demonic Tutor", "cmc": 2, "type_line": "Sorcery", "oracle_text": "Search your library for a card, put that card into your hand, then shuffle."
+        })
+        self.assertTrue(demonic["is_tutor"])
+        self.assertEqual(demonic["tutor_type"], "general")
+
+        vampiric = self.classifier.classify({
+            "name": "Vampiric Tutor", "cmc": 1, "type_line": "Instant", "oracle_text": "Search your library for a card, then shuffle and put that card on top. You lose 2 life."
+        })
+        self.assertTrue(vampiric["is_tutor"])
+        self.assertEqual(vampiric["tutor_type"], "general")
+
+        farseek = self.classifier.classify({
+            "name": "Farseek", "cmc": 2, "type_line": "Sorcery", "oracle_text": "Search your library for a Plains, Island, Swamp, or Mountain card, put it onto the battlefield tapped, then shuffle."
+        })
+        self.assertTrue(farseek["is_tutor"])
+        self.assertEqual(farseek["tutor_type"], "land")
+
+    def test_tapland_classification(self):
+        temple = self.classifier.classify({
+            "name": "Temple of Mystery", "cmc": 0, "type_line": "Land", "oracle_text": "Temple of Mystery enters the battlefield tapped. When Temple of Mystery enters the battlefield, scry 1. {T}: Add {G} or {U}."
+        })
+        self.assertTrue(temple["is_tapland"])
+
+        guildgate = self.classifier.classify({
+            "name": "Dimir Guildgate", "cmc": 0, "type_line": "Land — Gate", "oracle_text": "Dimir Guildgate enters the battlefield tapped. {T}: Add {U} or {B}."
+        })
+        self.assertTrue(guildgate["is_tapland"])
+
+        # Shocklands / Fetchlands / Basics should NOT be unconditional taplands
+        overgrown_tomb = self.classifier.classify({
+            "name": "Overgrown Tomb", "cmc": 0, "type_line": "Land — Swamp Forest", "oracle_text": "({T}: Add {B} or {G}.) As Overgrown Tomb enters the battlefield, you may pay 2 life. If you don't, it enters the battlefield tapped."
+        })
+        self.assertFalse(overgrown_tomb["is_tapland"])
+
+        basic_forest = self.classifier.classify({
+            "name": "Forest", "cmc": 0, "type_line": "Basic Land — Forest", "oracle_text": "{T}: Add {G}."
+        })
+        self.assertFalse(basic_forest["is_tapland"])
+
+    def test_multi_face_and_split_cards(self):
+        # Split card: Fire // Ice
+        fire_ice = self.classifier.classify({
+            "name": "Fire // Ice",
+            "cmc": 2,
+            "type_line": "Instant // Instant",
+            "card_faces": [
+                {"name": "Fire", "oracle_text": "Fire deals 2 damage divided as you choose among one or two targets."},
+                {"name": "Ice", "oracle_text": "Tap target permanent. Draw a card."}
+            ]
+        })
+        self.assertTrue(fire_ice["is_targeted_removal"])
+        self.assertTrue(fire_ice["is_draw"])
+        self.assertEqual(fire_ice["draw_type"], "cantrip")
+
+        # MDFC: Bala Ged Recovery // Bala Ged Sanctuary
+        bala_ged = self.classifier.classify({
+            "name": "Bala Ged Recovery // Bala Ged Sanctuary",
+            "cmc": 3,
+            "type_line": "Sorcery // Land",
+            "card_faces": [
+                {"name": "Bala Ged Recovery", "oracle_text": "Return target card from your graveyard to your hand."},
+                {"name": "Bala Ged Sanctuary", "oracle_text": "Bala Ged Sanctuary enters the battlefield tapped. {T}: Add {G}."}
+            ]
+        })
+        self.assertTrue(bala_ged["is_tapland"])
+
+
+class TestDeckAnalyzerEngine(unittest.TestCase):
+    """Verifies DeckAnalyzer pip-to-source ratios, AMV, instant speed ratios, and metric calculations."""
+
+    def test_parse_mana_pips(self):
+        analyzer = DeckAnalyzer()
+
+        # Simple pips
+        pips1 = analyzer.parse_mana_pips("{1}{W}{U}{B}{R}{G}")
+        self.assertEqual(pips1["W"], 1.0)
+        self.assertEqual(pips1["U"], 1.0)
+        self.assertEqual(pips1["B"], 1.0)
+        self.assertEqual(pips1["R"], 1.0)
+        self.assertEqual(pips1["G"], 1.0)
+        self.assertEqual(pips1["C"], 0.0)
+
+        # Hybrid & Phyrexian & Colorless pips
+        pips2 = analyzer.parse_mana_pips("{2/W}{B/P}{U/R}{C}")
+        self.assertEqual(pips2["W"], 0.5)
+        self.assertEqual(pips2["B"], 1.0)
+        self.assertEqual(pips2["U"], 0.5)
+        self.assertEqual(pips2["R"], 0.5)
+        self.assertEqual(pips2["C"], 1.0)
+
+    def test_extract_mana_sources(self):
+        analyzer = DeckAnalyzer()
+
+        # From produced_mana array
+        card1 = {"name": "Hallowed Fountain", "type_line": "Land", "produced_mana": ["W", "U"]}
+        sources1 = analyzer.extract_mana_sources(card1)
+        self.assertIn("W", sources1)
+        self.assertIn("U", sources1)
+
+        # Basic Land type fallback
+        card2 = {"name": "Island", "type_line": "Basic Land — Island"}
+        sources2 = analyzer.extract_mana_sources(card2)
+        self.assertIn("U", sources2)
+
+        # Mana rock with oracle text
+        card3 = {"name": "Arcane Signet", "type_line": "Artifact", "oracle_text": "{T}: Add one mana of any color in your commander's color identity."}
+        sources3 = analyzer.extract_mana_sources(card3)
+        self.assertGreater(len(sources3), 0)
+
+    def test_full_deck_analysis(self):
+        analyzer = DeckAnalyzer()
+        deck_cards = [
+            {"name": "Sol Ring", "cmc": 1, "type_line": "Artifact", "mana_cost": "{1}", "oracle_text": "{T}: Add {C}{C}.", "produced_mana": ["C"], "price_usd": "2.00"},
+            {"name": "Arcane Signet", "cmc": 2, "type_line": "Artifact", "mana_cost": "{2}", "oracle_text": "{T}: Add {W}.", "produced_mana": ["W", "U"], "price_usd": "1.00"},
+            {"name": "Swords to Plowshares", "cmc": 1, "type_line": "Instant", "mana_cost": "{W}", "oracle_text": "Exile target creature.", "price_usd": "1.50"},
+            {"name": "Counterspell", "cmc": 2, "type_line": "Instant", "mana_cost": "{U}{U}", "oracle_text": "Counter target spell.", "price_usd": "1.50"},
+            {"name": "Rhystic Study", "cmc": 3, "type_line": "Enchantment", "mana_cost": "{2}{U}", "oracle_text": "Whenever an opponent casts a spell, draw a card.", "price_usd": "35.00"},
+            {"name": "Demonic Tutor", "cmc": 2, "type_line": "Sorcery", "mana_cost": "{1}{B}", "oracle_text": "Search your library for a card.", "price_usd": "30.00"},
+            {"name": "Supreme Verdict", "cmc": 4, "type_line": "Sorcery", "mana_cost": "{1}{W}{W}{U}", "oracle_text": "Destroy all creatures.", "price_usd": "4.00"},
+            {"name": "Temple of Mystery", "cmc": 0, "type_line": "Land", "oracle_text": "Temple of Mystery enters the battlefield tapped. {T}: Add {G} or {U}.", "produced_mana": ["G", "U"], "price_usd": "0.25"},
+            {"name": "Command Tower", "cmc": 0, "type_line": "Land", "oracle_text": "{T}: Add one mana of any color.", "produced_mana": ["W", "U", "B", "R", "G"], "price_usd": "0.50"},
+            {"name": "Island", "cmc": 0, "type_line": "Basic Land — Island", "produced_mana": ["U"], "price_usd": "0.10"},
+        ]
+
+        stats = analyzer.analyze(deck_cards)
+
+        self.assertIn("nonland_amv", stats)
+        self.assertGreater(stats["nonland_amv"], 0)
+        self.assertEqual(stats["fast_ramp_count"], 2)  # Sol Ring + Arcane Signet
+        self.assertGreater(stats["instant_speed_ratio"], 0)
+        self.assertEqual(stats["targeted_removal_count"], 2)  # Swords to Plowshares + Counterspell
+        self.assertEqual(stats["board_wipe_count"], 1)  # Supreme Verdict
+        self.assertEqual(stats["draw_engine_count"], 1)  # Rhystic Study
+        self.assertEqual(stats["tutor_general_count"], 1)  # Demonic Tutor
+        self.assertEqual(stats["taplands_count"], 1)  # Temple of Mystery
+        self.assertIn("pip_breakdown", stats)
+        self.assertIn("W", stats["pip_breakdown"])
+        self.assertIn("U", stats["pip_breakdown"])
+        self.assertIn("archetype", stats)
+
+
+class TestDeckComparatorEngine(unittest.TestCase):
+    """Verifies DeckComparator calculates delta matrices, categorized profiles, and heuristic archetypes."""
+
+    def test_side_by_side_comparison(self):
+        deck_a = {
+            "id": 1,
+            "deck_name": "Aggro Combo",
+            "commander_name": "Edgar Markov",
+            "cards_data": [
+                {"name": "Sol Ring", "cmc": 1, "type_line": "Artifact", "mana_cost": "{1}", "oracle_text": "{T}: Add {C}{C}.", "price_usd": "2.00"},
+                {"name": "Vampiric Tutor", "cmc": 1, "type_line": "Instant", "mana_cost": "{B}", "oracle_text": "Search your library for a card.", "price_usd": "40.00"},
+                {"name": "Swords to Plowshares", "cmc": 1, "type_line": "Instant", "mana_cost": "{W}", "oracle_text": "Exile target creature.", "price_usd": "2.00"},
+                {"name": "Command Tower", "cmc": 0, "type_line": "Land", "oracle_text": "{T}: Add any color.", "price_usd": "0.50"}
+            ],
+            "stats": {
+                "nonland_amv": 2.2,
+                "fast_ramp_count": 8,
+                "standard_ramp_count": 2,
+                "instant_speed_ratio": 35.0,
+                "tapland_penalty_index": 5.0,
+                "removal_mana_efficiency": 1.5,
+                "total_value": 350.0,
+                "draw_engine_count": 4,
+                "tutor_general_count": 3,
+                "archetype": "Aggro / Fast Combo"
+            }
+        }
+
+        deck_b = {
+            "id": 2,
+            "deck_name": "Dragon Battlecruiser",
+            "commander_name": "The Ur-Dragon",
+            "cards_data": [
+                {"name": "Sol Ring", "cmc": 1, "type_line": "Artifact", "mana_cost": "{1}", "oracle_text": "{T}: Add {C}{C}.", "price_usd": "2.00"},
+                {"name": "Cultivate", "cmc": 3, "type_line": "Sorcery", "mana_cost": "{2}{G}", "oracle_text": "Search for lands.", "price_usd": "0.50"},
+                {"name": "Blasphemous Act", "cmc": 9, "type_line": "Sorcery", "mana_cost": "{8}{R}", "oracle_text": "Deals 13 damage to each creature.", "price_usd": "3.00"},
+                {"name": "Command Tower", "cmc": 0, "type_line": "Land", "oracle_text": "{T}: Add any color.", "price_usd": "0.50"}
+            ],
+            "stats": {
+                "nonland_amv": 3.8,
+                "fast_ramp_count": 3,
+                "standard_ramp_count": 9,
+                "instant_speed_ratio": 12.0,
+                "tapland_penalty_index": 22.0,
+                "removal_mana_efficiency": 3.6,
+                "total_value": 200.0,
+                "draw_engine_count": 2,
+                "tutor_general_count": 1,
+                "archetype": "Battlecruiser / Big Mana"
+            }
+        }
+
+        comparator = DeckComparator()
+        comp_result = comparator.compare(deck_a, deck_b)
+
+        self.assertIn("delta_matrix", comp_result)
+        matrix = comp_result["delta_matrix"]
+        self.assertIn("nonland_amv", matrix)
+        self.assertAlmostEqual(matrix["nonland_amv"]["delta"], -1.6, places=2)
+        self.assertEqual(matrix["nonland_amv"]["advantage"], "deck_a")  # Lower AMV is better
+
+        self.assertIn("fast_ramp", matrix)
+        self.assertEqual(matrix["fast_ramp"]["delta"], 5)
+        self.assertEqual(matrix["fast_ramp"]["advantage"], "deck_a")
+
+        self.assertIn("velocity_profile", comp_result)
+        self.assertEqual(comp_result["velocity_profile"]["velocity_leader"], "deck_a")
+
+        self.assertIn("shared_staples", comp_result)
+        shared_names = [c["name"].lower() for c in comp_result["shared_staples"]]
+        self.assertIn("sol ring", shared_names)
+        self.assertIn("command tower", shared_names)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

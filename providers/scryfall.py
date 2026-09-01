@@ -139,6 +139,9 @@ class ScryfallProvider:
             "art_crop_uri": art_crop_uri,
             "prices": card.get("prices", {}),
             "tcgplayer_url": card.get("purchase_uris", {}).get("tcgplayer"),
+            "card_faces": card.get("card_faces", []),
+            "produced_mana": card.get("produced_mana", []),
+            "keywords": card.get("keywords", []),
         }
 
     def get_card_named(self, card_name: str) -> dict | None:

@@ -3,6 +3,7 @@
 {% block title %}Commander Fleet Overview & Comparison Matrix — Chimaera{% endblock %}
 
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <div class="max-w-7xl mx-auto space-y-6 pb-20">
 
     <!-- Top Tactical Header HUD -->
@@ -322,7 +323,87 @@
                 <!-- Injected dynamically by renderComparisonResults() -->
             </div>
 
-            <!-- 2. Side-by-Side Speed & Mana Curves Comparison -->
+            <!-- 2. Side-by-Side Statistical Delta Matrix (When 2 Decks Compared) -->
+            <div id="compareDeltaMatrixSection" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Head-to-Head Statistical Delta Matrix (&Delta; = Deck A - Deck B)
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Direct analytical differential across velocity, interaction speed, mana efficiency, and card advantage.</p>
+                    </div>
+                    <span id="matchupArchetypeSummary" class="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold">Matchup Analysis</span>
+                </div>
+
+                <div class="overflow-x-auto border border-slate-800 rounded-lg">
+                    <table class="w-full text-left font-mono text-xs">
+                        <thead>
+                            <tr class="bg-[#0B0F17] text-slate-400 text-[10px] uppercase border-b border-slate-800">
+                                <th class="py-2.5 px-4">Analytical Metric</th>
+                                <th id="deltaThDeckA" class="py-2.5 px-4 text-center">Deck A</th>
+                                <th id="deltaThDeckB" class="py-2.5 px-4 text-center">Deck B</th>
+                                <th class="py-2.5 px-4 text-center">&Delta; Difference (A - B)</th>
+                                <th class="py-2.5 px-4 text-right">Advantage / Advantage Vector</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deltaMatrixTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                            <!-- Injected dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. Categorized Profiles & Pip vs Source Balance Chart -->
+            <div id="compareCategorizedProfilesSection" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <!-- Velocity Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>⚡ Velocity & Mana Base</span>
+                    </h4>
+                    <div id="compVelocityContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <!-- Interaction Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>🎯 Interaction & Removal</span>
+                    </h4>
+                    <div id="compInteractionContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <!-- Card Advantage Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>🔄 Card Advantage & Tutors</span>
+                    </h4>
+                    <div id="compCardAdvantageContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Comparative Pip Demand vs. Source Supply Radar -->
+            <div id="comparePipRadarSection" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            Comparative Mana Pip Demand vs. Source Supply Balance
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Overlay of color pip demand % and mana source supply % across both decks.</p>
+                    </div>
+                </div>
+                <div class="h-64 flex items-center justify-center p-2 bg-[#0B0F17]/80 rounded-xl border border-slate-800">
+                    <canvas id="comparePipRadarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 5. Side-by-Side Speed & Mana Curves Comparison -->
             <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
                 <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                     <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -904,6 +985,8 @@ async function runActiveComparison() {
     }
 }
 
+let comparePipRadarChartInstance = null;
+
 // Render Complete Comparison View
 function renderComparisonResults(data) {
     const decks = data.decks || [];
@@ -937,7 +1020,7 @@ function renderComparisonResults(data) {
                         <h4 class="text-sm font-black text-white font-mono uppercase truncate">${escapeHtml(d.deck_name)}</h4>
                         <div class="flex items-center gap-1.5 flex-wrap">
                             <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-bold">${d.power_level ? `${d.power_level.toFixed(1)} Power` : 'Pre-AI'}</span>
-                            <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">${escapeHtml(d.archetype || 'Commander')}</span>
+                            <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 font-mono font-bold">${escapeHtml(d.archetype || 'Midrange / Engine')}</span>
                         </div>
 
                         <div class="grid grid-cols-2 gap-2 bg-[#1B2230]/70 p-2 rounded-lg border border-slate-800 font-mono text-xs">
@@ -955,6 +1038,98 @@ function renderComparisonResults(data) {
             </div>
         `;
     }).join('');
+
+    // 2. Head-to-Head Delta Matrix & Categorized Profiles (When 2 Decks Selected)
+    const deltaSection = document.getElementById('compareDeltaMatrixSection');
+    const profilesSection = document.getElementById('compareCategorizedProfilesSection');
+    const radarSection = document.getElementById('comparePipRadarSection');
+
+    if (decks.length === 2 && data.delta_matrix) {
+        deltaSection.classList.remove('hidden');
+        profilesSection.classList.remove('hidden');
+        radarSection.classList.remove('hidden');
+
+        document.getElementById('deltaThDeckA').innerText = decks[0].deck_name;
+        document.getElementById('deltaThDeckB').innerText = decks[1].deck_name;
+        document.getElementById('matchupArchetypeSummary').innerText = `${decks[0].archetype || 'Midrange'} vs. ${decks[1].archetype || 'Midrange'}`;
+
+        const matrix = data.delta_matrix;
+        const deltaRows = [
+            { key: 'nonland_amv', name: 'Nonland Avg Mana Value (AMV)', unit: 'CMC', lowerIsBetter: true },
+            { key: 'fast_ramp', name: 'Fast Ramp Density (CMC <= 2)', unit: 'cards', lowerIsBetter: false },
+            { key: 'instant_speed_ratio', name: 'Instant-Speed Interaction %', unit: '%', lowerIsBetter: false },
+            { key: 'tapland_penalty_index', name: 'Tapland Tempo Penalty', unit: '%', lowerIsBetter: true },
+            { key: 'removal_mana_efficiency', name: 'Removal Mana Efficiency', unit: 'CMC', lowerIsBetter: true },
+            { key: 'portfolio_value', name: 'Total TCG Market Value', unit: '$', lowerIsBetter: false },
+            { key: 'draw_engines', name: 'Engine Card Draw Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'tutors_general', name: 'General Tutor Density', unit: 'cards', lowerIsBetter: false },
+        ];
+
+        const tbody = document.getElementById('deltaMatrixTableBody');
+        tbody.innerHTML = deltaRows.map(r => {
+            const m = matrix[r.key] || { deck_a: 0, deck_b: 0, delta: 0, advantage: 'Tie' };
+            const deltaVal = m.delta;
+            const formattedA = r.unit === '$' ? `$${m.deck_a.toFixed(2)}` : `${m.deck_a}${r.unit === '%' ? '%' : ''}`;
+            const formattedB = r.unit === '$' ? `$${m.deck_b.toFixed(2)}` : `${m.deck_b}${r.unit === '%' ? '%' : ''}`;
+            
+            let deltaBadge = '<span class="text-slate-400 font-bold">0</span>';
+            if (deltaVal > 0) {
+                const color = r.lowerIsBetter ? 'text-rose-400' : 'text-emerald-400';
+                deltaBadge = `<span class="${color} font-bold">+${r.unit === '$' ? '$' : ''}${deltaVal}${r.unit === '%' ? '%' : ''}</span>`;
+            } else if (deltaVal < 0) {
+                const color = r.lowerIsBetter ? 'text-emerald-400' : 'text-rose-400';
+                deltaBadge = `<span class="${color} font-bold">${r.unit === '$' ? '-$' : ''}${Math.abs(deltaVal)}${r.unit === '%' ? '%' : ''}</span>`;
+            }
+
+            let advBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">Neutral</span>';
+            if (m.advantage === 'deck_a') {
+                advBadge = `<span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">${escapeHtml(decks[0].deck_name)}</span>`;
+            } else if (m.advantage === 'deck_b') {
+                advBadge = `<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">${escapeHtml(decks[1].deck_name)}</span>`;
+            }
+
+            return `
+                <tr class="hover:bg-[#1B2230]/40 transition">
+                    <td class="py-2.5 px-4 font-semibold text-white">${r.name}</td>
+                    <td class="py-2.5 px-4 text-center text-cyan-400 font-bold">${formattedA}</td>
+                    <td class="py-2.5 px-4 text-center text-amber-400 font-bold">${formattedB}</td>
+                    <td class="py-2.5 px-4 text-center">${deltaBadge}</td>
+                    <td class="py-2.5 px-4 text-right">${advBadge}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // Populate Categorized Profile Cards
+        const vp = data.velocity_profile || {};
+        document.getElementById('compVelocityContent').innerHTML = `
+            <div class="flex justify-between"><span class="text-slate-400">Fast Ramp (CMC &le; 2):</span><span class="text-white font-bold">${decks[0].fast_ramp_count || 0} vs ${decks[1].fast_ramp_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Standard Ramp:</span><span class="text-slate-300">${decks[0].standard_ramp_count || 0} vs ${decks[1].standard_ramp_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Tapland Penalty:</span><span class="text-rose-400 font-bold">${decks[0].tapland_penalty_index || 0}% vs ${decks[1].tapland_penalty_index || 0}%</span></div>
+            <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Velocity Lead:</span><span class="text-emerald-400 font-bold">${vp.velocity_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (vp.velocity_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+        `;
+
+        const ip = data.interaction_profile || {};
+        document.getElementById('compInteractionContent').innerHTML = `
+            <div class="flex justify-between"><span class="text-slate-400">Targeted Removal:</span><span class="text-white font-bold">${decks[0].targeted_removal_count || 0} vs ${decks[1].targeted_removal_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Board Wipes:</span><span class="text-slate-300">${decks[0].board_wipe_count || 0} vs ${decks[1].board_wipe_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Instant Speed %:</span><span class="text-cyan-400 font-bold">${decks[0].instant_speed_ratio || 0}% vs ${decks[1].instant_speed_ratio || 0}%</span></div>
+            <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Efficiency Lead:</span><span class="text-cyan-400 font-bold">${ip.interaction_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (ip.interaction_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+        `;
+
+        const cap = data.card_advantage_profile || {};
+        document.getElementById('compCardAdvantageContent').innerHTML = `
+            <div class="flex justify-between"><span class="text-slate-400">Engine Draw:</span><span class="text-white font-bold">${decks[0].draw_engine_count || 0} vs ${decks[1].draw_engine_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Burst / Cantrips:</span><span class="text-slate-300">${decks[0].draw_burst_count || 0}/${decks[0].draw_cantrip_count || 0} vs ${decks[1].draw_burst_count || 0}/${decks[1].draw_cantrip_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">General Tutors:</span><span class="text-amber-400 font-bold">${decks[0].tutor_general_count || 0} vs ${decks[1].tutor_general_count || 0}</span></div>
+            <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Advantage Lead:</span><span class="text-purple-400 font-bold">${cap.advantage_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (cap.advantage_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+        `;
+
+        renderComparePipRadar(decks);
+    } else {
+        deltaSection.classList.add('hidden');
+        profilesSection.classList.add('hidden');
+        radarSection.classList.add('hidden');
+    }
 
     // 2. Side-by-Side Mana Curves
     const curveContainer = document.getElementById('compareCurveChartContainer');
@@ -1139,6 +1314,83 @@ function renderComparisonResults(data) {
             </div>
         `;
     }).join('');
+}
+
+// Comparative Radar Chart for Pip Demand Overlay
+function renderComparePipRadar(decks) {
+    const canvas = document.getElementById('comparePipRadarChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    const ctx = canvas.getContext('2d');
+    if (comparePipRadarChartInstance) {
+        comparePipRadarChartInstance.destroy();
+    }
+
+    const labels = ['White (W)', 'Blue (U)', 'Black (B)', 'Red (R)', 'Green (G)', 'Colorless (C)'];
+    const keys = ['W', 'U', 'B', 'R', 'G', 'C'];
+
+    const deckA = decks[0] || {};
+    const deckB = decks[1] || {};
+    const pbA = deckA.pip_breakdown || {};
+    const pbB = deckB.pip_breakdown || {};
+
+    const dataA = keys.map(k => (pbA[k] ? pbA[k].pip_demand_pct : 0));
+    const dataB = keys.map(k => (pbB[k] ? pbB[k].pip_demand_pct : 0));
+
+    comparePipRadarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: `${deckA.deck_name || 'Deck A'} (% Pip Demand)`,
+                    data: dataA,
+                    backgroundColor: 'rgba(6, 182, 212, 0.25)',
+                    borderColor: '#06b6d4',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#06b6d4',
+                },
+                {
+                    label: `${deckB.deck_name || 'Deck B'} (% Pip Demand)`,
+                    data: dataB,
+                    backgroundColor: 'rgba(245, 158, 11, 0.25)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#f59e0b',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                r: {
+                    angleLines: { color: 'rgba(51, 65, 85, 0.6)' },
+                    grid: { color: 'rgba(51, 65, 85, 0.6)' },
+                    pointLabels: {
+                        color: '#94a3b8',
+                        font: { family: 'monospace', size: 10 }
+                    },
+                    ticks: {
+                        backdropColor: 'transparent',
+                        color: '#64748b',
+                        font: { size: 9 },
+                        showLabelBackdrop: false
+                    },
+                    suggestedMin: 0,
+                    suggestedMax: 40
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: '#cbd5e1',
+                        font: { family: 'monospace', size: 11 }
+                    }
+                }
+            }
+        }
+    });
 }
 
 // Watchlist Quick Add from Shared Cards
