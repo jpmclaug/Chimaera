@@ -13,6 +13,32 @@ const swipeTrackState = {
 };
 
 // =========================================================================
+// Tactical Timezone Formatter (Eastern Time)
+// =========================================================================
+function formatESTDate(dateInput, includeTime = true) {
+    if (!dateInput) return "--";
+    try {
+        const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+        if (isNaN(d.getTime())) return String(dateInput);
+        const options = {
+            timeZone: "America/New_York",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            ...(includeTime ? {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: false
+            } : {})
+        };
+        return new Intl.DateTimeFormat("en-US", options).format(d) + " EST";
+    } catch {
+        return String(dateInput);
+    }
+}
+
+// =========================================================================
 // Tactical Toast Notification System
 // =========================================================================
 function showToast(message, type = "success") {
@@ -34,10 +60,13 @@ function showToast(message, type = "success") {
         textColor = "text-[#94A3B8]";
     }
     
-    toast.className = `bg-[#1B2230] ${borderColor} border text-[#F1F5F9] text-xs px-4 py-3 font-mono flex items-center space-x-2.5 transition-all duration-200 transform translate-y-2 opacity-0 pointer-events-auto shadow-xl`;
+    toast.className = `bg-[#1B2230] ${borderColor} border text-[#F1F5F9] text-xs px-4 py-3 font-mono flex items-start justify-between space-x-2.5 transition-all duration-200 transform translate-y-2 opacity-0 pointer-events-auto shadow-xl max-w-md`;
     toast.innerHTML = `
-        <span class="${textColor} font-bold text-xs uppercase tracking-wider">${prefixTag}</span>
-        <span class="tracking-tight text-xs text-[#F1F5F9]">${message}</span>
+        <div class="flex items-start space-x-2 min-w-0">
+            <span class="${textColor} font-bold text-xs uppercase tracking-wider flex-shrink-0">${prefixTag}</span>
+            <span class="tracking-tight text-xs text-[#F1F5F9] whitespace-pre-wrap">${message}</span>
+        </div>
+        <button onclick="this.parentElement.remove()" class="text-[#94A3B8] hover:text-white text-sm leading-none ml-2 flex-shrink-0">&times;</button>
     `;
 
     container.appendChild(toast);
@@ -47,11 +76,15 @@ function showToast(message, type = "success") {
         toast.classList.remove("translate-y-2", "opacity-0");
     });
 
-    // Auto remove after 3.8 seconds
-    setTimeout(() => {
-        toast.classList.add("opacity-0", "translate-y-2");
-        setTimeout(() => toast.remove(), 250);
-    }, 3800);
+    // ONLY auto-remove non-error toasts; keep error alerts visible until dismissed
+    if (type !== "error") {
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.classList.add("opacity-0", "translate-y-2");
+                setTimeout(() => toast.remove(), 250);
+            }
+        }, 4500);
+    }
 }
 
 // =========================================================================
@@ -1308,12 +1341,7 @@ async function fetchCadenceTelemetry() {
 
         if (lastPollElem) {
             if (data.last_poll_time) {
-                try {
-                    const dt = new Date(data.last_poll_time);
-                    lastPollElem.textContent = dt.toLocaleString();
-                } catch {
-                    lastPollElem.textContent = data.last_poll_time;
-                }
+                lastPollElem.textContent = formatESTDate(data.last_poll_time);
             } else {
                 lastPollElem.textContent = "Never";
             }
@@ -1868,7 +1896,7 @@ function copyBuylistCartSummary() {
     }
 
     let summaryText = `MIGHTY MEEPLE TRADE-IN BATCH MANIFEST\n`;
-    summaryText += `Generated: ${new Date().toLocaleString()}\n`;
+    summaryText += `Generated: ${formatESTDate(new Date())}\n`;
     summaryText += `--------------------------------------------------\n`;
 
     let totalQty = 0;
@@ -2530,7 +2558,7 @@ function copyBulkBuylistSummary() {
     const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
     let summaryText = `MIGHTY MEEPLE BUYLIST VALUATION\n`;
     summaryText += `Grade Default: ${selectedCond}\n`;
-    summaryText += `Generated: ${new Date().toLocaleString()}\n`;
+    summaryText += `Generated: ${formatESTDate(new Date())}\n`;
     summaryText += `----------------------------------------\n`;
 
     let totalCredit = 0.0;

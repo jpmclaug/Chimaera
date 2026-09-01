@@ -511,6 +511,34 @@ def create_app(test_config=None):
             "current_user": get_current_user(),
         }
 
+    @app.template_filter("eastern")
+    def eastern_filter(dt_val, fmt="%Y-%m-%d %H:%M:%S EST"):
+        """Formats datetime or ISO string in Eastern Standard/Daylight Time (EST/EDT)."""
+        if not dt_val:
+            return "--"
+        try:
+            import zoneinfo
+            eastern_tz = zoneinfo.ZoneInfo("America/New_York")
+        except Exception:
+            eastern_tz = timezone(timedelta(hours=-5), name="EST")
+
+        if isinstance(dt_val, str):
+            try:
+                dt_val = datetime.fromisoformat(dt_val.replace("Z", "+00:00"))
+            except Exception:
+                return dt_val
+
+        if isinstance(dt_val, datetime):
+            if dt_val.tzinfo is None:
+                dt_val = dt_val.replace(tzinfo=timezone.utc)
+            converted = dt_val.astimezone(eastern_tz)
+            return converted.strftime(fmt)
+        return str(dt_val)
+
+    @app.template_filter("est")
+    def est_filter(dt_val, fmt="%Y-%m-%d %H:%M:%S EST"):
+        return eastern_filter(dt_val, fmt=fmt)
+
     # ---------------------------------------------------------
     # In-Process Background Scheduler (Optional / Monolithic Mode)
     # ---------------------------------------------------------
@@ -2402,15 +2430,16 @@ def create_app(test_config=None):
                 except Exception:
                     power_level = None
 
+            actual_model = analysis_result.get("_model_used") or analyzer.model or model
             entry.analysis_json = json.dumps(analysis_result)
-            entry.model_used = model
+            entry.model_used = actual_model
             entry.power_level = power_level
             entry.power_bracket = analysis_result.get("power_bracket")
             entry.archetype = analysis_result.get("archetype")
             entry.updated_at = utc_now()
             db.session.commit()
 
-            log_activity("DECK_ANALYSIS", details=f"Analyzed saved Commander deck '{entry.deck_name}' via {model}", user=user)
+            log_activity("DECK_ANALYSIS", details=f"Analyzed saved Commander deck '{entry.deck_name}' via {actual_model}", user=user)
 
             return jsonify({
                 "success": True,
@@ -2516,6 +2545,7 @@ def create_app(test_config=None):
                 cmdr_name = ", ".join(analysis_result.get("commander", [])) or (deck_data.get("commander", [""])[0])
                 color_id_str = ",".join(stats.get("color_identity", []))
 
+                actual_model = analysis_result.get("_model_used") or analyzer.model or model
                 deck_entry = DeckAnalysis(
                     user_id=user.id if user else None,
                     deck_name=analysis_result.get("deck_name") or deck_data.get("deck_name", "Commander Deck"),
@@ -2527,7 +2557,7 @@ def create_app(test_config=None):
                     cards_data=json.dumps(deck_data.get("cards", [])),
                     stats_json=json.dumps(stats),
                     analysis_json=json.dumps(analysis_result),
-                    model_used=model,
+                    model_used=actual_model,
                     power_level=power_level,
                     power_bracket=analysis_result.get("power_bracket"),
                     archetype=analysis_result.get("archetype"),
@@ -2539,7 +2569,7 @@ def create_app(test_config=None):
                 db.session.add(deck_entry)
                 db.session.commit()
                 saved_id = deck_entry.id
-                log_activity("DECK_ANALYSIS", details=f"Analyzed Commander deck '{deck_entry.deck_name}' via {model}", user=user)
+                log_activity("DECK_ANALYSIS", details=f"Analyzed Commander deck '{deck_entry.deck_name}' via {actual_model}", user=user)
 
             return jsonify({
                 "success": True,

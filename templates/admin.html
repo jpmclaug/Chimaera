@@ -58,7 +58,7 @@
             <table class="w-full text-left font-mono text-xs">
                 <thead>
                     <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[10px]">
-                        <th class="pb-2">Timestamp (UTC)</th>
+                        <th class="pb-2">Timestamp (EST)</th>
                         <th class="pb-2">Attempted Identifier</th>
                         <th class="pb-2">User ID (If Known)</th>
                         <th class="pb-2">Client IP Address</th>
@@ -70,7 +70,7 @@
                     {% for log in failed_logins %}
                     <tr class="hover:bg-[#10141D]/60 transition">
                         <td class="py-2.5 text-[#94A3B8] whitespace-nowrap text-[11px]">
-                            {{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '--' }}
+                            {{ log.created_at|eastern('%Y-%m-%d %H:%M:%S EST') }}
                         </td>
                         <td class="py-2.5 font-bold text-white whitespace-nowrap">
                             <span class="text-[#FF3358]">&#x25CF;</span> {{ log.user_email or 'Anonymous / None' }}
@@ -177,13 +177,13 @@
                         <td class="py-3 text-[#94A3B8] text-[11px]">
                             {% set last_act = u.get_last_active() %}
                             {% if last_act %}
-                            <span class="text-white font-mono">{{ last_act.strftime('%Y-%m-%d %H:%M') }}</span> <span class="text-[9px] text-[#64748B]">UTC</span>
+                            <span class="text-white font-mono">{{ last_act|eastern('%Y-%m-%d %H:%M') }}</span> <span class="text-[9px] text-[#64748B]">EST</span>
                             {% else %}
                             <span class="text-[#64748B]">Never</span>
                             {% endif %}
                         </td>
                         <td class="py-3 text-[#94A3B8] text-[11px]">
-                            {{ u.last_login.strftime('%Y-%m-%d %H:%M UTC') if u.last_login else 'Never' }}
+                            {{ u.last_login|eastern('%Y-%m-%d %H:%M EST') if u.last_login else 'Never' }}
                         </td>
                         <td class="py-3 text-right whitespace-nowrap space-x-1.5">
                             <button onclick="filterAdminCardsByUser({{ u.id }}, '{{ u.name or u.email }}')" 
@@ -400,7 +400,7 @@
 
                         <!-- Date Added -->
                         <td class="py-3 text-[#94A3B8] text-[11px] whitespace-nowrap">
-                            {{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '--' }}
+                            {{ item.created_at|eastern('%Y-%m-%d') if item.created_at else '--' }}
                         </td>
                     </tr>
                     {% endfor %}
@@ -426,7 +426,7 @@
             <table class="w-full text-left font-mono text-xs">
                 <thead>
                     <tr class="border-b border-[#263245] text-[#94A3B8] uppercase text-[10px]">
-                        <th class="pb-2">Timestamp (UTC)</th>
+                        <th class="pb-2">Timestamp (EST)</th>
                         <th class="pb-2">Personnel / User</th>
                         <th class="pb-2">Operation Type</th>
                         <th class="pb-2">Activity Description</th>
@@ -437,7 +437,7 @@
                     {% for act in recent_activities %}
                     <tr class="hover:bg-[#10141D]/50 transition">
                         <td class="py-2 text-[#94A3B8] whitespace-nowrap text-[11px]">
-                            {{ act.created_at.strftime('%Y-%m-%d %H:%M:%S') if act.created_at else '--' }}
+                            {{ act.created_at|eastern('%Y-%m-%d %H:%M:%S EST') }}
                         </td>
                         <td class="py-2 font-bold text-white whitespace-nowrap text-[11px]">
                             {{ act.user_email or (act.user.email if act.user else 'System') }}
@@ -532,7 +532,7 @@
                         <tr class="hover:bg-[#10141D]/50 transition" id="whitelist-row-{{ entry.id }}">
                             <td class="py-3 pr-2">
                                 <div class="font-bold text-white">{{ entry.email }}</div>
-                                <div class="text-[10px] text-[#64748B]">Added {{ entry.created_at.strftime('%Y-%m-%d') if entry.created_at else '--' }} by {{ entry.added_by }}</div>
+                                <div class="text-[10px] text-[#64748B]">Added {{ entry.created_at|eastern('%Y-%m-%d') if entry.created_at else '--' }} by {{ entry.added_by }}</div>
                             </td>
                             <td class="py-3">
                                 {% if entry.is_admin %}

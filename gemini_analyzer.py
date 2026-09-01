@@ -8,7 +8,25 @@ import json
 import logging
 import os
 import re
+from datetime import datetime, timezone
 import requests
+
+try:
+    import zoneinfo
+    EASTERN_TZ = zoneinfo.ZoneInfo("America/New_York")
+except Exception:
+    import datetime as dt
+    EASTERN_TZ = dt.timezone(dt.timedelta(hours=-5), name="EST")
+
+
+def get_est_timestamp_str(dt_val: datetime | None = None) -> str:
+    """Returns formatted datetime string in Eastern Time with EST label."""
+    now = dt_val or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    est_dt = now.astimezone(EASTERN_TZ)
+    return est_dt.strftime("%Y-%m-%d %H:%M:%S EST")
+
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +37,13 @@ SUPPORTED_MODELS = [
     {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "description": "High performance low latency MTG analysis."},
     {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "description": "Fast tactical Commander evaluations."},
     {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "description": "Ultra lightweight, low latency model."},
+]
+
+MODEL_TIER_SEQUENCE = [
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
 ]
 
 MODEL_FALLBACK_MAP = {
@@ -47,36 +72,8 @@ class GeminiAnalyzer:
 
     @staticmethod
     def get_available_models(api_key: str | None = None) -> list[dict]:
-        """Fetches active generation models from Gemini API or returns SUPPORTED_MODELS."""
-        if not api_key:
-            return SUPPORTED_MODELS
-
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key.strip()}"
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                raw_models = data.get("models", [])
-                result = []
-                for m in raw_models:
-                    methods = m.get("supportedGenerationMethods", [])
-                    if "generateContent" in methods:
-                        m_id = m.get("name", "").replace("models/", "")
-                        # Filter out embedding / vision-only / legacy experimental models
-                        if "embedding" not in m_id and "aqa" not in m_id and "imagen" not in m_id and "whisper" not in m_id:
-                            display_name = m.get("displayName") or m_id
-                            desc = m.get("description", "")
-                            result.append({
-                                "id": m_id,
-                                "name": f"{display_name} ({m_id})",
-                                "description": desc[:100] if desc else "Gemini generation model.",
-                            })
-                if result:
-                    return result
-        except Exception as e:
-            logger.warning(f"Could not dynamically list Gemini models: {e}")
-
-        return SUPPORTED_MODELS
+        """Returns the curated list of supported models for Gemini Strategic Intel."""
+        return list(SUPPORTED_MODELS)
 
     @staticmethod
     def test_api_key(api_key: str, model: str = DEFAULT_MODEL) -> tuple[bool, str]:
@@ -271,57 +268,113 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
             }
         }
 
+        # Determine model fallback sequence starting with the chosen/mapped model
+        initial_model = MODEL_FALLBACK_MAP.get(self.model, self.model)
+        if initial_model in MODEL_TIER_SEQUENCE:
+            start_idx = MODEL_TIER_SEQUENCE.index(initial_model)
+            model_chain = MODEL_TIER_SEQUENCE[start_idx:]
+        else:
+            model_chain = [initial_model] + [m for m in MODEL_TIER_SEQUENCE if m != initial_model]
+
+        attempt_logs = []
+
         try:
-            target_model = self.model
-            url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={self.api_key}"
-            logger.info(f"Submitting deck '{deck_name}' to Gemini ({target_model})...")
-            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+            for target_model in model_chain:
+                attempt_ts = get_est_timestamp_str()
+                url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={self.api_key}"
+                logger.info(f"Submitting deck '{deck_name}' to Gemini ({target_model}) at {attempt_ts}...")
 
-            # Auto-fallback if the specific model is deprecated or unavailable
-            if resp.status_code != 200:
-                err_msg = ""
                 try:
-                    err_json = resp.json()
-                    err_msg = err_json.get("error", {}).get("message", "")
-                except Exception:
-                    err_msg = resp.text[:200]
+                    resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        candidates = data.get("candidates", [])
+                        if not candidates:
+                            attempt_logs.append({
+                                "model": target_model,
+                                "timestamp": attempt_ts,
+                                "status_code": resp.status_code,
+                                "error": "Gemini returned no response candidates."
+                            })
+                            logger.warning(f"Model '{target_model}' returned empty candidates at {attempt_ts}. Trying next model...")
+                            continue
 
-                if ("no longer available" in err_msg.lower() or "not found" in err_msg.lower()) and target_model != DEFAULT_MODEL:
-                    logger.warning(f"Model '{target_model}' unavailable ({err_msg}). Automatically falling back to '{DEFAULT_MODEL}'...")
-                    fallback_url = f"{GEMINI_API_BASE}/{DEFAULT_MODEL}:generateContent?key={self.api_key}"
-                    resp = requests.post(fallback_url, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+                        content_parts = candidates[0].get("content", {}).get("parts", [])
+                        if not content_parts:
+                            attempt_logs.append({
+                                "model": target_model,
+                                "timestamp": attempt_ts,
+                                "status_code": resp.status_code,
+                                "error": "Gemini response contained empty content."
+                            })
+                            logger.warning(f"Model '{target_model}' returned empty content parts at {attempt_ts}. Trying next model...")
+                            continue
 
-            if resp.status_code != 200:
-                err_msg = f"Gemini API returned HTTP {resp.status_code}"
-                try:
-                    err_json = resp.json()
-                    err_msg += f": {err_json.get('error', {}).get('message', '')}"
-                except Exception:
-                    err_msg += f": {resp.text[:200]}"
-                raise GeminiAnalysisError(err_msg)
+                        raw_text = content_parts[0].get("text", "").strip()
+                        parsed_json = self._clean_and_parse_json(raw_text)
 
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                raise GeminiAnalysisError("Gemini returned no response candidates.")
+                        # Ensure essential keys exist
+                        parsed_json.setdefault("deck_name", deck_name)
+                        parsed_json.setdefault("commander", commanders)
+                        parsed_json.setdefault("card_ratings", [])
+                        parsed_json.setdefault("win_conditions", [])
+                        parsed_json.setdefault("upgrades", [])
+                        parsed_json.setdefault("cut_recommendations", [])
+                        parsed_json.setdefault("overall_summary", "Deck analysis complete.")
+                        parsed_json["_model_used"] = target_model
+                        self.model = target_model
 
-            content_parts = candidates[0].get("content", {}).get("parts", [])
-            if not content_parts:
-                raise GeminiAnalysisError("Gemini response contained empty content.")
+                        return parsed_json
 
-            raw_text = content_parts[0].get("text", "").strip()
-            parsed_json = self._clean_and_parse_json(raw_text)
+                    # Handle non-200 responses
+                    err_msg = ""
+                    try:
+                        err_json = resp.json()
+                        err_msg = err_json.get("error", {}).get("message", "")
+                    except Exception:
+                        err_msg = resp.text[:200]
 
-            # Ensure essential keys exist
-            parsed_json.setdefault("deck_name", deck_name)
-            parsed_json.setdefault("commander", commanders)
-            parsed_json.setdefault("card_ratings", [])
-            parsed_json.setdefault("win_conditions", [])
-            parsed_json.setdefault("upgrades", [])
-            parsed_json.setdefault("cut_recommendations", [])
-            parsed_json.setdefault("overall_summary", "Deck analysis complete.")
+                    attempt_logs.append({
+                        "model": target_model,
+                        "timestamp": attempt_ts,
+                        "status_code": resp.status_code,
+                        "error": err_msg or f"HTTP {resp.status_code}"
+                    })
 
-            return parsed_json
+                    logger.warning(
+                        f"Model '{target_model}' failed at {attempt_ts} (HTTP {resp.status_code}: {err_msg}). "
+                        f"Cascading to lower model in tier sequence..."
+                    )
+
+                except requests.RequestException as req_err:
+                    attempt_logs.append({
+                        "model": target_model,
+                        "timestamp": attempt_ts,
+                        "status_code": 0,
+                        "error": f"Network error: {str(req_err)}"
+                    })
+                    logger.warning(f"Model '{target_model}' network failure at {attempt_ts}: {req_err}. Trying next model...")
+                except GeminiAnalysisError as parse_err:
+                    attempt_logs.append({
+                        "model": target_model,
+                        "timestamp": attempt_ts,
+                        "status_code": 200,
+                        "error": f"Output parsing error: {str(parse_err)}"
+                    })
+                    logger.warning(f"Model '{target_model}' output parse failure at {attempt_ts}: {parse_err}. Trying next model...")
+
+            # If we exhausted all models in the chain
+            lines = [
+                "Gemini AI Strategic Intel: All attempted models failed due to high demand / service unavailability.",
+                "Model Attempt Log (EST):"
+            ]
+            for att in attempt_logs:
+                sc_str = f"HTTP {att['status_code']}: " if att['status_code'] else ""
+                lines.append(f"  • {att['model']} [{att['timestamp']}] - {sc_str}{att['error']}")
+
+            err_report = "\n".join(lines)
+            logger.error(err_report)
+            raise GeminiAnalysisError(err_report)
 
         except GeminiAnalysisError:
             raise

@@ -202,7 +202,7 @@
         
         <!-- Commander Banner & Tactical Telemetry Header -->
         <div id="deckHeaderBanner" class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
-            <div id="commanderBannerBg" class="absolute inset-0 bg-cover bg-center opacity-15 filter blur-sm"></div>
+            <div id="commanderBannerBg" class="absolute inset-0 bg-cover bg-center opacity-15 filter blur-sm pointer-events-none"></div>
             <div class="relative z-10 p-5 md:p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
                 
                 <!-- Left: Commander Portrait & Title -->
@@ -256,13 +256,13 @@
                     <!-- Action Buttons -->
                     <div class="flex items-center gap-2 pl-2 border-l border-slate-800">
                         <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
-                                class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition">
+                                class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                         </button>
                         
-                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-mono text-xs font-semibold uppercase transition">
+                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer">
                             &larr; Vault
                         </button>
                     </div>
@@ -270,14 +270,14 @@
             </div>
 
             <!-- Inspector Tab Navigation Bar -->
-            <div class="flex border-t border-slate-800 bg-[#0B0F17] px-4 overflow-x-auto">
-                <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap">
+            <div class="relative z-10 flex border-t border-slate-800 bg-[#0B0F17] px-4 overflow-x-auto">
+                <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
                     📊 Mana Curve & Composition
                 </button>
-                <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap">
+                <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
                     🃏 Full Card Registry (<span id="tabCardCount">100</span>)
                 </button>
-                <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap">
+                <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
                     ⚡ Gemini AI Strategic Intel
                     <span id="aiTabBadge" class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Ready</span>
                 </button>
@@ -403,6 +403,20 @@
         <!-- ========================================================================= -->
         <div id="inspectorTabContentAi" class="hidden space-y-6">
             
+            <!-- Persistent Error / Telemetry Alert Container -->
+            <div id="aiErrorAlertContainer" class="hidden bg-rose-950/40 border border-rose-500/50 rounded-xl p-5 shadow-2xl space-y-3 font-mono">
+                <div class="flex items-start justify-between gap-3 border-b border-rose-500/30 pb-2.5">
+                    <div class="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span id="aiErrorAlertTitle">AI Analysis Diagnostic Alert</span>
+                    </div>
+                    <button onclick="dismissAiErrorAlert()" class="text-rose-400 hover:text-white text-base leading-none px-1 py-0.5 rounded" title="Dismiss error">&times;</button>
+                </div>
+                <div id="aiErrorAlertBody" class="text-xs text-rose-200 whitespace-pre-wrap leading-relaxed"></div>
+            </div>
+
             <!-- If Deck NOT Analyzed Yet: AI Trigger Banner -->
             <div id="aiUnanalyzedBanner" class="hidden bg-[#10141D] border border-cyan-500/30 rounded-xl p-6 text-center space-y-4">
                 <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto shadow-lg">
@@ -591,10 +605,12 @@
 </div>
 
 <!-- Toast Alert Notifications -->
-<div id="analyzerToast" class="fixed bottom-6 right-6 z-50 hidden transition-all duration-300 transform translate-y-2">
-    <div id="analyzerToastBox" class="bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono">
-        <span id="analyzerToastMsg">Action completed successfully.</span>
+<div id="analyzerToast" class="fixed bottom-6 right-6 z-50 hidden transition-all duration-300 transform translate-y-2 max-w-xl">
+    <div id="analyzerToastBox" class="bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-start justify-between space-x-3 text-xs font-mono">
+        <span id="analyzerToastMsg" class="whitespace-pre-wrap leading-relaxed">Action completed successfully.</span>
+        <button onclick="hideToast()" class="text-slate-400 hover:text-white text-sm leading-none ml-2 flex-shrink-0" title="Close notification">&times;</button>
     </div>
+</div>
 <script>
 // State Management
 let currentVaultDecks = {{ recent_decks|tojson }};
@@ -643,12 +659,14 @@ function switchIngestTab(tab) {
     ['url', 'text', 'csv'].forEach(t => {
         const btn = document.getElementById(`tab-btn-${t}`);
         const content = document.getElementById(`tab-content-${t}`);
-        if (t === tab) {
-            btn.className = "px-3 py-1.5 text-xs font-mono font-semibold rounded-md bg-cyan-500 text-slate-950 transition";
-            content.classList.remove('hidden');
-        } else {
-            btn.className = "px-3 py-1.5 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-white transition";
-            content.classList.add('hidden');
+        if (btn && content) {
+            if (t === tab) {
+                btn.className = "px-3 py-1.5 text-xs font-mono font-semibold rounded-md bg-cyan-500 text-slate-950 transition cursor-pointer";
+                content.classList.remove('hidden');
+            } else {
+                btn.className = "px-3 py-1.5 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-white transition cursor-pointer";
+                content.classList.add('hidden');
+            }
         }
     });
 }
@@ -659,12 +677,14 @@ function switchInspectorTab(tab) {
     tabs.forEach(t => {
         const btn = document.getElementById(`insp-tab-${t}`);
         const content = document.getElementById(`inspectorTabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        if (t === tab) {
-            btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap";
-            content.classList.remove('hidden');
-        } else {
-            btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap";
-            content.classList.add('hidden');
+        if (btn && content) {
+            if (t === tab) {
+                btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+                content.classList.remove('hidden');
+            } else {
+                btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+                content.classList.add('hidden');
+            }
         }
     });
 }
@@ -701,7 +721,7 @@ function renderVaultGrid(decks) {
                     <!-- Commander Portrait Header -->
                     <div class="relative h-28 overflow-hidden bg-slate-900">
                         <img src="${art}" alt="${escapeHtml(d.deck_name)}" class="w-full h-full object-cover object-center group-hover:scale-105 transition duration-300">
-                        <div class="absolute inset-0 bg-gradient-to-t from-[#10141D] via-[#10141D]/40 to-transparent"></div>
+                        <div class="absolute inset-0 bg-gradient-to-t from-[#10141D] via-[#10141D]/40 to-transparent pointer-events-none"></div>
                         
                         <!-- Badges -->
                         <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
@@ -1184,6 +1204,8 @@ async function executeParseAndSave(runAi = false) {
     btn.disabled = true;
     btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Processing...</span>`;
 
+    if (runAi) dismissAiErrorAlert();
+
     try {
         if (runAi) {
             const resp = await fetch('/api/deck/analyze', {
@@ -1194,6 +1216,7 @@ async function executeParseAndSave(runAi = false) {
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || "Analysis failed");
             showToast("Deck analyzed and saved to Vault!", "success");
+            dismissAiErrorAlert();
             await refreshVaultList();
             displayDeckInInspector(data.deck ? { ...data.deck, analysis: data.analysis, has_ai_analysis: true } : data);
         } else {
@@ -1209,6 +1232,7 @@ async function executeParseAndSave(runAi = false) {
             displayDeckInInspector(data.deck);
         }
     } catch (e) {
+        if (runAi) showAiErrorAlert(e.message);
         showToast(`Error: ${e.message}`, "error");
     } finally {
         btn.disabled = false;
@@ -1284,6 +1308,7 @@ async function syncActiveDeckFromSource() {
 // Run AI on pre-saved deck
 async function runAiAnalysisOnSavedDeck() {
     if (!activeDeck || !activeDeck.id) return;
+    dismissAiErrorAlert();
     const modelSelect = document.getElementById('savedDeckAiModel');
     const model = modelSelect ? modelSelect.value : 'gemini-3.7-flash';
     const btn = document.getElementById('runSavedAiBtn');
@@ -1299,9 +1324,11 @@ async function runAiAnalysisOnSavedDeck() {
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Analysis failed");
         showToast("Gemini analysis complete!", "success");
+        dismissAiErrorAlert();
         displayDeckInInspector(data.deck);
         await refreshVaultList();
     } catch (e) {
+        showAiErrorAlert(e.message);
         showToast(`AI error: ${e.message}`, "error");
     } finally {
         btn.disabled = false;
@@ -1449,20 +1476,62 @@ async function saveApiKeyFromModal() {
 }
 
 // Toast Alert Helper
+let toastTimer = null;
+
 function showToast(msg, type = 'info') {
     const toast = document.getElementById('analyzerToast');
     const toastBox = document.getElementById('analyzerToastBox');
     const toastMsg = document.getElementById('analyzerToastMsg');
+    if (!toast || !toastBox || !toastMsg) return;
+
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+    }
+
     toastMsg.innerText = msg;
     if (type === 'error') {
-        toastBox.className = "bg-[#10141D] border border-rose-500/50 text-rose-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono";
+        toastBox.className = "bg-[#10141D] border border-rose-500/50 text-rose-300 px-4 py-3 rounded-xl shadow-2xl flex items-start justify-between space-x-3 text-xs font-mono";
     } else if (type === 'success') {
-        toastBox.className = "bg-[#10141D] border border-emerald-500/50 text-emerald-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono";
+        toastBox.className = "bg-[#10141D] border border-emerald-500/50 text-emerald-300 px-4 py-3 rounded-xl shadow-2xl flex items-start justify-between space-x-3 text-xs font-mono";
     } else {
-        toastBox.className = "bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-xs font-mono";
+        toastBox.className = "bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-start justify-between space-x-3 text-xs font-mono";
     }
     toast.classList.remove('hidden', 'translate-y-2');
-    setTimeout(() => { toast.classList.add('hidden', 'translate-y-2'); }, 4000);
+
+    // ONLY auto-hide info and success toasts; keep error toasts visible until manually dismissed or replaced
+    if (type !== 'error') {
+        toastTimer = setTimeout(() => {
+            hideToast();
+        }, 5000);
+    }
+}
+
+function hideToast() {
+    const toast = document.getElementById('analyzerToast');
+    if (toast) {
+        toast.classList.add('hidden', 'translate-y-2');
+    }
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+    }
+}
+
+function showAiErrorAlert(msg) {
+    const container = document.getElementById('aiErrorAlertContainer');
+    const body = document.getElementById('aiErrorAlertBody');
+    if (container && body) {
+        body.innerText = msg;
+        container.classList.remove('hidden');
+    }
+}
+
+function dismissAiErrorAlert() {
+    const container = document.getElementById('aiErrorAlertContainer');
+    if (container) {
+        container.classList.add('hidden');
+    }
 }
 
 function escapeHtml(str) {

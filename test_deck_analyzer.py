@@ -258,6 +258,12 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         resp = self.client.get("/deck-analyzer")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Commander Deck Vault", resp.data)
+        self.assertIn(b"insp-tab-cards", resp.data)
+        self.assertIn(b"insp-tab-ai", resp.data)
+        self.assertIn(b"insp-tab-stats", resp.data)
+        self.assertIn(b"Full Card Registry", resp.data)
+        self.assertIn(b"Gemini AI Strategic Intel", resp.data)
+        self.assertIn(b"pointer-events-none", resp.data)
 
     def test_api_deck_parse_text(self):
         self._login()
@@ -481,12 +487,10 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         analyzer_lite = GeminiAnalyzer(api_key="test_key", model="gemini-3.5-flash-lite")
         self.assertEqual(analyzer_lite.model, "gemini-3.5-flash-lite")
 
-        models = GeminiAnalyzer.get_available_models()
+        models = GeminiAnalyzer.get_available_models("test_key")
         model_ids = [m["id"] for m in models]
-        self.assertIn("gemini-3.7-flash", model_ids)
-        self.assertIn("gemini-3.6-flash", model_ids)
-        self.assertIn("gemini-3.5-flash", model_ids)
-        self.assertIn("gemini-3.5-flash-lite", model_ids)
+        self.assertEqual(len(model_ids), 4)
+        self.assertEqual(model_ids, ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"])
 
         self._login()
         resp = self.client.get("/api/deck/gemini-status")
@@ -494,10 +498,98 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data["default_model"], "gemini-3.7-flash")
         resp_model_ids = [m["id"] for m in data["supported_models"]]
-        self.assertIn("gemini-3.7-flash", resp_model_ids)
-        self.assertIn("gemini-3.6-flash", resp_model_ids)
-        self.assertIn("gemini-3.5-flash", resp_model_ids)
-        self.assertIn("gemini-3.5-flash-lite", resp_model_ids)
+        self.assertEqual(resp_model_ids, ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"])
+
+    @patch("gemini_analyzer.requests.post")
+    def test_gemini_503_fallback_cascade(self, mock_post):
+        """Verifies that a 503 error on higher model automatically falls back to lower model."""
+        sample_analysis = {
+            "deck_name": "Fallback Test Deck",
+            "commander": ["Atraxa, Praetors' Voice"],
+            "archetype": "+1/+1 Counters",
+            "estimated_power_level": 8.0,
+            "overall_summary": "Super strong deck.",
+            "card_ratings": [],
+            "win_conditions": [],
+            "upgrades": [],
+            "cut_recommendations": []
+        }
+
+        mock_503_resp = MagicMock()
+        mock_503_resp.status_code = 503
+        mock_503_resp.json.return_value = {"error": {"message": "The model is overloaded. Please try again later."}}
+        mock_503_resp.text = "The model is overloaded."
+
+        mock_200_resp = MagicMock()
+        mock_200_resp.status_code = 200
+        mock_200_resp.json.return_value = {
+            "candidates": [{
+                "content": {"parts": [{"text": json.dumps(sample_analysis)}]}
+            }]
+        }
+
+        # First call (gemini-3.7-flash) returns 503, second call (gemini-3.6-flash) returns 200
+        mock_post.side_effect = [mock_503_resp, mock_200_resp]
+
+        analyzer = GeminiAnalyzer(api_key="test_key", model="gemini-3.7-flash")
+        deck_data = {
+            "deck_name": "Fallback Test Deck",
+            "commander": ["Atraxa, Praetors' Voice"],
+            "cards": [{"name": "Sol Ring", "quantity": 1}]
+        }
+        res = analyzer.analyze_deck(deck_data)
+        self.assertEqual(res["_model_used"], "gemini-3.6-flash")
+        self.assertEqual(analyzer.model, "gemini-3.6-flash")
+        self.assertEqual(mock_post.call_count, 2)
+
+    @patch("gemini_analyzer.requests.post")
+    def test_gemini_all_models_503_failure_shows_all_timestamps(self, mock_post):
+        """Verifies that when all models fail, error message includes timestamp and status for each attempted model."""
+        mock_503_resp = MagicMock()
+        mock_503_resp.status_code = 503
+        mock_503_resp.json.return_value = {"error": {"message": "The model is overloaded. Please try again later."}}
+        mock_503_resp.text = "The model is overloaded."
+
+        # All 4 models fail with 503
+        mock_post.return_value = mock_503_resp
+
+        analyzer = GeminiAnalyzer(api_key="test_key", model="gemini-3.7-flash")
+        deck_data = {
+            "deck_name": "All Fail Deck",
+            "commander": ["Atraxa, Praetors' Voice"],
+            "cards": [{"name": "Sol Ring", "quantity": 1}]
+        }
+
+        with self.assertRaises(GeminiAnalysisError) as ctx:
+            analyzer.analyze_deck(deck_data)
+
+        err_msg = str(ctx.exception)
+        self.assertIn("gemini-3.7-flash", err_msg)
+        self.assertIn("gemini-3.6-flash", err_msg)
+        self.assertIn("gemini-3.5-flash", err_msg)
+        self.assertIn("gemini-3.5-flash-lite", err_msg)
+        self.assertIn("EST", err_msg)
+        self.assertIn("HTTP 503", err_msg)
+        self.assertEqual(mock_post.call_count, 4)
+
+    def test_eastern_jinja_template_filter(self):
+        """Verifies Jinja eastern and est template filters format datetimes to Eastern Time."""
+        from datetime import datetime, timezone
+        from app import create_app
+
+        app = create_app({"TESTING": True, "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
+        with app.app_context():
+            eastern_filter = app.jinja_env.filters["eastern"]
+            est_filter = app.jinja_env.filters["est"]
+
+            utc_dt = datetime(2026, 8, 31, 23, 0, 0, tzinfo=timezone.utc)
+            formatted = eastern_filter(utc_dt)
+            # 23:00 UTC = 19:00 EDT/EST (-4 hours)
+            self.assertIn("19:00:00 EST", formatted)
+            self.assertIn("2026-08-31", formatted)
+
+            formatted_est = est_filter(utc_dt, "%Y-%m-%d")
+            self.assertEqual(formatted_est, "2026-08-31")
 
 
 if __name__ == "__main__":

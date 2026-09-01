@@ -136,7 +136,7 @@
             <span class="truncate">
                 <span class="text-[#64748B]">LAST SURVEILLANCE SWEEP:</span>
                 <span class="text-white font-bold" id="mc-last-scan-label">
-                    {% if last_scan_time %}{{ last_scan_time|replace('T', ' ')|slice(0, 19) }} UTC{% else %}Awaiting initial sync{% endif %}
+                    {% if last_scan_time %}{{ last_scan_time|eastern('%Y-%m-%d %H:%M:%S EST') }}{% else %}Awaiting initial sync{% endif %}
                 </span>
             </span>
         </div>
@@ -366,7 +366,7 @@
             document.getElementById("stat-in-stock-items").innerText = data.in_stock_tracked || allItems.filter(i => i.in_stock).length;
             document.getElementById("stat-deals-items").innerText = data.deals_tracked || allItems.filter(i => i.is_deal).length;
             if (data.last_scan_time) {
-                document.getElementById("mc-last-scan-label").innerText = data.last_scan_time.replace("T", " ").slice(0, 19) + " UTC";
+                document.getElementById("mc-last-scan-label").innerText = formatEST(data.last_scan_time);
             }
 
             applyFilters();
@@ -663,7 +663,7 @@
             // Render Table Rows
             const tbody = document.getElementById("hist-table-body");
             tbody.innerHTML = history.map(h => {
-                const dateStr = h.recorded_at ? h.recorded_at.replace("T", " ").slice(0, 16) : '-';
+                const dateStr = formatEST(h.recorded_at, false);
                 const pDelta = h.price_change !== 0 ? (h.price_change < 0 ? `<span class="text-[#2DD4BF]">${h.price_change.toFixed(2)}</span>` : `<span class="text-[#FF3358]">+${h.price_change.toFixed(2)}</span>`) : `<span class="text-[#64748B]">0.00</span>`;
                 const sDelta = h.stock_change !== 0 ? (h.stock_change > 0 ? `<span class="text-[#00CED1]">+${h.stock_change}</span>` : `<span class="text-[#FF3358]">${h.stock_change}</span>`) : `<span class="text-[#64748B]">0</span>`;
                 return `
@@ -827,7 +827,7 @@
             feedList.innerHTML = events.map(ev => {
                 const isDrop = ev.price_change < 0;
                 const isRestock = ev.stock_change > 0;
-                const dateStr = ev.recorded_at ? ev.recorded_at.replace("T", " ").slice(0, 16) : '';
+                const dateStr = formatEST(ev.recorded_at, false);
                 return `
                 <div class="p-3 bg-[#10141D] border border-[#263245] flex items-center justify-between font-mono text-xs">
                     <div class="min-w-0">
@@ -852,6 +852,27 @@
         } catch (err) {
             console.error("Error loading activity feed:", err);
             feedList.innerHTML = `<div class="text-xs text-[#FF3358] font-mono py-4 text-center">Failed to load activity feed.</div>`;
+        }
+    }
+
+    function formatEST(dateInput, includeSeconds = true) {
+        if (!dateInput) return '--';
+        try {
+            const d = (dateInput instanceof Date) ? dateInput : new Date(dateInput);
+            if (isNaN(d.getTime())) return String(dateInput).replace('T', ' ').slice(0, 19) + ' EST';
+            const options = {
+                timeZone: 'America/New_York',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                ...(includeSeconds ? { second: '2-digit' } : {}),
+                hour12: false
+            };
+            return new Intl.DateTimeFormat('en-US', options).format(d) + ' EST';
+        } catch {
+            return String(dateInput);
         }
     }
 </script>
