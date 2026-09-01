@@ -467,22 +467,37 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self.assertEqual(parsed["cards"][1]["name"], "Sol Ring")
         self.assertEqual(parsed["cards"][1]["section"], "mainboard")
 
-    def test_gemini_model_locked_to_3_7_flash(self):
-        """Verifies GeminiAnalyzer and endpoints lock model to gemini-3.7-flash."""
-        analyzer = GeminiAnalyzer(api_key="test_key", model="some-other-model")
-        self.assertEqual(analyzer.model, "gemini-3.7-flash")
+    def test_gemini_models_and_selection(self):
+        """Verifies GeminiAnalyzer and endpoints support Gemini 3.7 Flash, 3.6 Flash, 3.5 Flash, and 3.5 Flash-Lite."""
+        analyzer_default = GeminiAnalyzer(api_key="test_key")
+        self.assertEqual(analyzer_default.model, "gemini-3.7-flash")
 
-        models = GeminiAnalyzer.get_available_models("test_key")
-        self.assertEqual(len(models), 1)
-        self.assertEqual(models[0]["id"], "gemini-3.7-flash")
-        self.assertIn("Gemini 3.7 Flash", models[0]["name"])
+        analyzer_36 = GeminiAnalyzer(api_key="test_key", model="gemini-3.6-flash")
+        self.assertEqual(analyzer_36.model, "gemini-3.6-flash")
+
+        analyzer_35 = GeminiAnalyzer(api_key="test_key", model="gemini-3.5-flash")
+        self.assertEqual(analyzer_35.model, "gemini-3.5-flash")
+
+        analyzer_lite = GeminiAnalyzer(api_key="test_key", model="gemini-3.5-flash-lite")
+        self.assertEqual(analyzer_lite.model, "gemini-3.5-flash-lite")
+
+        models = GeminiAnalyzer.get_available_models()
+        model_ids = [m["id"] for m in models]
+        self.assertIn("gemini-3.7-flash", model_ids)
+        self.assertIn("gemini-3.6-flash", model_ids)
+        self.assertIn("gemini-3.5-flash", model_ids)
+        self.assertIn("gemini-3.5-flash-lite", model_ids)
 
         self._login()
         resp = self.client.get("/api/deck/gemini-status")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data["default_model"], "gemini-3.7-flash")
-        self.assertEqual(data["supported_models"][0]["id"], "gemini-3.7-flash")
+        resp_model_ids = [m["id"] for m in data["supported_models"]]
+        self.assertIn("gemini-3.7-flash", resp_model_ids)
+        self.assertIn("gemini-3.6-flash", resp_model_ids)
+        self.assertIn("gemini-3.5-flash", resp_model_ids)
+        self.assertIn("gemini-3.5-flash-lite", resp_model_ids)
 
 
 if __name__ == "__main__":

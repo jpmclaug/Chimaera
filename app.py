@@ -2120,7 +2120,7 @@ def create_app(test_config=None):
             "commander": [re.sub(r"<[^>]+>", "", c).strip() for c in parsed.get("commander", [])],
             "commander_art": commander_art,
             "cards": enriched_cards,
-            "total_cards": sum(c["quantity"] for c in enriched_cards) if enriched_cards else parsed.get("total_cards", 0),
+            "total_cards": sum(c.get("quantity", 1) for c in enriched_cards) if enriched_cards else parsed.get("total_cards", 0),
             "source_type": parsed.get("source_type", "text"),
             "raw_text": parsed.get("raw_text", ""),
             "unresolved_cards": unresolved,
@@ -2131,73 +2131,76 @@ def create_app(test_config=None):
     @app.route("/api/deck/parse", methods=["POST"])
     @login_required
     def api_deck_parse():
-        """Parses a deck list and calculates instant stats & card telemetry without running AI."""
+        """Parses deck list or ManaBox URL into structured card format with Scryfall metadata."""
         data = request.get_json(silent=True) or {}
         source = data.get("source", "").strip()
         source_type = data.get("source_type", "auto").strip()
 
         if not source:
-            return jsonify({"error": "No deck link or card list content provided."}), 400
+            return jsonify({"error": "No deck source or card list provided."}), 400
 
         try:
             parsed = DeckParser.parse(source, source_type=source_type)
-            result = _enrich_and_compute_deck_metadata(parsed)
-            result["success"] = True
-            return jsonify(result)
+            enriched = _enrich_and_compute_deck_metadata(parsed)
+            return jsonify({"success": True, **enriched})
         except DeckParseError as e:
             return jsonify({"error": str(e)}), 400
         except Exception as e:
-            logger.error(f"Error in api_deck_parse: {e}", exc_info=True)
-            return jsonify({"error": f"Deck parsing failed: {str(e)}"}), 500
+            logger.error(f"Unexpected error in api_deck_parse: {e}", exc_info=True)
+            return jsonify({"error": f"Failed to parse deck: {str(e)}"}), 500
 
     @app.route("/api/deck/save", methods=["POST"])
     @login_required
     def api_deck_save():
-        """Saves a parsed deck into the user's persistent Deck Vault (with or without AI analysis)."""
+        """Parses, enriches with Scryfall metadata, and saves a deck directly to the user's Vault without running AI."""
         user = get_current_user()
         data = request.get_json(silent=True) or {}
-
         source = data.get("source", "").strip()
         source_type = data.get("source_type", "auto").strip()
-        deck_data = data.get("deck_data")
+        provided_deck = data.get("deck_data")
 
         try:
-            import json
-            if not deck_data or not deck_data.get("cards"):
+            if provided_deck and "cards" in provided_deck:
+                deck_data = provided_deck
+            else:
                 if not source:
-                    return jsonify({"error": "No deck source or card data provided."}), 400
+                    return jsonify({"error": "No deck source provided."}), 400
                 parsed = DeckParser.parse(source, source_type=source_type)
                 deck_data = _enrich_and_compute_deck_metadata(parsed)
 
             stats = deck_data.get("stats", {})
-            cmdr_name = ", ".join(deck_data.get("commander", [])) or (deck_data.get("cards", [{}])[0].get("name", "Unknown Commander"))
+            cmdr_name = ", ".join(deck_data.get("commander", [])) or "Commander"
             color_id_str = ",".join(stats.get("color_identity", []))
 
-            entry = DeckAnalysis(
+            import json
+            deck_entry = DeckAnalysis(
                 user_id=user.id if user else None,
                 deck_name=deck_data.get("deck_name", "Commander Deck"),
                 commander_name=cmdr_name,
                 commander_art=deck_data.get("commander_art"),
-                source_url=source if source.startswith("http") else deck_data.get("source_url"),
-                source_type=deck_data.get("source_type", source_type),
+                source_url=source if source.startswith("http") else None,
+                source_type=deck_data.get("source_type", "text"),
                 raw_decklist=deck_data.get("raw_text", ""),
                 cards_data=json.dumps(deck_data.get("cards", [])),
                 stats_json=json.dumps(stats),
-                analysis_json=json.dumps(data.get("analysis")) if data.get("analysis") else None,
-                total_cards=deck_data.get("total_cards", len(deck_data.get("cards", []))),
+                analysis_json=None,
+                total_cards=deck_data.get("total_cards", 100),
                 total_value=stats.get("total_value"),
                 avg_cmc=stats.get("avg_cmc"),
                 color_identity=color_id_str,
             )
-            db.session.add(entry)
+            db.session.add(deck_entry)
             db.session.commit()
 
-            log_activity("DECK_SAVED", details=f"Saved Commander deck '{entry.deck_name}' to Vault", user=user)
+            log_activity("DECK_SAVE", details=f"Saved Commander deck '{deck_entry.deck_name}' to Vault", user=user)
+
             return jsonify({
                 "success": True,
-                "message": f"Deck '{entry.deck_name}' saved to your Deck Vault.",
-                "deck": entry.to_dict(include_full=True),
+                "analysis_id": deck_entry.id,
+                "deck": deck_entry.to_dict(include_full=True),
             })
+        except DeckParseError as e:
+            return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error(f"Error in api_deck_save: {e}", exc_info=True)
             return jsonify({"error": f"Failed to save deck: {str(e)}"}), 500
@@ -2322,7 +2325,8 @@ def create_app(test_config=None):
             return jsonify({"error": "Access denied."}), 403
 
         data = request.get_json(silent=True) or {}
-        model = GEMINI_DEFAULT_MODEL
+        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        model = data.get("model") or default_model
         user_api_key = data.get("api_key", "").strip()
         custom_instructions = data.get("custom_instructions", "").strip()
 
@@ -2428,7 +2432,8 @@ def create_app(test_config=None):
 
         source = data.get("source", "").strip()
         source_type = data.get("source_type", "auto").strip()
-        model = GEMINI_DEFAULT_MODEL
+        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        model = data.get("model") or default_model
         user_api_key = data.get("api_key", "").strip()
         custom_instructions = data.get("custom_instructions", "").strip()
         save_result = data.get("save", True)
@@ -2599,7 +2604,8 @@ def create_app(test_config=None):
         """Tests and saves Gemini API Key into system settings."""
         data = request.get_json(silent=True) or {}
         api_key = str(data.get("api_key", "")).strip()
-        model = GEMINI_DEFAULT_MODEL
+        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        model = str(data.get("model") or default_model).strip()
 
         if not api_key:
             return jsonify({"error": "API key cannot be blank."}), 400
@@ -2609,7 +2615,8 @@ def create_app(test_config=None):
             return jsonify({"error": msg}), 400
 
         SystemSetting.set_val("gemini_api_key", api_key)
-        SystemSetting.set_val("gemini_default_model", model)
+        if model:
+            SystemSetting.set_val("gemini_default_model", model)
 
         return jsonify({
             "success": True,
@@ -2625,8 +2632,9 @@ def create_app(test_config=None):
         has_db = bool(db_key and db_key.strip())
 
         key_source = "env" if has_env else ("database" if has_db else "none")
-        default_model = GEMINI_DEFAULT_MODEL
-        models = GEMINI_SUPPORTED_MODELS
+        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        models = GeminiAnalyzer.get_available_models(effective_key) if (has_env or has_db) else GEMINI_SUPPORTED_MODELS
 
         return jsonify({
             "has_key": has_env or has_db,

@@ -15,17 +15,20 @@ logger = logging.getLogger(__name__)
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_MODEL = "gemini-3.7-flash"
 SUPPORTED_MODELS = [
-    {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash", "description": "High speed, high accuracy tactical MTG evaluations."},
+    {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash (Default)", "description": "High speed, high accuracy tactical MTG evaluations."},
+    {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "description": "High performance low latency MTG analysis."},
+    {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "description": "Fast tactical Commander evaluations."},
+    {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "description": "Ultra lightweight, low latency model."},
 ]
 
 MODEL_FALLBACK_MAP = {
     "gemini-2.5-pro": "gemini-3.7-flash",
     "gemini-3.1-pro-preview": "gemini-3.7-flash",
-    "gemini-2.5-flash": "gemini-3.7-flash",
-    "gemini-2.0-flash": "gemini-3.7-flash",
-    "gemini-1.5-pro": "gemini-3.7-flash",
-    "gemini-1.5-flash": "gemini-3.7-flash",
-    "gemini-pro": "gemini-3.7-flash",
+    "gemini-2.5-flash": "gemini-3.5-flash",
+    "gemini-2.0-flash": "gemini-3.6-flash",
+    "gemini-1.5-pro": "gemini-3.5-flash",
+    "gemini-1.5-flash": "gemini-3.5-flash-lite",
+    "gemini-pro": "gemini-3.5-flash",
 }
 
 
@@ -39,17 +42,45 @@ class GeminiAnalyzer:
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
-        # Default strictly to Gemini 3.7 Flash (user selection disabled)
-        self.model = DEFAULT_MODEL
+        raw_model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
+        self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
 
     @staticmethod
     def get_available_models(api_key: str | None = None) -> list[dict]:
-        """Returns the supported Gemini models (locked to Gemini 3.7 Flash)."""
+        """Fetches active generation models from Gemini API or returns SUPPORTED_MODELS."""
+        if not api_key:
+            return SUPPORTED_MODELS
+
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key.strip()}"
+            resp = requests.get(url, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get("models", [])
+                result = []
+                for m in raw_models:
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods:
+                        m_id = m.get("name", "").replace("models/", "")
+                        # Filter out embedding / vision-only / legacy experimental models
+                        if "embedding" not in m_id and "aqa" not in m_id and "imagen" not in m_id and "whisper" not in m_id:
+                            display_name = m.get("displayName") or m_id
+                            desc = m.get("description", "")
+                            result.append({
+                                "id": m_id,
+                                "name": f"{display_name} ({m_id})",
+                                "description": desc[:100] if desc else "Gemini generation model.",
+                            })
+                if result:
+                    return result
+        except Exception as e:
+            logger.warning(f"Could not dynamically list Gemini models: {e}")
+
         return SUPPORTED_MODELS
 
     @staticmethod
     def test_api_key(api_key: str, model: str = DEFAULT_MODEL) -> tuple[bool, str]:
-        """Tests whether a Gemini API key is valid by sending a ping request."""
+        """Tests whether a Gemini API key is valid by sending a ping request with fallback support."""
         if not api_key or not str(api_key).strip():
             return False, "Gemini API key is required."
 
