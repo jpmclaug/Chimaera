@@ -415,15 +415,9 @@
                     <p class="text-xs text-slate-400 max-w-lg mx-auto mt-1">Get card-by-card 1–10 effectiveness ratings, strategic identity evaluation, win condition breakdown, and recommended upgrades.</p>
                 </div>
 
-                <div class="max-w-md mx-auto flex flex-col sm:flex-row items-center gap-2.5">
-                    <select id="savedDeckAiModel" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
-                        {% for m in supported_models %}
-                        <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
-                        {% endfor %}
-                    </select>
-
-                    <button onclick="runAiAnalysisOnSavedDeck()" id="runSavedAiBtn" class="w-full sm:w-auto px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition whitespace-nowrap">
-                        ⚡ Analyze Now
+                <div class="max-w-md mx-auto flex items-center justify-center pt-1">
+                    <button onclick="runAiAnalysisOnSavedDeck()" id="runSavedAiBtn" class="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition whitespace-nowrap flex items-center gap-2">
+                        ⚡ Analyze with Gemini 3.7 Flash
                     </button>
                 </div>
             </div>
@@ -568,13 +562,12 @@
                        class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-mono">
             </div>
 
-            <div>
-                <label class="block text-[11px] font-mono text-slate-300 font-semibold uppercase mb-1">Default Model</label>
-                <select id="modalGeminiModel" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
-                    {% for m in supported_models %}
-                    <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
-                    {% endfor %}
-                </select>
+            <div class="bg-[#1B2230] border border-slate-800 rounded-lg px-3 py-2.5 flex items-center justify-between text-xs font-mono">
+                <span class="text-slate-400">AI Model</span>
+                <span class="text-cyan-400 font-bold flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                    Gemini 3.7 Flash
+                </span>
             </div>
         </div>
 
@@ -1284,16 +1277,15 @@ async function syncActiveDeckFromSource() {
 // Run AI on pre-saved deck
 async function runAiAnalysisOnSavedDeck() {
     if (!activeDeck || !activeDeck.id) return;
-    const model = document.getElementById('savedDeckAiModel').value;
     const btn = document.getElementById('runSavedAiBtn');
     btn.disabled = true;
-    btn.innerText = "Analyzing with Gemini...";
+    btn.innerText = "Analyzing with Gemini 3.7 Flash...";
 
     try {
         const resp = await fetch(`/api/deck/${activeDeck.id}/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model })
+            body: JSON.stringify({ model: 'gemini-3.7-flash' })
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Analysis failed");
@@ -1304,7 +1296,7 @@ async function runAiAnalysisOnSavedDeck() {
         showToast(`AI error: ${e.message}`, "error");
     } finally {
         btn.disabled = false;
-        btn.innerText = "⚡ Analyze Now";
+        btn.innerHTML = "⚡ Analyze with Gemini 3.7 Flash";
     }
 }
 
@@ -1422,7 +1414,6 @@ function closeApiKeyModal() { document.getElementById('geminiApiKeyModal').class
 
 async function saveApiKeyFromModal() {
     const key = document.getElementById('modalGeminiApiKey').value.trim();
-    const model = document.getElementById('modalGeminiModel').value;
     const btn = document.getElementById('modalSaveKeyBtn');
     btn.disabled = true;
     btn.innerText = "Verifying...";
@@ -1431,7 +1422,7 @@ async function saveApiKeyFromModal() {
         const resp = await fetch('/api/deck/gemini-key', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_key: key, model })
+            body: JSON.stringify({ api_key: key, model: 'gemini-3.7-flash' })
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Verification failed");

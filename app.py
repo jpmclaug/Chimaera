@@ -186,7 +186,7 @@ def _migrate_db_schema(app):
                             cards_data TEXT,
                             stats_json TEXT,
                             analysis_json TEXT,
-                            model_used VARCHAR(100) DEFAULT 'gemini-2.5-flash',
+                            model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
                             power_level FLOAT,
                             power_bracket VARCHAR(50),
                             archetype VARCHAR(100),
@@ -278,7 +278,7 @@ def _migrate_db_schema(app):
                             cards_data TEXT,
                             stats_json TEXT,
                             analysis_json TEXT,
-                            model_used VARCHAR(100) DEFAULT 'gemini-2.5-flash',
+                            model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
                             power_level FLOAT,
                             power_bracket VARCHAR(50),
                             archetype VARCHAR(100),
@@ -2322,7 +2322,7 @@ def create_app(test_config=None):
             return jsonify({"error": "Access denied."}), 403
 
         data = request.get_json(silent=True) or {}
-        model = data.get("model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        model = GEMINI_DEFAULT_MODEL
         user_api_key = data.get("api_key", "").strip()
         custom_instructions = data.get("custom_instructions", "").strip()
 
@@ -2428,7 +2428,7 @@ def create_app(test_config=None):
 
         source = data.get("source", "").strip()
         source_type = data.get("source_type", "auto").strip()
-        model = data.get("model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        model = GEMINI_DEFAULT_MODEL
         user_api_key = data.get("api_key", "").strip()
         custom_instructions = data.get("custom_instructions", "").strip()
         save_result = data.get("save", True)
@@ -2599,7 +2599,7 @@ def create_app(test_config=None):
         """Tests and saves Gemini API Key into system settings."""
         data = request.get_json(silent=True) or {}
         api_key = str(data.get("api_key", "")).strip()
-        model = str(data.get("model") or GEMINI_DEFAULT_MODEL).strip()
+        model = GEMINI_DEFAULT_MODEL
 
         if not api_key:
             return jsonify({"error": "API key cannot be blank."}), 400
@@ -2609,8 +2609,7 @@ def create_app(test_config=None):
             return jsonify({"error": msg}), 400
 
         SystemSetting.set_val("gemini_api_key", api_key)
-        if model:
-            SystemSetting.set_val("gemini_default_model", model)
+        SystemSetting.set_val("gemini_default_model", model)
 
         return jsonify({
             "success": True,
@@ -2626,9 +2625,8 @@ def create_app(test_config=None):
         has_db = bool(db_key and db_key.strip())
 
         key_source = "env" if has_env else ("database" if has_db else "none")
-        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
-        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
-        models = GeminiAnalyzer.get_available_models(effective_key) if (has_env or has_db) else GEMINI_SUPPORTED_MODELS
+        default_model = GEMINI_DEFAULT_MODEL
+        models = GEMINI_SUPPORTED_MODELS
 
         return jsonify({
             "has_key": has_env or has_db,

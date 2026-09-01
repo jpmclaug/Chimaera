@@ -207,7 +207,7 @@ class TestGeminiAnalyzer(unittest.TestCase):
         }
         mock_post.return_value = mock_resp
 
-        analyzer = GeminiAnalyzer(api_key="valid_test_key", model="gemini-2.5-flash")
+        analyzer = GeminiAnalyzer(api_key="valid_test_key", model="gemini-3.7-flash")
         deck_data = {
             "deck_name": "Dragon Storm",
             "commander": ["The Ur-Dragon"],
@@ -410,7 +410,7 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
             db.session.commit()
             entry_id = entry.id
 
-        resp = self.client.post(f"/api/deck/{entry_id}/analyze", json={"model": "gemini-2.5-flash"})
+        resp = self.client.post(f"/api/deck/{entry_id}/analyze", json={"model": "gemini-3.7-flash"})
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data["success"])
@@ -466,6 +466,23 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self.assertEqual(parsed["cards"][0]["price_usd"], 25.5)
         self.assertEqual(parsed["cards"][1]["name"], "Sol Ring")
         self.assertEqual(parsed["cards"][1]["section"], "mainboard")
+
+    def test_gemini_model_locked_to_3_7_flash(self):
+        """Verifies GeminiAnalyzer and endpoints lock model to gemini-3.7-flash."""
+        analyzer = GeminiAnalyzer(api_key="test_key", model="some-other-model")
+        self.assertEqual(analyzer.model, "gemini-3.7-flash")
+
+        models = GeminiAnalyzer.get_available_models("test_key")
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0]["id"], "gemini-3.7-flash")
+        self.assertIn("Gemini 3.7 Flash", models[0]["name"])
+
+        self._login()
+        resp = self.client.get("/api/deck/gemini-status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data["default_model"], "gemini-3.7-flash")
+        self.assertEqual(data["supported_models"][0]["id"], "gemini-3.7-flash")
 
 
 if __name__ == "__main__":

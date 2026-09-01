@@ -57,5 +57,5 @@ class Config:
 
     # Google Gemini AI Commander Deck Analyzer Configuration
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-    GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash").strip()
+    GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_DEFAULT_MODEL", "gemini-3.7-flash").strip()
 

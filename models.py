@@ -719,7 +719,7 @@ class DeckAnalysis(db.Model):
     cards_data = db.Column(db.Text, nullable=True)  # JSON string of parsed cards + scryfall metadata
     stats_json = db.Column(db.Text, nullable=True)  # JSON string of pre-computed stats (curve, types, value)
     analysis_json = db.Column(db.Text, nullable=True)  # JSON string of Gemini analysis (nullable if pre-AI)
-    model_used = db.Column(db.String(100), default="gemini-2.5-flash")
+    model_used = db.Column(db.String(100), default="gemini-3.7-flash")
     power_level = db.Column(db.Float, nullable=True)
     power_bracket = db.Column(db.String(50), nullable=True)
     archetype = db.Column(db.String(100), nullable=True)
