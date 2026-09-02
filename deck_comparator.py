@@ -102,9 +102,41 @@ class DeckComparator:
         draw_engines_b = int(stats_b.get("draw_engine_count", 0))
         delta_draw_engines = draw_engines_a - draw_engines_b
 
+        draw_burst_a = int(stats_a.get("draw_burst_count", 0))
+        draw_burst_b = int(stats_b.get("draw_burst_count", 0))
+        delta_draw_burst = draw_burst_a - draw_burst_b
+
+        draw_cantrip_a = int(stats_a.get("draw_cantrip_count", 0))
+        draw_cantrip_b = int(stats_b.get("draw_cantrip_count", 0))
+        delta_draw_cantrip = draw_cantrip_a - draw_cantrip_b
+
         tutors_a = int(stats_a.get("tutor_general_count", 0))
         tutors_b = int(stats_b.get("tutor_general_count", 0))
         delta_tutors = tutors_a - tutors_b
+
+        tutors_land_a = int(stats_a.get("tutor_land_count", 0))
+        tutors_land_b = int(stats_b.get("tutor_land_count", 0))
+        delta_tutors_land = tutors_land_a - tutors_land_b
+
+        dork_rock_a = int(stats_a.get("dork_or_rock_count", 0))
+        dork_rock_b = int(stats_b.get("dork_or_rock_count", 0))
+        delta_dork_rock = dork_rock_a - dork_rock_b
+
+        land_fetch_a = int(stats_a.get("land_fetch_count", 0))
+        land_fetch_b = int(stats_b.get("land_fetch_count", 0))
+        delta_land_fetch = land_fetch_a - land_fetch_b
+
+        treasure_a = int(stats_a.get("treasure_count", 0))
+        treasure_b = int(stats_b.get("treasure_count", 0))
+        delta_treasure = treasure_a - treasure_b
+
+        targeted_removal_a = int(stats_a.get("targeted_removal_count", 0))
+        targeted_removal_b = int(stats_b.get("targeted_removal_count", 0))
+        delta_targeted_removal = targeted_removal_a - targeted_removal_b
+
+        board_wipes_a = int(stats_a.get("board_wipe_count", 0))
+        board_wipes_b = int(stats_b.get("board_wipe_count", 0))
+        delta_board_wipes = board_wipes_a - board_wipes_b
 
         def get_adv(delta, lower_is_better=False):
             if delta == 0:
@@ -141,6 +173,33 @@ class DeckComparator:
                 "advantage": get_adv(delta_fast_ramp, lower_is_better=False),
                 "better": "higher" if delta_fast_ramp > 0 else ("lower" if delta_fast_ramp < 0 else "equal"),
             },
+            "dork_or_rock_ramp": {
+                "metric": "Mana Dorks & Rocks",
+                "deck_a": dork_rock_a,
+                "deck_b": dork_rock_b,
+                "delta": delta_dork_rock,
+                "unit": "cards",
+                "advantage": get_adv(delta_dork_rock, lower_is_better=False),
+                "better": "higher" if delta_dork_rock > 0 else ("lower" if delta_dork_rock < 0 else "equal"),
+            },
+            "land_fetch_ramp": {
+                "metric": "Land Ramp Spells",
+                "deck_a": land_fetch_a,
+                "deck_b": land_fetch_b,
+                "delta": delta_land_fetch,
+                "unit": "cards",
+                "advantage": get_adv(delta_land_fetch, lower_is_better=False),
+                "better": "higher" if delta_land_fetch > 0 else ("lower" if delta_land_fetch < 0 else "equal"),
+            },
+            "treasure_ramp": {
+                "metric": "Treasure Creation",
+                "deck_a": treasure_a,
+                "deck_b": treasure_b,
+                "delta": delta_treasure,
+                "unit": "cards",
+                "advantage": get_adv(delta_treasure, lower_is_better=False),
+                "better": "higher" if delta_treasure > 0 else ("lower" if delta_treasure < 0 else "equal"),
+            },
             "instant_speed_ratio": {
                 "metric": "Instant Speed Ratio",
                 "deck_a": instant_speed_a,
@@ -176,6 +235,24 @@ class DeckComparator:
                 "unit": "%",
                 "advantage": get_adv(delta_tapland_penalty, lower_is_better=True),
                 "better": "lower" if delta_tapland_penalty < 0 else ("higher" if delta_tapland_penalty > 0 else "equal"),
+            },
+            "targeted_removal": {
+                "metric": "Targeted Removal",
+                "deck_a": targeted_removal_a,
+                "deck_b": targeted_removal_b,
+                "delta": delta_targeted_removal,
+                "unit": "cards",
+                "advantage": get_adv(delta_targeted_removal, lower_is_better=False),
+                "better": "higher" if delta_targeted_removal > 0 else ("lower" if delta_targeted_removal < 0 else "equal"),
+            },
+            "board_wipes": {
+                "metric": "Board Wipes",
+                "deck_a": board_wipes_a,
+                "deck_b": board_wipes_b,
+                "delta": delta_board_wipes,
+                "unit": "cards",
+                "advantage": get_adv(delta_board_wipes, lower_is_better=False),
+                "better": "higher" if delta_board_wipes > 0 else ("lower" if delta_board_wipes < 0 else "equal"),
             },
             "removal_mana_efficiency": {
                 "metric": "Removal Mana Efficiency",
@@ -222,6 +299,24 @@ class DeckComparator:
                 "advantage": get_adv(delta_draw_engines, lower_is_better=False),
                 "better": "higher" if delta_draw_engines > 0 else ("lower" if delta_draw_engines < 0 else "equal"),
             },
+            "burst_draw": {
+                "metric": "Burst Draw Spells",
+                "deck_a": draw_burst_a,
+                "deck_b": draw_burst_b,
+                "delta": delta_draw_burst,
+                "unit": "cards",
+                "advantage": get_adv(delta_draw_burst, lower_is_better=False),
+                "better": "higher" if delta_draw_burst > 0 else ("lower" if delta_draw_burst < 0 else "equal"),
+            },
+            "cantrips": {
+                "metric": "Cantrips",
+                "deck_a": draw_cantrip_a,
+                "deck_b": draw_cantrip_b,
+                "delta": delta_draw_cantrip,
+                "unit": "cards",
+                "advantage": get_adv(delta_draw_cantrip, lower_is_better=False),
+                "better": "higher" if delta_draw_cantrip > 0 else ("lower" if delta_draw_cantrip < 0 else "equal"),
+            },
             "tutors_general": {
                 "metric": "General Tutors",
                 "deck_a": tutors_a,
@@ -231,23 +326,37 @@ class DeckComparator:
                 "advantage": get_adv(delta_tutors, lower_is_better=False),
                 "better": "higher" if delta_tutors > 0 else ("lower" if delta_tutors < 0 else "equal"),
             },
+            "tutors_land": {
+                "metric": "Land / Ramp Tutors",
+                "deck_a": tutors_land_a,
+                "deck_b": tutors_land_b,
+                "delta": delta_tutors_land,
+                "unit": "cards",
+                "advantage": get_adv(delta_tutors_land, lower_is_better=False),
+                "better": "higher" if delta_tutors_land > 0 else ("lower" if delta_tutors_land < 0 else "equal"),
+            },
         }
 
         # 2. Interaction Profile
-        total_interaction_a = int(stats_a.get("targeted_removal_count", 0)) + int(stats_a.get("board_wipe_count", 0))
-        total_interaction_b = int(stats_b.get("targeted_removal_count", 0)) + int(stats_b.get("board_wipe_count", 0))
+        total_interaction_a = targeted_removal_a + board_wipes_a
+        total_interaction_b = targeted_removal_b + board_wipes_b
         interaction_leader = "deck_a" if total_interaction_a > total_interaction_b else ("deck_b" if total_interaction_b > total_interaction_a else "tie")
 
         interaction_profile = {
             "targeted_removal": {
-                "deck_a": int(stats_a.get("targeted_removal_count", 0)),
-                "deck_b": int(stats_b.get("targeted_removal_count", 0)),
-                "delta": int(stats_a.get("targeted_removal_count", 0)) - int(stats_b.get("targeted_removal_count", 0)),
+                "deck_a": targeted_removal_a,
+                "deck_b": targeted_removal_b,
+                "delta": delta_targeted_removal,
             },
             "board_wipes": {
-                "deck_a": int(stats_a.get("board_wipe_count", 0)),
-                "deck_b": int(stats_b.get("board_wipe_count", 0)),
-                "delta": int(stats_a.get("board_wipe_count", 0)) - int(stats_b.get("board_wipe_count", 0)),
+                "deck_a": board_wipes_a,
+                "deck_b": board_wipes_b,
+                "delta": delta_board_wipes,
+            },
+            "total_interaction": {
+                "deck_a": total_interaction_a,
+                "deck_b": total_interaction_b,
+                "delta": total_interaction_a - total_interaction_b,
             },
             "removal_mana_efficiency": {
                 "deck_a": removal_eff_a,
@@ -271,14 +380,14 @@ class DeckComparator:
                 "delta": delta_draw_engines,
             },
             "burst_draw": {
-                "deck_a": int(stats_a.get("draw_burst_count", 0)),
-                "deck_b": int(stats_b.get("draw_burst_count", 0)),
-                "delta": int(stats_a.get("draw_burst_count", 0)) - int(stats_b.get("draw_burst_count", 0)),
+                "deck_a": draw_burst_a,
+                "deck_b": draw_burst_b,
+                "delta": delta_draw_burst,
             },
             "cantrips": {
-                "deck_a": int(stats_a.get("draw_cantrip_count", 0)),
-                "deck_b": int(stats_b.get("draw_cantrip_count", 0)),
-                "delta": int(stats_a.get("draw_cantrip_count", 0)) - int(stats_b.get("draw_cantrip_count", 0)),
+                "deck_a": draw_cantrip_a,
+                "deck_b": draw_cantrip_b,
+                "delta": delta_draw_cantrip,
             },
             "total_draw": {
                 "deck_a": int(stats_a.get("total_draw_count", 0)),
@@ -291,9 +400,14 @@ class DeckComparator:
                 "delta": delta_tutors,
             },
             "tutors_land": {
-                "deck_a": int(stats_a.get("tutor_land_count", 0)),
-                "deck_b": int(stats_b.get("tutor_land_count", 0)),
-                "delta": int(stats_a.get("tutor_land_count", 0)) - int(stats_b.get("tutor_land_count", 0)),
+                "deck_a": tutors_land_a,
+                "deck_b": tutors_land_b,
+                "delta": delta_tutors_land,
+            },
+            "total_tutors": {
+                "deck_a": tutors_a + tutors_land_a,
+                "deck_b": tutors_b + tutors_land_b,
+                "delta": (tutors_a + tutors_land_a) - (tutors_b + tutors_land_b),
             },
             "advantage_leader": adv_leader,
         }
@@ -310,6 +424,21 @@ class DeckComparator:
                 "deck_a": int(stats_a.get("standard_ramp_count", 0)),
                 "deck_b": int(stats_b.get("standard_ramp_count", 0)),
                 "delta": int(stats_a.get("standard_ramp_count", 0)) - int(stats_b.get("standard_ramp_count", 0)),
+            },
+            "dork_or_rock_ramp": {
+                "deck_a": dork_rock_a,
+                "deck_b": dork_rock_b,
+                "delta": delta_dork_rock,
+            },
+            "land_fetch_ramp": {
+                "deck_a": land_fetch_a,
+                "deck_b": land_fetch_b,
+                "delta": delta_land_fetch,
+            },
+            "treasure_ramp": {
+                "deck_a": treasure_a,
+                "deck_b": treasure_b,
+                "delta": delta_treasure,
             },
             "total_ramp": {
                 "deck_a": int(stats_a.get("total_ramp_count", 0)),

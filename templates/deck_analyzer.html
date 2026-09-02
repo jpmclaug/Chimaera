@@ -384,7 +384,7 @@
                             <span>⚡ Velocity & Mana Base</span>
                         </h4>
                     </div>
-                    <div class="space-y-2 text-xs font-mono">
+                    <div class="space-y-1.5 text-xs font-mono">
                         <div class="flex justify-between">
                             <span class="text-slate-400">Fast Ramp (CMC &le; 2):</span>
                             <span id="velFastRamp" class="text-emerald-400 font-bold">0</span>
@@ -392,6 +392,11 @@
                         <div class="flex justify-between">
                             <span class="text-slate-400">Standard Ramp (CMC &ge; 3):</span>
                             <span id="velStdRamp" class="text-slate-300 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between text-[11px] text-slate-400 bg-slate-900/60 px-2 py-1 rounded border border-slate-800/60">
+                            <span>Dorks & Rocks: <b id="velDorkRock" class="text-cyan-300 font-bold">0</b></span>
+                            <span>Fetch: <b id="velLandFetch" class="text-emerald-300 font-bold">0</b></span>
+                            <span>Treasure: <b id="velTreasure" class="text-amber-300 font-bold">0</b></span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-slate-400">Total Lands / Taplands:</span>
@@ -963,6 +968,9 @@ function displayDeckInInspector(deck) {
     // Detailed Profile Widgets
     if (document.getElementById('velFastRamp')) document.getElementById('velFastRamp').innerText = stats.fast_ramp_count || 0;
     if (document.getElementById('velStdRamp')) document.getElementById('velStdRamp').innerText = stats.standard_ramp_count || 0;
+    if (document.getElementById('velDorkRock')) document.getElementById('velDorkRock').innerText = stats.dork_or_rock_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.dork_or_rock) || 0;
+    if (document.getElementById('velLandFetch')) document.getElementById('velLandFetch').innerText = stats.land_fetch_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.land_fetch) || 0;
+    if (document.getElementById('velTreasure')) document.getElementById('velTreasure').innerText = stats.treasure_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.treasure) || 0;
     if (document.getElementById('velLandsSummary')) document.getElementById('velLandsSummary').innerText = `${stats.land_count || (stats.type_counts && stats.type_counts.Lands) || 0} / ${stats.taplands_count || 0} tap`;
     if (document.getElementById('velTaplandPenalty')) document.getElementById('velTaplandPenalty').innerText = `${stats.tapland_penalty_index || 0}%`;
 

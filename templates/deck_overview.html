@@ -1057,20 +1057,28 @@ function renderComparisonResults(data) {
         const deltaRows = [
             { key: 'nonland_amv', name: 'Nonland Avg Mana Value (AMV)', unit: 'CMC', lowerIsBetter: true },
             { key: 'fast_ramp', name: 'Fast Ramp Density (CMC <= 2)', unit: 'cards', lowerIsBetter: false },
+            { key: 'dork_or_rock_ramp', name: 'Mana Dorks & Rocks', unit: 'cards', lowerIsBetter: false },
+            { key: 'land_fetch_ramp', name: 'Land Ramp Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'treasure_ramp', name: 'Treasure Creation Spells', unit: 'cards', lowerIsBetter: false },
             { key: 'instant_speed_ratio', name: 'Instant-Speed Interaction %', unit: '%', lowerIsBetter: false },
             { key: 'tapland_penalty_index', name: 'Tapland Tempo Penalty', unit: '%', lowerIsBetter: true },
+            { key: 'targeted_removal', name: 'Targeted Removal Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'board_wipes', name: 'Board Wipe Spells', unit: 'cards', lowerIsBetter: false },
             { key: 'removal_mana_efficiency', name: 'Removal Mana Efficiency', unit: 'CMC', lowerIsBetter: true },
-            { key: 'portfolio_value', name: 'Total TCG Market Value', unit: '$', lowerIsBetter: false },
             { key: 'draw_engines', name: 'Engine Card Draw Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'burst_draw', name: 'Burst Card Draw Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'cantrips', name: 'Low-CMC Cantrips', unit: 'cards', lowerIsBetter: false },
             { key: 'tutors_general', name: 'General Tutor Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'tutors_land', name: 'Land / Ramp Tutors', unit: 'cards', lowerIsBetter: false },
+            { key: 'portfolio_value', name: 'Total TCG Market Value', unit: '$', lowerIsBetter: false },
         ];
 
         const tbody = document.getElementById('deltaMatrixTableBody');
         tbody.innerHTML = deltaRows.map(r => {
             const m = matrix[r.key] || { deck_a: 0, deck_b: 0, delta: 0, advantage: 'Tie' };
             const deltaVal = m.delta;
-            const formattedA = r.unit === '$' ? `$${m.deck_a.toFixed(2)}` : `${m.deck_a}${r.unit === '%' ? '%' : ''}`;
-            const formattedB = r.unit === '$' ? `$${m.deck_b.toFixed(2)}` : `${m.deck_b}${r.unit === '%' ? '%' : ''}`;
+            const formattedA = r.unit === '$' ? `$${(m.deck_a || 0).toFixed(2)}` : `${m.deck_a || 0}${r.unit === '%' ? '%' : ''}`;
+            const formattedB = r.unit === '$' ? `$${(m.deck_b || 0).toFixed(2)}` : `${m.deck_b || 0}${r.unit === '%' ? '%' : ''}`;
             
             let deltaBadge = '<span class="text-slate-400 font-bold">0</span>';
             if (deltaVal > 0) {
@@ -1103,7 +1111,8 @@ function renderComparisonResults(data) {
         const vp = data.velocity_profile || {};
         document.getElementById('compVelocityContent').innerHTML = `
             <div class="flex justify-between"><span class="text-slate-400">Fast Ramp (CMC &le; 2):</span><span class="text-white font-bold">${decks[0].fast_ramp_count || 0} vs ${decks[1].fast_ramp_count || 0}</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">Standard Ramp:</span><span class="text-slate-300">${decks[0].standard_ramp_count || 0} vs ${decks[1].standard_ramp_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Dorks & Rocks / Fetch:</span><span class="text-slate-300">${decks[0].dork_or_rock_count || 0}/${decks[0].land_fetch_count || 0} vs ${decks[1].dork_or_rock_count || 0}/${decks[1].land_fetch_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Treasure Producers:</span><span class="text-amber-400 font-bold">${decks[0].treasure_count || 0} vs ${decks[1].treasure_count || 0}</span></div>
             <div class="flex justify-between"><span class="text-slate-400">Tapland Penalty:</span><span class="text-rose-400 font-bold">${decks[0].tapland_penalty_index || 0}% vs ${decks[1].tapland_penalty_index || 0}%</span></div>
             <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Velocity Lead:</span><span class="text-emerald-400 font-bold">${vp.velocity_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (vp.velocity_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
         `;
@@ -1112,6 +1121,7 @@ function renderComparisonResults(data) {
         document.getElementById('compInteractionContent').innerHTML = `
             <div class="flex justify-between"><span class="text-slate-400">Targeted Removal:</span><span class="text-white font-bold">${decks[0].targeted_removal_count || 0} vs ${decks[1].targeted_removal_count || 0}</span></div>
             <div class="flex justify-between"><span class="text-slate-400">Board Wipes:</span><span class="text-slate-300">${decks[0].board_wipe_count || 0} vs ${decks[1].board_wipe_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Removal Efficiency:</span><span class="text-slate-300">${parseFloat(decks[0].removal_mana_efficiency || 0).toFixed(2)} vs ${parseFloat(decks[1].removal_mana_efficiency || 0).toFixed(2)} CMC</span></div>
             <div class="flex justify-between"><span class="text-slate-400">Instant Speed %:</span><span class="text-cyan-400 font-bold">${decks[0].instant_speed_ratio || 0}% vs ${decks[1].instant_speed_ratio || 0}%</span></div>
             <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Efficiency Lead:</span><span class="text-cyan-400 font-bold">${ip.interaction_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (ip.interaction_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
         `;
@@ -1120,7 +1130,7 @@ function renderComparisonResults(data) {
         document.getElementById('compCardAdvantageContent').innerHTML = `
             <div class="flex justify-between"><span class="text-slate-400">Engine Draw:</span><span class="text-white font-bold">${decks[0].draw_engine_count || 0} vs ${decks[1].draw_engine_count || 0}</span></div>
             <div class="flex justify-between"><span class="text-slate-400">Burst / Cantrips:</span><span class="text-slate-300">${decks[0].draw_burst_count || 0}/${decks[0].draw_cantrip_count || 0} vs ${decks[1].draw_burst_count || 0}/${decks[1].draw_cantrip_count || 0}</span></div>
-            <div class="flex justify-between"><span class="text-slate-400">General Tutors:</span><span class="text-amber-400 font-bold">${decks[0].tutor_general_count || 0} vs ${decks[1].tutor_general_count || 0}</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">General / Land Tutors:</span><span class="text-amber-400 font-bold">${decks[0].tutor_general_count || 0}/${decks[0].tutor_land_count || 0} vs ${decks[1].tutor_general_count || 0}/${decks[1].tutor_land_count || 0}</span></div>
             <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Advantage Lead:</span><span class="text-purple-400 font-bold">${cap.advantage_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (cap.advantage_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
         `;
 

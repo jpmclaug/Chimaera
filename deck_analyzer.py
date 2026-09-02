@@ -147,6 +147,9 @@ class DeckAnalyzer:
         instant_speed_count = 0
         fast_ramp_count = 0
         standard_ramp_count = 0
+        dork_or_rock_count = 0
+        land_fetch_count = 0
+        treasure_count = 0
         taplands_count = 0
         targeted_removal_count = 0
         targeted_removal_cmc_sum = 0.0
@@ -156,6 +159,7 @@ class DeckAnalyzer:
         draw_cantrip_count = 0
         tutor_general_count = 0
         tutor_land_count = 0
+        tag_counts = {"Ramp": 0, "Targeted Removal": 0, "Board Wipe": 0, "Card Draw": 0, "Tutor": 0, "Tapland": 0}
 
         for card in raw_cards:
             qty = int(card.get("quantity", 1))
@@ -231,6 +235,9 @@ class DeckAnalyzer:
                     total_sources[c] += qty
 
             # Role counters
+            for t in classification.get("tags", []):
+                tag_counts[t] = tag_counts.get(t, 0) + qty
+
             if not is_land:
                 # Instant speed nonland spells (type Instant or keyword Flash)
                 keywords = [k.lower() for k in card.get("keywords", [])]
@@ -246,6 +253,14 @@ class DeckAnalyzer:
                     else:
                         standard_ramp_count += qty
 
+                    ramp_type = classification.get("ramp_type")
+                    if ramp_type == "dork_or_rock":
+                        dork_or_rock_count += qty
+                    elif ramp_type == "land_fetch":
+                        land_fetch_count += qty
+                    elif ramp_type == "treasure":
+                        treasure_count += qty
+
             # Land Tapland
             if is_land and classification.get("is_tapland"):
                 taplands_count += qty
@@ -258,7 +273,7 @@ class DeckAnalyzer:
                 board_wipe_count += qty
 
             # Draw
-            if classification.get("is_draw"):
+            if classification.get("is_draw") or classification.get("is_card_draw"):
                 draw_type = classification.get("draw_type")
                 if draw_type == "engine":
                     draw_engine_count += qty
@@ -269,9 +284,10 @@ class DeckAnalyzer:
 
             # Tutor
             if classification.get("is_tutor"):
-                if classification.get("tutor_type") == "general":
+                tutor_type = classification.get("tutor_type")
+                if tutor_type == "general":
                     tutor_general_count += qty
-                elif classification.get("tutor_type") == "land":
+                elif tutor_type in ["land", "land_search"]:
                     tutor_land_count += qty
 
             enriched_cards.append(card_obj)
@@ -354,6 +370,7 @@ class DeckAnalyzer:
             "nonland_count": nonland_count,
             "land_count": total_lands_count,
             "type_counts": type_counts,
+            "tag_counts": tag_counts,
             "cmc_curve": cmc_curve,
             "color_identity": sorted(list(color_identity_set)),
             "pip_breakdown": pip_breakdown,
@@ -364,6 +381,9 @@ class DeckAnalyzer:
             "fast_ramp_count": fast_ramp_count,
             "standard_ramp_count": standard_ramp_count,
             "total_ramp_count": total_ramp_count,
+            "dork_or_rock_count": dork_or_rock_count,
+            "land_fetch_count": land_fetch_count,
+            "treasure_count": treasure_count,
             "taplands_count": taplands_count,
             "tapland_penalty_index": tapland_penalty_index,
             "targeted_removal_count": targeted_removal_count,
@@ -377,6 +397,30 @@ class DeckAnalyzer:
             "tutor_land_count": tutor_land_count,
             "total_tutor_count": total_tutor_count,
             "archetype": archetype,
+            "ramp_type_breakdown": {
+                "dork_or_rock": dork_or_rock_count,
+                "land_fetch": land_fetch_count,
+                "treasure": treasure_count,
+                "fast": fast_ramp_count,
+                "standard": standard_ramp_count,
+                "total": total_ramp_count,
+            },
+            "draw_type_breakdown": {
+                "engine": draw_engine_count,
+                "burst": draw_burst_count,
+                "cantrip": draw_cantrip_count,
+                "total": total_draw_count,
+            },
+            "tutor_type_breakdown": {
+                "general": tutor_general_count,
+                "land": tutor_land_count,
+                "total": total_tutor_count,
+            },
+            "removal_type_breakdown": {
+                "targeted": targeted_removal_count,
+                "board_wipe": board_wipe_count,
+                "total": targeted_removal_count + board_wipe_count,
+            },
         }
 
         result_dict = {
