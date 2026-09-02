@@ -29,6 +29,7 @@ class MTGCardClassifier:
             r"create\s+(?:a|two|three|\d+|X)?\s*Treasure\s+tokens?",
             re.IGNORECASE,
         )
+        self.re_treasure_creation = self.re_treasure
 
         # 2. Targeted Removal Patterns
         self.re_targeted_removal = re.compile(
@@ -39,6 +40,18 @@ class MTGCardClassifier:
             r"target creature you control fights target|"
             r"deals damage equal to its power to target|"
             r"target permanent's owner shuffles",
+            re.IGNORECASE,
+        )
+        self.re_targeted_destroy_exile = re.compile(
+            r"\b(destroy|exile|counter|return)\s+target\b",
+            re.IGNORECASE,
+        )
+        self.re_targeted_damage = re.compile(
+            r"\bdeals?\s+(\d+|X|that much)\s+damage to target\b",
+            re.IGNORECASE,
+        )
+        self.re_fight_bite = re.compile(
+            r"target creature you control fights target|deals damage equal to its power to target",
             re.IGNORECASE,
         )
 
@@ -52,6 +65,19 @@ class MTGCardClassifier:
             r"each player sacrifices (all|\d+|X)\b",
             re.IGNORECASE,
         )
+        self.re_mass_removal = self.re_board_wipe
+        self.re_damage_all = re.compile(
+            r"deals\s+(\d+|X)\s+damage to each (creature|player and each creature|nonflying creature)",
+            re.IGNORECASE,
+        )
+        self.re_mass_bounce = re.compile(
+            r"return all (creatures|nonland permanents|permanents) to their owners' hands",
+            re.IGNORECASE,
+        )
+        self.re_mass_sacrifice = re.compile(
+            r"each player sacrifices (all|\d+|X)\b",
+            re.IGNORECASE,
+        )
 
         # 4. Draw Patterns
         self.re_draw_action = re.compile(
@@ -62,6 +88,7 @@ class MTGCardClassifier:
             r"\b(whenever|at the beginning of|as long as|when)\b.*?\bdraws?\s+(a|\d+|two|three|X|two additional|an additional)?\s*cards?\b",
             re.IGNORECASE,
         )
+        self.re_draw_triggers = self.re_draw_engine
         self.re_cantrip = re.compile(
             r"^draw a card\.$|\.\s*Draw a card\.|draw a card",
             re.IGNORECASE,
@@ -85,6 +112,12 @@ class MTGCardClassifier:
             return combined_text, type_line, cmc
         return card_data.get("oracle_text", ""), card_data.get("type_line", ""), float(card_data.get("cmc", 0.0))
 
+    def classify_card(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Classifies an enriched Scryfall card JSON object into functional roles.
+        """
+        return self.classify(card_data)
+
     def classify(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Classifies an individual MTG card into roles.
@@ -93,16 +126,20 @@ class MTGCardClassifier:
         is_land = "Land" in type_line
         is_permanent = any(t in type_line for t in ["Creature", "Artifact", "Enchantment", "Planeswalker", "Battle"])
 
+        tags: List[str] = []
         result = {
             "is_ramp": False,
-            "ramp_tier": None,  # "fast" (CMC <= 2) or "standard" (CMC >= 3)
+            "ramp_tier": None,       # "fast" (CMC <= 2) or "standard" (CMC >= 3)
+            "ramp_type": None,       # "dork_or_rock", "land_fetch", "treasure"
             "is_targeted_removal": False,
             "is_board_wipe": False,
             "is_draw": False,
-            "draw_type": None,  # "engine", "cantrip", "burst"
+            "is_card_draw": False,
+            "draw_type": None,       # "engine", "cantrip", "burst"
             "is_tutor": False,
-            "tutor_type": None,  # "general", "land"
+            "tutor_type": None,      # "general", "land", "land_search"
             "is_tapland": False,
+            "tags": tags,
         }
 
         # Tapland check (unconditional taplands vs shock/check/reveal lands with untap conditions)
@@ -112,22 +149,39 @@ class MTGCardClassifier:
                 cond in oracle_lower for cond in ["unless", "if you control", "as long as", "you may pay", "if you don't", "reveal a"]
             ):
                 result["is_tapland"] = True
+                tags.append("Tapland")
 
         # Ramp check (non-lands only - basic and utility lands tapping for mana are not nonland ramp)
         if not is_land:
-            if self.re_mana_dork_rock.search(oracle_text) or self.re_land_fetch.search(oracle_text) or self.re_treasure.search(oracle_text):
+            if self.re_mana_dork_rock.search(oracle_text):
                 result["is_ramp"] = True
+                result["ramp_type"] = "dork_or_rock"
                 result["ramp_tier"] = "fast" if cmc <= 2.0 else "standard"
+                tags.append("Ramp")
+            elif self.re_land_fetch.search(oracle_text):
+                result["is_ramp"] = True
+                result["ramp_type"] = "land_fetch"
+                result["ramp_tier"] = "fast" if cmc <= 2.0 else "standard"
+                tags.append("Ramp")
+            elif self.re_treasure.search(oracle_text):
+                result["is_ramp"] = True
+                result["ramp_type"] = "treasure"
+                result["ramp_tier"] = "fast" if cmc <= 2.0 else "standard"
+                tags.append("Ramp")
 
         # Removal check (Check board wipe vs targeted removal)
         if self.re_board_wipe.search(oracle_text):
             result["is_board_wipe"] = True
+            tags.append("Board Wipe")
         if self.re_targeted_removal.search(oracle_text):
             result["is_targeted_removal"] = True
+            tags.append("Targeted Removal")
 
         # Draw check
         if self.re_draw_action.search(oracle_text):
             result["is_draw"] = True
+            result["is_card_draw"] = True
+            tags.append("Card Draw")
             if is_permanent and self.re_draw_engine.search(oracle_text):
                 result["draw_type"] = "engine"
             elif re.search(r"\bdraws?\s+(two|three|four|five|[2-9]|\d{2,}|X|that many|two additional|three additional)\s+cards?\b", oracle_text, re.IGNORECASE):
@@ -139,8 +193,11 @@ class MTGCardClassifier:
         if self.re_land_fetch.search(oracle_text):
             result["is_tutor"] = True
             result["tutor_type"] = "land"
+            tags.append("Tutor")
         elif self.re_tutor_general.search(oracle_text):
             result["is_tutor"] = True
             result["tutor_type"] = "general"
+            tags.append("Tutor")
 
+        result["tags"] = tags
         return result
