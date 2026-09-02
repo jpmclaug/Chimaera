@@ -225,13 +225,18 @@
 
                     <div>
                         <div class="flex items-center gap-2 flex-wrap">
+                            <span id="inspectorCardCount" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">100 Cards</span>
+                            <span id="inspectorPowerVal" class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">-- / 10</span>
                             <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">Pre-AI Ready</span>
                             <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">Commander</span>
                             <span id="inspectorSourceBadge" class="text-[10px] text-slate-400 font-mono">ManaBox</span>
                         </div>
                         <h2 id="inspectorDeckName" class="text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1">Commander Deck</h2>
                         <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono">The Ur-Dragon</p>
-                    </div>                <!-- Center & Right: Tactical Stats Pills & Actions -->
+                    </div>
+                </div>
+
+                <!-- Center & Right: Tactical Stats Pills & Actions -->
                 <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
                     
                     <!-- Nonland AMV Badge (Color Coded: Green <= 2.8, Amber 2.9-3.4, Red >= 3.5) -->
@@ -925,8 +930,15 @@ async function loadSavedDeckIntoInspector(deckId) {
 
 let pipSourceRadarChartInstance = null;
 
+// Helper for safe text setting
+function safeSetText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = text;
+}
+
 // Display Deck in Inspector
 function displayDeckInInspector(deck) {
+    if (!deck) return;
     activeDeck = deck;
     switchMainView('inspector');
 
@@ -935,86 +947,100 @@ function displayDeckInInspector(deck) {
     const analysis = deck.analysis || {};
 
     // Populate Header
-    document.getElementById('inspectorDeckName').innerText = deck.deck_name || "Commander Deck";
-    document.getElementById('inspectorCmdrName').innerText = deck.commander_name || (deck.commander ? deck.commander.join(', ') : "Commander");
-    document.getElementById('inspectorCardCount').innerText = deck.total_cards || cards.length;
-    document.getElementById('tabCardCount').innerText = deck.total_cards || cards.length;
-    document.getElementById('inspectorTotalValue').innerText = `$${(deck.total_value || stats.total_value || 0).toFixed(2)}`;
+    safeSetText('inspectorDeckName', deck.deck_name || "Commander Deck");
+    safeSetText('inspectorCmdrName', deck.commander_name || (deck.commander ? (Array.isArray(deck.commander) ? deck.commander.join(', ') : deck.commander) : "Commander"));
+    safeSetText('inspectorCardCount', `${deck.total_cards || cards.length} Cards`);
+    safeSetText('tabCardCount', deck.total_cards || cards.length);
+    safeSetText('inspectorTotalValue', `$${(deck.total_value || stats.total_value || 0).toFixed(2)}`);
     
     // Nonland AMV Badge with Color Coding (Green <= 2.8, Amber 2.9-3.4, Red >= 3.5)
     const amv = deck.avg_cmc || stats.nonland_amv || stats.avg_cmc || 0;
     const amvElem = document.getElementById('inspectorAvgCmc');
     const amvContainer = document.getElementById('inspectorAmvContainer');
-    amvElem.innerText = amv.toFixed(2);
-    document.getElementById('curveAvgCmc').innerText = `Avg CMC: ${amv.toFixed(2)}`;
+    if (amvElem) amvElem.innerText = amv.toFixed(2);
+    safeSetText('curveAvgCmc', `Avg CMC: ${amv.toFixed(2)}`);
 
-    if (amv <= 2.8) {
-        amvElem.className = "text-sm font-black text-emerald-400 font-mono";
-        if (amvContainer) amvContainer.className = "bg-emerald-500/10 border border-emerald-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
-    } else if (amv <= 3.4) {
-        amvElem.className = "text-sm font-black text-amber-400 font-mono";
-        if (amvContainer) amvContainer.className = "bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
-    } else {
-        amvElem.className = "text-sm font-black text-rose-400 font-mono";
-        if (amvContainer) amvContainer.className = "bg-rose-500/10 border border-rose-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
+    if (amvElem) {
+        if (amv <= 2.8) {
+            amvElem.className = "text-sm font-black text-emerald-400 font-mono";
+            if (amvContainer) amvContainer.className = "bg-emerald-500/10 border border-emerald-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
+        } else if (amv <= 3.4) {
+            amvElem.className = "text-sm font-black text-amber-400 font-mono";
+            if (amvContainer) amvContainer.className = "bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
+        } else {
+            amvElem.className = "text-sm font-black text-rose-400 font-mono";
+            if (amvContainer) amvContainer.className = "bg-rose-500/10 border border-rose-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
+        }
     }
 
     // Telemetry HUD Counters
-    if (document.getElementById('inspectorFastRamp')) document.getElementById('inspectorFastRamp').innerText = stats.fast_ramp_count || 0;
-    if (document.getElementById('inspectorInstantSpeed')) document.getElementById('inspectorInstantSpeed').innerText = `${stats.instant_speed_ratio || 0}%`;
-    if (document.getElementById('inspectorTaplandPenalty')) document.getElementById('inspectorTaplandPenalty').innerText = `${stats.tapland_penalty_index || 0}%`;
-    if (document.getElementById('inspectorEngineDraw')) document.getElementById('inspectorEngineDraw').innerText = stats.draw_engine_count || 0;
+    safeSetText('inspectorFastRamp', stats.fast_ramp_count || 0);
+    safeSetText('inspectorInstantSpeed', `${stats.instant_speed_ratio || 0}%`);
+    safeSetText('inspectorTaplandPenalty', `${stats.tapland_penalty_index || 0}%`);
+    safeSetText('inspectorEngineDraw', stats.draw_engine_count || 0);
 
     // Detailed Profile Widgets
-    if (document.getElementById('velFastRamp')) document.getElementById('velFastRamp').innerText = stats.fast_ramp_count || 0;
-    if (document.getElementById('velStdRamp')) document.getElementById('velStdRamp').innerText = stats.standard_ramp_count || 0;
-    if (document.getElementById('velDorkRock')) document.getElementById('velDorkRock').innerText = stats.dork_or_rock_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.dork_or_rock) || 0;
-    if (document.getElementById('velLandFetch')) document.getElementById('velLandFetch').innerText = stats.land_fetch_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.land_fetch) || 0;
-    if (document.getElementById('velTreasure')) document.getElementById('velTreasure').innerText = stats.treasure_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.treasure) || 0;
-    if (document.getElementById('velLandsSummary')) document.getElementById('velLandsSummary').innerText = `${stats.land_count || (stats.type_counts && stats.type_counts.Lands) || 0} / ${stats.taplands_count || 0} tap`;
-    if (document.getElementById('velTaplandPenalty')) document.getElementById('velTaplandPenalty').innerText = `${stats.tapland_penalty_index || 0}%`;
+    safeSetText('velFastRamp', stats.fast_ramp_count || 0);
+    safeSetText('velStdRamp', stats.standard_ramp_count || 0);
+    safeSetText('velDorkRock', stats.dork_or_rock_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.dork_or_rock) || 0);
+    safeSetText('velLandFetch', stats.land_fetch_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.land_fetch) || 0);
+    safeSetText('velTreasure', stats.treasure_count || (stats.ramp_type_breakdown && stats.ramp_type_breakdown.treasure) || 0);
+    safeSetText('velLandsSummary', `${stats.land_count || (stats.type_counts && stats.type_counts.Lands) || 0} / ${stats.taplands_count || 0} tap`);
+    safeSetText('velTaplandPenalty', `${stats.tapland_penalty_index || 0}%`);
 
-    if (document.getElementById('intTargeted')) document.getElementById('intTargeted').innerText = stats.targeted_removal_count || 0;
-    if (document.getElementById('intWipes')) document.getElementById('intWipes').innerText = stats.board_wipe_count || 0;
-    if (document.getElementById('intEfficiency')) document.getElementById('intEfficiency').innerText = `${(stats.removal_mana_efficiency || 0).toFixed(2)} CMC`;
-    if (document.getElementById('intInstantSpeed')) document.getElementById('intInstantSpeed').innerText = `${stats.instant_speed_ratio || 0}%`;
+    safeSetText('intTargeted', stats.targeted_removal_count || 0);
+    safeSetText('intWipes', stats.board_wipe_count || 0);
+    safeSetText('intEfficiency', `${(stats.removal_mana_efficiency || 0).toFixed(2)} CMC`);
+    safeSetText('intInstantSpeed', `${stats.instant_speed_ratio || 0}%`);
 
-    if (document.getElementById('caEngine')) document.getElementById('caEngine').innerText = stats.draw_engine_count || 0;
-    if (document.getElementById('caBurstCantrip')) document.getElementById('caBurstCantrip').innerText = `${stats.draw_burst_count || 0} burst / ${stats.draw_cantrip_count || 0} cantrip`;
-    if (document.getElementById('caTutorGen')) document.getElementById('caTutorGen').innerText = stats.tutor_general_count || 0;
-    if (document.getElementById('caTutorLand')) document.getElementById('caTutorLand').innerText = stats.tutor_land_count || 0;
+    safeSetText('caEngine', stats.draw_engine_count || 0);
+    safeSetText('caBurstCantrip', `${stats.draw_burst_count || 0} burst / ${stats.draw_cantrip_count || 0} cantrip`);
+    safeSetText('caTutorGen', stats.tutor_general_count || 0);
+    safeSetText('caTutorLand', stats.tutor_land_count || 0);
     
     // Commander Art & Background
     const art = deck.commander_art || (cards[0] && cards[0].image_uri) || 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg';
-    document.getElementById('inspectorCmdrArt').src = art;
-    document.getElementById('commanderBannerBg').style.backgroundImage = `url('${art}')`;
+    const cmdrArt = document.getElementById('inspectorCmdrArt');
+    if (cmdrArt) cmdrArt.src = art;
+    const bannerBg = document.getElementById('commanderBannerBg');
+    if (bannerBg) bannerBg.style.backgroundImage = `url('${art}')`;
 
     // Color Pips
     const pipsContainer = document.getElementById('cmdrColorPips');
-    const colors = { 'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E' };
-    pipsContainer.innerHTML = (deck.color_identity || stats.color_identity || []).map(c => 
-        `<span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color:${colors[c] || '#888'}"></span>`
-    ).join('');
+    if (pipsContainer) {
+        const colors = { 'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E' };
+        pipsContainer.innerHTML = (deck.color_identity || stats.color_identity || []).map(c => 
+            `<span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color:${colors[c] || '#888'}"></span>`
+        ).join('');
+    }
 
     // Power Bracket & Archetype
     const archetypeVal = deck.archetype || stats.archetype || (analysis && analysis.archetype) || "Midrange / Engine";
-    document.getElementById('inspectorArchetype').innerText = archetypeVal;
+    safeSetText('inspectorArchetype', archetypeVal);
+
+    const aiTabBadge = document.getElementById('aiTabBadge');
+    const aiUnanalyzedBanner = document.getElementById('aiUnanalyzedBanner');
+    const aiAnalyzedContent = document.getElementById('aiAnalyzedContent');
 
     if (deck.has_ai_analysis && analysis && Object.keys(analysis).length > 0) {
-        document.getElementById('inspectorPowerVal').innerText = `${(deck.power_level || analysis.estimated_power_level || 7.5).toFixed(1)} / 10`;
-        document.getElementById('inspectorPowerBracket').innerText = deck.power_bracket || analysis.power_bracket || "Optimized (7-8)";
-        document.getElementById('aiTabBadge').innerText = "Analyzed";
-        document.getElementById('aiTabBadge').className = "text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30";
-        document.getElementById('aiUnanalyzedBanner').classList.add('hidden');
-        document.getElementById('aiAnalyzedContent').classList.remove('hidden');
+        safeSetText('inspectorPowerVal', `${(deck.power_level || analysis.estimated_power_level || 7.5).toFixed(1)} / 10`);
+        safeSetText('inspectorPowerBracket', deck.power_bracket || analysis.power_bracket || "Optimized (7-8)");
+        if (aiTabBadge) {
+            aiTabBadge.innerText = "Analyzed";
+            aiTabBadge.className = "text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30";
+        }
+        if (aiUnanalyzedBanner) aiUnanalyzedBanner.classList.add('hidden');
+        if (aiAnalyzedContent) aiAnalyzedContent.classList.remove('hidden');
         renderAiAnalysis(analysis);
     } else {
-        document.getElementById('inspectorPowerVal').innerText = `-- / 10`;
-        document.getElementById('inspectorPowerBracket').innerText = "Telemetry Ready";
-        document.getElementById('aiTabBadge').innerText = "Ready";
-        document.getElementById('aiTabBadge').className = "text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30";
-        document.getElementById('aiUnanalyzedBanner').classList.remove('hidden');
-        document.getElementById('aiAnalyzedContent').classList.add('hidden');
+        safeSetText('inspectorPowerVal', `-- / 10`);
+        safeSetText('inspectorPowerBracket', "Telemetry Ready");
+        if (aiTabBadge) {
+            aiTabBadge.innerText = "Ready";
+            aiTabBadge.className = "text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30";
+        }
+        if (aiUnanalyzedBanner) aiUnanalyzedBanner.classList.remove('hidden');
+        if (aiAnalyzedContent) aiAnalyzedContent.classList.add('hidden');
     }
 
     // Render Mana Curve & Type Breakdowns
@@ -1634,17 +1660,31 @@ async function syncSavedDeck(deckId) {
         const resp = await fetch(`/api/deck/${deckId}/sync`, { method: 'POST' });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Sync failed");
-        showToast("Deck refreshed with latest cards from ManaBox!", "success");
+        showToast(data.message || "Deck refreshed with latest cards!", "success");
         await refreshVaultList();
+        return data.deck;
     } catch (e) {
         showToast(`Sync error: ${e.message}`, "error");
+        throw e;
     }
 }
 
 async function syncActiveDeckFromSource() {
     if (!activeDeck || !activeDeck.id) return;
-    await syncSavedDeck(activeDeck.id);
-    loadSavedDeckIntoInspector(activeDeck.id);
+    const btn = document.getElementById('inspectorSyncBtn');
+    if (btn) btn.classList.add('animate-spin');
+    try {
+        const updatedDeck = await syncSavedDeck(activeDeck.id);
+        if (updatedDeck) {
+            displayDeckInInspector(updatedDeck);
+        } else {
+            await loadSavedDeckIntoInspector(activeDeck.id);
+        }
+    } catch (e) {
+        // Handled in syncSavedDeck
+    } finally {
+        if (btn) btn.classList.remove('animate-spin');
+    }
 }
 
 // Run AI on pre-saved deck

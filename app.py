@@ -2262,7 +2262,7 @@ def create_app(test_config=None):
     @app.route("/api/deck/<int:deck_id>/sync", methods=["POST"])
     @login_required
     def api_deck_sync(deck_id):
-        """Re-fetches and updates a saved deck from its source ManaBox / web URL."""
+        """Re-fetches and updates a saved deck from its source ManaBox / web URL or refreshes Scryfall pricing and stats."""
         user = get_current_user()
         entry = db.session.get(DeckAnalysis, deck_id)
         if not entry:
@@ -2270,12 +2270,25 @@ def create_app(test_config=None):
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
             return jsonify({"error": "Access denied."}), 403
 
-        if not entry.source_url:
-            return jsonify({"error": "This deck was imported from raw text and does not have an active source link to sync from."}), 400
-
         try:
             import json
-            parsed = DeckParser.parse(entry.source_url, source_type=entry.source_type or "auto")
+            if entry.source_url:
+                parsed = DeckParser.parse(entry.source_url, source_type=entry.source_type or "auto")
+            elif entry.raw_decklist:
+                parsed = DeckParser.parse(entry.raw_decklist, source_type=entry.source_type or "text")
+            elif entry.cards_data:
+                cards = entry.get_parsed_cards()
+                parsed = {
+                    "deck_name": entry.deck_name,
+                    "commander": [c.strip() for c in entry.commander_name.split(",") if c.strip()] if entry.commander_name else [],
+                    "commander_art": entry.commander_art,
+                    "cards": cards,
+                    "source_type": entry.source_type or "text",
+                    "raw_text": entry.raw_decklist or "",
+                }
+            else:
+                return jsonify({"error": "No decklist or source link available to refresh."}), 400
+
             enriched = _enrich_and_compute_deck_metadata(parsed)
             stats = enriched.get("stats", {})
 
@@ -2292,11 +2305,12 @@ def create_app(test_config=None):
             entry.updated_at = utc_now()
 
             db.session.commit()
-            log_activity("DECK_SYNC", details=f"Synced deck '{entry.deck_name}' from {entry.source_url}", user=user)
+            source_desc = entry.source_url if entry.source_url else "decklist"
+            log_activity("DECK_SYNC", details=f"Synced deck '{entry.deck_name}' from {source_desc}", user=user)
 
             return jsonify({
                 "success": True,
-                "message": f"Successfully re-synced '{entry.deck_name}' with the latest cards from ManaBox.",
+                "message": f"Successfully refreshed '{entry.deck_name}' with the latest card and pricing data.",
                 "deck": entry.to_dict(include_full=True),
             })
         except Exception as e:

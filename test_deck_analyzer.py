@@ -392,6 +392,31 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertEqual(data["deck"]["deck_name"], "Synced Dragon Deck")
 
+    def test_api_deck_sync_from_cards_data_without_url(self):
+        """Tests that sync successfully re-enriches and computes stats for decks saved without source_url."""
+        self._login()
+        with self.app.app_context():
+            entry = DeckAnalysis(
+                user_id=self.user_id,
+                deck_name="Custom Deck Without URL",
+                commander_name="The Ur-Dragon",
+                cards_data=json.dumps([
+                    {"name": "The Ur-Dragon", "quantity": 1, "section": "commander", "cmc": 9, "type_line": "Legendary Creature — Dragon Avatar"},
+                    {"name": "Sol Ring", "quantity": 1, "section": "mainboard", "cmc": 1, "type_line": "Artifact"},
+                ]),
+                source_url=None,
+                source_type="text",
+            )
+            db.session.add(entry)
+            db.session.commit()
+            entry_id = entry.id
+
+        resp = self.client.post(f"/api/deck/{entry_id}/sync")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("fast_ramp_count", data["deck"]["stats"])
+
     @patch("gemini_analyzer.GeminiAnalyzer.analyze_deck")
     def test_api_deck_analyze_saved(self, mock_analyze):
         mock_analyze.return_value = {
