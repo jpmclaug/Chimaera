@@ -310,6 +310,10 @@
                     ⚡ Gemini AI Strategic Intel
                     <span id="aiTabBadge" class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Ready</span>
                 </button>
+                <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
+                    💎 Tactical Upgrades
+                    <span id="upgradesTabBadge" class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Dual-Tier</span>
+                </button>
             </div>
         </div>
 
@@ -1014,6 +1018,119 @@
                 </div>
             </div>
         </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 4: DUAL-TIER TACTICAL UPGRADE ENGINE -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentUpgrades" class="hidden space-y-6">
+            
+            <!-- Dual-Tier Header / Status Banner -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider mb-1">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Dual-Tier Upgrade Engine // ManaBox Vault Integration
+                    </div>
+                    <h3 class="font-heading font-black text-lg text-white uppercase">
+                        Tactical Deck Enhancements
+                    </h3>
+                    <p class="text-xs text-slate-400 font-sans mt-0.5 max-w-2xl">
+                        Cross-referenced against your physical ManaBox collection. Swap owned cards from your binder for immediate zero-cost power boosts, or export prioritized acquisition wishlists.
+                    </p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <a href="/inventory" target="_blank" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                        <span>Open Binder Vault</span>
+                        <span>&rarr;</span>
+                    </a>
+                    <button onclick="refreshDualTierUpgrades()" class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span>Re-evaluate Swaps</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dual-Tier Sub-Tab Navigation Bar -->
+            <div class="flex border-b border-slate-800 bg-[#0B0F17] rounded-t-xl px-4 overflow-x-auto gap-2">
+                <button type="button" onclick="switchUpgradeSubtab('owned')" id="subtab-btn-owned" 
+                        class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border-b-2 border-emerald-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
+                    <span>🎴 In Your Binder (Zero Cost)</span>
+                    <span id="ownedSwapsCountBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold">0 Swaps</span>
+                </button>
+                <button type="button" onclick="switchUpgradeSubtab('shop')" id="subtab-btn-shop" 
+                        class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
+                    <span>🛒 Shopping List (Market Purchases)</span>
+                    <span id="shoppingCountBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold">0 Cards</span>
+                </button>
+            </div>
+
+            <!-- SUB-TAB 1: OWNED SWAPS ("IN YOUR BINDER") -->
+            <div id="subtab-content-owned" class="space-y-4">
+                <div id="ownedSwapsLoading" class="py-12 text-center text-slate-400 font-mono text-xs">
+                    <span class="inline-block animate-spin mr-2">⟳</span> Scanning your collection binder for legal in-color upgrades...
+                </div>
+
+                <div id="ownedSwapsEmpty" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-8 text-center space-y-3">
+                    <div class="text-3xl">📦</div>
+                    <h4 class="font-heading font-bold text-white text-sm uppercase">No Direct Binder Upgrades Found</h4>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto">
+                        All eligible cards in your collection are either already slotted in this deck, outside this commander's color identity, or you haven't uploaded your ManaBox CSV export yet.
+                    </p>
+                    <div class="pt-2">
+                        <a href="/inventory" target="_blank" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-mono text-xs font-bold uppercase transition inline-block">
+                            Upload ManaBox Collection CSV &rarr;
+                        </a>
+                    </div>
+                </div>
+
+                <div id="ownedSwapsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Injected dynamically by renderOwnedSwaps() -->
+                </div>
+            </div>
+
+            <!-- SUB-TAB 2: SHOPPING LIST ("TO BUY / WISHLIST") -->
+            <div id="subtab-content-shop" class="hidden space-y-4">
+                
+                <!-- Toolbar: Budget Filter & Wishlist Export -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <!-- Budget Brackets -->
+                    <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+                        <button type="button" onclick="filterShoppingBracket('all')" id="btn-bracket-all" class="px-3 py-1 text-xs font-mono font-bold rounded bg-cyan-500 text-slate-950 transition">
+                            All (<span id="bracketCountAll">0</span>)
+                        </button>
+                        <button type="button" onclick="filterShoppingBracket('budget')" id="btn-bracket-budget" class="px-3 py-1 text-xs font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white border border-slate-700 transition">
+                            Budget &lt; $3 (<span id="bracketCountBudget">0</span>)
+                        </button>
+                        <button type="button" onclick="filterShoppingBracket('moderate')" id="btn-bracket-moderate" class="px-3 py-1 text-xs font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white border border-slate-700 transition">
+                            Mid $3-$15 (<span id="bracketCountModerate">0</span>)
+                        </button>
+                        <button type="button" onclick="filterShoppingBracket('high_impact')" id="btn-bracket-high_impact" class="px-3 py-1 text-xs font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white border border-slate-700 transition">
+                            High Impact &gt; $15 (<span id="bracketCountHigh">0</span>)
+                        </button>
+                    </div>
+
+                    <!-- Export Buttons -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <button onclick="exportManaBoxWishlist('csv')" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-cyan-400 border border-slate-700 hover:border-cyan-500/50 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span>ManaBox CSV</span>
+                        </button>
+                        <button onclick="copyWishlistText()" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-slate-300 border border-slate-700 hover:border-slate-500 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                            <span>Copy Text</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="shoppingListGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Injected dynamically by renderShoppingList() -->
+                </div>
+            </div>
+
+        </div>
     </div>
 </div>
 
@@ -1161,7 +1278,7 @@ function switchIngestTab(tab) {
 
 // Inspector Tabs
 function switchInspectorTab(tab) {
-    const tabs = ['stats', 'cards', 'ai'];
+    const tabs = ['stats', 'cards', 'ai', 'upgrades'];
     tabs.forEach(t => {
         const btn = document.getElementById(`insp-tab-${t}`);
         const content = document.getElementById(`inspectorTabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
@@ -1175,6 +1292,9 @@ function switchInspectorTab(tab) {
             }
         }
     });
+    if (tab === 'upgrades' && activeDeck && activeDeck.id) {
+        loadDualTierUpgrades(activeDeck.id);
+    }
 }
 
 // Render Saved Decks Vault Grid
@@ -2510,6 +2630,344 @@ function dismissAiErrorAlert() {
     const container = document.getElementById('aiErrorAlertContainer');
     if (container) {
         container.classList.add('hidden');
+    }
+}
+
+// =========================================================================
+// Dual-Tier Upgrade Engine Handlers ("In Your Binder" & "Shopping List")
+// =========================================================================
+let currentUpgradeSubtab = 'owned';
+window.currentShoppingCards = [];
+window.currentShoppingBrackets = { budget: [], moderate: [], high_impact: [] };
+
+function switchUpgradeSubtab(subtab) {
+    currentUpgradeSubtab = subtab;
+    const ownedBtn = document.getElementById('subtab-btn-owned');
+    const shopBtn = document.getElementById('subtab-btn-shop');
+    const ownedContent = document.getElementById('subtab-content-owned');
+    const shopContent = document.getElementById('subtab-content-shop');
+
+    if (subtab === 'owned') {
+        ownedBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border-b-2 border-emerald-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+        shopBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+        ownedContent.classList.remove('hidden');
+        shopContent.classList.add('hidden');
+    } else {
+        shopBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+        ownedBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+        shopContent.classList.remove('hidden');
+        ownedContent.classList.add('hidden');
+    }
+}
+
+async function loadDualTierUpgrades(deckId) {
+    const targetId = deckId || (activeDeck ? activeDeck.id : null);
+    if (!targetId) return;
+
+    const loadingElem = document.getElementById('ownedSwapsLoading');
+    const emptyElem = document.getElementById('ownedSwapsEmpty');
+    const gridElem = document.getElementById('ownedSwapsGrid');
+
+    if (loadingElem) loadingElem.classList.remove('hidden');
+    if (emptyElem) emptyElem.classList.add('hidden');
+
+    try {
+        const resp = await fetch(`/api/deck/${targetId}/upgrades`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || "Failed to load upgrades");
+
+        if (loadingElem) loadingElem.classList.add('hidden');
+
+        // Update Badges
+        safeSetText('ownedSwapsCountBadge', `${data.owned_count || 0} Swaps`);
+        safeSetText('shoppingCountBadge', `${data.shopping_count || 0} Cards`);
+
+        renderOwnedSwaps(data.owned_swaps || []);
+        renderShoppingList(data.shopping_list || {}, data.all_shopping_cards || []);
+
+    } catch (err) {
+        if (loadingElem) loadingElem.classList.add('hidden');
+        showToast(`Upgrade evaluation failed: ${err.message}`, "error");
+    }
+}
+
+function refreshDualTierUpgrades() {
+    if (activeDeck && activeDeck.id) {
+        showToast("Re-evaluating upgrades against collection...", "info");
+        loadDualTierUpgrades(activeDeck.id);
+    }
+}
+
+function renderOwnedSwaps(swaps) {
+    const grid = document.getElementById('ownedSwapsGrid');
+    const empty = document.getElementById('ownedSwapsEmpty');
+    if (!grid) return;
+
+    if (!swaps || swaps.length === 0) {
+        grid.innerHTML = '';
+        if (empty) empty.classList.remove('hidden');
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+
+    grid.innerHTML = swaps.map(u => `
+        <div class="bg-[#1B2230]/80 p-4 rounded-xl border border-slate-700/80 flex flex-col justify-between space-y-3.5 shadow-lg relative overflow-hidden">
+            <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase font-bold font-mono">
+                        ${escapeHtml(u.category || 'Binder Upgrade')}
+                    </span>
+                    <span class="text-[10px] text-slate-400 font-mono">
+                        Impact: <strong class="text-emerald-400">${escapeHtml(u.estimated_impact || 'High')}</strong>
+                    </span>
+                </div>
+                <div class="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/40 px-2 py-0.5 border border-emerald-500/30">
+                    ZERO COST
+                </div>
+            </div>
+
+            <!-- Card Swap In/Out Comparison Matrix -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <!-- IN: Owned Card -->
+                <div class="bg-emerald-950/25 border border-emerald-500/30 p-2.5 rounded space-y-1">
+                    <span class="text-[10px] text-emerald-400 uppercase font-bold font-mono block">&darr; IN (FROM BINDER)</span>
+                    <div class="font-bold text-white truncate hover:text-emerald-300 transition cursor-pointer" title="${escapeHtml(u.card_in)}">
+                        ${escapeHtml(u.card_in)}
+                    </div>
+                    <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 flex-wrap pt-0.5">
+                        <span class="text-cyan-400 font-bold">${escapeHtml(u.card_in_set || '---')}</span>
+                        ${u.card_in_foil && u.card_in_foil !== 'normal' ? `<span class="text-amber-400 font-bold">★ ${escapeHtml(u.card_in_foil)}</span>` : ''}
+                        <span>&bull;</span>
+                        <span>${escapeHtml(u.card_in_condition || 'NM')}</span>
+                    </div>
+                </div>
+
+                <!-- OUT: Card to Cut -->
+                <div class="bg-rose-950/25 border border-rose-500/30 p-2.5 rounded space-y-1">
+                    <span class="text-[10px] text-rose-400 uppercase font-bold font-mono block">&uarr; OUT (RECOMMENDED CUT)</span>
+                    <div class="font-bold text-slate-300 truncate" title="${escapeHtml(u.card_out)}">
+                        ${escapeHtml(u.card_out)}
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-mono pt-0.5">
+                        ${u.card_out_cmc !== null && u.card_out_cmc !== undefined ? `CMC: ${u.card_out_cmc}` : ''}
+                        ${u.card_out_type ? `&bull; ${escapeHtml(u.card_out_type)}` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Allocation Status Banner -->
+            <div class="text-[11px] font-mono p-2 rounded border ${u.already_allocated ? 'bg-amber-950/20 border-amber-500/30 text-amber-300' : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-300'}">
+                ${u.already_allocated 
+                    ? `⚠️ <span class="font-bold">Already Allocated</span> in: ${escapeHtml((u.allocated_in || []).join(', ') || 'Another Deck')}`
+                    : `✅ <span class="font-bold">Ready to Slot:</span> ${u.available_copies || 1} available copy in binder`
+                }
+            </div>
+
+            <!-- Tactical Rationale -->
+            <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                ${escapeHtml(u.rationale || '')}
+            </p>
+
+            <!-- 1-Click Apply Swap Action -->
+            <button onclick="applyDeckSwap(this, '${escapeHtml(u.card_out)}', '${escapeHtml(u.card_in)}')"
+                    class="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-mono font-bold text-xs uppercase transition flex items-center justify-center gap-2 shadow-md">
+                <span>Apply Swap to Deck</span>
+                <span class="font-bold">&rarr;</span>
+            </button>
+        </div>
+    `).join('');
+}
+
+async function applyDeckSwap(btn, cardOut, cardIn) {
+    if (!activeDeck || !activeDeck.id) {
+        showToast("Please save or open a saved deck to apply swaps.", "error");
+        return;
+    }
+
+    const origText = btn.innerHTML;
+    btn.setAttribute('disabled', 'true');
+    btn.innerHTML = '<span class="inline-block animate-spin mr-1">⟳</span> Applying Swap...';
+
+    try {
+        const resp = await fetch(`/api/deck/${activeDeck.id}/apply-swap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_out: cardOut, card_in: cardIn })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || "Failed to apply card swap.");
+        }
+
+        // Update active deck state in memory
+        activeDeck = data.deck;
+        displayDeckInInspector(activeDeck);
+        renderCardRegistryTable();
+
+        showToast(`Successfully swapped ${cardOut} for ${cardIn}!`, "success");
+
+        // Refresh upgrades list
+        await loadDualTierUpgrades(activeDeck.id);
+
+    } catch (err) {
+        btn.removeAttribute('disabled');
+        btn.innerHTML = origText;
+        showToast(`Swap failed: ${err.message}`, "error");
+    }
+}
+
+function renderShoppingList(brackets, allCards) {
+    window.currentShoppingCards = allCards || [];
+    window.currentShoppingBrackets = brackets || { budget: [], moderate: [], high_impact: [] };
+
+    safeSetText('bracketCountAll', (allCards || []).length);
+    safeSetText('bracketCountBudget', (brackets.budget || []).length);
+    safeSetText('bracketCountModerate', (brackets.moderate || []).length);
+    safeSetText('bracketCountHigh', (brackets.high_impact || []).length);
+
+    filterShoppingBracket('all');
+}
+
+function filterShoppingBracket(bracket) {
+    const btns = ['all', 'budget', 'moderate', 'high_impact'];
+    btns.forEach(b => {
+        const el = document.getElementById(`btn-bracket-${b}`);
+        if (el) {
+            if (b === bracket) {
+                el.className = "px-3 py-1 text-xs font-mono font-bold rounded bg-cyan-500 text-slate-950 transition";
+            } else {
+                el.className = "px-3 py-1 text-xs font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white border border-slate-700 transition";
+            }
+        }
+    });
+
+    let displayList = [];
+    if (bracket === 'all') {
+        displayList = window.currentShoppingCards;
+    } else {
+        displayList = window.currentShoppingBrackets[bracket] || [];
+    }
+
+    const grid = document.getElementById('shoppingListGrid');
+    if (!grid) return;
+
+    if (!displayList || displayList.length === 0) {
+        grid.innerHTML = `
+            <div class="col-span-2 py-10 text-center text-slate-400 font-mono text-xs bg-[#10141D] border border-slate-800 rounded-xl">
+                No acquisitions matching this budget filter.
+            </div>
+        `;
+        return;
+    }
+
+    grid.innerHTML = displayList.map(item => `
+        <div class="bg-[#1B2230]/80 p-4 rounded-xl border border-slate-700/80 flex flex-col justify-between space-y-3.5 shadow-lg">
+            <div class="flex items-start justify-between gap-2">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 uppercase font-bold font-mono">
+                        ${escapeHtml(item.category || 'Market Acquisition')}
+                    </span>
+                    <span class="text-[10px] text-slate-400 font-mono">
+                        Impact: <strong class="text-cyan-400">${escapeHtml(item.estimated_impact || 'High')}</strong>
+                    </span>
+                </div>
+                <div class="text-right">
+                    ${item.price_usd !== null && item.price_usd !== undefined
+                        ? `<span class="text-sm font-mono font-black text-emerald-400">$${item.price_usd.toFixed(2)}</span>`
+                        : `<span class="text-xs font-mono text-slate-500">Market Price</span>`
+                    }
+                </div>
+            </div>
+
+            <!-- Card Details & Cut Suggestion -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="bg-cyan-950/20 border border-cyan-500/30 p-2.5 rounded space-y-0.5">
+                    <span class="text-[10px] text-cyan-400 uppercase font-bold font-mono block">&darr; TARGET ACQUISITION</span>
+                    <div class="font-bold text-white truncate" title="${escapeHtml(item.name)}">
+                        ${escapeHtml(item.name)}
+                    </div>
+                    <div class="text-[10px] text-slate-400 font-mono">
+                        ${item.mana_cost ? `<span>${escapeHtml(item.mana_cost)}</span> &bull; ` : ''}
+                        <span>${escapeHtml(item.type_line || 'Card')}</span>
+                    </div>
+                </div>
+
+                <div class="bg-rose-950/20 border border-rose-500/30 p-2.5 rounded space-y-0.5">
+                    <span class="text-[10px] text-rose-400 uppercase font-bold font-mono block">&uarr; PROPOSED CUT</span>
+                    <div class="font-bold text-slate-300 truncate" title="${escapeHtml(item.card_out || 'Suboptimal Card')}">
+                        ${escapeHtml(item.card_out || 'Suboptimal Card')}
+                    </div>
+                    <span class="text-[10px] text-slate-500 font-mono">Replace to optimize</span>
+                </div>
+            </div>
+
+            <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                ${escapeHtml(item.rationale || '')}
+            </p>
+
+            <div class="flex items-center gap-2 pt-1">
+                <button onclick="handleUpgradeWatchClick(this)" data-name="${escapeHtml(item.name || '')}"
+                        class="flex-1 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
+                    + Track in Watchlist
+                </button>
+                ${item.tcgplayer_url 
+                    ? `<a href="${item.tcgplayer_url}" target="_blank" class="px-3 py-1.5 bg-[#10141D] hover:bg-[#222B3D] text-slate-300 hover:text-white text-xs font-mono font-bold uppercase rounded border border-slate-700 transition">
+                        TCGplayer &rarr;
+                       </a>`
+                    : ''
+                }
+            </div>
+        </div>
+    `).join('');
+}
+
+async function exportManaBoxWishlist(format) {
+    if (!activeDeck || !activeDeck.id) {
+        showToast("Open a saved deck to export wishlist.", "error");
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/deck/${activeDeck.id}/wishlist/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ format: format })
+        });
+
+        if (!resp.ok) throw new Error("Failed to generate wishlist export");
+
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `${(activeDeck.deck_name || 'Commander_Deck').replace(/[^a-zA-Z0-9_-]/g, '_')}_Wishlist.${format === 'csv' ? 'csv' : 'txt'}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        showToast(`Exported ManaBox wishlist (${format.toUpperCase()})!`, "success");
+
+    } catch (err) {
+        showToast(`Export failed: ${err.message}`, "error");
+    }
+}
+
+async function copyWishlistText() {
+    if (!window.currentShoppingCards || window.currentShoppingCards.length === 0) {
+        showToast("Shopping list is empty.", "info");
+        return;
+    }
+
+    const lines = window.currentShoppingCards.map(c => `1 ${c.name}`);
+    const text = lines.join('\n');
+
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast(`Copied ${lines.length} wishlist cards to clipboard!`, "success");
+    } catch (e) {
+        showToast("Clipboard copy failed.", "error");
     }
 }
 

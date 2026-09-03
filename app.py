@@ -29,6 +29,7 @@ from models import (
     MicrocenterItem,
     MicrocenterHistory,
     DeckAnalysis,
+    UserInventoryCard,
     utc_now,
 )
 from deal_engine import DealEngine
@@ -37,6 +38,9 @@ from deck_parser import DeckParser, DeckParseError
 from card_classifier import MTGCardClassifier
 from deck_analyzer import DeckAnalyzer
 from deck_comparator import DeckComparator
+from inventory_parser import ManaBoxInventoryParser, InventoryParseError
+from inventory_manager import InventoryManager
+from deck_upgrade_engine import DualTierUpgradeEngine
 from gemini_analyzer import (
     GeminiAnalyzer,
     GeminiAnalysisError,
@@ -213,6 +217,39 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN avg_cmc FLOAT"))
                     if "color_identity" not in da_cols:
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN color_identity VARCHAR(50)"))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS user_inventory_card (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL,
+                            name VARCHAR(255) NOT NULL,
+                            raw_name VARCHAR(255),
+                            set_code VARCHAR(20),
+                            set_name VARCHAR(255),
+                            collector_number VARCHAR(50),
+                            scryfall_id VARCHAR(64),
+                            quantity INTEGER NOT NULL DEFAULT 1,
+                            foil VARCHAR(30) NOT NULL DEFAULT 'normal',
+                            condition VARCHAR(50),
+                            language VARCHAR(20) DEFAULT 'en',
+                            purchase_price FLOAT,
+                            binder_name VARCHAR(255),
+                            rarity VARCHAR(50),
+                            mana_cost VARCHAR(100),
+                            cmc FLOAT,
+                            type_line VARCHAR(255),
+                            oracle_text TEXT,
+                            color_identity VARCHAR(50),
+                            image_uri TEXT,
+                            price_usd FLOAT,
+                            price_usd_foil FLOAT,
+                            created_at DATETIME,
+                            updated_at DATETIME,
+                            FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON user_inventory_card (user_id)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_name ON user_inventory_card (name)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
                     conn.commit()
 
             elif dialect in ("postgresql", "postgres"):
@@ -298,6 +335,38 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS total_value FLOAT"))
                     conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS avg_cmc FLOAT"))
                     conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS user_inventory_card (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                            name VARCHAR(255) NOT NULL,
+                            raw_name VARCHAR(255),
+                            set_code VARCHAR(20),
+                            set_name VARCHAR(255),
+                            collector_number VARCHAR(50),
+                            scryfall_id VARCHAR(64),
+                            quantity INTEGER NOT NULL DEFAULT 1,
+                            foil VARCHAR(30) NOT NULL DEFAULT 'normal',
+                            condition VARCHAR(50),
+                            language VARCHAR(20) DEFAULT 'en',
+                            purchase_price FLOAT,
+                            binder_name VARCHAR(255),
+                            rarity VARCHAR(50),
+                            mana_cost VARCHAR(100),
+                            cmc FLOAT,
+                            type_line VARCHAR(255),
+                            oracle_text TEXT,
+                            color_identity VARCHAR(50),
+                            image_uri TEXT,
+                            price_usd FLOAT,
+                            price_usd_foil FLOAT,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON user_inventory_card (user_id)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_name ON user_inventory_card (name)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
 
@@ -395,6 +464,8 @@ def create_app(test_config=None):
         store_id=Config.MICROCENTER_STORE_ID,
         store_name=Config.MICROCENTER_STORE_NAME,
     )
+    inventory_manager = InventoryManager(scryfall_provider=scryfall_provider)
+    upgrade_engine = DualTierUpgradeEngine(scryfall_provider=scryfall_provider)
 
     with app.app_context():
         db.create_all()
@@ -2992,6 +3063,311 @@ def create_app(test_config=None):
 
         return jsonify(resp_payload)
 
+    # ----------------------------------------------------------------------
+    # Collection Inventory & Dual-Tier Upgrade Endpoints
+    # ----------------------------------------------------------------------
+
+    @app.route("/inventory")
+    @login_required
+    def inventory_view():
+        """User collection and inventory dashboard overview page."""
+        user = get_current_user()
+        summary = inventory_manager.get_inventory_summary(user.id)
+        log_activity("PAGE_VIEW", details="Accessed Collection Inventory Dashboard", user=user)
+        return render_template(
+            "inventory.html",
+            inventory=summary,
+            active_tab="inventory",
+        )
+
+    @app.route("/api/inventory", methods=["GET"])
+    @login_required
+    def api_inventory_get():
+        """Returns JSON collection telemetry and cards for current user."""
+        user = get_current_user()
+        deck_id = request.args.get("deck_id", type=int)
+        summary = inventory_manager.get_inventory_summary(user.id, current_deck_id=deck_id)
+        return jsonify({"success": True, **summary})
+
+    @app.route("/api/inventory/upload", methods=["POST"])
+    @login_required
+    def api_inventory_upload():
+        """Parses ManaBox CSV and updates user's collection in replace or merge mode."""
+        user = get_current_user()
+        mode = request.form.get("mode", "replace").strip().lower()
+        if mode not in ("replace", "merge"):
+            mode = "replace"
+
+        csv_content = ""
+        if "file" in request.files:
+            file_obj = request.files["file"]
+            if file_obj and file_obj.filename:
+                try:
+                    csv_content = file_obj.read().decode("utf-8-sig", errors="replace")
+                except Exception as e:
+                    return jsonify({"error": f"Failed to read uploaded file: {str(e)}"}), 400
+        elif request.is_json:
+            data = request.get_json(silent=True) or {}
+            csv_content = data.get("csv_content", "")
+            mode = data.get("mode", mode)
+        else:
+            csv_content = request.form.get("csv_content", "")
+
+        if not csv_content or not csv_content.strip():
+            return jsonify({"error": "No CSV content or file provided for upload."}), 400
+
+        try:
+            parsed = ManaBoxInventoryParser.parse(csv_content)
+        except InventoryParseError as e:
+            return jsonify({"error": str(e), "errors": []}), 400
+        except Exception as e:
+            logger.error(f"Error parsing inventory CSV: {e}", exc_info=True)
+            return jsonify({"error": f"CSV parse error: {str(e)}", "errors": []}), 400
+
+        valid_cards = parsed.get("valid_cards", [])
+        errors = parsed.get("errors", [])
+
+        if not valid_cards:
+            return jsonify({
+                "error": "No valid cards could be parsed from the CSV file.",
+                "errors": errors,
+                "total_rows": parsed.get("total_rows", 0),
+            }), 400
+
+        import_result = inventory_manager.import_inventory(
+            user_id=user.id,
+            parsed_cards=valid_cards,
+            mode=mode,
+        )
+
+        log_activity(
+            "INVENTORY_IMPORT",
+            details=f"Imported {import_result['added_count'] + import_result['updated_count']} cards ({mode} mode) with {len(errors)} row errors",
+            user=user,
+        )
+
+        return jsonify({
+            "success": True,
+            **import_result,
+            "errors": errors,
+            "errors_count": len(errors),
+            "parsed_rows": parsed.get("total_rows", 0),
+        })
+
+    @app.route("/api/inventory/card/<int:card_id>", methods=["DELETE"])
+    @login_required
+    def api_inventory_delete_card(card_id: int):
+        """Deletes a single card from the user's inventory."""
+        user = get_current_user()
+        card = db.session.get(UserInventoryCard, card_id)
+        if not card or card.user_id != user.id:
+            return jsonify({"error": "Card not found in your inventory."}), 404
+
+        card_name = card.name
+        db.session.delete(card)
+        db.session.commit()
+        log_activity("INVENTORY_DELETE", details=f"Removed '{card_name}' from collection", user=user)
+        return jsonify({"success": True, "message": f"Removed '{card_name}' from your collection."})
+
+    @app.route("/api/inventory/clear", methods=["POST"])
+    @login_required
+    def api_inventory_clear():
+        """Clears all inventory cards for the current user."""
+        user = get_current_user()
+        count = UserInventoryCard.query.filter_by(user_id=user.id).delete()
+        db.session.commit()
+        log_activity("INVENTORY_CLEAR", details=f"Cleared {count} items from collection", user=user)
+        return jsonify({"success": True, "message": f"Successfully cleared {count} collection entries."})
+
+    @app.route("/api/deck/<int:deck_id>/upgrades", methods=["GET"])
+    @login_required
+    def api_deck_upgrades(deck_id: int):
+        """Generates dual-tier upgrade recommendations: Owned Swaps ('In Your Binder') & Shopping List ('To Buy')."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Deck not found."}), 404
+
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized access to deck."}), 403
+
+        user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
+        allocations = inventory_manager.get_user_card_allocations(user.id, current_deck_id=deck_id)
+        ai_analysis = entry.get_analysis()
+
+        results = upgrade_engine.generate_upgrades(
+            deck=entry,
+            user_inventory=user_cards,
+            allocations=allocations,
+            ai_analysis=ai_analysis,
+        )
+
+        return jsonify({"success": True, "deck_id": deck_id, "deck_name": entry.deck_name, **results})
+
+    @app.route("/api/deck/<int:deck_id>/apply-swap", methods=["POST"])
+    @login_required
+    def api_deck_apply_swap(deck_id: int):
+        """Applies a proposed card swap: cuts card_out from deck, slots in card_in, and recalculates stats."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Deck not found."}), 404
+
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized to edit this deck."}), 403
+
+        data = request.get_json(silent=True) or {}
+        card_out_name = data.get("card_out", "").strip()
+        card_in_name = data.get("card_in", "").strip()
+
+        if not card_out_name or not card_in_name:
+            return jsonify({"error": "Both 'card_out' and 'card_in' card names are required."}), 400
+
+        current_cards = entry.get_parsed_cards()
+        if not current_cards:
+            return jsonify({"error": "Deck contains no cards."}), 400
+
+        # Locate card_out in deck
+        found_idx = -1
+        target_out_lower = card_out_name.lower()
+        for idx, c in enumerate(current_cards):
+            c_name_lower = c.get("name", "").lower()
+            if c_name_lower == target_out_lower or (" // " in c_name_lower and c_name_lower.split(" // ")[0] == target_out_lower):
+                found_idx = idx
+                break
+
+        if found_idx == -1:
+            return jsonify({"error": f"Card to cut '{card_out_name}' was not found in the active deck."}), 404
+
+        # Cut card_out (decrement or remove)
+        out_card = current_cards[found_idx]
+        out_qty = out_card.get("quantity", 1)
+        out_section = out_card.get("section", "mainboard")
+
+        if out_qty > 1:
+            out_card["quantity"] = out_qty - 1
+        else:
+            current_cards.pop(found_idx)
+
+        # Add card_in (or increment if already slotted)
+        target_in_lower = card_in_name.lower()
+        already_in_idx = -1
+        for idx, c in enumerate(current_cards):
+            c_name_lower = c.get("name", "").lower()
+            if c_name_lower == target_in_lower or (" // " in c_name_lower and c_name_lower.split(" // ")[0] == target_in_lower):
+                already_in_idx = idx
+                break
+
+        if already_in_idx >= 0:
+            current_cards[already_in_idx]["quantity"] = current_cards[already_in_idx].get("quantity", 1) + 1
+        else:
+            # Fetch metadata for card_in from user collection first or Scryfall
+            inv_card = UserInventoryCard.query.filter(
+                UserInventoryCard.user_id == user.id,
+                db.func.lower(UserInventoryCard.name) == target_in_lower,
+            ).first()
+
+            meta_map, _ = scryfall_provider.get_cards_collection([card_in_name])
+            meta = meta_map.get(target_in_lower, {})
+            if not meta and " // " in card_in_name:
+                meta = meta_map.get(card_in_name.split(" // ")[0].lower(), {})
+
+            img = (
+                (inv_card.image_uri if inv_card else None)
+                or meta.get("image_uri")
+                or meta.get("small_image_uri")
+            )
+
+            new_card_obj = {
+                "name": (inv_card.name if inv_card else None) or meta.get("name") or card_in_name,
+                "quantity": 1,
+                "section": out_section,
+                "set_code": (inv_card.set_code if inv_card else None) or meta.get("set_code", ""),
+                "collector_number": (inv_card.collector_number if inv_card else None) or meta.get("collector_number", ""),
+                "image_uri": img,
+                "small_image_uri": meta.get("small_image_uri") or img,
+                "art_crop_uri": meta.get("art_crop_uri") or img,
+                "mana_cost": (inv_card.mana_cost if inv_card else None) or meta.get("mana_cost", ""),
+                "cmc": inv_card.cmc if (inv_card and inv_card.cmc is not None) else meta.get("cmc", 0),
+                "type_line": (inv_card.type_line if inv_card else None) or meta.get("type_line", "Unknown"),
+                "oracle_text": (inv_card.oracle_text if inv_card else None) or meta.get("oracle_text", ""),
+                "colors": meta.get("colors", []),
+                "color_identity": inv_card.get_color_identity_list() if inv_card else meta.get("color_identity", []),
+                "rarity": (inv_card.rarity if inv_card else None) or meta.get("rarity", ""),
+                "price_usd": inv_card.price_usd if (inv_card and inv_card.price_usd is not None) else meta.get("prices", {}).get("usd"),
+                "tcgplayer_url": meta.get("tcgplayer_url"),
+            }
+            current_cards.append(new_card_obj)
+
+        # Recalculate deck telemetry using DeckAnalyzer
+        cmdrs = [c.strip() for c in (entry.commander_name or "").split(",") if c.strip()]
+        analyzed_deck = deck_analyzer.analyze({
+            "deck_name": entry.deck_name,
+            "commander": cmdrs,
+            "cards": current_cards,
+        })
+
+        import json
+        entry.cards_data = json.dumps(analyzed_deck.get("cards", current_cards))
+        entry.stats_json = json.dumps(analyzed_deck.get("stats", {}))
+        entry.total_cards = analyzed_deck.get("total_cards", sum(c.get("quantity", 1) for c in current_cards))
+        entry.total_value = analyzed_deck.get("stats", {}).get("total_value", entry.total_value)
+        entry.avg_cmc = analyzed_deck.get("stats", {}).get("avg_cmc", entry.avg_cmc)
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        log_activity(
+            "DECK_SWAP",
+            details=f"Swapped '{card_out_name}' for '{card_in_name}' in deck '{entry.deck_name}'",
+            user=user,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f"Successfully replaced {card_out_name} with {card_in_name}!",
+            "deck": entry.to_dict(include_full=True),
+            "swapped": {
+                "card_out": card_out_name,
+                "card_in": card_in_name,
+            },
+        })
+
+    @app.route("/api/deck/<int:deck_id>/wishlist/export", methods=["POST", "GET"])
+    @login_required
+    def api_deck_wishlist_export(deck_id: int):
+        """Generates ManaBox-compatible Wishlist export for external acquisitions."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Deck not found."}), 404
+
+        data = request.get_json(silent=True) or {}
+        format_type = (data.get("format") or request.args.get("format") or "csv").lower()
+
+        user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
+        allocations = inventory_manager.get_user_card_allocations(user.id, current_deck_id=deck_id)
+        ai_analysis = entry.get_analysis()
+
+        results = upgrade_engine.generate_upgrades(
+            deck=entry,
+            user_inventory=user_cards,
+            allocations=allocations,
+            ai_analysis=ai_analysis,
+        )
+
+        acquisitions = results.get("all_shopping_cards", [])
+        export_content = DualTierUpgradeEngine.generate_manabox_wishlist_export(acquisitions, format_type=format_type)
+
+        safe_deck_name = re.sub(r"[^a-zA-Z0-9_-]", "_", entry.deck_name)
+        filename = f"{safe_deck_name}_ManaBox_Wishlist.{ 'csv' if format_type == 'csv' else 'txt' }"
+
+        from flask import Response
+        mimetype = "text/csv" if format_type == "csv" else "text/plain"
+        return Response(
+            export_content,
+            mimetype=mimetype,
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
 
     return app
 

@@ -40,6 +40,13 @@ class User(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+    inventory_cards = db.relationship(
+        "UserInventoryCard",
+        backref=db.backref("user", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+    )
 
 
     DISCORD_WEBHOOK_REGEX = re.compile(
@@ -63,6 +70,35 @@ class User(db.Model):
     def card_count(self):
         """Returns total count of cards monitored by this user."""
         return len(self.watchlist_items)
+
+    @property
+    def total_inventory_cards(self) -> int:
+        """Returns total quantity count of cards in user's inventory."""
+        try:
+            return sum(c.quantity for c in self.inventory_cards)
+        except Exception:
+            return 0
+
+    @property
+    def unique_inventory_cards(self) -> int:
+        """Returns count of distinct card items in user's inventory."""
+        try:
+            return len(self.inventory_cards)
+        except Exception:
+            return 0
+
+    @property
+    def total_inventory_value(self) -> float:
+        """Returns sum total market value ($ USD) of user's inventory."""
+        try:
+            total = 0.0
+            for c in self.inventory_cards:
+                price = c.price_usd_foil if (c.foil and c.foil.lower() in ("foil", "etched") and c.price_usd_foil is not None) else c.price_usd
+                if price:
+                    total += price * c.quantity
+            return round(total, 2)
+        except Exception:
+            return 0.0
 
     def get_usage_past_week(self, days: int = 7) -> int:
         """Returns count of tool activity events for this user in the past N days."""
@@ -104,6 +140,9 @@ class User(db.Model):
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "last_active": last_active.isoformat() if last_active else None,
             "card_count": self.card_count,
+            "total_inventory_cards": self.total_inventory_cards,
+            "unique_inventory_cards": self.unique_inventory_cards,
+            "total_inventory_value": self.total_inventory_value,
             "usage_past_week": self.get_usage_past_week(),
         }
 
@@ -869,5 +908,88 @@ class DeckAnalysis(db.Model):
             data["cards_data"] = self.get_parsed_cards()
             data["analysis"] = self.get_analysis()
         return data
+
+
+class UserInventoryCard(db.Model):
+    """Magic: The Gathering card owned by user in their collection/inventory (e.g. imported from ManaBox)."""
+
+    __tablename__ = "user_inventory_card"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = db.Column(db.String(255), index=True, nullable=False)
+    raw_name = db.Column(db.String(255), nullable=True)
+    set_code = db.Column(db.String(20), index=True, nullable=True)
+    set_name = db.Column(db.String(255), nullable=True)
+    collector_number = db.Column(db.String(50), nullable=True)
+    scryfall_id = db.Column(db.String(64), index=True, nullable=True)
+    quantity = db.Column(db.Integer, default=1, nullable=False)
+    foil = db.Column(db.String(30), default="normal", nullable=False)
+    condition = db.Column(db.String(50), nullable=True)
+    language = db.Column(db.String(20), default="en", nullable=True)
+    purchase_price = db.Column(db.Float, nullable=True)
+    binder_name = db.Column(db.String(255), nullable=True)
+    rarity = db.Column(db.String(50), nullable=True)
+    mana_cost = db.Column(db.String(100), nullable=True)
+    cmc = db.Column(db.Float, nullable=True)
+    type_line = db.Column(db.String(255), nullable=True)
+    oracle_text = db.Column(db.Text, nullable=True)
+    color_identity = db.Column(db.String(50), nullable=True)
+    image_uri = db.Column(db.Text, nullable=True)
+    price_usd = db.Column(db.Float, nullable=True)
+    price_usd_foil = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+    def get_color_identity_list(self) -> list[str]:
+        """Returns list of color identity letters e.g. ['W', 'U', 'B']."""
+        if self.color_identity:
+            return [c.strip() for c in self.color_identity.split(",") if c.strip()]
+        return []
+
+    def to_dict(self, include_metadata: bool = True) -> dict:
+        """Serializes collection card record into a dict."""
+        effective_price = (
+            self.price_usd_foil
+            if (self.foil and self.foil.lower() in ("foil", "etched") and self.price_usd_foil is not None)
+            else self.price_usd
+        )
+        data = {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "raw_name": self.raw_name or self.name,
+            "set_code": self.set_code or "",
+            "set_name": self.set_name or "",
+            "collector_number": self.collector_number or "",
+            "scryfall_id": self.scryfall_id,
+            "quantity": self.quantity,
+            "foil": self.foil or "normal",
+            "condition": self.condition or "Near Mint",
+            "language": self.language or "en",
+            "purchase_price": self.purchase_price,
+            "binder_name": self.binder_name or "",
+            "rarity": self.rarity or "",
+            "mana_cost": self.mana_cost or "",
+            "cmc": self.cmc or 0.0,
+            "type_line": self.type_line or "",
+            "color_identity": self.get_color_identity_list(),
+            "image_uri": self.image_uri,
+            "price_usd": self.price_usd,
+            "price_usd_foil": self.price_usd_foil,
+            "effective_price": effective_price,
+            "total_value": round((effective_price or 0.0) * self.quantity, 2),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_metadata:
+            data["oracle_text"] = self.oracle_text or ""
+        return data
+
 
 

@@ -1,0 +1,635 @@
+{% extends "base.html" %}
+
+{% block title %}Collection Inventory // ManaBox Ingestion // Chimaera{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#263245] pb-4">
+        <div>
+            <div class="flex items-center space-x-2 text-[11px] font-mono text-[#10B981] uppercase tracking-wider mb-1">
+                <span class="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+                <span>PHYSICAL COLLECTION REPOSITORY // MANABOX INGESTION</span>
+            </div>
+            <h1 class="font-heading font-black text-2xl sm:text-3xl text-white tracking-tight uppercase">
+                Binder & Collection Vault
+            </h1>
+            <p class="text-xs text-[#94A3B8] font-sans mt-0.5">
+                Ingest ManaBox collection exports, track physical card allocations across decks, and power zero-cost deck upgrades.
+            </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center space-x-3">
+            <button onclick="openUploadModal()" class="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition flex items-center space-x-2 shadow-lg shadow-emerald-950/40">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                </svg>
+                <span>Upload / Sync ManaBox CSV</span>
+            </button>
+            <button onclick="confirmClearInventory()" class="px-3 py-2 bg-[#1B2230] hover:bg-[#DC143C]/20 text-[#94A3B8] hover:text-[#FF3358] border border-[#263245] hover:border-[#DC143C]/50 text-xs font-mono font-bold uppercase transition">
+                Clear Vault
+            </button>
+        </div>
+    </div>
+
+    <!-- Telemetry Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+        <!-- Total Tracked Cards -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
+            <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Total Tracked Cards</div>
+            <div id="statTotalCards" class="text-2xl sm:text-3xl font-mono font-black text-white mt-1">
+                {{ inventory.total_cards }}
+            </div>
+            <div class="text-[10px] font-mono text-[#10B981] mt-1 flex items-center gap-1">
+                <span>PHYSICAL COPIES</span>
+            </div>
+        </div>
+
+        <!-- Unique Cards -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
+            <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Unique Card Titles</div>
+            <div id="statUniqueCards" class="text-2xl sm:text-3xl font-mono font-black text-[#00CED1] mt-1">
+                {{ inventory.unique_cards }}
+            </div>
+            <div class="text-[10px] font-mono text-[#94A3B8] mt-1">
+                <span>DISTINCT PRINTS</span>
+            </div>
+        </div>
+
+        <!-- Total Collection Value -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
+            <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Est. Market Value</div>
+            <div id="statTotalValue" class="text-2xl sm:text-3xl font-mono font-black text-[#10B981] mt-1">
+                ${{ "%.2f"|format(inventory.total_value) }}
+            </div>
+            <div class="text-[10px] font-mono text-[#94A3B8] mt-1">
+                <span>SCRYFALL / TCGPLAYER</span>
+            </div>
+        </div>
+
+        <!-- Foil Count -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden">
+            <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Foils & Etched</div>
+            <div id="statFoilCards" class="text-2xl sm:text-3xl font-mono font-black text-[#F59E0B] mt-1">
+                {{ inventory.foil_count }}
+            </div>
+            <div class="text-[10px] font-mono text-[#94A3B8] mt-1">
+                <span>SPECIAL FINISHES</span>
+            </div>
+        </div>
+
+        <!-- Allocated Copies -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden col-span-2 sm:col-span-2 lg:col-span-1">
+            <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Deck Allocations</div>
+            <div id="statAllocatedCards" class="text-2xl sm:text-3xl font-mono font-black text-[#C084FC] mt-1">
+                {{ inventory.cards | selectattr("is_allocated") | list | length }}
+            </div>
+            <div class="text-[10px] font-mono text-[#94A3B8] mt-1">
+                <span>SLOTTED IN SAVED DECKS</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inventory Filter & Search Toolbar -->
+    <div class="bg-[#1B2230] border border-[#263245] p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div class="flex-1 w-full sm:w-auto relative">
+            <input type="text" id="inventorySearch" oninput="filterInventoryTable()" placeholder="Search cards by name, set code, type line, or binder..."
+                   class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs font-mono text-white placeholder-[#64748B] focus:border-[#10B981] focus:outline-none transition">
+            <span class="absolute right-3 top-2.5 text-[#64748B] font-mono text-xs">/</span>
+        </div>
+
+        <div class="flex items-center space-x-2 w-full sm:w-auto overflow-x-auto">
+            <!-- Allocation Filter -->
+            <select id="filterAllocation" onchange="filterInventoryTable()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
+                <option value="all">All Cards</option>
+                <option value="free">Available in Binder</option>
+                <option value="allocated">Allocated to Decks</option>
+            </select>
+
+            <!-- Foil Filter -->
+            <select id="filterFoil" onchange="filterInventoryTable()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
+                <option value="all">All Finishes</option>
+                <option value="normal">Nonfoil</option>
+                <option value="foil">Foil / Etched</option>
+            </select>
+
+            <!-- Sort -->
+            <select id="filterSort" onchange="sortInventoryTable()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
+                <option value="name_asc">Name (A-Z)</option>
+                <option value="price_desc">Price: High to Low</option>
+                <option value="price_asc">Price: Low to High</option>
+                <option value="qty_desc">Quantity: High to Low</option>
+                <option value="cmc_asc">CMC: Low to High</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Cards Table -->
+    <div class="bg-[#1B2230] border border-[#263245] overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse font-mono text-xs">
+                <thead>
+                    <tr class="bg-[#10141D] text-[#94A3B8] border-b border-[#263245] text-[11px] uppercase tracking-wider">
+                        <th class="py-3 px-4 w-12 text-center">Qty</th>
+                        <th class="py-3 px-4">Card Name</th>
+                        <th class="py-3 px-3">Set</th>
+                        <th class="py-3 px-3">Finish</th>
+                        <th class="py-3 px-3">Type</th>
+                        <th class="py-3 px-3">Allocation Status</th>
+                        <th class="py-3 px-3 text-right">Price</th>
+                        <th class="py-3 px-3 text-right">Total</th>
+                        <th class="py-3 px-4 text-center">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="inventoryTableBody" class="divide-y divide-[#263245]/60 text-slate-300">
+                    {% if inventory.cards %}
+                        {% for card in inventory.cards %}
+                        <tr class="hover:bg-[#222B3D] transition inventory-row" 
+                            data-name="{{ card.name | lower }}"
+                            data-set="{{ card.set_code | lower }}"
+                            data-type="{{ card.type_line | lower }}"
+                            data-binder="{{ card.binder_name | lower }}"
+                            data-foil="{{ card.foil | lower }}"
+                            data-allocated="{{ 'true' if card.is_allocated else 'false' }}"
+                            data-price="{{ card.effective_price or 0 }}"
+                            data-qty="{{ card.quantity }}"
+                            data-cmc="{{ card.cmc }}">
+                            
+                            <!-- Quantity -->
+                            <td class="py-3 px-4 text-center font-black text-white text-sm">
+                                <span class="bg-[#10141D] border border-[#263245] px-2 py-0.5 text-xs font-bold text-[#10B981]">
+                                    {{ card.quantity }}x
+                                </span>
+                            </td>
+
+                            <!-- Name & Thumbnail -->
+                            <td class="py-3 px-4">
+                                <div class="flex items-center space-x-3">
+                                    {% if card.image_uri %}
+                                    <div class="w-9 h-12 bg-black border border-[#263245] overflow-hidden flex-shrink-0 group relative">
+                                        <img src="{{ card.image_uri }}" alt="{{ card.name }}" class="w-full h-full object-cover">
+                                    </div>
+                                    {% endif %}
+                                    <div>
+                                        <div class="font-bold text-white hover:text-[#00CED1] transition cursor-pointer">
+                                            {{ card.name }}
+                                        </div>
+                                        <div class="text-[10px] text-[#64748B] flex items-center gap-2 mt-0.5">
+                                            <span>#{{ card.collector_number or '?' }}</span>
+                                            <span>&bull;</span>
+                                            <span>{{ card.condition or 'NM' }}</span>
+                                            {% if card.binder_name %}
+                                            <span>&bull;</span>
+                                            <span class="text-slate-400">📁 {{ card.binder_name }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+
+                            <!-- Set -->
+                            <td class="py-3 px-3">
+                                <span class="px-1.5 py-0.5 bg-[#10141D] border border-[#263245] text-[#00CED1] font-bold text-[10px] uppercase">
+                                    {{ card.set_code or '---' }}
+                                </span>
+                            </td>
+
+                            <!-- Finish -->
+                            <td class="py-3 px-3">
+                                {% if card.foil and card.foil in ['foil', 'etched'] %}
+                                <span class="px-1.5 py-0.5 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] font-bold uppercase">
+                                    ★ {{ card.foil }}
+                                </span>
+                                {% else %}
+                                <span class="text-[#64748B] text-[10px]">Nonfoil</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Type -->
+                            <td class="py-3 px-3 text-[#94A3B8] text-xs">
+                                {{ card.type_line or 'Card' }}
+                            </td>
+
+                            <!-- Allocation -->
+                            <td class="py-3 px-3">
+                                {% if card.is_allocated %}
+                                    <div class="space-y-0.5">
+                                        <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/40 uppercase font-bold">
+                                            <span>In {{ card.allocated_decks | length }} Deck{% if card.allocated_decks | length > 1 %}s{% endif %}</span>
+                                        </span>
+                                        <div class="text-[9px] text-[#64748B] truncate max-w-[200px]" title="{{ card.allocated_decks | map(attribute='deck_name') | join(', ') }}">
+                                            {{ card.allocated_decks | map(attribute='deck_name') | join(', ') }}
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <span class="text-[10px] px-1.5 py-0.5 bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold uppercase">
+                                        Free in Binder
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Single Price -->
+                            <td class="py-3 px-3 text-right text-slate-300">
+                                {% if card.effective_price %}
+                                    ${{ "%.2f"|format(card.effective_price) }}
+                                {% else %}
+                                    <span class="text-[#64748B]">--</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Total Value -->
+                            <td class="py-3 px-3 text-right font-bold text-[#10B981]">
+                                ${{ "%.2f"|format(card.total_value) }}
+                            </td>
+
+                            <!-- Actions -->
+                            <td class="py-3 px-4 text-center">
+                                <button onclick="deleteCard({{ card.id }}, '{{ card.name | escape }}')" 
+                                        class="p-1 hover:bg-[#DC143C]/20 text-[#64748B] hover:text-[#FF3358] border border-transparent hover:border-[#DC143C]/50 transition" title="Delete card">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr id="emptyTablePlaceholder">
+                            <td colspan="9" class="py-12 text-center text-[#94A3B8]">
+                                <div class="max-w-md mx-auto space-y-3">
+                                    <div class="text-3xl">📦</div>
+                                    <div class="font-heading font-bold text-white text-base">Your Inventory Vault is Empty</div>
+                                    <p class="text-xs text-[#64748B]">Upload your ManaBox collection CSV export to track physical inventory and power immediate zero-cost swaps.</p>
+                                    <button onclick="openUploadModal()" class="mt-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition">
+                                        Upload ManaBox CSV
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- Upload / Sync ManaBox CSV Modal                                            -->
+<!-- ========================================================================= -->
+<div id="uploadModal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-[#1B2230] border-2 border-[#263245] max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
+        <button onclick="closeUploadModal()" class="absolute top-4 right-4 text-[#64748B] hover:text-white font-mono text-lg">&times;</button>
+        
+        <div>
+            <div class="text-[10px] font-mono text-[#10B981] uppercase tracking-wider mb-1">// INVENTORY INGESTION</div>
+            <h2 class="font-heading font-bold text-lg text-white uppercase">Upload ManaBox Collection CSV</h2>
+            <p class="text-xs text-[#94A3B8] font-sans mt-1">Export your collection from ManaBox as CSV and upload here. Double-faced cards (DFCs) and standard finishes are handled automatically.</p>
+        </div>
+
+        <!-- Mode Selection -->
+        <div class="bg-[#10141D] p-3 border border-[#263245] space-y-2">
+            <span class="text-[10px] font-mono text-[#94A3B8] uppercase block">Ingestion Strategy:</span>
+            <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                <label class="flex items-center space-x-2 p-2 border border-[#263245] cursor-pointer hover:border-[#10B981] transition bg-[#1B2230]">
+                    <input type="radio" name="uploadMode" value="replace" checked class="text-[#10B981] focus:ring-0">
+                    <div>
+                        <div class="font-bold text-white">Replace Existing</div>
+                        <div class="text-[9px] text-[#64748B]">Wipes current vault and imports fresh</div>
+                    </div>
+                </label>
+                <label class="flex items-center space-x-2 p-2 border border-[#263245] cursor-pointer hover:border-[#10B981] transition bg-[#1B2230]">
+                    <input type="radio" name="uploadMode" value="merge" class="text-[#10B981] focus:ring-0">
+                    <div>
+                        <div class="font-bold text-white">Append / Merge</div>
+                        <div class="text-[9px] text-[#64748B]">Adds to existing and increments quantities</div>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleFileDrop(event)"
+             class="border-2 border-dashed border-[#263245] hover:border-[#10B981] bg-[#10141D] p-8 text-center cursor-pointer transition space-y-2"
+             onclick="document.getElementById('csvFileInput').click()">
+            <div class="text-3xl">📄</div>
+            <div class="text-xs font-mono font-bold text-white uppercase" id="dropLabel">Drag & Drop ManaBox .CSV file here</div>
+            <p class="text-[10px] text-[#64748B] font-mono">or click to browse your files</p>
+            <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
+        </div>
+
+        <!-- Selected File Banner -->
+        <div id="selectedFileInfo" class="hidden bg-[#10141D] border border-[#10B981]/50 p-3 flex items-center justify-between font-mono text-xs">
+            <div class="flex items-center space-x-2 text-white truncate">
+                <span class="text-[#10B981]">✓</span>
+                <span id="selectedFileName" class="truncate font-bold">collection.csv</span>
+                <span id="selectedFileSize" class="text-[10px] text-[#64748B]">(0 KB)</span>
+            </div>
+            <button onclick="clearSelectedFile(event)" class="text-[#DC143C] hover:underline text-[10px]">Remove</button>
+        </div>
+
+        <!-- Progress Bar -->
+        <div id="uploadProgressContainer" class="hidden space-y-1.5">
+            <div class="flex justify-between text-[10px] font-mono text-[#94A3B8]">
+                <span id="uploadStatusText">Ingesting & enriching Scryfall metadata...</span>
+                <span id="uploadPercentText">0%</span>
+            </div>
+            <div class="w-full bg-[#10141D] h-2 border border-[#263245] overflow-hidden">
+                <div id="uploadProgressBar" class="bg-[#10B981] h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Modal Actions -->
+        <div class="flex justify-end space-x-3 pt-2 border-t border-[#263245]">
+            <button onclick="closeUploadModal()" class="px-4 py-2 bg-[#10141D] hover:bg-[#222B3D] text-[#94A3B8] text-xs font-mono uppercase font-bold border border-[#263245] transition">
+                Cancel
+            </button>
+            <button id="btnStartUpload" onclick="submitUpload()" disabled class="px-5 py-2 bg-[#10B981] hover:bg-[#059669] disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-xs font-mono uppercase font-bold transition">
+                Start Ingestion
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- Actionable CSV Validation Error Modal                                      -->
+<!-- ========================================================================= -->
+<div id="errorModal" class="hidden fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-[#1B2230] border-2 border-[#DC143C] max-w-2xl w-full p-6 space-y-4 shadow-2xl relative max-h-[85vh] flex flex-col">
+        <div class="flex items-start justify-between border-b border-[#263245] pb-3">
+            <div>
+                <div class="text-[10px] font-mono text-[#FF3358] uppercase tracking-wider">// VALIDATION DIAGNOSTICS</div>
+                <h3 class="font-heading font-bold text-lg text-white uppercase flex items-center gap-2">
+                    <span>⚠️ CSV Ingestion Warnings / Failed Rows</span>
+                </h3>
+            </div>
+            <button onclick="closeErrorModal()" class="text-[#64748B] hover:text-white font-mono text-lg">&times;</button>
+        </div>
+
+        <p id="errorModalSummary" class="text-xs text-[#94A3B8] font-sans">
+            Some rows in your CSV could not be parsed due to formatting errors or invalid data. Review the failure report below:
+        </p>
+
+        <!-- Error Table Container -->
+        <div class="overflow-y-auto flex-1 border border-[#263245] bg-[#10141D]">
+            <table class="w-full text-left font-mono text-xs border-collapse">
+                <thead>
+                    <tr class="bg-[#0B0F17] text-[#94A3B8] border-b border-[#263245] text-[10px] uppercase">
+                        <th class="p-2 w-16 text-center">Row #</th>
+                        <th class="p-2 w-48">Failure Reason</th>
+                        <th class="p-2">Raw CSV Snippet</th>
+                    </tr>
+                </thead>
+                <tbody id="errorTableBody" class="divide-y divide-[#263245]/50 text-slate-300">
+                    <!-- Populated dynamically -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="flex justify-end pt-2 border-t border-[#263245]">
+            <button onclick="closeErrorModal()" class="px-5 py-2 bg-[#DC143C] hover:bg-[#B30F30] text-white text-xs font-mono uppercase font-bold transition">
+                Acknowledge & Dismiss
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let selectedFile = null;
+
+function openUploadModal() {
+    document.getElementById('uploadModal').classList.remove('hidden');
+}
+
+function closeUploadModal() {
+    document.getElementById('uploadModal').classList.add('hidden');
+    clearSelectedFile();
+}
+
+function openErrorModal(errors, summaryText) {
+    const modal = document.getElementById('errorModal');
+    const tbody = document.getElementById('errorTableBody');
+    const summary = document.getElementById('errorModalSummary');
+
+    if (summaryText) summary.innerText = summaryText;
+
+    tbody.innerHTML = (errors || []).map(err => `
+        <tr class="hover:bg-[#1B2230]/40">
+            <td class="p-2 text-center font-bold text-[#FF3358]">${err.row || '?'}</td>
+            <td class="p-2 text-white font-sans">${escapeHtml(err.error || 'Parsing error')}</td>
+            <td class="p-2 text-[10px] text-[#64748B] font-mono break-all">${escapeHtml(err.snippet || '')}</td>
+        </tr>
+    `).join('');
+
+    modal.classList.remove('hidden');
+}
+
+function closeErrorModal() {
+    document.getElementById('errorModal').classList.add('hidden');
+}
+
+// Drag and drop handlers
+function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.add('border-[#10B981]', 'bg-[#10B981]/10');
+}
+
+function handleDragLeave(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('border-[#10B981]', 'bg-[#10B981]/10');
+}
+
+function handleFileDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('border-[#10B981]', 'bg-[#10B981]/10');
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        processSelectedFile(e.dataTransfer.files[0]);
+    }
+}
+
+function handleFileSelect(e) {
+    if (e.target.files && e.target.files.length > 0) {
+        processSelectedFile(e.target.files[0]);
+    }
+}
+
+function processSelectedFile(file) {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+        alert("Please select a valid .CSV file.");
+        return;
+    }
+    selectedFile = file;
+    document.getElementById('selectedFileName').innerText = file.name;
+    document.getElementById('selectedFileSize').innerText = `(${(file.size / 1024).toFixed(1)} KB)`;
+    document.getElementById('selectedFileInfo').classList.remove('hidden');
+    document.getElementById('btnStartUpload').removeAttribute('disabled');
+}
+
+function clearSelectedFile(e) {
+    if (e) e.stopPropagation();
+    selectedFile = null;
+    document.getElementById('csvFileInput').value = "";
+    document.getElementById('selectedFileInfo').classList.add('hidden');
+    document.getElementById('btnStartUpload').setAttribute('disabled', 'true');
+}
+
+// Upload Submission
+async function submitUpload() {
+    if (!selectedFile) return;
+
+    const btn = document.getElementById('btnStartUpload');
+    const mode = document.querySelector('input[name="uploadMode"]:checked').value;
+    const progressContainer = document.getElementById('uploadProgressContainer');
+    const progressBar = document.getElementById('uploadProgressBar');
+    const percentText = document.getElementById('uploadPercentText');
+    const statusText = document.getElementById('uploadStatusText');
+
+    btn.setAttribute('disabled', 'true');
+    progressContainer.classList.remove('hidden');
+    progressBar.style.width = "25%";
+    percentText.innerText = "25%";
+    statusText.innerText = "Reading CSV content...";
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("mode", mode);
+
+    try {
+        progressBar.style.width = "60%";
+        percentText.innerText = "60%";
+        statusText.innerText = "Resolving Scryfall metadata & prices...";
+
+        const resp = await fetch("/api/inventory/upload", {
+            method: "POST",
+            body: formData,
+        });
+
+        progressBar.style.width = "100%";
+        percentText.innerText = "100%";
+        statusText.innerText = "Complete!";
+
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            closeUploadModal();
+            if (data.errors && data.errors.length > 0) {
+                openErrorModal(data.errors, `CSV Upload Failed: ${data.error}`);
+            } else {
+                alert(`Upload Failed: ${data.error || 'Server error'}`);
+            }
+            return;
+        }
+
+        closeUploadModal();
+
+        if (data.errors && data.errors.length > 0) {
+            openErrorModal(data.errors, `Imported ${data.added_count + data.updated_count} cards with ${data.errors.length} malformed rows skipped.`);
+        }
+
+        // Reload page to display new collection state
+        setTimeout(() => {
+            window.location.reload();
+        }, (data.errors && data.errors.length > 0) ? 2000 : 500);
+
+    } catch (err) {
+        alert(`Upload error: ${err.message}`);
+        btn.removeAttribute('disabled');
+        progressContainer.classList.add('hidden');
+    }
+}
+
+// Card Deletion
+async function deleteCard(cardId, cardName) {
+    if (!confirm(`Are you sure you want to delete '${cardName}' from your collection?`)) return;
+
+    try {
+        const resp = await fetch(`/api/inventory/card/${cardId}`, { method: "DELETE" });
+        const data = await resp.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || "Failed to remove card.");
+        }
+    } catch (err) {
+        alert(`Error deleting card: ${err.message}`);
+    }
+}
+
+// Clear Inventory
+async function confirmClearInventory() {
+    if (!confirm("WARNING: This will permanently delete ALL cards from your collection inventory. Continue?")) return;
+
+    try {
+        const resp = await fetch("/api/inventory/clear", { method: "POST" });
+        const data = await resp.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || "Failed to clear collection.");
+        }
+    } catch (err) {
+        alert(`Error clearing inventory: ${err.message}`);
+    }
+}
+
+// Table Filtering and Sorting
+function filterInventoryTable() {
+    const q = (document.getElementById('inventorySearch').value || '').toLowerCase().trim();
+    const allocFilter = document.getElementById('filterAllocation').value;
+    const foilFilter = document.getElementById('filterFoil').value;
+    const rows = document.querySelectorAll('.inventory-row');
+
+    rows.forEach(r => {
+        const name = r.getAttribute('data-name') || '';
+        const set = r.getAttribute('data-set') || '';
+        const type = r.getAttribute('data-type') || '';
+        const binder = r.getAttribute('data-binder') || '';
+        const foil = r.getAttribute('data-foil') || 'normal';
+        const isAllocated = r.getAttribute('data-allocated') === 'true';
+
+        const matchesQuery = !q || name.includes(q) || set.includes(q) || type.includes(q) || binder.includes(q);
+        const matchesAlloc = (allocFilter === 'all') || (allocFilter === 'allocated' && isAllocated) || (allocFilter === 'free' && !isAllocated);
+        const matchesFoil = (foilFilter === 'all') || (foilFilter === 'foil' && (foil === 'foil' || foil === 'etched')) || (foilFilter === 'normal' && foil === 'normal');
+
+        if (matchesQuery && matchesAlloc && matchesFoil) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+}
+
+function sortInventoryTable() {
+    const sortVal = document.getElementById('filterSort').value;
+    const tbody = document.getElementById('inventoryTableBody');
+    const rows = Array.from(tbody.querySelectorAll('.inventory-row'));
+
+    rows.sort((a, b) => {
+        if (sortVal === 'name_asc') {
+            return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+        } else if (sortVal === 'price_desc') {
+            return parseFloat(b.getAttribute('data-price') || 0) - parseFloat(a.getAttribute('data-price') || 0);
+        } else if (sortVal === 'price_asc') {
+            return parseFloat(a.getAttribute('data-price') || 0) - parseFloat(b.getAttribute('data-price') || 0);
+        } else if (sortVal === 'qty_desc') {
+            return parseInt(b.getAttribute('data-qty') || 0) - parseInt(a.getAttribute('data-qty') || 0);
+        } else if (sortVal === 'cmc_asc') {
+            return parseFloat(a.getAttribute('data-cmc') || 0) - parseFloat(b.getAttribute('data-cmc') || 0);
+        }
+        return 0;
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+</script>
+{% endblock %}
