@@ -9,7 +9,7 @@ from app import create_app
 from models import db, User, AllowedEmail, DeckAnalysis, UserInventoryCard
 from inventory_parser import ManaBoxInventoryParser, InventoryParseError
 from inventory_manager import InventoryManager
-from deck_upgrade_engine import DualTierUpgradeEngine, COMMANDER_BANNED_CARDS
+from deck_upgrade_engine import DualTierUpgradeEngine, COMMANDER_BANNED_CARDS, CURATED_UPGRADES
 from providers.scryfall import ScryfallProvider
 
 
@@ -408,6 +408,120 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
             self.assertIn("Arcane Signet", updated_card_names)
             self.assertNotIn("Commander's Sphere", updated_card_names)
             self.assertEqual(updated_deck.total_cards, 100)
+
+    def test_dfc_bidirectional_swap_and_upgrade_matching(self):
+        """Tests that double-faced cards (DFCs) match bidirectionally in upgrades and apply-swap."""
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({}, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            # Inventory has full DFC name: Bala Ged Recovery // Bala Ged Sanctuary
+            inv_card = UserInventoryCard(
+                user_id=user.id,
+                name="Bala Ged Recovery // Bala Ged Sanctuary",
+                color_identity="G",
+                quantity=1,
+                cmc=3.0,
+                type_line="Sorcery // Land"
+            )
+            db.session.add(inv_card)
+
+            # Deck has front face: "Bala Ged Recovery"
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Mono Green",
+                commander_name="Titania, Protector of Argoth",
+                color_identity="G",
+                cards_data=json.dumps([
+                    {"name": "Bala Ged Recovery", "quantity": 1, "cmc": 3.0, "type_line": "Sorcery"},
+                    {"name": "Forest", "quantity": 99, "cmc": 0.0, "type_line": "Basic Land"}
+                ]),
+                total_cards=100
+            )
+            db.session.add(deck)
+            db.session.commit()
+            deck_id = deck.id
+
+            # Engine should recognize Bala Ged Recovery is already in deck, not suggest it as unowned or duplicate
+            res = engine.generate_upgrades(deck, [inv_card], allocations={})
+            owned_ins = [u["card_in"] for u in res["owned_swaps"]]
+            self.assertNotIn("Bala Ged Recovery // Bala Ged Sanctuary", owned_ins)
+
+        # Now test Apply Swap cutting front face "Bala Ged Recovery" and slotting "Sol Ring"
+        with self.app.app_context():
+            sol = UserInventoryCard(user_id=user.id, name="Sol Ring", quantity=1, cmc=1.0, type_line="Artifact")
+            db.session.add(sol)
+            db.session.commit()
+
+        resp = self.client.post(
+            f"/api/deck/{deck_id}/apply-swap",
+            json={"card_out": "Bala Ged Recovery // Bala Ged Sanctuary", "card_in": "Sol Ring"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        with self.app.app_context():
+            updated = db.session.get(DeckAnalysis, deck_id)
+            names = [c["name"] for c in updated.get_parsed_cards()]
+            self.assertIn("Sol Ring", names)
+            self.assertNotIn("Bala Ged Recovery", names)
+
+    def test_colorless_commander_color_identity_enforcement(self):
+        """Tests that a colorless commander never receives colored upgrades in binder or shopping list."""
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({}, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            inv_cards = [
+                UserInventoryCard(user_id=user.id, name="Counterspell", color_identity="U", quantity=1),
+                UserInventoryCard(user_id=user.id, name="Sol Ring", color_identity="", quantity=1),
+            ]
+            db.session.add_all(inv_cards)
+
+            # Colorless deck (Kozilek, Butcher of Truth)
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Eldrazi Titans",
+                commander_name="Kozilek, Butcher of Truth",
+                color_identity="",
+                cards_data=json.dumps([
+                    {"name": "Wastes", "quantity": 100, "cmc": 0.0, "type_line": "Basic Land — Wastes"}
+                ]),
+                total_cards=100
+            )
+            db.session.add(deck)
+            db.session.commit()
+
+            res = engine.generate_upgrades(deck, inv_cards, allocations={})
+            owned_ins = [u["card_in"] for u in res["owned_swaps"]]
+            self.assertIn("Sol Ring", owned_ins)
+            self.assertNotIn("Counterspell", owned_ins)
+
+            # Shopping list should also be strictly colorless
+            for shop_item in res["all_shopping_cards"]:
+                for staple in CURATED_UPGRADES:
+                    if staple["name"].lower() == shop_item["name"].lower():
+                        self.assertEqual(len(staple.get("colors", [])), 0, f"{staple['name']} has colors in a colorless deck!")
+
+    def test_partial_success_upload_with_skipped_rows(self):
+        """Tests uploading CSV with valid cards and skipped malformed rows returns 200 with diagnostics."""
+        self.login_as()
+        mixed_csv = (
+            "Name,Quantity,Set code\n"
+            "Sol Ring,1,C21\n"
+            ",2,EMA\n"  # row 3: missing name
+            "Arcane Signet,1,ELD\n"
+        )
+        resp = self.client.post("/api/inventory/upload", data={"csv_content": mixed_csv, "mode": "replace"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["added_count"], 2)
+        self.assertEqual(data["errors_count"], 1)
+        self.assertEqual(data["errors"][0]["row"], 3)
+        self.assertIn("Card name is empty", data["errors"][0]["error"])
 
 
 if __name__ == "__main__":

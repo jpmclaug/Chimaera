@@ -80,7 +80,7 @@ class ManaBoxInventoryParser:
         
         # 1. Strip HTML tags and unescape entities
         clean = re.sub(r"<[^>]+>", "", str(name)).strip()
-        clean = html.unescape(clean)
+        clean = html.unescape(clean).strip("\"'").strip()
 
         # 2. Standardize curly quotes and apostrophes
         clean = clean.replace("\u2019", "'").replace("\u2018", "'")
@@ -97,7 +97,7 @@ class ManaBoxInventoryParser:
             if len(parts) >= 2:
                 clean = " // ".join(parts)
 
-        return clean.strip()
+        return clean.strip().strip("\"'").strip()
 
     @staticmethod
     def parse(csv_content: str) -> Dict[str, Any]:

@@ -3227,12 +3227,20 @@ def create_app(test_config=None):
         if not current_cards:
             return jsonify({"error": "Deck contains no cards."}), 400
 
+        # Helper for bidirectional DFC and exact name matching
+        def _match_name(name_a: str, name_b: str) -> bool:
+            a = (name_a or "").strip().lower()
+            b = (name_b or "").strip().lower()
+            if a == b:
+                return True
+            a_front = a.split(" // ")[0].strip() if " // " in a else a
+            b_front = b.split(" // ")[0].strip() if " // " in b else b
+            return a_front == b_front
+
         # Locate card_out in deck
         found_idx = -1
-        target_out_lower = card_out_name.lower()
         for idx, c in enumerate(current_cards):
-            c_name_lower = c.get("name", "").lower()
-            if c_name_lower == target_out_lower or (" // " in c_name_lower and c_name_lower.split(" // ")[0] == target_out_lower):
+            if _match_name(c.get("name", ""), card_out_name):
                 found_idx = idx
                 break
 
@@ -3250,11 +3258,10 @@ def create_app(test_config=None):
             current_cards.pop(found_idx)
 
         # Add card_in (or increment if already slotted)
-        target_in_lower = card_in_name.lower()
+        target_in_lower = card_in_name.lower().strip()
         already_in_idx = -1
         for idx, c in enumerate(current_cards):
-            c_name_lower = c.get("name", "").lower()
-            if c_name_lower == target_in_lower or (" // " in c_name_lower and c_name_lower.split(" // ")[0] == target_in_lower):
+            if _match_name(c.get("name", ""), card_in_name):
                 already_in_idx = idx
                 break
 
@@ -3264,13 +3271,16 @@ def create_app(test_config=None):
             # Fetch metadata for card_in from user collection first or Scryfall
             inv_card = UserInventoryCard.query.filter(
                 UserInventoryCard.user_id == user.id,
-                db.func.lower(UserInventoryCard.name) == target_in_lower,
+                db.or_(
+                    db.func.lower(UserInventoryCard.name) == target_in_lower,
+                    db.func.lower(UserInventoryCard.name).like(f"{target_in_lower.split(' // ')[0].strip()}%")
+                )
             ).first()
 
             meta_map, _ = scryfall_provider.get_cards_collection([card_in_name])
             meta = meta_map.get(target_in_lower, {})
             if not meta and " // " in card_in_name:
-                meta = meta_map.get(card_in_name.split(" // ")[0].lower(), {})
+                meta = meta_map.get(card_in_name.split(" // ")[0].lower().strip(), {})
 
             img = (
                 (inv_card.image_uri if inv_card else None)

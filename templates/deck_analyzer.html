@@ -1277,7 +1277,10 @@ function switchIngestTab(tab) {
 }
 
 // Inspector Tabs
+let currentInspectorTab = 'stats';
+
 function switchInspectorTab(tab) {
+    currentInspectorTab = tab || 'stats';
     const tabs = ['stats', 'cards', 'ai', 'upgrades'];
     tabs.forEach(t => {
         const btn = document.getElementById(`insp-tab-${t}`);
@@ -1403,7 +1406,7 @@ function safeSetText(id, text) {
 }
 
 // Display Deck in Inspector
-function displayDeckInInspector(deck) {
+function displayDeckInInspector(deck, keepCurrentTab = false) {
     if (!deck) return;
     activeDeck = deck;
     switchMainView('inspector');
@@ -1525,7 +1528,11 @@ function displayDeckInInspector(deck) {
 
     // Render Full Card Table
     renderCardRegistryTable(cards);
-    switchInspectorTab('stats');
+    if (!keepCurrentTab) {
+        switchInspectorTab('stats');
+    } else if (currentInspectorTab) {
+        switchInspectorTab(currentInspectorTab);
+    }
 }
 
 // Render Speed & Opening Mana Telemetry (Land Drops, Keepability & Commander Cast)
@@ -2732,14 +2739,25 @@ function renderOwnedSwaps(swaps) {
                 <!-- IN: Owned Card -->
                 <div class="bg-emerald-950/25 border border-emerald-500/30 p-2.5 rounded space-y-1">
                     <span class="text-[10px] text-emerald-400 uppercase font-bold font-mono block">&darr; IN (FROM BINDER)</span>
-                    <div class="font-bold text-white truncate hover:text-emerald-300 transition cursor-pointer" title="${escapeHtml(u.card_in)}">
-                        ${escapeHtml(u.card_in)}
-                    </div>
-                    <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 flex-wrap pt-0.5">
-                        <span class="text-cyan-400 font-bold">${escapeHtml(u.card_in_set || '---')}</span>
-                        ${u.card_in_foil && u.card_in_foil !== 'normal' ? `<span class="text-amber-400 font-bold">★ ${escapeHtml(u.card_in_foil)}</span>` : ''}
-                        <span>&bull;</span>
-                        <span>${escapeHtml(u.card_in_condition || 'NM')}</span>
+                    <div class="flex items-center gap-2">
+                        ${u.card_in_image ? `
+                            <img src="${escapeHtml(u.card_in_image)}" alt="${escapeHtml(u.card_in)}" class="w-7 h-10 object-cover rounded border border-emerald-500/40 flex-shrink-0 cursor-pointer shadow"
+                                 data-img="${escapeHtml(u.card_in_image)}"
+                                 onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                        ` : ''}
+                        <div class="min-w-0 flex-1">
+                            <div class="font-bold text-white truncate hover:text-emerald-300 transition cursor-pointer" title="${escapeHtml(u.card_in)}"
+                                 data-img="${escapeHtml(u.card_in_image || '')}"
+                                 onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                                ${escapeHtml(u.card_in)}
+                            </div>
+                            <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 flex-wrap pt-0.5">
+                                <span class="text-cyan-400 font-bold">${escapeHtml(u.card_in_set || '---')}</span>
+                                ${u.card_in_foil && u.card_in_foil !== 'normal' ? `<span class="text-amber-400 font-bold">★ ${escapeHtml(u.card_in_foil)}</span>` : ''}
+                                <span>&bull;</span>
+                                <span>${escapeHtml(u.card_in_condition || 'NM')}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -2801,10 +2819,9 @@ async function applyDeckSwap(btn, cardOut, cardIn) {
             throw new Error(data.error || "Failed to apply card swap.");
         }
 
-        // Update active deck state in memory
+        // Update active deck state in memory without bouncing tab away from upgrades
         activeDeck = data.deck;
-        displayDeckInInspector(activeDeck);
-        renderCardRegistryTable();
+        displayDeckInInspector(activeDeck, true);
 
         showToast(`Successfully swapped ${cardOut} for ${cardIn}!`, "success");
 
@@ -2885,12 +2902,23 @@ function filterShoppingBracket(bracket) {
             <div class="grid grid-cols-2 gap-2 text-xs">
                 <div class="bg-cyan-950/20 border border-cyan-500/30 p-2.5 rounded space-y-0.5">
                     <span class="text-[10px] text-cyan-400 uppercase font-bold font-mono block">&darr; TARGET ACQUISITION</span>
-                    <div class="font-bold text-white truncate" title="${escapeHtml(item.name)}">
-                        ${escapeHtml(item.name)}
-                    </div>
-                    <div class="text-[10px] text-slate-400 font-mono">
-                        ${item.mana_cost ? `<span>${escapeHtml(item.mana_cost)}</span> &bull; ` : ''}
-                        <span>${escapeHtml(item.type_line || 'Card')}</span>
+                    <div class="flex items-center gap-2">
+                        ${item.image_uri ? `
+                            <img src="${escapeHtml(item.image_uri)}" alt="${escapeHtml(item.name)}" class="w-7 h-10 object-cover rounded border border-cyan-500/40 flex-shrink-0 cursor-pointer shadow"
+                                 data-img="${escapeHtml(item.image_uri)}"
+                                 onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                        ` : ''}
+                        <div class="min-w-0 flex-1">
+                            <div class="font-bold text-white truncate cursor-pointer hover:text-cyan-300 transition" title="${escapeHtml(item.name)}"
+                                 data-img="${escapeHtml(item.image_uri || '')}"
+                                 onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                                ${escapeHtml(item.name)}
+                            </div>
+                            <div class="text-[10px] text-slate-400 font-mono">
+                                ${item.mana_cost ? `<span>${escapeHtml(item.mana_cost)}</span> &bull; ` : ''}
+                                <span>${escapeHtml(item.type_line || 'Card')}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

@@ -427,6 +427,10 @@ function openErrorModal(errors, summaryText) {
 
 function closeErrorModal() {
     document.getElementById('errorModal').classList.add('hidden');
+    if (window.needsReloadOnModalClose) {
+        window.needsReloadOnModalClose = false;
+        window.location.reload();
+    }
 }
 
 // Drag and drop handlers
@@ -523,13 +527,14 @@ async function submitUpload() {
         closeUploadModal();
 
         if (data.errors && data.errors.length > 0) {
-            openErrorModal(data.errors, `Imported ${data.added_count + data.updated_count} cards with ${data.errors.length} malformed rows skipped.`);
+            window.needsReloadOnModalClose = true;
+            openErrorModal(data.errors, `Imported ${data.added_count + data.updated_count} cards with ${data.errors.length} malformed rows skipped. Review the skipped rows below, then dismiss to view your updated vault:`);
+        } else {
+            // Reload page to display new collection state
+            setTimeout(() => {
+                window.location.reload();
+            }, 500);
         }
-
-        // Reload page to display new collection state
-        setTimeout(() => {
-            window.location.reload();
-        }, (data.errors && data.errors.length > 0) ? 2000 : 500);
 
     } catch (err) {
         alert(`Upload error: ${err.message}`);

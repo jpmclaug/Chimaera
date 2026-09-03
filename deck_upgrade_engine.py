@@ -362,23 +362,25 @@ class DualTierUpgradeEngine:
             for u in ai_analysis["upgrades"]:
                 card_in = u.get("card_in", "").strip()
                 card_out = u.get("card_out", "").strip()
-                if not card_in or card_in.lower() in deck_cards_set or card_in.lower() in applied_card_in_names:
+                if not card_in or self._is_card_in_deck(card_in, deck_cards_set) or card_in.lower() in applied_card_in_names:
                     continue
 
                 if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in):
-                    card_in_lower = card_in.lower()
-                    if card_in_lower in owned_by_name:
+                    owned_copies = self._find_owned_inventory_copies(card_in, owned_by_name)
+                    if owned_copies:
                         # Card is in binder!
-                        owned_copies = owned_by_name[card_in_lower]
                         primary_copy = owned_copies[0]
-                        alloc_info = allocations.get(card_in_lower, {"total_allocated": 0, "other_allocated": 0, "decks": []})
+                        alloc_key = card_in.lower()
+                        if alloc_key not in allocations and " // " in alloc_key:
+                            alloc_key = alloc_key.split(" // ")[0].strip()
+                        alloc_info = allocations.get(alloc_key, {"total_allocated": 0, "other_allocated": 0, "decks": []})
 
                         total_owned = sum(c.quantity for c in owned_copies)
                         other_allocated = alloc_info.get("other_allocated", 0)
                         avail = max(0, total_owned - other_allocated)
 
                         # Match cut candidate
-                        matched_cut = card_out if card_out and card_out.lower() in deck_cards_set else self._find_best_cut(cut_candidates, u.get("category", "General"))
+                        matched_cut = card_out if card_out and self._is_card_in_deck(card_out, deck_cards_set) else self._find_best_cut(cut_candidates, u.get("category", "General"))
 
                         owned_swaps.append({
                             "card_in": primary_copy.name,
@@ -402,13 +404,13 @@ class DualTierUpgradeEngine:
                             "already_allocated": (avail <= 0 and total_owned > 0),
                             "allocated_in": [d["deck_name"] for d in alloc_info.get("decks", []) if not d.get("is_current")],
                         })
-                        applied_card_in_names.add(card_in_lower)
+                        applied_card_in_names.add(card_in.lower())
 
         # B) Check Curated Tactical Staples against Inventory
         for staple in CURATED_UPGRADES:
             s_name = staple["name"]
             s_name_lower = s_name.lower()
-            if s_name_lower in deck_cards_set or s_name_lower in applied_card_in_names:
+            if self._is_card_in_deck(s_name, deck_cards_set) or s_name_lower in applied_card_in_names:
                 continue
 
             # Color and legality check
@@ -417,10 +419,13 @@ class DualTierUpgradeEngine:
             if not self._is_format_legal(s_name):
                 continue
 
-            if s_name_lower in owned_by_name:
-                owned_copies = owned_by_name[s_name_lower]
+            owned_copies = self._find_owned_inventory_copies(s_name, owned_by_name)
+            if owned_copies:
                 primary_copy = owned_copies[0]
-                alloc_info = allocations.get(s_name_lower, {"total_allocated": 0, "other_allocated": 0, "decks": []})
+                alloc_key = s_name_lower
+                if alloc_key not in allocations and " // " in alloc_key:
+                    alloc_key = alloc_key.split(" // ")[0].strip()
+                alloc_info = allocations.get(alloc_key, {"total_allocated": 0, "other_allocated": 0, "decks": []})
 
                 total_owned = sum(c.quantity for c in owned_copies)
                 other_allocated = alloc_info.get("other_allocated", 0)
@@ -460,7 +465,7 @@ class DualTierUpgradeEngine:
         if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
             for u in ai_analysis["upgrades"]:
                 card_in = u.get("card_in", "").strip()
-                if not card_in or card_in.lower() in deck_cards_set or card_in.lower() in owned_by_name or card_in.lower() in shopping_names_applied:
+                if not card_in or self._is_card_in_deck(card_in, deck_cards_set) or self._find_owned_inventory_copies(card_in, owned_by_name) or card_in.lower() in shopping_names_applied:
                     continue
 
                 if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in):
@@ -491,8 +496,8 @@ class DualTierUpgradeEngine:
         for staple in CURATED_UPGRADES:
             s_name = staple["name"]
             s_name_lower = s_name.lower()
-            if (s_name_lower in deck_cards_set or 
-                s_name_lower in owned_by_name or 
+            if (self._is_card_in_deck(s_name, deck_cards_set) or 
+                self._find_owned_inventory_copies(s_name, owned_by_name) or 
                 s_name_lower in shopping_names_applied):
                 continue
 
@@ -571,6 +576,38 @@ class DualTierUpgradeEngine:
             "owned_count": len(owned_swaps),
             "shopping_count": len(shopping_list_raw),
         }
+
+    @staticmethod
+    def _is_card_in_deck(card_name: str, deck_cards_set: Set[str]) -> bool:
+        """Checks if a card (or either face of a DFC) is already in the deck."""
+        if not card_name:
+            return False
+        c_lower = card_name.strip().lower()
+        if c_lower in deck_cards_set:
+            return True
+        if " // " in c_lower:
+            front = c_lower.split(" // ")[0].strip()
+            if front in deck_cards_set:
+                return True
+        # Check if card_name is the front face of a DFC in the deck
+        for d_card in deck_cards_set:
+            if " // " in d_card and d_card.split(" // ")[0].strip() == c_lower:
+                return True
+        return False
+
+    @staticmethod
+    def _find_owned_inventory_copies(card_name: str, owned_by_name: Dict[str, List[UserInventoryCard]]) -> Optional[List[UserInventoryCard]]:
+        """Looks up owned inventory copies matching full name or DFC front face."""
+        if not card_name:
+            return None
+        c_lower = card_name.strip().lower()
+        if c_lower in owned_by_name:
+            return owned_by_name[c_lower]
+        if " // " in c_lower:
+            front = c_lower.split(" // ")[0].strip()
+            if front in owned_by_name:
+                return owned_by_name[front]
+        return None
 
     @staticmethod
     def _is_format_legal(card_name: str) -> bool:
