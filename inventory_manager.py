@@ -255,14 +255,20 @@ class InventoryManager:
         total_value = 0.0
         foil_count = 0
 
+        # Precompute total owned copies per card name in O(N) instead of O(N^2)
+        total_owned_map: Dict[str, int] = {}
+        for item in cards:
+            n_low = item.name.lower()
+            total_owned_map[n_low] = total_owned_map.get(n_low, 0) + item.quantity
+
         card_list = []
         for c in cards:
             c_dict = c.to_dict()
             name_lower = c.name.lower()
             alloc_info = allocations.get(name_lower, {"total_allocated": 0, "other_allocated": 0, "decks": []})
 
-            # Calculate availability
-            total_owned_of_name = sum(item.quantity for item in cards if item.name.lower() == name_lower)
+            # Calculate availability in O(1)
+            total_owned_of_name = total_owned_map.get(name_lower, c.quantity)
             other_allocated = alloc_info.get("other_allocated", 0)
             total_allocated = alloc_info.get("total_allocated", 0)
             available_copies = max(0, total_owned_of_name - other_allocated)

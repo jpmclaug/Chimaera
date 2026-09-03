@@ -617,6 +617,20 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
             self.assertEqual(len(cards), 1)
             self.assertEqual(cards[0].name, "Smothering Tithe")
 
+    def test_inventory_view_renders_upload_modal(self):
+        """Tests that /inventory renders with valid uploadModal and Google Drive controls."""
+        self.login_as()
+        resp = self.client.get("/inventory")
+        self.assertEqual(resp.status_code, 200)
+        html_text = resp.get_data(as_text=True)
+
+        # Verify uploadModal is rendered properly as a real tag, not commented out
+        self.assertIn('<div id="uploadModal"', html_text)
+        self.assertIn('id="gdriveUrlInput"', html_text)
+        self.assertIn('id="btnStartUpload"', html_text)
+        self.assertIn('id="dropZone"', html_text)
+        self.assertNotIn('<!-- ====================================================================<div id="uploadModal"', html_text)
+
 
 if __name__ == "__main__":
     unittest.main()
