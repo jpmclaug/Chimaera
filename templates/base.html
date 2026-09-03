@@ -104,6 +104,13 @@
                             <!-- Section: Sector Navigation -->
                             <div class="space-y-1">
                                 <div class="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">// SECTOR NAVIGATION</div>
+                                <a href="/system-overview" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'system_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#00CED1]/90 hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">00 // Tactical Field Manual</span>
+                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">GUIDE</span>
+                                    </div>
+                                    <span class="text-[#00CED1]">&rarr;</span>
+                                </a>
                                 <a href="/" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                                     <span class="font-bold">01 // Registry Dashboard</span>
                                     <span class="text-[#00CED1]">&rarr;</span>
@@ -192,6 +199,13 @@
 
                 <!-- Right Actions: Refresh & Acquire Only -->
                 <div class="flex items-center space-x-2 sm:space-x-3 flex-shrink-0">
+                    <a href="/system-overview" class="btn-bridge px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1]" title="Open Tactical Field Manual & System Overview">
+                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                        </svg>
+                        <span class="font-mono tracking-wider uppercase font-semibold hidden md:inline">Manual</span>
+                    </a>
+
                     {% if current_user %}
                     <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs flex items-center space-x-1.5" title="Poll Watchlist Prices">
                         <svg id="refresh-all-icon" class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -219,6 +233,9 @@
     <!-- Mobile Tactical Secondary Tab Bar -->
     {% if current_user %}
     <div class="md:hidden bg-[#1B2230] border-b border-[#263245] px-2 sm:px-4 py-1.5 flex space-x-1 overflow-x-auto no-scrollbar">
+        <a href="/system-overview" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'system_overview' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+            <span>00 // Manual</span>
+        </a>
         <a href="/" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'wishlist' %}bg-[#10141D] text-white border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
             01 // Registry
         </a>
@@ -263,6 +280,10 @@
                 <span class="text-[#94A3B8]">// SECTOR MTG-CORE &bull; SURVEILLANCE ENGINES: SCRYFALL &bull; MIGHTY MEEPLE &bull; EBAY</span>
             </div>
             <div class="flex items-center space-x-4">
+                <a href="/system-overview" class="text-[#00CED1] hover:underline flex items-center space-x-1 font-bold">
+                    <span>📖 Field Manual</span>
+                </a>
+                <span class="text-[#263245] hidden sm:inline">&bull;</span>
                 <span class="text-[#64748B] text-[11px] uppercase tracking-wider">Tactical Intelligence Online</span>
             </div>
         </div>

@@ -42,6 +42,13 @@
                     </button>
                 </div>
 
+                <a href="/system-overview#commander-stats" class="px-3.5 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Commander Statistical Telemetry & EDH Analytics Field Manual">
+                    <svg class="w-3.5 h-3.5 text-current" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                    </svg>
+                    <span>📖 Stats Guide</span>
+                </a>
+
                 <a href="/deck-analyzer" class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
                     <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -212,6 +219,8 @@
                             <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('power')">Power</th>
                             <th class="py-3 px-4 text-right cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('value')">TCG Value</th>
                             <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('cmc')">Avg CMC</th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('speed')">Speed & Pacing</th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('wincon')">Win Path</th>
                             <th class="py-3 px-4 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('composition')">Lands / Spells</th>
                             <th class="py-3 px-3 text-center">AI Intel</th>
                             <th class="py-3 px-4 text-right">Actions</th>
@@ -724,6 +733,11 @@ function renderMatrixTable(decks) {
         const landPct = Math.round((lands / total) * 100);
         const spellPct = 100 - landPct;
 
+        const keepRate = d.effective_keepability_rate !== undefined ? d.effective_keepability_rate : (stats.effective_keepability_rate || (stats.opening_hand_keepability && stats.opening_hand_keepability.effective_keep_rate) || 0);
+        const castTurn = d.median_commander_cast_turn !== undefined ? d.median_commander_cast_turn : (stats.median_commander_cast_turn || (stats.earliest_commander_cast && stats.earliest_commander_cast.median_cast_turn) || 4);
+        const wincon = d.primary_wincon || stats.primary_wincon || (stats.win_conditions && stats.win_conditions.primary_wincon && stats.win_conditions.primary_wincon.name) || (d.archetype || 'Combat');
+        const sinks = d.total_mana_sinks !== undefined ? d.total_mana_sinks : (stats.total_mana_sinks || (stats.mana_sinks && stats.mana_sinks.total_sinks) || 0);
+
         return `
             <tr class="hover:bg-[#1B2230]/60 transition ${isSelected ? 'bg-cyan-950/20' : ''}" id="matrix-row-${d.id}">
                 <td class="py-3 px-3.5 text-center">
@@ -758,6 +772,14 @@ function renderMatrixTable(decks) {
                 </td>
                 <td class="py-3 px-3 text-center font-bold text-amber-400">
                     ${parseFloat(cmc).toFixed(2)}
+                </td>
+                <td class="py-3 px-3 text-center">
+                    <div class="text-[11px] font-mono text-emerald-400 font-bold">${keepRate}% Keep</div>
+                    <div class="text-[10px] font-mono text-slate-400">T${castTurn} Cast</div>
+                </td>
+                <td class="py-3 px-3 text-center">
+                    <div class="text-[11px] font-mono text-cyan-300 font-bold truncate max-w-[120px] mx-auto" title="${escapeHtml(wincon)}">${escapeHtml(wincon)}</div>
+                    <div class="text-[10px] font-mono text-slate-400">${sinks} Sinks</div>
                 </td>
                 <td class="py-3 px-4 text-center">
                     <div class="text-[11px] font-mono text-slate-300 mb-1">${lands}L / ${spells}S</div>
@@ -858,6 +880,13 @@ function sortMatrixInternal() {
         } else if (currentSortKey === 'composition') {
             valA = (a.stats && a.stats.type_counts && a.stats.type_counts['Lands']) || 0;
             valB = (b.stats && b.stats.type_counts && b.stats.type_counts['Lands']) || 0;
+        } else if (currentSortKey === 'speed') {
+            valA = a.effective_keepability_rate || (a.stats && a.stats.effective_keepability_rate) || 0;
+            valB = b.effective_keepability_rate || (b.stats && b.stats.effective_keepability_rate) || 0;
+        } else if (currentSortKey === 'wincon') {
+            valA = (a.primary_wincon || (a.stats && a.stats.primary_wincon) || '').toLowerCase();
+            valB = (b.primary_wincon || (b.stats && b.stats.primary_wincon) || '').toLowerCase();
+            return currentSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
         }
         return currentSortAsc ? (valA - valB) : (valB - valA);
     });
@@ -1056,16 +1085,22 @@ function renderComparisonResults(data) {
         const matrix = data.delta_matrix;
         const deltaRows = [
             { key: 'nonland_amv', name: 'Nonland Avg Mana Value (AMV)', unit: 'CMC', lowerIsBetter: true },
+            { key: 'turn_3_land_pct', name: 'Turn 3 Land Drop % (Hypergeometric)', unit: '%', lowerIsBetter: false },
+            { key: 'keepability_rate', name: 'Opening Hand Keepability Rate', unit: '%', lowerIsBetter: false },
+            { key: 'commander_cast_turn', name: 'Median Commander Cast Turn', unit: 'Turn', lowerIsBetter: true },
             { key: 'fast_ramp', name: 'Fast Ramp Density (CMC <= 2)', unit: 'cards', lowerIsBetter: false },
             { key: 'dork_or_rock_ramp', name: 'Mana Dorks & Rocks', unit: 'cards', lowerIsBetter: false },
             { key: 'land_fetch_ramp', name: 'Land Ramp Spells', unit: 'cards', lowerIsBetter: false },
             { key: 'treasure_ramp', name: 'Treasure Creation Spells', unit: 'cards', lowerIsBetter: false },
             { key: 'instant_speed_ratio', name: 'Instant-Speed Interaction %', unit: '%', lowerIsBetter: false },
+            { key: 'instant_holdout', name: 'Instant Mana Holdout', unit: 'CMC', lowerIsBetter: true },
             { key: 'tapland_penalty_index', name: 'Tapland Tempo Penalty', unit: '%', lowerIsBetter: true },
             { key: 'targeted_removal', name: 'Targeted Removal Spells', unit: 'cards', lowerIsBetter: false },
             { key: 'board_wipes', name: 'Board Wipe Spells', unit: 'cards', lowerIsBetter: false },
             { key: 'removal_mana_efficiency', name: 'Removal Mana Efficiency', unit: 'CMC', lowerIsBetter: true },
             { key: 'draw_engines', name: 'Engine Card Draw Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'virtual_card_advantage', name: 'Virtual Card Advantage (Draw/Impulse/Recursion)', unit: 'cards', lowerIsBetter: false },
+            { key: 'mana_sinks', name: 'Late-Game Mana Sinks', unit: 'outlets', lowerIsBetter: false },
             { key: 'burst_draw', name: 'Burst Card Draw Spells', unit: 'cards', lowerIsBetter: false },
             { key: 'cantrips', name: 'Low-CMC Cantrips', unit: 'cards', lowerIsBetter: false },
             { key: 'tutors_general', name: 'General Tutor Density', unit: 'cards', lowerIsBetter: false },

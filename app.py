@@ -1037,6 +1037,18 @@ def create_app(test_config=None):
     # ---------------------------------------------------------
     # Core User-Scoped View Routes
     # ---------------------------------------------------------
+    @app.route("/system-overview")
+    @app.route("/field-manual")
+    def system_overview():
+        """Tactical Field Manual & Comprehensive System Overview view."""
+        user = get_current_user()
+        if user:
+            log_activity("PAGE_VIEW", details="Accessed Tactical Field Manual & System Overview", user=user)
+        return render_template(
+            "system_overview.html",
+            active_tab="system_overview",
+        )
+
     @app.route("/")
     @login_required
     def index():

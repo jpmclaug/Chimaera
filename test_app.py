@@ -1972,6 +1972,33 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertEqual(resp_sync.status_code, 200)
             self.assertTrue(resp_sync.get_json()["success"])
 
+    def test_system_overview_routes(self):
+        """Tests accessibility and content rendering of the Tactical Field Manual & System Overview."""
+        # 1. Unauthenticated request to /system-overview
+        resp = self.client.get("/system-overview")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.data.decode("utf-8")
+        self.assertIn("Tactical Field Manual & System Overview", html)
+        self.assertIn("Nonland Average Mana Value (AMV)", html)
+        self.assertIn("Mana Pip Demand vs. Mana Source Supply", html)
+        self.assertIn("Registry Dashboard", html)
+        self.assertIn("Priority Deals", html)
+        self.assertIn("Buylist Scanner", html)
+        self.assertIn("MicroCenter Charlotte", html)
+        self.assertIn("Commander Intel", html)
+        self.assertIn("Fleet Overview", html)
+        self.assertIn("Admin Console", html)
+
+        # 2. Test route alias /field-manual
+        resp_alias = self.client.get("/field-manual")
+        self.assertEqual(resp_alias.status_code, 200)
+
+        # 3. Authenticated request logs activity
+        self.login_as("guide_reader@gmail.com", is_admin=False)
+        resp_auth = self.client.get("/system-overview")
+        self.assertEqual(resp_auth.status_code, 200)
+        self.assertIn("Tactical Field Manual & System Overview", resp_auth.data.decode("utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

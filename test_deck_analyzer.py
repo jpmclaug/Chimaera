@@ -1099,7 +1099,367 @@ class TestDeckComparatorEngine(unittest.TestCase):
         self.assertIn("command tower", shared_names)
 
 
+class TestDeckAnalyzerAdvancedMetrics(unittest.TestCase):
+    """
+    Tests for the 11-Metric Advanced Commander Telemetry Suite:
+    - Turn 1-4 Land Drop Hypergeometric Probabilities
+    - Effective Opening Hand Keepability Rate
+    - Earliest Commander Cast Turn Simulation
+    - Threat Type Coverage Matrix
+    - Counterspell vs Protection Density
+    - Instant-Speed Mana Holdout
+    - Enabler-to-Payoff Ratio
+    - Typal / Kindred Density
+    - Virtual Card Advantage
+    - Win Condition Classification
+    - Mana Sink Availability
+    """
+
+    def setUp(self):
+        self.analyzer = DeckAnalyzer()
+        self.classifier = MTGCardClassifier()
+
+    def test_land_drop_probabilities_hypergeometric(self):
+        """Test hypergeometric land drop probability computation for turns 1 through 4."""
+        probs = self.analyzer.compute_land_drop_probabilities(land_count=36, cheap_cantrip_count=4, total_cards=99)
+        
+        self.assertIn("turn_1", probs)
+        self.assertIn("turn_2", probs)
+        self.assertIn("turn_3", probs)
+        self.assertIn("turn_4", probs)
+        self.assertIn("effective_with_mulligan", probs)
+
+        # Turn 1 >= Turn 2 >= Turn 3 >= Turn 4
+        self.assertGreaterEqual(probs["turn_1"], probs["turn_2"])
+        self.assertGreaterEqual(probs["turn_2"], probs["turn_3"])
+        self.assertGreaterEqual(probs["turn_3"], probs["turn_4"])
+
+        # Bound checks
+        self.assertGreater(probs["turn_1"], 90.0)
+        self.assertGreater(probs["turn_3"], 70.0)
+        self.assertLessEqual(probs["turn_4"], 100.0)
+
+        # Effective probability with 1 free mulligan must be >= raw probability
+        eff = probs["effective_with_mulligan"]
+        self.assertGreaterEqual(eff["turn_3"], probs["turn_3"])
+
+    def test_opening_hand_keepability_simulation(self):
+        """Test 7-card opening hand keepability Monte Carlo simulation."""
+        deck_cards = [
+            {"name": f"Forest {i}", "type_line": "Basic Land — Forest", "cmc": 0} for i in range(36)
+        ] + [
+            {"name": f"Elvish Mystic {i}", "type_line": "Creature — Elf Druid", "cmc": 1} for i in range(10)
+        ] + [
+            {"name": f"Rampant Growth {i}", "type_line": "Sorcery", "cmc": 2} for i in range(10)
+        ] + [
+            {"name": f"Big Beast {i}", "type_line": "Creature — Beast", "cmc": 6} for i in range(43)
+        ]
+
+        result = self.analyzer.simulate_opening_hand_keepability(deck_cards, iterations=500)
+        self.assertIn("effective_keep_rate", result)
+        self.assertIn("natural_keep_rate", result)
+        self.assertIn("breakdown", result)
+
+        # Effective keep rate with 1 free mulligan >= natural keep rate
+        self.assertGreaterEqual(result["effective_keep_rate"], result["natural_keep_rate"])
+        self.assertGreater(result["effective_keep_rate"], 50.0)
+
+        # Lands in hand average should hover around 2.5 for a 36/99 deck
+        self.assertAlmostEqual(result["avg_lands_in_hand"], 2.5, delta=0.5)
+
+    def test_earliest_commander_cast_simulation(self):
+        """Test early commander cast turn simulation comparing cheap vs expensive commanders."""
+        cheap_cmdr = {
+            "name": "Uro, Titan of Nature's Wrath",
+            "mana_cost": "{1}{G}{U}",
+            "cmc": 3,
+            "type_line": "Legendary Creature — Elder Giant",
+            "section": "commander"
+        }
+        expensive_cmdr = {
+            "name": "The Ur-Dragon",
+            "mana_cost": "{4}{W}{U}{B}{R}{G}",
+            "cmc": 9,
+            "type_line": "Legendary Creature — Dragon Avatar",
+            "section": "commander"
+        }
+
+        library = [
+            {"name": "Sol Ring", "type_line": "Artifact", "cmc": 1, "oracle_text": "{T}: Add {C}{C}."},
+            {"name": "Arcane Signet", "type_line": "Artifact", "cmc": 2, "oracle_text": "{T}: Add any color."},
+            {"name": "Command Tower", "type_line": "Land", "cmc": 0, "oracle_text": "{T}: Add one mana of any color in your commander's color identity."},
+        ] + [{"name": f"Forest {i}", "type_line": "Basic Land — Forest", "cmc": 0, "oracle_text": "{T}: Add {G}."} for i in range(18)] \
+          + [{"name": f"Island {i}", "type_line": "Basic Land — Island", "cmc": 0, "oracle_text": "{T}: Add {U}."} for i in range(18)] \
+          + [{"name": f"Spell {i}", "type_line": "Instant", "cmc": 2} for i in range(60)]
+
+        # Cheap commander cast result
+        cheap_res = self.analyzer.simulate_earliest_commander_cast(cheap_cmdr, library, iterations=300)
+        expensive_res = self.analyzer.simulate_earliest_commander_cast(expensive_cmdr, library, iterations=300)
+
+        self.assertIn("median_cast_turn", cheap_res)
+        self.assertIn("earliest_possible_turn", cheap_res)
+        self.assertIn("turn_distribution", cheap_res)
+
+        # Cheap commander cast median turn must be significantly earlier than 9 CMC commander
+        self.assertLess(cheap_res["median_cast_turn"], expensive_res["median_cast_turn"])
+        self.assertLessEqual(cheap_res["median_cast_turn"], 4)
+
+    def test_threat_type_coverage(self):
+        """Test interaction breakdown across 7 permanent threat types with instant vs sorcery categorization."""
+        cards = [
+            {
+                "name": "Swords to Plowshares", "type_line": "Instant", "cmc": 1,
+                "oracle_text": "Exile target creature. Its controller gains life equal to its power."
+            },
+            {
+                "name": "Nature's Claim", "type_line": "Instant", "cmc": 1,
+                "oracle_text": "Destroy target artifact or enchantment. Its controller gains 4 life."
+            },
+            {
+                "name": "Feed the Swarm", "type_line": "Sorcery", "cmc": 2,
+                "oracle_text": "Destroy target creature or enchantment an opponent controls."
+            },
+            {
+                "name": "Hero's Downfall", "type_line": "Instant", "cmc": 3,
+                "oracle_text": "Destroy target creature or planeswalker."
+            },
+            {
+                "name": "Bojuka Bog", "type_line": "Land", "cmc": 0,
+                "oracle_text": "When Bojuka Bog enters the battlefield, exile target player's graveyard."
+            },
+            {
+                "name": "Counterspell", "type_line": "Instant", "cmc": 2,
+                "oracle_text": "Counter target spell."
+            },
+            {
+                "name": "Demolition Field", "type_line": "Land", "cmc": 0,
+                "oracle_text": "{2}, {T}, Sacrifice Demolition Field: Destroy target nonbasic land."
+            }
+        ]
+
+        # Enrich with classification
+        for c in cards:
+            c["classification"] = self.classifier.classify_card(c)
+
+        coverage = self.analyzer.analyze_threat_coverage(cards)
+        cats = coverage["categories"]
+
+        self.assertGreaterEqual(cats["creatures"]["total"], 3)
+        self.assertGreaterEqual(cats["artifacts"]["total"], 1)
+        self.assertGreaterEqual(cats["enchantments"]["total"], 2)
+        self.assertGreaterEqual(cats["planeswalkers"]["total"], 1)
+        self.assertGreaterEqual(cats["graveyards"]["total"], 1)
+        self.assertGreaterEqual(cats["spells"]["total"], 1)
+        self.assertGreaterEqual(cats["lands"]["total"], 1)
+
+        # Swords & Nature's Claim should be instant answers
+        self.assertGreaterEqual(cats["creatures"]["instant"], 2)
+        self.assertGreaterEqual(cats["artifacts"]["instant"], 1)
+
+    def test_counter_vs_protection_density(self):
+        """Test counterspell vs defensive protection classification."""
+        cards = [
+            {"name": "Counterspell", "type_line": "Instant", "cmc": 2, "oracle_text": "Counter target spell."},
+            {"name": "Negate", "type_line": "Instant", "cmc": 2, "oracle_text": "Counter target noncreature spell."},
+            {"name": "Heroic Intervention", "type_line": "Instant", "cmc": 2, "oracle_text": "Permanents you control gain hexproof and indestructible until end of turn."},
+            {"name": "Teferi's Protection", "type_line": "Instant", "cmc": 3, "oracle_text": "Your life total can't change and your permanents phase out."},
+            {"name": "Lightning Greaves", "type_line": "Artifact — Equipment", "cmc": 2, "oracle_text": "Equipped creature has haste and shroud."},
+        ]
+
+        for c in cards:
+            c["classification"] = self.classifier.classify_card(c)
+
+        cp = self.analyzer.analyze_counter_vs_protection(cards)
+        self.assertEqual(cp["counterspell_count"], 2)
+        self.assertGreaterEqual(cp["protection_count"], 3)
+
+        pb = cp["protection_breakdown"]
+        self.assertGreaterEqual(pb["hexproof_shroud"], 2)
+        self.assertGreaterEqual(pb["indestructible"], 1)
+        self.assertGreaterEqual(pb["phase_out"], 1)
+        self.assertIn("stance", cp)
+
+    def test_instant_mana_holdout(self):
+        """Test instant-speed mana holdout calculation and CMC histogram."""
+        cards = [
+            {"name": "Force of Will", "type_line": "Instant", "cmc": 5, "oracle_text": "You may pay 1 life and exile a blue card from your hand rather than pay this spell's mana cost. Counter target spell."},
+            {"name": "Swords to Plowshares", "type_line": "Instant", "cmc": 1, "oracle_text": "Exile target creature."},
+            {"name": "Counterspell", "type_line": "Instant", "cmc": 2, "oracle_text": "Counter target spell."},
+            {"name": "Beast Within", "type_line": "Instant", "cmc": 3, "oracle_text": "Destroy target permanent."},
+        ]
+
+        for c in cards:
+            c["classification"] = self.classifier.classify_card(c)
+
+        holdout = self.analyzer.compute_instant_mana_holdout(cards)
+        self.assertIn("avg_holdout_cmc", holdout)
+        self.assertIn("rating", holdout)
+        self.assertIn("cmc_breakdown", holdout)
+
+        # Breakdown should have 0, 1, 2, 3
+        cb = holdout["cmc_breakdown"]
+        self.assertEqual(cb["0"], 1)  # Force of Will free alternative
+        self.assertEqual(cb["1"], 1)  # Swords
+        self.assertEqual(cb["2"], 1)  # Counterspell
+        self.assertEqual(cb["3"], 1)  # Beast Within
+
+        # Effective avg CMC should be (0 + 1 + 2 + 3) / 4 = 1.5
+        self.assertAlmostEqual(holdout["avg_holdout_cmc"], 1.5, places=2)
+
+    def test_enabler_to_payoff_ratio(self):
+        """Test sacrifice and counters engine detection, enabler-to-payoff ratio and diagnosis."""
+        sac_deck = [
+            {"name": "Viscera Seer", "type_line": "Creature — Vampire Wizard", "cmc": 1, "oracle_text": "Sacrifice a creature: Scry 1."},
+            {"name": "Carrion Feeder", "type_line": "Creature — Zombie", "cmc": 1, "oracle_text": "Sacrifice a creature: Put a +1/+1 counter on Carrion Feeder."},
+            {"name": "Ashnod's Altar", "type_line": "Artifact", "cmc": 3, "oracle_text": "Sacrifice a creature: Add {C}{C}."},
+            {"name": "Blood Artist", "type_line": "Creature — Vampire", "cmc": 2, "oracle_text": "Whenever Blood Artist or another creature dies, target player loses 1 life and you gain 1 life."},
+            {"name": "Zulaport Cutthroat", "type_line": "Creature — Human Rogue", "cmc": 2, "oracle_text": "Whenever Zulaport Cutthroat or another creature you control dies, each opponent loses 1 life and you gain 1 life."},
+        ]
+
+        for c in sac_deck:
+            c["classification"] = self.classifier.classify_card(c)
+
+        ep = self.analyzer.analyze_enabler_payoff_ratio(sac_deck)
+        self.assertIn("Sacrifice", ep["theme"])
+        self.assertEqual(ep["enabler_count"], 3)
+        self.assertEqual(ep["payoff_count"], 2)
+        self.assertAlmostEqual(ep["ratio"], 1.5, places=1)
+        self.assertIn("health", ep)
+
+    def test_typal_kindred_density(self):
+        """Test creature subtype extraction and typal kindred density scoring."""
+        bear_deck = [
+            {"name": "Ayula, Queen Among Bears", "type_line": "Legendary Creature — Bear", "cmc": 2, "oracle_text": "Whenever another Bear enters the battlefield under your control, put two +1/+1 counters on target Bear."},
+            {"name": "Grizzly Bears", "type_line": "Creature — Bear", "cmc": 2, "oracle_text": ""},
+            {"name": "Mother Bear", "type_line": "Creature — Bear", "cmc": 2, "oracle_text": "Exile Mother Bear from your graveyard: Create two 2/2 green Bear creature tokens."},
+            {"name": "Ashcoat Bear", "type_line": "Creature — Bear", "cmc": 2, "oracle_text": "Flash"},
+            {"name": "Ayula's Influence", "type_line": "Enchantment", "cmc": 3, "oracle_text": "Discard a land card: Create a 2/2 green Bear creature token."},
+            {"name": "Metallic Mimic", "type_line": "Artifact Creature — Shapeshifter", "cmc": 2, "oracle_text": "As Metallic Mimic enters, choose a creature type. Each other creature you control of the chosen type enters with an additional +1/+1 counter."},
+        ]
+
+        for c in bear_deck:
+            c["classification"] = self.classifier.classify_card(c)
+
+        typal = self.analyzer.analyze_typal_density(bear_deck, commander_names=["Ayula, Queen Among Bears"])
+        self.assertTrue(typal["is_typal_deck"])
+        self.assertEqual(typal["primary_type"], "Bear")
+        self.assertEqual(typal["matching_creatures_count"], 4)
+        self.assertGreaterEqual(typal["kindred_support_count"], 2)
+
+    def test_virtual_card_advantage(self):
+        """Test virtual card advantage aggregating pure draw, impulse draw, and graveyard recursion."""
+        cards = [
+            {"name": "Rhystic Study", "type_line": "Enchantment", "cmc": 3, "oracle_text": "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}."},
+            {"name": "Light Up the Stage", "type_line": "Sorcery", "cmc": 3, "oracle_text": "Exile the top two cards of your library. Until the end of your next turn, you may play those cards."},
+            {"name": "Reanimate", "type_line": "Sorcery", "cmc": 1, "oracle_text": "Put target creature card from a graveyard onto the battlefield under your control. You lose life equal to its mana value."},
+            {"name": "Eternal Witness", "type_line": "Creature — Human Shaman", "cmc": 3, "oracle_text": "When Eternal Witness enters the battlefield, you may return target card from your graveyard to your hand."},
+            {"name": "Demonic Tutor", "type_line": "Sorcery", "cmc": 2, "oracle_text": "Search your library for a card, put that card into your hand, then shuffle."},
+        ]
+
+        for c in cards:
+            c["classification"] = self.classifier.classify_card(c)
+
+        vca = self.analyzer.compute_virtual_card_advantage(cards, {"pure_draw": 1, "tutors": 1})
+        self.assertEqual(vca["pure_draw"], 1)
+        self.assertEqual(vca["impulse_draw"], 1)
+        self.assertEqual(vca["recursion"], 2)
+        self.assertEqual(vca["tutors"], 1)
+        self.assertEqual(vca["total_virtual_advantage"], 5)
+        self.assertIn("resource_depth_rating", vca)
+
+    def test_win_condition_classification(self):
+        """Test primary and secondary win condition identification."""
+        overrun_deck = [
+            {"name": "Craterhoof Behemoth", "type_line": "Creature — Beast", "cmc": 8, "oracle_text": "When Craterhoof Behemoth enters the battlefield, creatures you control gain trample and get +X/+X until end of turn."},
+            {"name": "Triumph of the Hordes", "type_line": "Sorcery", "cmc": 4, "oracle_text": "Until end of turn, creatures you control get +1/+1 and gain trample and infect."},
+            {"name": "Beastmaster Ascension", "type_line": "Enchantment", "cmc": 3, "oracle_text": "Creatures you control get +5/+5 as long as Beastmaster Ascension has seven or more quest counters on it."},
+        ]
+
+        for c in overrun_deck:
+            c["classification"] = self.classifier.classify_card(c)
+
+        wincons = self.analyzer.classify_win_conditions(overrun_deck, commander_names=[], archetype="Midrange")
+        primary = wincons["primary_wincon"]
+        self.assertIn("Overrun", primary["name"])
+        self.assertGreaterEqual(len(primary["key_cards"]), 2)
+        self.assertIn("clock_estimate", wincons)
+
+    def test_mana_sinks_availability(self):
+        """Test mana sinks identification including X-spells, activated abilities, and utility lands."""
+        sink_cards = [
+            {"name": "Torment of Hailfire", "type_line": "Sorcery", "cmc": 2, "mana_cost": "{X}{B}{B}", "oracle_text": "Repeat the following process X times."},
+            {"name": "Thrasios, Triton Hero", "type_line": "Legendary Creature — Merfolk Wizard", "cmc": 2, "oracle_text": "{4}: Scry 1, then reveal the top card of your library."},
+            {"name": "Kessig Wolf Run", "type_line": "Land", "cmc": 0, "oracle_text": "{X}{R}{G}, {T}: Target creature gets +X/+0 and gains trample until end of turn."},
+        ]
+
+        for c in sink_cards:
+            c["classification"] = self.classifier.classify_card(c)
+
+        sinks = self.analyzer.analyze_mana_sinks(sink_cards)
+        self.assertEqual(sinks["total_sinks"], 3)
+        self.assertEqual(sinks["type_breakdown"]["x_spell"], 1)
+        self.assertEqual(sinks["type_breakdown"]["activated_ability"], 1)
+        self.assertEqual(sinks["type_breakdown"]["utility_land"], 1)
+        self.assertIn("late_game_resilience", sinks)
+
+    def test_deck_comparator_advanced_metrics(self):
+        """Test that DeckComparator generates comparative deltas for the new metrics."""
+        deck_a = {
+            "id": 1,
+            "deck_name": "Fast Deck",
+            "stats": {
+                "land_drop_turn_3_pct": 86.5,
+                "effective_keepability_rate": 91.0,
+                "median_commander_cast_turn": 3,
+                "avg_instant_holdout": 1.5,
+                "total_mana_sinks": 5,
+                "total_virtual_advantage": 14,
+            }
+        }
+        deck_b = {
+            "id": 2,
+            "deck_name": "Slow Deck",
+            "stats": {
+                "land_drop_turn_3_pct": 72.0,
+                "effective_keepability_rate": 78.0,
+                "median_commander_cast_turn": 5,
+                "avg_instant_holdout": 2.8,
+                "total_mana_sinks": 2,
+                "total_virtual_advantage": 7,
+            }
+        }
+
+        comparator = DeckComparator()
+        result = comparator.compare(deck_a, deck_b)
+        matrix = result["delta_matrix"]
+
+        self.assertIn("turn_3_land_pct", matrix)
+        self.assertEqual(matrix["turn_3_land_pct"]["delta"], 14.5)
+        self.assertEqual(matrix["turn_3_land_pct"]["advantage"], "deck_a")
+
+        self.assertIn("keepability_rate", matrix)
+        self.assertEqual(matrix["keepability_rate"]["delta"], 13.0)
+        self.assertEqual(matrix["keepability_rate"]["advantage"], "deck_a")
+
+        self.assertIn("commander_cast_turn", matrix)
+        self.assertEqual(matrix["commander_cast_turn"]["delta"], -2)
+        self.assertEqual(matrix["commander_cast_turn"]["advantage"], "deck_a")  # Lower turn is better
+
+        self.assertIn("instant_holdout", matrix)
+        self.assertAlmostEqual(matrix["instant_holdout"]["delta"], -1.3, places=2)
+        self.assertEqual(matrix["instant_holdout"]["advantage"], "deck_a")  # Lower holdout CMC is better
+
+        self.assertIn("mana_sinks", matrix)
+        self.assertEqual(matrix["mana_sinks"]["delta"], 3)
+        self.assertEqual(matrix["mana_sinks"]["advantage"], "deck_a")
+
+        self.assertIn("virtual_card_advantage", matrix)
+        self.assertEqual(matrix["virtual_card_advantage"]["delta"], 7)
+        self.assertEqual(matrix["virtual_card_advantage"]["advantage"], "deck_a")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 

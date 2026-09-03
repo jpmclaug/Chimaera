@@ -38,6 +38,13 @@
                     </button>
                 </div>
 
+                <a href="/system-overview#commander-stats" class="px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Commander Statistical Telemetry & EDH Analytics Field Manual">
+                    <svg class="w-3.5 h-3.5 text-current" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                    </svg>
+                    <span>📖 Stats Guide</span>
+                </a>
+
                 <a href="/deck-overview" class="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Fleet Overview & Head-to-Head Comparison">
                     <svg class="w-3.5 h-3.5 text-current" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -467,8 +474,347 @@
                         </div>
                     </div>
                 </div>
+            <!-- Row 4: Mana & Speed Station (Land Drops, Keepability & Commander Cast) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Mana Pacing & Speed Telemetry
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Hypergeometric land drop distribution, simulated 7-card opening hand keepability, and median Commander cast timing.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">1 Free Mulligan Included</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <!-- Turn 1-4 Land Drop Probability (Hypergeometric) -->
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase">🎲 Land Drop Chances</h4>
+                            <span id="speedCantripCount" class="text-[10px] font-mono text-slate-400">0 Cantrips</span>
+                        </div>
+                        <div class="space-y-2.5 text-xs font-mono">
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 1 (1+ Land):</span>
+                                    <span id="landProbT1" class="text-emerald-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT1Bar" class="bg-emerald-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 2 (2+ Lands):</span>
+                                    <span id="landProbT2" class="text-emerald-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT2Bar" class="bg-emerald-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 3 (3+ Lands):</span>
+                                    <span id="landProbT3" class="text-cyan-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT3Bar" class="bg-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 4 (4+ Lands):</span>
+                                    <span id="landProbT4" class="text-amber-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT4Bar" class="bg-amber-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Opening Hand Keepability Rate -->
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-3 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase">✋ Opening Hand Keepability</h4>
+                                <span id="keepAvgLands" class="text-[10px] font-mono text-slate-400">Avg 0 Lands</span>
+                            </div>
+                            <div class="mt-3 flex items-baseline gap-2">
+                                <span id="keepEffectiveRate" class="text-3xl font-black text-emerald-400 font-mono">0%</span>
+                                <span class="text-xs text-slate-400 font-mono">Effective Keep Rate</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 font-mono mt-0.5">Natural 1st Hand: <b id="keepNaturalRate" class="text-slate-300 font-mono">0%</b></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[11px] font-mono">
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Optimal (3-4L + play)</span>
+                                <span id="keepOptimalPct" class="text-emerald-400 font-bold">0%</span>
+                            </div>
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Workable (2-5L)</span>
+                                <span id="keepWorkablePct" class="text-cyan-400 font-bold">0%</span>
+                            </div>
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Risky (No curve)</span>
+                                <span id="keepRiskyPct" class="text-amber-400 font-bold">0%</span>
+                            </div>
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Mulligan (0-1 / 6-7L)</span>
+                                <span id="keepUnkeepablePct" class="text-rose-400 font-bold">0%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Earliest Commander Cast Turn -->
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-3 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-purple-400 uppercase">👑 Commander Cast Timing</h4>
+                                <span id="cmdrCastEarliest" class="text-[10px] font-mono text-purple-300">Earliest T0</span>
+                            </div>
+                            <div class="mt-3 flex items-baseline gap-2">
+                                <span id="cmdrMedianCastTurn" class="text-3xl font-black text-purple-400 font-mono">Turn 4</span>
+                                <span class="text-xs text-slate-400 font-mono">Median Cast Turn</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 font-mono mt-0.5">Average: <b id="cmdrAvgCastTurn" class="text-slate-300 font-mono">4.0</b> &bull; Bottleneck: <b id="cmdrColorBottleneck" class="text-cyan-300 font-mono">None</b></p>
+                        </div>
+                        <div class="space-y-1 pt-2 border-t border-slate-800/80 text-[11px] font-mono">
+                            <span class="text-slate-500 text-[9px] uppercase block">Simulated Turn Arrival Distribution</span>
+                            <div id="cmdrCastDistBars" class="flex gap-1 items-center h-4 pt-0.5">
+                                <!-- Injected dynamically -->
+                            </div>
+                            <div class="flex justify-between text-[9px] text-slate-400 font-mono pt-1">
+                                <span>T2</span>
+                                <span>T3</span>
+                                <span>T4</span>
+                                <span>T5</span>
+                                <span>T6+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>            </div>
+
+            <!-- Row 5: Interaction & Threat Matrix (Coverage, Protection & Instant Holdout) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Interaction & Defense Matrix
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Permanent threat type coverage, counterspell vs. commander protection density, and instant-speed mana holdout requirements.</p>
+                    </div>
+                    <div id="holdoutRatingBadge" class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                        Holdout: -- CMC
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                    <!-- Threat Type Coverage Cards -->
+                    <div class="lg:col-span-2 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-mono font-bold text-slate-300 uppercase">Threat Type Coverage</span>
+                            <span class="text-[10px] font-mono text-slate-500">Instant vs. Sorcery answers</span>
+                        </div>
+                        <div id="threatCoverageGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            <!-- Injected by renderThreatCoverage() -->
+                        </div>
+                        <div id="threatVulnerabilitiesContainer" class="hidden text-xs font-mono bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-rose-300 space-y-1">
+                            <!-- Injected vulnerabilities list -->
+                        </div>
+                    </div>
+
+                    <!-- Counterspell vs Protection & Instant Holdout Meter -->
+                    <div class="space-y-4">
+                        <!-- Counter vs Protection -->
+                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase">🛡️ Stack vs. Protection</h4>
+                                <span id="cpStanceBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono">Balanced</span>
+                            </div>
+                            <div class="flex justify-between text-xs font-mono pt-1">
+                                <span class="text-slate-400">Counterspells:</span>
+                                <span id="cpCounterCount" class="text-cyan-400 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between text-xs font-mono">
+                                <span class="text-slate-400">Defensive Protection:</span>
+                                <span id="cpProtectionCount" class="text-emerald-400 font-bold">0</span>
+                            </div>
+                            <div id="cpBreakdownPills" class="flex flex-wrap gap-1 pt-1.5 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+                                <!-- Injected breakdown -->
+                            </div>
+                        </div>
+
+                        <!-- Instant Speed Holdout -->
+                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-amber-400 uppercase">⚡ Instant Holdout Mana</h4>
+                                <span id="holdoutAvgValue" class="text-xs font-mono font-black text-amber-400">0.0 CMC</span>
+                            </div>
+                            <p id="holdoutRatingDesc" class="text-[10px] text-slate-400 font-mono">Average mana required to pass turn holding interaction.</p>
+                            <div id="holdoutCmcPills" class="flex justify-between items-center text-[10px] font-mono text-slate-300 pt-1.5 border-t border-slate-800/80">
+                                <span>Free: <b id="holdoutCmc0" class="text-emerald-400 font-bold">0</b></span>
+                                <span>1 CMC: <b id="holdoutCmc1" class="text-cyan-400 font-bold">0</b></span>
+                                <span>2 CMC: <b id="holdoutCmc2" class="text-slate-200 font-bold">0</b></span>
+                                <span>3 CMC: <b id="holdoutCmc3" class="text-amber-400 font-bold">0</b></span>
+                                <span>4+ CMC: <b id="holdoutCmc4" class="text-rose-400 font-bold">0</b></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 6: Engine & Synergy Station (Enablers vs Payoffs & Typal Kindred) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Enabler-to-Payoff Ratio -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5">
+                                <span>⚙️ Enabler-to-Payoff Ratio</span>
+                            </h4>
+                            <span id="engineThemeBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">Engine</span>
+                        </div>
+                        <div class="mt-3 flex items-baseline gap-2">
+                            <span id="engineRatioValue" class="text-3xl font-black text-purple-400 font-mono">1.0 : 1</span>
+                            <span class="text-xs text-slate-400 font-mono">Enabler : Payoff</span>
+                        </div>
+                        <div class="flex justify-between text-xs font-mono mt-2 pt-1 border-t border-slate-800/60">
+                            <span class="text-slate-400">Enablers (Fuel): <b id="engineEnablerCount" class="text-cyan-300 font-bold">0</b></span>
+                            <span class="text-slate-400">Payoffs (Reward): <b id="enginePayoffCount" class="text-purple-300 font-bold">0</b></span>
+                        </div>
+                    </div>
+                    <div id="engineHealthBox" class="text-[11px] font-mono p-2 rounded bg-slate-900/80 border border-slate-800 text-slate-300">
+                        Engine Status: Analyzing...
+                    </div>
+                </div>
+
+                <!-- Typal / Kindred Density -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
+                                <span>🐾 Typal / Kindred Synergy</span>
+                            </h4>
+                            <span id="typalDeckBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">Non-Typal</span>
+                        </div>
+                        <div class="mt-3 flex items-baseline gap-2">
+                            <span id="typalPrimaryType" class="text-2xl font-black text-cyan-400 font-mono">None</span>
+                            <span id="typalDeckPct" class="text-xs text-slate-400 font-mono">0% deck</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs font-mono mt-2 pt-1 border-t border-slate-800/60">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Matching Creatures:</span>
+                                <span id="typalCreatureCount" class="text-slate-200 font-bold">0 (0%)</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Kindred Support / Lords:</span>
+                                <span id="typalSupportCount" class="text-cyan-300 font-bold">0 cards</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="typalSupportList" class="text-[10px] font-mono text-slate-400 truncate">
+                        Support: None detected
+                    </div>
+                </div>
+
+                <!-- Virtual Card Advantage -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5">
+                                <span>📚 Virtual Card Advantage</span>
+                            </h4>
+                            <span id="virtualTotalAdvantage" class="text-xs font-mono font-black text-emerald-400">0 Resources</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs font-mono mt-3">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Pure Card Draw:</span>
+                                <span id="vcaPureDraw" class="text-slate-200 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Impulse Draw (Red):</span>
+                                <span id="vcaImpulseDraw" class="text-rose-400 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Graveyard Recursion:</span>
+                                <span id="vcaRecursion" class="text-emerald-400 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Tutors & Selection:</span>
+                                <span id="vcaTutors" class="text-amber-400 font-bold">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="vcaRatingBox" class="text-[11px] font-mono p-2 rounded bg-slate-900/80 border border-slate-800 text-emerald-300">
+                        Resource Depth: Strong
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 7: Endgame & Win Conditions Station (Win Paths & Late-Game Mana Sinks) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Win Condition Classification -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h4 class="text-xs font-mono font-bold text-amber-400 uppercase flex items-center gap-1.5">
+                            <span>🏆 Win Condition Paths</span>
+                        </h4>
+                        <span id="winconClockEstimate" class="text-[10px] font-mono text-slate-400">Clock: Turns 7-9</span>
+                    </div>
+                    <div class="space-y-3 pt-1">
+                        <div class="bg-[#0B0F17]/80 rounded-lg p-3 border border-slate-800 space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-mono uppercase text-amber-400 font-bold">Primary Win Path</span>
+                                <span id="primaryWinconConfidence" class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 font-mono">High</span>
+                            </div>
+                            <div id="primaryWinconName" class="text-sm font-bold font-mono text-white">Combat Damage & Board Swarm</div>
+                            <div id="primaryWinconCards" class="text-[10px] font-mono text-slate-400">Key cards: Analyzing...</div>
+                        </div>
+                        <div class="bg-[#0B0F17]/80 rounded-lg p-3 border border-slate-800 space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-mono uppercase text-slate-400 font-bold">Secondary Win Path</span>
+                                <span id="secondaryWinconConfidence" class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">Secondary</span>
+                            </div>
+                            <div id="secondaryWinconName" class="text-sm font-bold font-mono text-slate-200">Incidental Damage</div>
+                            <div id="secondaryWinconCards" class="text-[10px] font-mono text-slate-400">Key cards: Analyzing...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mana Sink Availability -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
+                                <span>🚰 Late-Game Mana Sinks</span>
+                            </h4>
+                            <span id="manaSinkTotalBadge" class="text-xs font-mono font-black text-cyan-400">0 Outlets</span>
+                        </div>
+                        <div class="mt-3">
+                            <div id="manaSinkResilienceBox" class="text-xs font-mono p-2 rounded bg-slate-900/80 border border-slate-800 text-cyan-300">
+                                Late-Game Flood Resilience: Analyzing...
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <span class="text-[10px] font-mono text-slate-400 uppercase block mb-1.5">Repeatable Outlets & X-Spells:</span>
+                            <div id="manaSinkCardsList" class="flex flex-wrap gap-1.5">
+                                <!-- Injected sinks list -->
+                            </div>
+                        </div>
+                    </div>
+                    <div id="manaSinkTypeCounts" class="text-[10px] font-mono text-slate-500 pt-2 border-t border-slate-800/60 flex justify-between">
+                        <span>X-Spells: <b id="sinkCountX" class="text-slate-300">0</b></span>
+                        <span>Abilities: <b id="sinkCountAct" class="text-slate-300">0</b></span>
+                        <span>Utility Lands: <b id="sinkCountLand" class="text-slate-300">0</b></span>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- ========================================================================= -->
@@ -1051,9 +1397,260 @@ function displayDeckInInspector(deck) {
     renderPipSourceRadar(stats.pip_breakdown || {});
     renderPipSourceCards(stats.pip_breakdown || {});
 
+    // Render 11-Metric Advanced Telemetry Stations
+    renderSpeedAndManaTelemetry(stats);
+    renderInteractionDefenseTelemetry(stats);
+    renderEngineAndSynergyTelemetry(stats);
+    renderEndgameAndWinconTelemetry(stats);
+
     // Render Full Card Table
     renderCardRegistryTable(cards);
     switchInspectorTab('stats');
+}
+
+// Render Speed & Opening Mana Telemetry (Land Drops, Keepability & Commander Cast)
+function renderSpeedAndManaTelemetry(stats) {
+    const ldp = stats.land_drop_probabilities || {};
+    const eff = ldp.effective_with_mulligan || {};
+    const cantrips = ldp.cheap_cantrip_count || stats.draw_cantrip_count || 0;
+    safeSetText('speedCantripCount', `${cantrips} Cantrips (CMC <= 2)`);
+
+    const t1Raw = ldp.turn_1 || 0;
+    const t1Eff = eff.turn_1 || t1Raw;
+    safeSetText('landProbT1', `${t1Raw}% (eff ${t1Eff}%)`);
+    const b1 = document.getElementById('landProbT1Bar');
+    if (b1) b1.style.width = `${Math.min(100, t1Eff)}%`;
+
+    const t2Raw = ldp.turn_2 || 0;
+    const t2Eff = eff.turn_2 || t2Raw;
+    safeSetText('landProbT2', `${t2Raw}% (eff ${t2Eff}%)`);
+    const b2 = document.getElementById('landProbT2Bar');
+    if (b2) b2.style.width = `${Math.min(100, t2Eff)}%`;
+
+    const t3Raw = ldp.turn_3 || 0;
+    const t3Eff = eff.turn_3 || t3Raw;
+    safeSetText('landProbT3', `${t3Raw}% (eff ${t3Eff}%)`);
+    const b3 = document.getElementById('landProbT3Bar');
+    if (b3) b3.style.width = `${Math.min(100, t3Eff)}%`;
+
+    const t4Raw = ldp.turn_4 || 0;
+    const t4Eff = eff.turn_4 || t4Raw;
+    safeSetText('landProbT4', `${t4Raw}% (eff ${t4Eff}%)`);
+    const b4 = document.getElementById('landProbT4Bar');
+    if (b4) b4.style.width = `${Math.min(100, t4Eff)}%`;
+
+    // Keepability
+    const keep = stats.opening_hand_keepability || {};
+    safeSetText('keepEffectiveRate', `${keep.effective_keep_rate || 0}%`);
+    safeSetText('keepNaturalRate', `${keep.natural_keep_rate || 0}%`);
+    safeSetText('keepAvgLands', `Avg ${keep.avg_lands_in_hand || 0} Lands`);
+    const bk = keep.breakdown || {};
+    safeSetText('keepOptimalPct', `${bk.optimal || 0}%`);
+    safeSetText('keepWorkablePct', `${bk.workable || 0}%`);
+    safeSetText('keepRiskyPct', `${bk.risky || 0}%`);
+    safeSetText('keepUnkeepablePct', `${bk.unkeepable || 0}%`);
+
+    // Commander Cast
+    const cmdr = stats.earliest_commander_cast || {};
+    safeSetText('cmdrMedianCastTurn', `Turn ${cmdr.median_cast_turn || 4}`);
+    safeSetText('cmdrCastEarliest', `Earliest T${cmdr.earliest_possible_turn || 2}`);
+    safeSetText('cmdrAvgCastTurn', cmdr.avg_cast_turn || 4.0);
+    safeSetText('cmdrColorBottleneck', cmdr.color_bottleneck || 'None');
+
+    const distContainer = document.getElementById('cmdrCastDistBars');
+    if (distContainer && cmdr.turn_distribution) {
+        const td = cmdr.turn_distribution;
+        const colors = ['bg-emerald-400', 'bg-cyan-400', 'bg-blue-400', 'bg-amber-400', 'bg-rose-400'];
+        const keys = ['turn_2', 'turn_3', 'turn_4', 'turn_5', 'turn_6_plus'];
+        distContainer.innerHTML = keys.map((k, idx) => {
+            const pct = td[k] || 0;
+            return `<div class="${colors[idx]} h-full rounded-sm transition-all duration-500" style="width:${Math.max(2, pct)}%" title="${k.replace('_', ' ')}: ${pct}%"></div>`;
+        }).join('');
+    }
+}
+
+// Render Interaction & Defense Matrix (Coverage, Protection & Instant Holdout)
+function renderInteractionDefenseTelemetry(stats) {
+    const tc = stats.threat_coverage || {};
+    const cat = tc.categories || {};
+    const grid = document.getElementById('threatCoverageGrid');
+    if (grid) {
+        const typeIcons = {
+            'creatures': '⚔️ Creatures',
+            'artifacts': '🏺 Artifacts',
+            'enchantments': '✨ Enchantments',
+            'planeswalkers': '👁️ Walkers',
+            'graveyards': '🪦 Graveyards',
+            'lands': '🏔️ Lands',
+            'spells': '⚡ Spells (Stack)',
+        };
+        const order = ['creatures', 'artifacts', 'enchantments', 'planeswalkers', 'graveyards', 'lands', 'spells'];
+        grid.innerHTML = order.map(k => {
+            const item = cat[k] || { total: 0, instant: 0, sorcery: 0, cards: [] };
+            const isZeroInstant = (item.instant === 0 && (k === 'artifacts' || k === 'enchantments'));
+            const borderCls = isZeroInstant ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-800 bg-[#0B0F17]/80';
+            return `
+                <div class="p-2.5 rounded-lg border ${borderCls} font-mono flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between text-[11px] font-bold text-slate-300">
+                            <span>${typeIcons[k] || k}</span>
+                            <span class="text-xs ${item.total > 0 ? 'text-cyan-400 font-black' : 'text-slate-500'}">${item.total}</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-[9px] mt-1.5 text-slate-400">
+                            <span class="px-1 py-0.2 rounded bg-cyan-500/10 text-cyan-300 font-bold">${item.instant} Inst</span>
+                            <span class="px-1 py-0.2 rounded bg-slate-800 text-slate-400">${item.sorcery} Sorc</span>
+                        </div>
+                    </div>
+                    ${item.cards.length > 0 ? `<div class="text-[9px] text-slate-500 truncate mt-1.5" title="${item.cards.join(', ')}">${item.cards.slice(0, 2).join(', ')}${item.cards.length > 2 ? '...' : ''}</div>` : `<div class="text-[9px] text-slate-600 italic mt-1.5">No answers</div>`}
+                </div>
+            `;
+        }).join('');
+    }
+
+    const vulnBox = document.getElementById('threatVulnerabilitiesContainer');
+    if (vulnBox) {
+        if (tc.vulnerabilities && tc.vulnerabilities.length > 0) {
+            vulnBox.classList.remove('hidden');
+            vulnBox.innerHTML = `
+                <div class="font-bold flex items-center gap-1.5 text-rose-400 text-[11px] mb-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    <span>Coverage Vulnerability Alerts:</span>
+                </div>
+                ${tc.vulnerabilities.map(v => `<div class="text-[10px] pl-4">&bull; ${v}</div>`).join('')}
+            `;
+        } else {
+            vulnBox.classList.add('hidden');
+        }
+    }
+
+    // Counter vs Protection
+    const cp = stats.counter_vs_protection || {};
+    safeSetText('cpCounterCount', cp.counterspell_count || 0);
+    safeSetText('cpProtectionCount', cp.protection_count || 0);
+    safeSetText('cpStanceBadge', cp.stance || 'Balanced');
+    const pb = cp.protection_breakdown || {};
+    const pbContainer = document.getElementById('cpBreakdownPills');
+    if (pbContainer) {
+        pbContainer.innerHTML = `
+            <span>Hexproof: <b class="text-emerald-300 font-bold">${pb.hexproof_shroud || 0}</b></span>
+            <span>Indestructible: <b class="text-cyan-300 font-bold">${pb.indestructible || 0}</b></span>
+            <span>Phase: <b class="text-purple-300 font-bold">${pb.phase_out || 0}</b></span>
+            <span>Flicker: <b class="text-amber-300 font-bold">${pb.flicker_bounce || 0}</b></span>
+            <span>Ward: <b class="text-slate-300 font-bold">${pb.ward_prot || 0}</b></span>
+        `;
+    }
+
+    // Instant Holdout
+    const ho = stats.instant_mana_holdout || {};
+    safeSetText('holdoutAvgValue', `${(ho.avg_holdout_cmc || 0).toFixed(2)} CMC`);
+    safeSetText('holdoutRatingDesc', ho.rating || 'Average mana required to pass turn holding interaction.');
+    const hoBadge = document.getElementById('holdoutRatingBadge');
+    if (hoBadge) {
+        hoBadge.innerText = `Holdout: ${(ho.avg_holdout_cmc || 0).toFixed(1)} CMC (${ho.rating ? ho.rating.split(' ')[0] : 'Normal'})`;
+        const color = ho.rating_color || 'slate';
+        hoBadge.className = `text-xs font-mono px-2.5 py-1 rounded bg-${color}-500/20 text-${color}-400 border border-${color}-500/30`;
+    }
+    const cb = ho.cmc_breakdown || {};
+    safeSetText('holdoutCmc0', cb['0'] || 0);
+    safeSetText('holdoutCmc1', cb['1'] || 0);
+    safeSetText('holdoutCmc2', cb['2'] || 0);
+    safeSetText('holdoutCmc3', cb['3'] || 0);
+    safeSetText('holdoutCmc4', cb['4+'] || 0);
+}
+
+// Render Engine, Typal & Virtual Card Advantage Telemetry
+function renderEngineAndSynergyTelemetry(stats) {
+    // Engine Enabler vs Payoff
+    const ep = stats.enabler_payoff || {};
+    safeSetText('engineThemeBadge', ep.theme || 'Engine');
+    safeSetText('engineRatioValue', `${(ep.ratio || 1.0).toFixed(1)} : 1`);
+    safeSetText('engineEnablerCount', ep.enabler_count || 0);
+    safeSetText('enginePayoffCount', ep.payoff_count || 0);
+    const healthBox = document.getElementById('engineHealthBox');
+    if (healthBox) {
+        healthBox.innerText = `Engine: ${ep.health || 'Balanced'}`;
+        const color = ep.status_color || 'slate';
+        healthBox.className = `text-[11px] font-mono p-2 rounded bg-${color}-500/10 border border-${color}-500/30 text-${color}-300`;
+    }
+
+    // Typal / Kindred
+    const typ = stats.typal_density || {};
+    const typBadge = document.getElementById('typalDeckBadge');
+    if (typBadge) {
+        if (typ.is_typal_deck) {
+            typBadge.innerText = `${typ.primary_type} Kindred`;
+            typBadge.className = "text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold";
+        } else {
+            typBadge.innerText = "Non-Typal";
+            typBadge.className = "text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono";
+        }
+    }
+    safeSetText('typalPrimaryType', typ.primary_type || 'None');
+    safeSetText('typalDeckPct', `${typ.total_typal_deck_pct || 0}% synergy`);
+    safeSetText('typalCreatureCount', `${typ.matching_creatures_count || 0} (${typ.matching_creatures_pct || 0}%)`);
+    safeSetText('typalSupportCount', `${typ.kindred_support_count || 0} cards`);
+    const suppList = document.getElementById('typalSupportList');
+    if (suppList) {
+        if (typ.kindred_support_cards && typ.kindred_support_cards.length > 0) {
+            suppList.innerText = `Support: ${typ.kindred_support_cards.join(', ')}`;
+            suppList.title = typ.kindred_support_cards.join(', ');
+        } else {
+            suppList.innerText = "Support: None detected";
+        }
+    }
+
+    // Virtual Card Advantage
+    const vca = stats.virtual_card_advantage || {};
+    safeSetText('virtualTotalAdvantage', `${vca.total_virtual_advantage || 0} Resources`);
+    safeSetText('vcaPureDraw', vca.pure_draw || 0);
+    safeSetText('vcaImpulseDraw', vca.impulse_draw || 0);
+    safeSetText('vcaRecursion', vca.recursion || 0);
+    safeSetText('vcaTutors', vca.tutors || 0);
+    const vcaBox = document.getElementById('vcaRatingBox');
+    if (vcaBox) {
+        vcaBox.innerText = `Resource Depth: ${vca.resource_depth_rating || 'Moderate'}`;
+        const color = vca.rating_color || 'emerald';
+        vcaBox.className = `text-[11px] font-mono p-2 rounded bg-${color}-500/10 border border-${color}-500/30 text-${color}-300`;
+    }
+}
+
+// Render Endgame & Win Conditions Telemetry
+function renderEndgameAndWinconTelemetry(stats) {
+    const wc = stats.win_conditions || {};
+    const pw = wc.primary_wincon || {};
+    const sw = wc.secondary_wincon || {};
+    safeSetText('winconClockEstimate', `Clock: ${wc.clock_estimate || 'Turns 7-9'}`);
+    safeSetText('primaryWinconName', pw.name || 'Combat Damage & Board Presence');
+    safeSetText('primaryWinconConfidence', pw.confidence || 'Moderate');
+    safeSetText('primaryWinconCards', pw.key_cards && pw.key_cards.length > 0 ? `Key pieces: ${pw.key_cards.join(', ')}` : 'Built on creature combat and board attrition.');
+
+    safeSetText('secondaryWinconName', sw.name || 'Combat Fallback');
+    safeSetText('secondaryWinconConfidence', sw.confidence || 'Incidental');
+    safeSetText('secondaryWinconCards', sw.key_cards && sw.key_cards.length > 0 ? `Key pieces: ${sw.key_cards.join(', ')}` : 'Standard incremental damage.');
+
+    // Mana Sinks
+    const ms = stats.mana_sinks || {};
+    safeSetText('manaSinkTotalBadge', `${ms.total_sinks || 0} Outlets`);
+    const msBox = document.getElementById('manaSinkResilienceBox');
+    if (msBox) {
+        msBox.innerText = ms.late_game_resilience || 'Analyzing...';
+        const color = ms.resilience_color || 'cyan';
+        msBox.className = `text-xs font-mono p-2 rounded bg-${color}-500/10 border border-${color}-500/30 text-${color}-300`;
+    }
+    const sinkList = document.getElementById('manaSinkCardsList');
+    if (sinkList) {
+        if (ms.top_sinks && ms.top_sinks.length > 0) {
+            sinkList.innerHTML = ms.top_sinks.map(s => 
+                `<span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700" title="${s.type} (${s.cmc} CMC)">${s.name} <span class="text-cyan-400 text-[9px]">${s.type}</span></span>`
+            ).join('');
+        } else {
+            sinkList.innerHTML = `<span class="text-[10px] font-mono text-slate-500 italic">No repeatable mana sinks detected.</span>`;
+        }
+    }
+    const tb = ms.type_breakdown || {};
+    safeSetText('sinkCountX', tb.x_spell || 0);
+    safeSetText('sinkCountAct', tb.activated_ability || 0);
+    safeSetText('sinkCountLand', tb.utility_land || 0);
 }
 
 // Render Pip vs Source Radar Chart

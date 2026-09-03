@@ -1,0 +1,936 @@
+{% extends "base.html" %}
+
+{% block title %}Chimaera // Tactical Field Manual & System Overview{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6 pb-20">
+
+    <!-- Top Tactical Header HUD -->
+    <div class="bg-[#10141D] border-2 border-[#00CED1] p-5 md:p-6 shadow-2xl relative overflow-hidden">
+        <div class="absolute -right-20 -bottom-20 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 bg-[#00CED1] animate-tactical-pulse inline-block"></span>
+                    <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">INTELLIGENCE DOSSIER // REVISION 2.0</span>
+                </div>
+                <h1 class="text-2xl md:text-3xl font-heading font-black text-white uppercase tracking-wider mt-1 flex items-center gap-2.5">
+                    Tactical Field Manual & System Overview
+                </h1>
+                <p class="text-xs md:text-sm text-[#94A3B8] mt-1 font-sans max-w-3xl">
+                    Comprehensive operational reference: market surveillance protocols, multi-vendor pricing matrices, local store tracking, and an exhaustive guide to Commander (EDH) statistical telemetry.
+                </p>
+            </div>
+
+            <!-- Quick Action Shortcuts -->
+            <div class="flex flex-wrap items-center gap-2 flex-shrink-0 font-mono text-xs">
+                <a href="#sectors" class="btn-bridge px-3 py-2 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center space-x-1.5 transition">
+                    <span>🛸 Sectors & Tabs</span>
+                </a>
+                <a href="#commander-stats" class="btn-bridge px-3 py-2 text-[#C084FC] hover:text-white hover:border-[#C084FC] border-[#C084FC]/40 flex items-center space-x-1.5 transition">
+                    <span>📊 Commander Stats Guide</span>
+                </a>
+                <a href="/" class="btn-crimson px-3.5 py-2 uppercase font-bold tracking-wider">
+                    Registry Dashboard &rarr;
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Jump Interactive Sticky HUD Navigation Bar -->
+    <div class="sticky top-14 sm:top-16 z-30 bg-[#1B2230]/95 backdrop-blur-md border-y border-[#263245] py-2 px-3 sm:px-4 flex items-center gap-2 overflow-x-auto no-scrollbar font-mono text-xs">
+        <span class="text-[10px] text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">// JUMP TO:</span>
+        <a href="#system-architecture" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#94A3B8] hover:text-[#00CED1] border border-[#263245] whitespace-nowrap transition">
+            00. Architecture
+        </a>
+        <a href="#tab-01-registry" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#94A3B8] hover:text-white border border-[#263245] whitespace-nowrap transition">
+            01. Registry
+        </a>
+        <a href="#tab-02-deals" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#FF3358] hover:text-white border border-[#DC143C]/40 whitespace-nowrap transition">
+            02. Deals
+        </a>
+        <a href="#tab-03-buylist" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#2DD4BF] hover:text-white border border-[#2DD4BF]/40 whitespace-nowrap transition">
+            03. Buylist
+        </a>
+        <a href="#tab-04-microcenter" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#F59E0B] hover:text-white border border-[#F59E0B]/40 whitespace-nowrap transition">
+            04. MicroCenter
+        </a>
+        <a href="#tab-05-commander-intel" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#C084FC] hover:text-white border border-[#A855F7]/40 whitespace-nowrap transition">
+            05. Commander Intel
+        </a>
+        <a href="#tab-06-fleet-overview" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#00CED1] hover:text-white border border-[#00CED1]/40 whitespace-nowrap transition">
+            06. Fleet Overview
+        </a>
+        <a href="#tab-07-admin" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#94A3B8] hover:text-white border border-[#263245] whitespace-nowrap transition">
+            07. Admin
+        </a>
+        <a href="#commander-stats" class="px-2.5 py-1 bg-[#C084FC]/20 hover:bg-[#C084FC] text-white hover:text-black border border-[#C084FC] font-bold whitespace-nowrap transition">
+            ⚡ Commander Stats Reference
+        </a>
+        <a href="#system-operations" class="px-2.5 py-1 bg-[#10141D] hover:bg-[#222B3D] text-[#94A3B8] hover:text-white border border-[#263245] whitespace-nowrap transition">
+            ⚙️ Operations & Alerts
+        </a>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 1: ARCHITECTURE & CORE SURVEILLANCE ENGINES -->
+    <!-- ========================================================================= -->
+    <section id="system-architecture" class="bg-[#1B2230] border border-[#263245] p-5 sm:p-6 space-y-4">
+        <div class="flex items-center justify-between border-b border-[#263245] pb-3">
+            <div>
+                <span class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-widest block">// SECTION 00</span>
+                <h2 class="text-xl font-heading font-black text-white uppercase tracking-wider">System Architecture & Core Intelligence Engines</h2>
+            </div>
+            <span class="text-xs font-mono px-2 py-0.5 bg-[#00CED1]/10 text-[#00CED1] border border-[#00CED1]/30 uppercase font-bold">Clinical Stack</span>
+        </div>
+
+        <p class="text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+            Chimaera is a high-density, multi-threaded market surveillance platform designed for Magic: The Gathering collectors, competitive players, and Commander deck architects. The application continuously scans public secondary market indices, regional local game store inventory, and retail outlets to detect price discrepancies, restock events, and arbitrage opportunities.
+        </p>
+
+        <!-- Engine Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-2">
+            <!-- Engine 1: Scryfall -->
+            <div class="bg-[#10141D] border border-[#263245] p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-white uppercase">Scryfall Engine</span>
+                    <span class="text-[10px] font-mono text-[#00CED1]">[ REST API ]</span>
+                </div>
+                <p class="text-xs text-[#94A3B8]">
+                    Provides sub-millisecond card name autocomplete, high-resolution scan art, card collector metadata, oracle rule texts, mana costs, and official <strong>TCGplayer Market USD</strong> price baselines.
+                </p>
+                <div class="text-[10px] font-mono text-[#64748B] pt-1 border-t border-[#263245]">
+                    Endpoint: <code>/cards/named</code> &bull; <code>/cards/collection</code>
+                </div>
+            </div>
+
+            <!-- Engine 2: Mighty Meeple -->
+            <div class="bg-[#10141D] border border-[#263245] p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-white uppercase">Mighty Meeple</span>
+                    <span class="text-[10px] font-mono text-[#2DD4BF]">[ BINDERPOS ]</span>
+                </div>
+                <p class="text-xs text-[#94A3B8]">
+                    Direct integration with Mighty Meeple's Shopify and BinderPOS backend. Scans real-time stock levels, condition tiers (NM, LP), live retail prices, and complete trade-in buylist quotes.
+                </p>
+                <div class="text-[10px] font-mono text-[#64748B] pt-1 border-t border-[#263245]">
+                    Catalog: <code>mightymeeple.com</code> &bull; <code>portal.binderpos.com</code>
+                </div>
+            </div>
+
+            <!-- Engine 3: eBay -->
+            <div class="bg-[#10141D] border border-[#263245] p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-white uppercase">eBay Surveillance</span>
+                    <span class="text-[10px] font-mono text-[#FF3358]">[ BIN SCANNER ]</span>
+                </div>
+                <p class="text-xs text-[#94A3B8]">
+                    Monitors Buy-It-Now single card listings across eBay. Supports official eBay Finding/Browse API credentials with automatic fallback to high-speed HTML scraping for live bottom-dollar discovery.
+                </p>
+                <div class="text-[10px] font-mono text-[#64748B] pt-1 border-t border-[#263245]">
+                    Modes: Finding API &bull; Web Scraping Fallback
+                </div>
+            </div>
+
+            <!-- Engine 4: MicroCenter Charlotte -->
+            <div class="bg-[#10141D] border border-[#263245] p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-white uppercase">MicroCenter #175</span>
+                    <span class="text-[10px] font-mono text-[#F59E0B]">[ LOCAL STORE ]</span>
+                </div>
+                <p class="text-xs text-[#94A3B8]">
+                    Headless scraper utilizing Chrome TLS impersonation (<code>curl_cffi</code>) locked to Charlotte Store #175. Tracks sealed MTG boxes, precons, bundles, stock quantities, and Day-over-Day delta markdowns.
+                </p>
+                <div class="text-[10px] font-mono text-[#64748B] pt-1 border-t border-[#263245]">
+                    Store ID: <code>175</code> (Charlotte, NC) &bull; Snapshot DB
+                </div>
+            </div>
+        </div>
+
+        <!-- Secondary Engine Row -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+            <div class="bg-[#10141D] border border-[#263245] p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-white uppercase">Google Gemini AI</span>
+                    <span class="text-[10px] font-mono text-[#C084FC]">[ GENERATIVE INTEL ]</span>
+                </div>
+                <p class="text-xs text-[#94A3B8]">
+                    Deep neural tactical analysis powered by Google Gemini (with automated cascading fallback across <code>gemini-3.7-flash</code>, <code>3.6-flash</code>, <code>3.5-flash</code>, and <code>3.5-flash-lite</code>). Generates 1–10 card effectiveness scores, combos, power brackets, and upgrade matrices.
+                </p>
+            </div>
+
+            <div class="bg-[#10141D] border border-[#263245] p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-white uppercase">APScheduler & Daemon</span>
+                    <span class="text-[10px] font-mono text-[#00CED1]">[ CADENCE ENGINE ]</span>
+                </div>
+                <p class="text-xs text-[#94A3B8]">
+                    Background scheduling daemon operating inside the web process or as an independent worker process (<code>worker.py</code>). Periodically polls prices every 6 to 12 hours without requiring browser interaction.
+                </p>
+            </div>
+
+            <div class="bg-[#10141D] border border-[#263245] p-3.5 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-white uppercase">Discord Deal Dispatcher</span>
+                    <span class="text-[10px] font-mono text-[#FF3358]">[ DISCORD WEBHOOKS ]</span>
+                </div>
+                <p class="text-xs text-[#94A3B8]">
+                    When any vendor's in-stock price drops at or below target threshold, Chimaera dispatches a rich Discord Webhook embed containing card artwork, target vs best live price, dollar/percent savings, and 1-click checkout URLs.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 2: COMPREHENSIVE TAB-BY-TAB OPERATIONS GUIDE -->
+    <!-- ========================================================================= -->
+    <section id="sectors" class="space-y-6">
+        <div class="border-b border-[#263245] pb-3">
+            <span class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-widest block">// SECTION 01</span>
+            <h2 class="text-2xl font-heading font-black text-white uppercase tracking-wider">Tab-by-Tab Operations & Feature Manual</h2>
+            <p class="text-xs sm:text-sm text-[#94A3B8] mt-0.5">In-depth breakdown of user interfaces, data structures, and actionable workflows for every sector of the application.</p>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- TAB 01: REGISTRY DASHBOARD -->
+        <!-- --------------------------------------------------------------------- -->
+        <div id="tab-01-registry" class="bg-[#1B2230] border border-[#263245] p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="px-2 py-0.5 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 font-mono font-bold text-xs uppercase">SECTOR 01</span>
+                    <h3 class="text-lg font-heading font-black text-white uppercase tracking-wider">Registry Dashboard (<code>/</code>)</h3>
+                </div>
+                <span class="text-xs font-mono text-[#94A3B8]">Core Watchlist & Price Comparison Matrix</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    The <strong>Registry Dashboard</strong> serves as the central command center for personal MTG single acquisition. Users register individual cards, set target acquisition thresholds ($ USD), and monitor live price feeds across all three online vendors in a unified telemetry view.
+                </p>
+
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider pt-2">// KEY FEATURES & CONTROLS:</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">1. Real-Time Telemetry HUD</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Displays four top-line metrics: <strong>Monitored Targets</strong> (total cards in registry), <strong>Active Deals</strong> (cards currently at or below target price), <strong>Target Portfolio</strong> (cumulative target USD valuation), and <strong>Live Market Sum</strong> (lowest available in-stock market total).
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">2. Multi-Vendor Comparison Matrix</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Every card renders a three-way vendor price box comparing <strong>TCGplayer Market Price</strong>, <strong>Mighty Meeple In-Stock Price & Condition</strong>, and <strong>eBay Lowest Buy-It-Now Price</strong>. The lowest in-stock vendor is automatically highlighted.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">3. Tracking Scope ("Any Version" vs Specific Print)</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            When registering a card, collectors can select <strong>"Any Version"</strong> (evaluates the cheapest legal printing across all MTG history) or lock into a specific expansion set, collector number, and finish variant (nonfoil, foil, etched).
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">4. Tagging & Category Filtering</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Assign cards to specific decks (e.g. <em>"Atraxa Superfriends"</em>, <em>"Modern Burn"</em>) or purposes (<em>"Cube"</em>, <em>"Trade Target"</em>). Filter by tags using 1-click interactive pill buttons or the toolbar dropdown.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">5. Three Interactive Display Layouts</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Toggle seamlessly between <strong>Detailed Grid View</strong> (high-density cards with artwork and vendor matrix), <strong>Compact List View</strong> (spreadsheet-style rapid row triage), and <strong>Swipe Carousel View</strong> (focused one-card-at-a-time inspection for mobile devices).
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">6. Inline Surveillance Controls</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Each card provides 1-click inline buttons: <strong>Poll</strong> (triggers immediate multi-vendor price re-scrape), <strong>Edit Target</strong> (opens modal to adjust threshold), <strong>Toggle MM Alert</strong> (enables/disables Mighty Meeple restock notifications), and <strong>Delete</strong>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- TAB 02: PRIORITY DEALS -->
+        <!-- --------------------------------------------------------------------- -->
+        <div id="tab-02-deals" class="bg-[#1B2230] border-2 border-[#DC143C]/80 p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="px-2 py-0.5 bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/40 font-mono font-bold text-xs uppercase">SECTOR 02</span>
+                    <h3 class="text-lg font-heading font-black text-white uppercase tracking-wider">Priority Deals (<code>/deals</code>)</h3>
+                </div>
+                <span class="text-xs font-mono text-[#FF3358] font-bold">[ ACTIVE BUY SIGNALS ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    The <strong>Priority Deals</strong> tab filters out all passive surveillance targets to exclusively isolate actionable purchasing opportunities where a monitored card is currently in stock at or below the user's customized acquisition threshold.
+                </p>
+
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider pt-2">// KEY FEATURES & CALCULATIONS:</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#FF3358] block uppercase">Cumulative Delta Savings</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Calculates total monetary savings across all active deals: $\sum (\text{Target Price} - \text{Lowest In-Stock Price})$. Highlighted prominently in the header HUD.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#FF3358] block uppercase">Discount Rating Badges</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Cards display visual discount badges: <strong>Great Deal</strong> (&ge;20% below market), <strong>Good Deal</strong> (8–20% below market), or <strong>Fair Market</strong> (&plusmn;5% of baseline), with exact dollar and percentage margins.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#FF3358] block uppercase">Direct Checkout Links</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Instant 1-click external checkout links navigating directly to the specific TCGplayer product page, Mighty Meeple Shopify cart/product URL, or eBay Buy-It-Now search.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- TAB 03: BUYLIST SCANNER -->
+        <!-- --------------------------------------------------------------------- -->
+        <div id="tab-03-buylist" class="bg-[#1B2230] border border-[#2DD4BF]/60 p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="px-2 py-0.5 bg-[#2DD4BF]/20 text-[#2DD4BF] border border-[#2DD4BF]/40 font-mono font-bold text-xs uppercase">SECTOR 03</span>
+                    <h3 class="text-lg font-heading font-black text-white uppercase tracking-wider">Mighty Meeple Buylist Scanner (<code>/buylist</code>)</h3>
+                </div>
+                <span class="text-xs font-mono text-[#2DD4BF] font-bold">[ BINDERPOS LIVE VALUATION ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    The <strong>Buylist Scanner</strong> connects directly to Mighty Meeple's BinderPOS purchasing engine. Rather than retail selling prices, this tool retrieves what the store is actively paying collectors in cash or store credit for singles.
+                </p>
+
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider pt-2">// KEY WORKFLOWS & VALUATION RULES:</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#2DD4BF] block uppercase">1. Dual Ingestion Modes (Single & Bulk)</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Look up single cards with instant variant matching, or paste an entire manifest of card names (e.g. from an inventory export or decklist). The engine performs concurrent background lookups across BinderPOS.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#2DD4BF] block uppercase">2. Condition Tier Selection (LP Default)</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Defaults to <strong>Lightly Played (LP)</strong> pricing, reflecting the realistic condition of played tournament staples. Users can toggle between Near Mint (NM), Lightly Played (LP), Moderately Played (MP), Heavily Played (HP), and Damaged (DMG).
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#2DD4BF] block uppercase">3. Store Credit (+30–40% Bonus) vs Cash</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            BinderPOS offers bonus payouts for store credit over cash (typically +30% to +40%). The scanner defaults to Store Credit mode and allows side-by-side comparison with cash payouts.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#2DD4BF] block uppercase">4. Interactive Trade-In Batch Cart</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Add quoted cards to a sliding <strong>Trade-In Batch Cart</strong> drawer. Adjust quantities, watch total trade value calculate dynamically, and export a finalized trade-in manifest ready for store submission.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- TAB 04: MICROCENTER CHARLOTTE -->
+        <!-- --------------------------------------------------------------------- -->
+        <div id="tab-04-microcenter" class="bg-[#1B2230] border border-[#F59E0B]/60 p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="px-2 py-0.5 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 font-mono font-bold text-xs uppercase">SECTOR 04</span>
+                    <h3 class="text-lg font-heading font-black text-white uppercase tracking-wider">MicroCenter Charlotte Surveillance (<code>/microcenter</code>)</h3>
+                </div>
+                <span class="text-xs font-mono text-[#F59E0B] font-bold">[ STORE #175 &bull; SEALED PRODUCT TELEMETRY ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    The <strong>MicroCenter Charlotte</strong> surveillance tab monitors sealed MTG products (Booster Boxes, Commander Precons, Bundles, Collector Boosters, Gift Editions) exclusively at the Charlotte, NC physical store (Store ID #175).
+                </p>
+
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider pt-2">// TELEMETRY & DELTA TRACKING:</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#F59E0B] block uppercase">Day-over-Day (DoD) Deltas</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Compares live price and inventory counts against a historical 24-hour snapshot (<code>MicrocenterHistory</code>). Instantly highlights price drops (e.g. $-\$15.00$) and stock drawdowns (e.g. $-3$ boxes).
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#F59E0B] block uppercase">Chart.js Historical Graphs</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Clicking any product opens an interactive modal rendering historical price and stock quantity timelines to reveal markdown cycles and restock patterns.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#F59E0B] block uppercase">Automated & On-Demand Sync</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Scrapes the catalog automatically during cadence passes, with a manual <strong>"Scan Now"</strong> trigger button that scrapes all pages with TLS browser impersonation in real-time.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- TAB 05: COMMANDER INTEL & DECK VAULT -->
+        <!-- --------------------------------------------------------------------- -->
+        <div id="tab-05-commander-intel" class="bg-[#1B2230] border border-[#A855F7]/60 p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="px-2 py-0.5 bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/40 font-mono font-bold text-xs uppercase">SECTOR 05</span>
+                    <h3 class="text-lg font-heading font-black text-white uppercase tracking-wider">Commander Intel & Deck Vault (<code>/deck-analyzer</code>)</h3>
+                </div>
+                <span class="text-xs font-mono text-[#C084FC] font-bold">[ GOOGLE GEMINI AI + TELEMETRY ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    The <strong>Commander Deck Vault & AI Intel</strong> hub enables full ingestion and clinical breakdown of 100-card EDH decks. Ingest via public ManaBox link, Moxfield/Archidekt URL, raw decklist export, or CSV upload. The application enriches cards with Scryfall metadata, executes instant mathematical telemetry, and dispatches structured evaluation requests to Google Gemini AI.
+                </p>
+
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider pt-2">// THREE-TIER INSPECTOR ARCHITECTURE:</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#C084FC] block uppercase">Tier 1: Overview & Telemetry</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Instant local math: Nonland Average Mana Value (AMV), CMC Histogram Curve (Chart.js), Card Type distribution, Mana Pip vs Source balance radar & breakdown cards, Velocity, Interaction, and Card Advantage profiles.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#C084FC] block uppercase">Tier 2: Complete Card Registry</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Searchable and type-filterable table of all 100 cards with high-res artwork, CMCs, type lines, and live TCGplayer market values. Features 1-click <strong>"+ Watch All Spells"</strong> and <strong>"+ Watch Entire Deck"</strong> bulk watchlist integration.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#C084FC] block uppercase">Tier 3: Gemini AI Strategic Intel</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            AI-evaluated gameplan, mana base diagnosis, primary win conditions and combo lines, card-by-card 1–10 effectiveness ratings tailored to the commander, and proposed card upgrades & cut recommendations.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-[#10141D] p-3.5 border border-[#A855F7]/30 space-y-2 mt-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-mono font-bold text-white uppercase">Automated AI Model Cascading Fallback</span>
+                        <span class="text-[10px] font-mono text-[#C084FC] font-bold">[ ZERO TIMEOUT ARCHITECTURE ]</span>
+                    </div>
+                    <p class="text-xs text-[#94A3B8] font-sans">
+                        If the primary model (e.g. <code>gemini-3.7-flash</code>) encounters high demand or rate limits, Chimaera automatically cascades down through the performance sequence: <code>gemini-3.7-flash</code> &rarr; <code>gemini-3.6-flash</code> &rarr; <code>gemini-3.5-flash</code> &rarr; <code>gemini-3.5-flash-lite</code>, ensuring uninterrupted deck analyses.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- TAB 06: FLEET OVERVIEW & COMPARISON -->
+        <!-- --------------------------------------------------------------------- -->
+        <div id="tab-06-fleet-overview" class="bg-[#1B2230] border border-[#00CED1]/60 p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="px-2 py-0.5 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 font-mono font-bold text-xs uppercase">SECTOR 06</span>
+                    <h3 class="text-lg font-heading font-black text-white uppercase tracking-wider">Fleet Overview & Comparison (<code>/deck-overview</code>)</h3>
+                </div>
+                <span class="text-xs font-mono text-[#00CED1] font-bold">[ ARSENAL MATRIX & COMPARATOR ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    The <strong>Fleet Overview</strong> aggregates all saved Commander decks into a multi-deck arsenal intelligence dashboard. It provides top-level portfolio valuation, speed and power analytics, and a side-by-side Head-to-Head comparator that evaluates 2 to 4 decks simultaneously.
+                </p>
+
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider pt-2">// ARSENAL HUD & COMPARATIVE CAPABILITIES:</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">Arsenal Portfolio KPIs</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Displays total fleet count, cumulative TCGplayer market value, average deck value, average fleet AMV speed, average power level, and the complete WUBRGC color saturation wheel across all decks.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">Head-to-Head Delta Matrix</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Select any 2 decks to generate a mathematical delta matrix ($A - B$) measuring differential AMV, fast ramp count, instant speed ratio, tapland penalty index, removal efficiency, and market value with automated advantage indicators.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">Shared Staples & Overlap Matrix</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Identifies shared staple cards present across all selected decks, cards in multiple decks, and cards completely unique to each deck. Essential for optimizing paper collections and proxying.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- TAB 07: ADMIN CONSOLE -->
+        <!-- --------------------------------------------------------------------- -->
+        <div id="tab-07-admin" class="bg-[#1B2230] border border-[#263245] p-5 sm:p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex items-center space-x-2.5">
+                    <span class="px-2 py-0.5 bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/40 font-mono font-bold text-xs uppercase">SECTOR 07</span>
+                    <h3 class="text-lg font-heading font-black text-white uppercase tracking-wider">Admin Console (<code>/admin</code>)</h3>
+                </div>
+                <span class="text-xs font-mono text-[#00CED1] font-bold">[ COMMAND CLEARANCE ONLY ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    Restricted strictly to authorized administrators (<code>is_admin=True</code>). Provides system-wide governance, personnel access controls, cross-user surveillance, and security audit telemetry.
+                </p>
+
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider pt-2">// ADMINISTRATIVE TOOLS:</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">1. Whitelist Authorization Hub</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Add or revoke Gmail addresses permitted to access Chimaera. Toggle admin privileges and view the authorization trail.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">2. Personnel Directory & Usage Auditing</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Inspect registered users, activate/deactivate accounts, view last active timestamps, tracked card counts, and weekly tool interaction events.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">3. Cross-User Target Surveillance</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Query every card monitored in the database across all user accounts. Filter by owner, review target thresholds, and observe live multi-vendor pricing.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1.5">
+                        <strong class="text-[#00CED1] block uppercase">4. Security Telemetry & Failed Logins</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Real-time security log recording unauthorized or failed Google OAuth login attempts, client IP addresses, timestamps in Eastern Time (EST), and security diagnosis messages.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 3: COMMANDER STATS & EDH TELEMETRY DEEP-DIVE -->
+    <!-- ========================================================================= -->
+    <section id="commander-stats" class="bg-[#1B2230] border-2 border-[#C084FC] p-5 sm:p-7 space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#263245] pb-4">
+            <div>
+                <span class="text-xs font-mono text-[#C084FC] uppercase font-bold tracking-widest block">// SECTION 02</span>
+                <h2 class="text-2xl font-heading font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    Commander Statistical Telemetry & EDH Analytics Deep-Dive
+                </h2>
+                <p class="text-xs sm:text-sm text-[#94A3B8] mt-1 font-sans">
+                    Exhaustive documentation of all mathematical calculations, card classification heuristics, gameplay relevance, and competitive target benchmarks.
+                </p>
+            </div>
+            <span class="text-xs font-mono px-3 py-1 bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/50 uppercase font-bold flex-shrink-0">EDH METRIC STANDARD</span>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- METRIC 1: AMV / AVG CMC -->
+        <!-- --------------------------------------------------------------------- -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-emerald-400 inline-block"></span>
+                    <h4 class="text-base font-mono font-black text-white uppercase">1. Nonland Average Mana Value (AMV) / Avg CMC</h4>
+                </div>
+                <span class="text-xs font-mono text-emerald-400 font-bold">[ SPEED & TEMPO BENCHMARK ]</span>
+            </div>
+
+            <div class="space-y-2 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    <strong class="text-white font-mono">Mathematical Formula:</strong>
+                    $$\text{Nonland AMV} = \frac{\sum (\text{Converted Mana Cost} \times \text{Quantity for Nonland Spells})}{\sum \text{Quantity for Nonland Spells}}$$
+                </p>
+                <p>
+                    <strong class="text-white font-mono">Why Lands Are Excluded:</strong>
+                    Lands have a Converted Mana Cost (CMC) of 0. Including the ~36 lands in the average artificially suppresses the calculated value down to ~1.8–2.2, hiding the true casting cost of spells. Nonland AMV isolates the actual mana required to cast your spells.
+                </p>
+                <p>
+                    <strong class="text-white font-mono">Strategic Relevance to Commander (EDH):</strong>
+                    In a 4-player format, tempo and mana efficiency dictate win rate. A player with an AMV of 2.6 can reliably cast two spells per turn by Turn 4 or 5 ("double-spelling"), allowing them to proactively develop threats while holding up interaction. Conversely, a deck with an AMV of 3.8+ is forced to cast one spell per turn ("tapping out"), leaving them completely vulnerable to opponents' win attempts.
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 font-mono text-xs">
+                    <div class="bg-[#1B2230] p-2.5 border border-emerald-500/40 text-emerald-300">
+                        <strong>⚡ Fast / cEDH: &le; 2.70 CMC</strong>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-0.5">High velocity, combo-ready, frequent double-spelling by Turn 3–4.</div>
+                    </div>
+                    <div class="bg-[#1B2230] p-2.5 border border-amber-500/40 text-amber-300">
+                        <strong>🛡️ Optimized Midrange: 2.71 – 3.30 CMC</strong>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-0.5">Balanced engine gameplay; reliable curve-out with strong late-game impact.</div>
+                    </div>
+                    <div class="bg-[#1B2230] p-2.5 border border-rose-500/40 text-rose-300">
+                        <strong>🐢 Heavy Battlecruiser: &ge; 3.31 CMC</strong>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-0.5">Clunky early game; requires 12+ ramp pieces to avoid falling behind.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- METRIC 2: CMC CURVE HISTOGRAM -->
+        <!-- --------------------------------------------------------------------- -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-cyan-400 inline-block"></span>
+                    <h4 class="text-base font-mono font-black text-white uppercase">2. Mana Curve Distribution (CMC Histogram 0 to 7+)</h4>
+                </div>
+                <span class="text-xs font-mono text-cyan-400 font-bold">[ PACING & CONSISTENCY ]</span>
+            </div>
+
+            <div class="space-y-2 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    <strong class="text-white font-mono">Definition:</strong>
+                    A histogram bucketing every nonland spell into its exact casting cost: 0, 1, 2, 3, 4, 5, 6, and 7+.
+                </p>
+                <p>
+                    <strong class="text-white font-mono">Strategic Relevance to Commander:</strong>
+                    Visualizes the deck's turn-by-turn trajectory. A healthy Commander mana curve forms a Poisson distribution that <strong>peaks at 2 and 3 CMC</strong>. This guarantees that your opening hand (average 7 cards) will consistently contain Turn 1, 2, and 3 plays. If the curve peaks at 4 or 5, opening hands frequently contain unplayable high-cost cards, leading to mulligans and passivity during the most critical setup turns.
+                </p>
+                <p>
+                    <strong class="text-white font-mono">Optimal Target Profile:</strong>
+                    1-drops: 8–14 &bull; 2-drops: 16–24 &bull; 3-drops: 14–20 &bull; 4-drops: 8–12 &bull; 5-drops: 4–8 &bull; 6+-drops: 2–6.
+                </p>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- METRIC 3: MANA PIP DEMAND VS SOURCE SUPPLY -->
+        <!-- --------------------------------------------------------------------- -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-amber-400 inline-block"></span>
+                    <h4 class="text-base font-mono font-black text-white uppercase">3. Mana Pip Demand vs. Mana Source Supply & Balance Ratios</h4>
+                </div>
+                <span class="text-xs font-mono text-amber-400 font-bold">[ COLOR CONSISTENCY & RADAR ]</span>
+            </div>
+
+            <div class="space-y-2 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    <strong class="text-white font-mono">How It Is Computed:</strong>
+                </p>
+                <ul class="list-disc pl-5 space-y-1 font-mono text-xs text-[#F1F5F9]">
+                    <li><strong>Pip Demand ($D_c$):</strong> Scans all mana cost strings for colored symbols: $\{W\}, \{U\}, \{B\}, \{R\}, \{G\}, \{C\}$. Weighted for split/hybrid pips (e.g. $\{W/U\}$ contributes 0.5 to W and 0.5 to U; Phyrexian pips $\{B/P\}$ contribute 1.0 to B). $\text{Demand \%} = (D_c / \text{Total Pips}) \times 100$.</li>
+                    <li><strong>Source Supply ($S_c$):</strong> Scans Scryfall <code>produced_mana</code> arrays, basic land types (Plains, Island, Swamp, Mountain, Forest, Wastes), any-color lands (Command Tower, City of Brass, Arcane Signet, Birds of Paradise), and oracle text mana abilities. $\text{Supply \%} = (S_c / \text{Total Sources}) \times 100$.</li>
+                    <li><strong>Balance Ratio:</strong> $R_c = \frac{\text{Source Supply \%}}{\text{Pip Demand \%}}$.</li>
+                </ul>
+
+                <p>
+                    <strong class="text-white font-mono">Status Designations:</strong>
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 font-mono text-xs">
+                    <div class="bg-[#1B2230] p-2.5 border border-emerald-500/40 text-emerald-300">
+                        <strong>✓ Balanced (0.80 – 1.20)</strong>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-0.5">Mana sources closely mirror spell requirements. Optimal consistency.</div>
+                    </div>
+                    <div class="bg-[#1B2230] p-2.5 border border-amber-500/40 text-amber-300">
+                        <strong>▲ Surplus (&gt; 1.20)</strong>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-0.5">More sources producing this color than required. Risk of color flooding.</div>
+                    </div>
+                    <div class="bg-[#1B2230] p-2.5 border border-rose-500/40 text-rose-300">
+                        <strong>▼ Deficit (&lt; 0.80)</strong>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-0.5">Color drought danger! High pip demand without enough mana sources to cast on curve.</div>
+                    </div>
+                </div>
+
+                <p class="pt-1">
+                    <strong class="text-white font-mono">Strategic Relevance to Commander:</strong>
+                    Many players naively build 3-color or 4-color decks with an equal split of basic lands (e.g. 10 Plains, 10 Islands, 10 Swamps). If 55% of the deck's spell pips are Blue (Counterspell, Rhystic Study, Cyclonic Rift) and only 15% are White, the deck will constantly suffer from "color screw"—holding uncastable double-blue spells with White mana on the battlefield. Chimaera's Pip Radar and status cards immediately diagnose this flaw.
+                </p>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- METRIC 4: VELOCITY & RAMP BREAKDOWN -->
+        <!-- --------------------------------------------------------------------- -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-[#00CED1] inline-block"></span>
+                    <h4 class="text-base font-mono font-black text-white uppercase">4. Velocity Metrics (Fast vs Standard Ramp & Tapland Penalty Index)</h4>
+                </div>
+                <span class="text-xs font-mono text-[#00CED1] font-bold">[ ACCELERATION & EFFICIENCY ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <div>
+                    <h5 class="text-xs font-mono font-bold text-white uppercase tracking-wide">A. Fast Ramp (CMC &le; 2) vs Standard Ramp (CMC &ge; 3)</h5>
+                    <p class="mt-1">
+                        <strong>Fast Ramp (CMC &le; 2):</strong> Sol Ring, Arcane Signet, Talismans (Progress, Dominance), Signets, Llanowar Elves, Birds of Paradise, Nature's Lore, Three Visits, Wild Growth, Fellwar Stone.
+                        <br>
+                        <strong>Standard Ramp (CMC &ge; 3):</strong> Cultivate, Kodama's Reach, Skyshroud Claim, Gilded Lotus, Commander's Sphere.
+                    </p>
+                    <p class="mt-1">
+                        <strong class="text-white font-mono">Relevance:</strong> In modern Commander, the player who ramps on Turn 1 or Turn 2 casts their 4-CMC commander on Turn 3. Decks relying on 3-CMC ramp (Cultivate) cannot cast their commander until Turn 4, placing them a full rotation behind. High-power decks prioritize &ge;8 fast ramp pieces.
+                    </p>
+                </div>
+
+                <div class="pt-2 border-t border-[#263245]">
+                    <h5 class="text-xs font-mono font-bold text-white uppercase tracking-wide">B. Ramp Taxonomy (Dorks & Rocks, Land Fetch, Treasure)</h5>
+                    <p class="mt-1">
+                        Chimaera classifies ramp into three mechanical pillars:
+                    </p>
+                    <ul class="list-disc pl-5 space-y-0.5 font-sans text-xs">
+                        <li><strong>Mana Dorks & Artifact Rocks:</strong> Highest early velocity; vulnerable to board wipes (Wrath of God, Vandalblast).</li>
+                        <li><strong>Land Fetch Spells:</strong> Puts basic or typed lands directly onto the battlefield; permanent ramp resilient against wipes.</li>
+                        <li><strong>Treasure Generators:</strong> One-shot explosive mana (Dockside Extortionist, Smothered Tithe, Professional Face-Breaker) used to surge into game-ending turns.</li>
+                    </ul>
+                </div>
+
+                <div class="pt-2 border-t border-[#263245]">
+                    <h5 class="text-xs font-mono font-bold text-white uppercase tracking-wide">C. Tapland Penalty Index</h5>
+                    <p class="mt-1 font-mono">
+                        $$\text{Tapland Penalty Index} = \left(\frac{\text{Unconditional Taplands}}{\text{Total Lands}}\right) \times 100$$
+                    </p>
+                    <p class="mt-1">
+                        Evaluates lands that enter the battlefield unconditionally tapped (Guildgates, gainlands, scrylands, tapped duals) versus untapped/conditional lands (shocks, fetches, bond lands, pain lands, checks, basics).
+                    </p>
+                    <p class="mt-1">
+                        <strong class="text-white font-mono">Relevance:</strong> A tapped land represents a lost turn of mana development. If a deck has a 30% Tapland Penalty, the player will play off-curve on 1 out of every 3 turns. Optimized decks target <strong>&lt; 10%</strong> tapland penalty.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- METRIC 5: INTERACTION & REMOVAL -->
+        <!-- --------------------------------------------------------------------- -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-[#FF3358] inline-block"></span>
+                    <h4 class="text-base font-mono font-black text-white uppercase">5. Interaction & Removal Metrics</h4>
+                </div>
+                <span class="text-xs font-mono text-[#FF3358] font-bold">[ THREAT MANAGEMENT & PROTECTION ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+                    <div class="bg-[#1B2230] p-3 border border-[#263245] space-y-1">
+                        <strong class="text-white uppercase block">Targeted Removal Count</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Single-target destruction, exile, bounce, and counterspells (Swords to Plowshares, Beast Within, Counterspell, Anguished Unmaking). Essential for stopping opposing game-winning combo pieces. Target: <strong>8–12 cards</strong>.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#1B2230] p-3 border border-[#263245] space-y-1">
+                        <strong class="text-white uppercase block">Board Wipe Count</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Mass removal spells that reset the battlefield (Wrath of God, Blasphemous Act, Toxic Deluge, Cyclonic Rift, Farewell). Used as emergency resets when opponents pull ahead on board state. Target: <strong>2–4 cards</strong>.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs pt-1">
+                    <div class="bg-[#1B2230] p-3 border border-[#263245] space-y-1">
+                        <strong class="text-white uppercase block">Removal Mana Efficiency</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Calculated as: $\frac{\sum \text{CMC of Targeted Removal}}{\text{Count of Targeted Removal}}$. A removal efficiency <strong>&le; 2.2 CMC</strong> means you only need to leave 1–2 mana open on opponent turns. High CMC removal (4+ mana) forces you to pass turns without playing your own cards.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#1B2230] p-3 border border-[#263245] space-y-1">
+                        <strong class="text-white uppercase block">Instant Speed Ratio</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Calculated as: $\left(\frac{\text{Instant Spells} + \text{Flash Spells}}{\text{Total Nonlands}}\right) \times 100$. In Commander, 75% of the game occurs during your three opponents' turns. High instant speed ratio (&ge; 25–35%) lets you react with complete information before committing mana.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- METRIC 6: CARD ADVANTAGE & TUTORS -->
+        <!-- --------------------------------------------------------------------- -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-[#C084FC] inline-block"></span>
+                    <h4 class="text-base font-mono font-black text-white uppercase">6. Card Advantage & Tutor Telemetry</h4>
+                </div>
+                <span class="text-xs font-mono text-[#C084FC] font-bold">[ RESOURCE SUSTAINABILITY ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <p>
+                    Card advantage prevents decks from "running out of gas" around Turn 5 or 6 after dumping their opening hands. Chimaera classifies card advantage into four distinct operational buckets:
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5 font-mono text-xs">
+                    <div class="bg-[#1B2230] p-2.5 border border-[#263245] space-y-1">
+                        <strong class="text-[#C084FC] block uppercase">Draw Engines</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Permanents that draw cards repeatedly over multiple turns (Rhystic Study, Esper Sentinel, Beast Whisperer, The Great Henge, Phyrexian Arena). Target: <strong>&ge; 4–6 engines</strong>.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#1B2230] p-2.5 border border-[#263245] space-y-1">
+                        <strong class="text-[#C084FC] block uppercase">Burst Draw</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Single spells that draw 2 to 5+ cards immediately (Harmonize, Fact or Fiction, Riskel, Windfall, Dig Through Time). Used for immediate hand refills.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#1B2230] p-2.5 border border-[#263245] space-y-1">
+                        <strong class="text-[#C084FC] block uppercase">Cantrips</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Cheap 1-mana or 2-mana spells that replace themselves (Ponder, Preordain, Brainstorm, Opt). Sculpt hands and dig for specific card types without losing card parity.
+                        </p>
+                    </div>
+
+                    <div class="bg-[#1B2230] p-2.5 border border-[#263245] space-y-1">
+                        <strong class="text-[#C084FC] block uppercase">General Tutors</strong>
+                        <p class="text-[#94A3B8] font-sans">
+                            Spells that search your library for any card or card type (Demonic Tutor, Vampiric Tutor, Worldly Tutor, Enlightened Tutor). Drastically elevates consistency and power level.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- --------------------------------------------------------------------- -->
+        <!-- METRIC 7: HEURISTIC ARCHETYPES & GEMINI RATINGS -->
+        <!-- --------------------------------------------------------------------- -->
+        <div class="bg-[#10141D] border border-[#263245] p-4 sm:p-5 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-cyan-400 inline-block"></span>
+                    <h4 class="text-base font-mono font-black text-white uppercase">7. Heuristic Archetypes, Gemini 1–10 Ratings & Power Brackets</h4>
+                </div>
+                <span class="text-xs font-mono text-cyan-400 font-bold">[ STRATEGIC CLASSIFICATION ]</span>
+            </div>
+
+            <div class="space-y-3 text-xs sm:text-sm text-[#94A3B8] leading-relaxed">
+                <div>
+                    <h5 class="text-xs font-mono font-bold text-white uppercase tracking-wide">A. Automated Archetype Heuristics</h5>
+                    <p class="mt-1">
+                        Before calling external AI, Chimaera's local engine evaluates deck archetype mathematically:
+                    </p>
+                    <ul class="list-disc pl-5 space-y-1 font-sans text-xs">
+                        <li><strong>Aggro / Fast Combo:</strong> $\text{Nonland AMV} &lt; 2.70$, Fast Ramp $\ge 8$, and Instant Speed $\ge 25\%$.</li>
+                        <li><strong>Midrange / Engine:</strong> $2.70 \le \text{Nonland AMV} \le 3.40$, Draw Engines $\ge 5$, and balanced removal.</li>
+                        <li><strong>Battlecruiser / Big Mana:</strong> $\text{Nonland AMV} &gt; 3.40$, Total Ramp $\ge 12$, and Board Wipes $\ge 3$.</li>
+                        <li><strong>Control / Interactive:</strong> Instant Speed $\ge 25\%$ or Total Removal $\ge 10$ cards.</li>
+                    </ul>
+                </div>
+
+                <div class="pt-2 border-t border-[#263245]">
+                    <h5 class="text-xs font-mono font-bold text-white uppercase tracking-wide">B. Google Gemini 1.0 – 10.0 Card Effectiveness Ratings</h5>
+                    <p class="mt-1 font-sans">
+                        Gemini analyzes each unique card specifically within the context of the commander's synergy and assigned decklist:
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 font-mono text-xs">
+                        <div class="bg-[#1B2230] p-2 border border-cyan-500/40 text-cyan-300">
+                            <strong>Core Staple (9.0–10.0)</strong>
+                            <div class="text-[10px] text-[#94A3B8] font-sans">Pillar card; absolute must-have for this specific commander.</div>
+                        </div>
+                        <div class="bg-[#1B2230] p-2 border border-emerald-500/40 text-emerald-300">
+                            <strong>Strong Synergizer (7.0–8.9)</strong>
+                            <div class="text-[10px] text-[#94A3B8] font-sans">High value; multiplies the commander's primary strategy.</div>
+                        </div>
+                        <div class="bg-[#1B2230] p-2 border border-amber-500/40 text-amber-300">
+                            <strong>Solid Role Player (5.0–6.9)</strong>
+                            <div class="text-[10px] text-[#94A3B8] font-sans">Functional filler; accomplishes a job but lacks ceiling.</div>
+                        </div>
+                        <div class="bg-[#1B2230] p-2 border border-rose-500/40 text-rose-300">
+                            <strong>Potential Cut (&lt; 5.0)</strong>
+                            <div class="text-[10px] text-[#94A3B8] font-sans">Suboptimal; weak synergy, clunky curve, or clear upgrade candidate.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-[#263245]">
+                    <h5 class="text-xs font-mono font-bold text-white uppercase tracking-wide">C. Power Brackets</h5>
+                    <p class="mt-1 font-sans">
+                        Gemini classifies overall power into standardized community brackets:
+                        <strong>Casual (1–4)</strong> (precons, thematic brews),
+                        <strong>Focused (5–6)</strong> (upgraded precons, coherent strategy),
+                        <strong>Optimized (7–8)</strong> (high-efficiency ramp, tutors, fast win-cons, protection),
+                        and <strong>cEDH / High Power (9–10)</strong> (turn 1–3 combo potential, free counterspells, tier-1 fast mana).
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- SECTION 4: SYSTEM OPERATIONS, CADENCE & NOTIFICATIONS -->
+    <!-- ========================================================================= -->
+    <section id="system-operations" class="bg-[#1B2230] border border-[#263245] p-5 sm:p-6 space-y-4">
+        <div class="flex items-center justify-between border-b border-[#263245] pb-3">
+            <div>
+                <span class="text-xs font-mono text-[#00CED1] uppercase font-bold tracking-widest block">// SECTION 03</span>
+                <h2 class="text-xl font-heading font-black text-white uppercase tracking-wider">System Operations, Automation & Discord Alerts</h2>
+            </div>
+            <span class="text-xs font-mono px-2 py-0.5 bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/40 uppercase font-bold">Automation</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+            <div class="bg-[#10141D] p-4 border border-[#263245] space-y-2">
+                <strong class="text-white uppercase block text-sm">Surveillance Cadence & Background Worker</strong>
+                <p class="text-[#94A3B8] font-sans">
+                    Configured via the <strong>Surveillance & Alerts</strong> modal in the tactical menu. Set the background scanning interval to <strong>6, 8, or 12 hours</strong>.
+                </p>
+                <p class="text-[#94A3B8] font-sans">
+                    In production deployments, Chimaera runs <code>worker.py</code> as an independent background daemon process defined in the <code>Procfile</code>. In local development on Windows, launch via <code>start_worker.bat</code> or <code>start_worker.ps1</code>.
+                </p>
+            </div>
+
+            <div class="bg-[#10141D] p-4 border border-[#263245] space-y-2">
+                <strong class="text-white uppercase block text-sm">Discord Deal Webhook Setup</strong>
+                <p class="text-[#94A3B8] font-sans">
+                    Each user can configure their personal Discord Webhook URL in <strong>Settings</strong>:
+                </p>
+                <ol class="list-decimal pl-5 text-[#94A3B8] font-sans space-y-1">
+                    <li>In Discord, open your server &rarr; Channel Settings &rarr; Integrations &rarr; Webhooks &rarr; New Webhook.</li>
+                    <li>Copy Webhook URL and paste into Chimaera's Settings modal.</li>
+                    <li>Click <strong>"Test Webhook"</strong> to send an immediate verification alert.</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#263245] text-xs font-mono">
+            <span class="text-[#64748B]">CHIMAERA // SURVEILLANCE & COMMANDER INTEL FIELD MANUAL</span>
+            <div class="flex items-center space-x-2">
+                <a href="#system-architecture" class="text-[#00CED1] hover:underline">&uarr; Back to Top</a>
+                <span class="text-[#263245]">&bull;</span>
+                <a href="/" class="text-white hover:underline">Exit to Registry &rarr;</a>
+            </div>
+        </div>
+    </section>
+
+</div>
+{% endblock %}

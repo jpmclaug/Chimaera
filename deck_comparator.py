@@ -138,6 +138,31 @@ class DeckComparator:
         board_wipes_b = int(stats_b.get("board_wipe_count", 0))
         delta_board_wipes = board_wipes_a - board_wipes_b
 
+        # Advanced Telemetry Metrics
+        keep_a = float(stats_a.get("effective_keepability_rate") or (stats_a.get("opening_hand_keepability", {}).get("effective_keep_rate", 0.0)))
+        keep_b = float(stats_b.get("effective_keepability_rate") or (stats_b.get("opening_hand_keepability", {}).get("effective_keep_rate", 0.0)))
+        delta_keep = round(keep_a - keep_b, 1)
+
+        cast_a = int(stats_a.get("median_commander_cast_turn") or (stats_a.get("earliest_commander_cast", {}).get("median_cast_turn", 4)))
+        cast_b = int(stats_b.get("median_commander_cast_turn") or (stats_b.get("earliest_commander_cast", {}).get("median_cast_turn", 4)))
+        delta_cast = cast_a - cast_b
+
+        holdout_a = float(stats_a.get("avg_instant_holdout") or (stats_a.get("instant_mana_holdout", {}).get("avg_holdout_cmc", 0.0)))
+        holdout_b = float(stats_b.get("avg_instant_holdout") or (stats_b.get("instant_mana_holdout", {}).get("avg_holdout_cmc", 0.0)))
+        delta_holdout = round(holdout_a - holdout_b, 2)
+
+        sinks_a = int(stats_a.get("total_mana_sinks") or (stats_a.get("mana_sinks", {}).get("total_sinks", 0)))
+        sinks_b = int(stats_b.get("total_mana_sinks") or (stats_b.get("mana_sinks", {}).get("total_sinks", 0)))
+        delta_sinks = sinks_a - sinks_b
+
+        virt_a = int(stats_a.get("total_virtual_advantage") or (stats_a.get("virtual_card_advantage", {}).get("total_virtual_advantage", 0)))
+        virt_b = int(stats_b.get("total_virtual_advantage") or (stats_b.get("virtual_card_advantage", {}).get("total_virtual_advantage", 0)))
+        delta_virt = virt_a - virt_b
+
+        land3_a = float(stats_a.get("land_drop_turn_3_pct") or (stats_a.get("land_drop_probabilities", {}).get("turn_3", 0.0)))
+        land3_b = float(stats_b.get("land_drop_turn_3_pct") or (stats_b.get("land_drop_probabilities", {}).get("turn_3", 0.0)))
+        delta_land3 = round(land3_a - land3_b, 1)
+
         def get_adv(delta, lower_is_better=False):
             if delta == 0:
                 return "Tie"
@@ -334,6 +359,60 @@ class DeckComparator:
                 "unit": "cards",
                 "advantage": get_adv(delta_tutors_land, lower_is_better=False),
                 "better": "higher" if delta_tutors_land > 0 else ("lower" if delta_tutors_land < 0 else "equal"),
+            },
+            "turn_3_land_pct": {
+                "metric": "Turn 3 Land Drop %",
+                "deck_a": land3_a,
+                "deck_b": land3_b,
+                "delta": delta_land3,
+                "unit": "%",
+                "advantage": get_adv(delta_land3, lower_is_better=False),
+                "better": "higher" if delta_land3 > 0 else ("lower" if delta_land3 < 0 else "equal"),
+            },
+            "keepability_rate": {
+                "metric": "Effective Hand Keepability",
+                "deck_a": keep_a,
+                "deck_b": keep_b,
+                "delta": delta_keep,
+                "unit": "%",
+                "advantage": get_adv(delta_keep, lower_is_better=False),
+                "better": "higher" if delta_keep > 0 else ("lower" if delta_keep < 0 else "equal"),
+            },
+            "commander_cast_turn": {
+                "metric": "Median Commander Cast Turn",
+                "deck_a": cast_a,
+                "deck_b": cast_b,
+                "delta": delta_cast,
+                "unit": "Turn",
+                "advantage": get_adv(delta_cast, lower_is_better=True),
+                "better": "lower" if delta_cast < 0 else ("higher" if delta_cast > 0 else "equal"),
+            },
+            "instant_holdout": {
+                "metric": "Instant Mana Holdout",
+                "deck_a": holdout_a,
+                "deck_b": holdout_b,
+                "delta": delta_holdout,
+                "unit": "CMC",
+                "advantage": get_adv(delta_holdout, lower_is_better=True),
+                "better": "lower" if delta_holdout < 0 else ("higher" if delta_holdout > 0 else "equal"),
+            },
+            "mana_sinks": {
+                "metric": "Late-Game Mana Sinks",
+                "deck_a": sinks_a,
+                "deck_b": sinks_b,
+                "delta": delta_sinks,
+                "unit": "outlets",
+                "advantage": get_adv(delta_sinks, lower_is_better=False),
+                "better": "higher" if delta_sinks > 0 else ("lower" if delta_sinks < 0 else "equal"),
+            },
+            "virtual_card_advantage": {
+                "metric": "Virtual Card Advantage",
+                "deck_a": virt_a,
+                "deck_b": virt_b,
+                "delta": delta_virt,
+                "unit": "cards",
+                "advantage": get_adv(delta_virt, lower_is_better=False),
+                "better": "higher" if delta_virt > 0 else ("lower" if delta_virt < 0 else "equal"),
             },
         }
 
