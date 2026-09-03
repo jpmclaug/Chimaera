@@ -3344,20 +3344,38 @@ def create_app(test_config=None):
                 found_idx = idx
                 break
 
+        actual_cut_name = card_out_name
         if found_idx == -1:
-            return jsonify({"error": f"Card to cut '{card_out_name}' was not found in the active deck."}), 404
+            total_qty = sum(c.get("quantity", 1) for c in current_cards)
+            if total_qty >= 100:
+                for idx in range(len(current_cards) - 1, -1, -1):
+                    c = current_cards[idx]
+                    sec = (c.get("section") or "mainboard").lower()
+                    t_line = (c.get("type_line") or "").lower()
+                    if sec not in ("commander", "command zone") and "basic" not in t_line:
+                        found_idx = idx
+                        actual_cut_name = c.get("name", "Card")
+                        break
+                if found_idx == -1:
+                    for idx in range(len(current_cards) - 1, -1, -1):
+                        c = current_cards[idx]
+                        sec = (c.get("section") or "mainboard").lower()
+                        if sec not in ("commander", "command zone"):
+                            found_idx = idx
+                            actual_cut_name = c.get("name", "Card")
+                            break
 
-        # Cut card_out (decrement or remove)
-        out_card = current_cards[found_idx]
-        out_qty = out_card.get("quantity", 1)
-        out_section = out_card.get("section", "mainboard")
+        out_section = "mainboard"
+        if found_idx >= 0:
+            out_card = current_cards[found_idx]
+            out_qty = out_card.get("quantity", 1)
+            out_section = out_card.get("section", "mainboard")
 
-        if out_qty > 1:
-            out_card["quantity"] = out_qty - 1
-        else:
-            current_cards.pop(found_idx)
+            if out_qty > 1:
+                out_card["quantity"] = out_qty - 1
+            else:
+                current_cards.pop(found_idx)
 
-        # Add card_in (or increment if already slotted)
         target_in_lower = card_in_name.lower().strip()
         already_in_idx = -1
         for idx, c in enumerate(current_cards):
@@ -3368,7 +3386,6 @@ def create_app(test_config=None):
         if already_in_idx >= 0:
             current_cards[already_in_idx]["quantity"] = current_cards[already_in_idx].get("quantity", 1) + 1
         else:
-            # Fetch metadata for card_in from user collection first or Scryfall
             inv_card = UserInventoryCard.query.filter(
                 UserInventoryCard.user_id == user.id,
                 db.or_(
@@ -3409,7 +3426,6 @@ def create_app(test_config=None):
             }
             current_cards.append(new_card_obj)
 
-        # Recalculate deck telemetry using DeckAnalyzer
         cmdrs = [c.strip() for c in (entry.commander_name or "").split(",") if c.strip()]
         analyzed_deck = deck_analyzer.analyze({
             "deck_name": entry.deck_name,
@@ -3418,28 +3434,117 @@ def create_app(test_config=None):
         })
 
         import json
-        entry.cards_data = json.dumps(analyzed_deck.get("cards", current_cards))
-        entry.stats_json = json.dumps(analyzed_deck.get("stats", {}))
-        entry.total_cards = analyzed_deck.get("total_cards", sum(c.get("quantity", 1) for c in current_cards))
-        entry.total_value = analyzed_deck.get("stats", {}).get("total_value", entry.total_value)
-        entry.avg_cmc = analyzed_deck.get("stats", {}).get("avg_cmc", entry.avg_cmc)
+        new_stats = analyzed_deck.get("stats", {})
+
+        entry.cards_data = json.dumps(current_cards)
+        entry.stats_json = json.dumps(new_stats)
+        entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
+        entry.total_value = new_stats.get("total_value")
+        entry.avg_cmc = new_stats.get("avg_cmc")
         entry.updated_at = utc_now()
         db.session.commit()
 
         log_activity(
-            "DECK_SWAP",
-            details=f"Swapped '{card_out_name}' for '{card_in_name}' in deck '{entry.deck_name}'",
-            user=user,
+            "DECK_APPLY_SWAP",
+            details=f"Applied card swap in '{entry.deck_name}': +{card_in_name}, -{actual_cut_name}",
+            user=user
         )
+
+        msg = f"Successfully slotted {card_in_name} into deck!"
+        if found_idx >= 0:
+            msg = f"Successfully replaced {actual_cut_name} with {card_in_name}!"
 
         return jsonify({
             "success": True,
-            "message": f"Successfully replaced {card_out_name} with {card_in_name}!",
+            "message": msg,
             "deck": entry.to_dict(include_full=True),
             "swapped": {
-                "card_out": card_out_name,
+                "card_out": actual_cut_name,
                 "card_in": card_in_name,
             },
+        })
+
+    @app.route("/api/deck/<int:deck_id>/add-card", methods=["POST"])
+    @login_required
+    def api_deck_add_card(deck_id: int):
+        """Directly adds a single card to a deck and recalculates stats."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized to edit this deck."}), 403
+
+        data = request.get_json(silent=True) or {}
+        card_name = (data.get("card_name") or data.get("name") or "").strip()
+        if not card_name:
+            return jsonify({"error": "Card name is required."}), 400
+
+        current_cards = entry.get_parsed_cards()
+        target_lower = card_name.lower()
+
+        found = False
+        for c in current_cards:
+            c_name = c.get("name", "").strip().lower()
+            if c_name == target_lower or (" // " in c_name and c_name.split(" // ")[0].strip() == target_lower):
+                c["quantity"] = c.get("quantity", 1) + 1
+                found = True
+                break
+
+        if not found:
+            inv_card = UserInventoryCard.query.filter(
+                UserInventoryCard.user_id == user.id,
+                db.func.lower(UserInventoryCard.name) == target_lower
+            ).first()
+
+            meta_map, _ = scryfall_provider.get_cards_collection([card_name])
+            meta = meta_map.get(target_lower, {})
+
+            img = (inv_card.image_uri if inv_card else None) or meta.get("image_uri") or meta.get("small_image_uri")
+            new_card = {
+                "name": (inv_card.name if inv_card else None) or meta.get("name") or card_name,
+                "quantity": 1,
+                "section": "mainboard",
+                "set_code": (inv_card.set_code if inv_card else None) or meta.get("set_code", ""),
+                "collector_number": (inv_card.collector_number if inv_card else None) or meta.get("collector_number", ""),
+                "image_uri": img,
+                "small_image_uri": meta.get("small_image_uri") or img,
+                "art_crop_uri": meta.get("art_crop_uri") or img,
+                "mana_cost": (inv_card.mana_cost if inv_card else None) or meta.get("mana_cost", ""),
+                "cmc": inv_card.cmc if (inv_card and inv_card.cmc is not None) else meta.get("cmc", 0),
+                "type_line": (inv_card.type_line if inv_card else None) or meta.get("type_line", "Unknown"),
+                "oracle_text": (inv_card.oracle_text if inv_card else None) or meta.get("oracle_text", ""),
+                "colors": meta.get("colors", []),
+                "color_identity": inv_card.get_color_identity_list() if inv_card else meta.get("color_identity", []),
+                "rarity": (inv_card.rarity if inv_card else None) or meta.get("rarity", ""),
+                "price_usd": inv_card.price_usd if (inv_card and inv_card.price_usd is not None) else meta.get("prices", {}).get("usd"),
+                "tcgplayer_url": meta.get("tcgplayer_url"),
+            }
+            current_cards.append(new_card)
+
+        cmdrs = [c.strip() for c in (entry.commander_name or "").split(",") if c.strip()]
+        analyzed_deck = deck_analyzer.analyze({
+            "deck_name": entry.deck_name,
+            "commander": cmdrs,
+            "cards": current_cards,
+        })
+
+        import json
+        new_stats = analyzed_deck.get("stats", {})
+        entry.cards_data = json.dumps(current_cards)
+        entry.stats_json = json.dumps(new_stats)
+        entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
+        entry.total_value = new_stats.get("total_value")
+        entry.avg_cmc = new_stats.get("avg_cmc")
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        log_activity("DECK_CARD_ADD", details=f"Added '{card_name}' to deck '{entry.deck_name}'", user=user)
+
+        return jsonify({
+            "success": True,
+            "message": f"Successfully added '{card_name}' to {entry.deck_name}!",
+            "deck": entry.to_dict(include_full=True),
         })
 
     @app.route("/api/deck/<int:deck_id>/wishlist/export", methods=["POST", "GET"])

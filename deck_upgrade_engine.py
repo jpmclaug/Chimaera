@@ -356,6 +356,7 @@ class DualTierUpgradeEngine:
 
         owned_swaps: List[Dict[str, Any]] = []
         applied_card_in_names: Set[str] = set()
+        assigned_cuts: Set[str] = set()
 
         # A) Check AI suggested upgrades first if present
         if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
@@ -379,8 +380,12 @@ class DualTierUpgradeEngine:
                         other_allocated = alloc_info.get("other_allocated", 0)
                         avail = max(0, total_owned - other_allocated)
 
-                        # Match cut candidate
-                        matched_cut = card_out if card_out and self._is_card_in_deck(card_out, deck_cards_set) else self._find_best_cut(cut_candidates, u.get("category", "General"))
+                        # Match cut candidate (distinct from other proposed swaps)
+                        if card_out and self._is_card_in_deck(card_out, deck_cards_set) and card_out.lower() not in assigned_cuts:
+                            matched_cut = card_out
+                            assigned_cuts.add(card_out.lower())
+                        else:
+                            matched_cut = self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
 
                         owned_swaps.append({
                             "card_in": primary_copy.name,
@@ -431,7 +436,7 @@ class DualTierUpgradeEngine:
                 other_allocated = alloc_info.get("other_allocated", 0)
                 avail = max(0, total_owned - other_allocated)
 
-                matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"))
+                matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=assigned_cuts)
 
                 owned_swaps.append({
                     "card_in": primary_copy.name,
@@ -469,7 +474,7 @@ class DualTierUpgradeEngine:
                     continue
 
                 if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in):
-                    matched_cut = u.get("card_out") or self._find_best_cut(cut_candidates, u.get("category", "General"))
+                    matched_cut = u.get("card_out") or self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
                     price_val = None
                     try:
                         if u.get("card_in_price"):
@@ -506,7 +511,7 @@ class DualTierUpgradeEngine:
             if not self._is_format_legal(s_name):
                 continue
 
-            matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"))
+            matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=assigned_cuts)
 
             shopping_list_raw.append({
                 "name": s_name,
@@ -689,26 +694,49 @@ class DualTierUpgradeEngine:
         candidates.sort(key=lambda x: (not x["is_ai_cut"], x["rating"], -x["cmc"]))
         return candidates
 
-    def _find_best_cut(self, cut_candidates: List[Dict[str, Any]], target_role_or_category: str) -> Dict[str, Any]:
-        """Finds matching card to cut based on role or picks the lowest rated candidate."""
+    def _find_best_cut(
+        self,
+        cut_candidates: List[Dict[str, Any]],
+        target_role_or_category: str,
+        used_cuts: Optional[Set[str]] = None,
+    ) -> Dict[str, Any]:
+        """Finds matching card to cut based on role or picks lowest rated candidate not yet assigned."""
         if not cut_candidates:
             return {"name": "Suboptimal Slotted Card", "cmc": 3, "type_line": "Card"}
+
+        if used_cuts is None:
+            used_cuts = set()
+
+        def _available(cand):
+            return cand.get("name", "").strip().lower() not in used_cuts
 
         target_lower = (target_role_or_category or "").lower()
         if "land" in target_lower or "mana base" in target_lower:
             for c in cut_candidates:
-                if "land" in (c.get("type_line") or "").lower():
+                if _available(c) and "land" in (c.get("type_line") or "").lower():
+                    used_cuts.add(c.get("name", "").strip().lower())
                     return c
         elif "ramp" in target_lower or "rock" in target_lower:
             for c in cut_candidates:
-                if c.get("cmc", 0) >= 3 and ("artifact" in (c.get("type_line") or "").lower() or c["rating"] <= 6.0):
+                if _available(c) and c.get("cmc", 0) >= 3 and ("artifact" in (c.get("type_line") or "").lower() or c["rating"] <= 6.0):
+                    used_cuts.add(c.get("name", "").strip().lower())
                     return c
         elif "removal" in target_lower or "interaction" in target_lower:
             for c in cut_candidates:
-                if c.get("cmc", 0) >= 3 and c["rating"] <= 6.5:
+                if _available(c) and c.get("cmc", 0) >= 3 and c["rating"] <= 6.5:
+                    used_cuts.add(c.get("name", "").strip().lower())
                     return c
 
-        return cut_candidates[0]
+        # Next check any candidate not yet assigned
+        for c in cut_candidates:
+            if _available(c):
+                used_cuts.add(c.get("name", "").strip().lower())
+                return c
+
+        # Fallback if all cut candidates have been allocated at least once
+        c = cut_candidates[0]
+        used_cuts.add(c.get("name", "").strip().lower())
+        return c
 
     @staticmethod
     def generate_manabox_wishlist_export(acquisitions: List[Dict[str, Any]], format_type: str = "csv") -> str:

@@ -631,6 +631,71 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
         self.assertIn('id="dropZone"', html_text)
         self.assertNotIn('<!-- ====================================================================<div id="uploadModal"', html_text)
 
+    def test_api_deck_add_card(self):
+        """Tests tactical direct card addition to a deck via POST /api/deck/<id>/add-card."""
+        user = self.login_as()
+        with self.app.app_context():
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Test Deck",
+                commander_name="Urza, Lord High Artificer",
+                cards_data=json.dumps([
+                    {"name": "Island", "quantity": 99, "cmc": 0.0, "type_line": "Basic Land"}
+                ]),
+                total_cards=99
+            )
+            db.session.add(deck)
+            db.session.commit()
+            deck_id = deck.id
+
+        resp = self.client.post(
+            f"/api/deck/{deck_id}/add-card",
+            json={"card_name": "Sol Ring"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["deck"]["total_cards"], 100)
+
+        with self.app.app_context():
+            saved = db.session.get(DeckAnalysis, deck_id)
+            card_names = [c["name"] for c in saved.get_parsed_cards()]
+            self.assertIn("Sol Ring", card_names)
+
+    def test_api_deck_apply_swap_resilient_missing_cut(self):
+        """Tests that apply-swap succeeds gracefully even if proposed card_out was already cut."""
+        user = self.login_as()
+        with self.app.app_context():
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Full Commander Deck",
+                commander_name="Urza, Lord High Artificer",
+                cards_data=json.dumps([
+                    {"name": "Island", "quantity": 99, "cmc": 0.0, "type_line": "Basic Land"},
+                    {"name": "Weak Artifact", "quantity": 1, "cmc": 5.0, "type_line": "Artifact"}
+                ]),
+                total_cards=100
+            )
+            db.session.add(deck)
+            db.session.commit()
+            deck_id = deck.id
+
+        # Propose cutting "Nonexistent Card" which was already removed
+        resp = self.client.post(
+            f"/api/deck/{deck_id}/apply-swap",
+            json={"card_out": "Nonexistent Card", "card_in": "Arcane Signet"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+
+        with self.app.app_context():
+            saved = db.session.get(DeckAnalysis, deck_id)
+            card_names = [c["name"] for c in saved.get_parsed_cards()]
+            self.assertIn("Arcane Signet", card_names)
+            self.assertEqual(saved.total_cards, 100)
+
 
 if __name__ == "__main__":
     unittest.main()
+

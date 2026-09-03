@@ -826,6 +826,23 @@
         <!-- ========================================================================= -->
         <div id="inspectorTabContentCards" class="hidden space-y-4">
             
+            <!-- Tactical Quick Add Card to Deck Bar -->
+            <div class="bg-[#10141D] border border-cyan-500/30 p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+                <div class="flex items-center gap-2 text-xs font-mono text-cyan-400 font-bold uppercase tracking-wider">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span>⚡ Tactical Deck Add</span>
+                </div>
+                <div class="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-lg justify-end">
+                    <input type="text" id="quickAddCardInput" placeholder="Enter card name to add (e.g. Rhystic Study, Sol Ring)..."
+                           onkeydown="if(event.key==='Enter') executeQuickAddCard()"
+                           class="flex-1 bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
+                    <button type="button" onclick="executeQuickAddCard()" id="btnQuickAddCard"
+                            class="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-mono font-bold text-xs uppercase rounded transition whitespace-nowrap shadow flex items-center gap-1.5">
+                        <span>+ Add to Deck</span>
+                    </button>
+                </div>
+            </div>
+
             <!-- Filter & Action Controls -->
             <div class="bg-[#10141D] border border-slate-800 p-4 rounded-xl flex flex-col lg:flex-row items-center justify-between gap-4">
                 
@@ -2062,6 +2079,57 @@ async function handleWatchClick(btn) {
         btn.disabled = false;
         btn.innerHTML = origHtml;
     }
+// Tactical Quick Add Card Handler
+async function executeQuickAddCard() {
+    if (!activeDeck || !activeDeck.id) {
+        showToast("Please open a saved deck from your Vault first to add cards.", "error");
+        return;
+    }
+
+    const input = document.getElementById('quickAddCardInput');
+    if (!input) return;
+    const cardName = (input.value || '').trim();
+    if (!cardName) {
+        showToast("Please enter a card name to add.", "info");
+        return;
+    }
+
+    const btn = document.getElementById('btnQuickAddCard');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="inline-block animate-spin mr-1">⟳</span> Adding...';
+    }
+
+    try {
+        const resp = await fetch(`/api/deck/${activeDeck.id}/add-card`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_name: cardName })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || "Failed to add card to deck.");
+        }
+
+        input.value = '';
+        activeDeck = data.deck;
+        displayDeckInInspector(activeDeck, true);
+        showToast(data.message || `Added '${cardName}' to deck!`, "success");
+
+        // If upgrades tab is loaded, reload it
+        if (currentInspectorTab === 'upgrades') {
+            await loadDualTierUpgrades(activeDeck.id);
+        }
+    } catch (err) {
+        showToast(`Failed to add card: ${err.message}`, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
 }
 
 // Watchlist Button Handler for AI upgrades
@@ -2204,34 +2272,93 @@ function renderAiAnalysis(analysis) {
 
     // Upgrades
     const upgradesContainer = document.getElementById('aiUpgradesGrid');
-    upgradesContainer.innerHTML = (analysis.upgrades || []).map(u => `
-        <div class="bg-[#1B2230]/80 p-3.5 rounded-xl border border-slate-700/80 flex flex-col justify-between space-y-3">
-            <div class="flex items-start justify-between gap-2">
-                <div>
-                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 uppercase font-bold">${escapeHtml(u.category || 'Upgrade')}</span>
-                    <span class="text-[10px] text-slate-400 ml-1">Impact: <strong class="text-emerald-400">${escapeHtml(u.estimated_impact || 'High')}</strong></span>
+    const upgradesList = analysis.upgrades || [];
+    if (!upgradesList || upgradesList.length === 0) {
+        upgradesContainer.innerHTML = `
+            <div class="col-span-1 md:col-span-2 py-8 text-center text-slate-400 font-mono text-xs bg-[#10141D] border border-slate-800 rounded-xl">
+                No direct card cuts were proposed by Gemini for this decklist. Explore the <strong>Tactical Upgrades</strong> tab to cross-reference your Collection Binder and view market staples.
+            </div>
+        `;
+    } else {
+        upgradesContainer.innerHTML = upgradesList.map(u => `
+            <div class="bg-[#1B2230]/80 p-4 rounded-xl border border-slate-700/80 flex flex-col justify-between space-y-3.5 shadow-lg relative overflow-hidden">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 uppercase font-bold font-mono">
+                            ${escapeHtml(u.category || 'AI Upgrade')}
+                        </span>
+                        <span class="text-[10px] text-slate-400 font-mono">
+                            Impact: <strong class="text-emerald-400">${escapeHtml(u.estimated_impact || 'High')}</strong>
+                        </span>
+                    </div>
+                    ${u.card_in_price ? `<span class="text-xs font-mono font-bold text-emerald-400">$${parseFloat(u.card_in_price).toFixed(2)}</span>` : ''}
+                </div>
+
+                <!-- Swap Comparison Cards -->
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <!-- IN: Addition -->
+                    <div class="bg-emerald-950/25 border border-emerald-500/30 p-2.5 rounded space-y-1">
+                        <span class="text-[10px] text-emerald-400 uppercase font-bold font-mono block">&darr; IN (RECOMMENDED)</span>
+                        <div class="flex items-center gap-2">
+                            ${u.card_in_image ? `
+                                <img src="${escapeHtml(u.card_in_image)}" alt="${escapeHtml(u.card_in)}" class="w-7 h-10 object-cover rounded border border-emerald-500/40 flex-shrink-0 cursor-pointer shadow"
+                                     data-img="${escapeHtml(u.card_in_image)}"
+                                     onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                            ` : ''}
+                            <div class="min-w-0 flex-1">
+                                <div class="font-bold text-white truncate hover:text-emerald-300 transition cursor-pointer" title="${escapeHtml(u.card_in)}"
+                                     data-img="${escapeHtml(u.card_in_image || '')}"
+                                     onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                                    ${escapeHtml(u.card_in || '')}
+                                </div>
+                                <div class="text-[10px] text-slate-400 font-mono">
+                                    ${u.card_in_mana ? `<span>${escapeHtml(u.card_in_mana)}</span> &bull; ` : ''}
+                                    <span>${escapeHtml(u.card_in_type || 'Card')}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- OUT: Cut -->
+                    <div class="bg-rose-950/25 border border-rose-500/30 p-2.5 rounded space-y-1">
+                        <span class="text-[10px] text-rose-400 uppercase font-bold font-mono block">&uarr; OUT (RECOMMENDED CUT)</span>
+                        <div class="flex items-center gap-2">
+                            ${u.card_out_image ? `
+                                <img src="${escapeHtml(u.card_out_image)}" alt="${escapeHtml(u.card_out)}" class="w-7 h-10 object-cover rounded border border-rose-500/40 flex-shrink-0 cursor-pointer shadow"
+                                     data-img="${escapeHtml(u.card_out_image)}"
+                                     onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                            ` : ''}
+                            <div class="min-w-0 flex-1">
+                                <div class="font-bold text-slate-300 truncate hover:text-rose-300 transition cursor-pointer" title="${escapeHtml(u.card_out)}"
+                                     data-img="${escapeHtml(u.card_out_image || '')}"
+                                     onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                                    ${escapeHtml(u.card_out || 'Suboptimal Card')}
+                                </div>
+                                <div class="text-[10px] text-slate-500 font-mono">
+                                    ${u.card_out_mana ? `<span>${escapeHtml(u.card_out_mana)}</span>` : 'Cut candidate'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-[11px] text-slate-300 font-sans leading-relaxed">${escapeHtml(u.rationale || '')}</p>
+
+                <!-- Action Buttons: Apply Swap and Track in Watchlist -->
+                <div class="flex items-center gap-2 pt-1">
+                    <button type="button" onclick="handleApplySwapClick(this)" data-out="${escapeHtml(u.card_out || '')}" data-in="${escapeHtml(u.card_in || '')}" 
+                            class="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-xs font-mono font-bold uppercase rounded transition text-center shadow flex items-center justify-center gap-1.5">
+                        <span>Apply Swap to Deck</span>
+                        <span>&rarr;</span>
+                    </button>
+                    <button type="button" onclick="handleUpgradeWatchClick(this)" data-name="${escapeHtml(u.card_in || '')}" 
+                            class="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
+                        + Watchlist
+                    </button>
                 </div>
             </div>
-
-            <div class="grid grid-cols-2 gap-2 text-xs">
-                <div class="bg-emerald-950/30 border border-emerald-500/30 p-2 rounded">
-                    <span class="text-[10px] text-emerald-400 uppercase font-bold block">&darr; IN</span>
-                    <span class="font-bold text-white">${escapeHtml(u.card_in || '')}</span>
-                </div>
-                <div class="bg-rose-950/30 border border-rose-500/30 p-2 rounded">
-                    <span class="text-[10px] text-rose-400 uppercase font-bold block">&uarr; OUT</span>
-                    <span class="text-slate-300">${escapeHtml(u.card_out || '')}</span>
-                </div>
-            </div>
-
-            <p class="text-[11px] text-slate-300 font-sans">${escapeHtml(u.rationale || '')}</p>
-
-            <button onclick="handleUpgradeWatchClick(this)" data-name="${escapeHtml(u.card_in || '')}" 
-                    class="w-full py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
-                + Track in Watchlist
-            </button>
-        </div>
-    `).join('');
+        `).join('');
+    }
 
     // Ratings
     renderCardRatings(analysis.card_ratings || []);
@@ -2431,7 +2558,7 @@ async function runAiAnalysisOnSavedDeck() {
         if (!resp.ok) throw new Error(data.error || "Analysis failed");
         showToast("Gemini analysis complete!", "success");
         dismissAiErrorAlert();
-        displayDeckInInspector(data.deck);
+        displayDeckInInspector(data.deck, true);
         await refreshVaultList();
     } catch (e) {
         showAiErrorAlert(e.message);
@@ -2788,7 +2915,7 @@ function renderOwnedSwaps(swaps) {
             </p>
 
             <!-- 1-Click Apply Swap Action -->
-            <button onclick="applyDeckSwap(this, '${escapeHtml(u.card_out)}', '${escapeHtml(u.card_in)}')"
+            <button type="button" onclick="handleApplySwapClick(this)" data-out="${escapeHtml(u.card_out || '')}" data-in="${escapeHtml(u.card_in || '')}"
                     class="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-mono font-bold text-xs uppercase transition flex items-center justify-center gap-2 shadow-md">
                 <span>Apply Swap to Deck</span>
                 <span class="font-bold">&rarr;</span>
@@ -2797,15 +2924,26 @@ function renderOwnedSwaps(swaps) {
     `).join('');
 }
 
+async function handleApplySwapClick(btn) {
+    const cardOut = btn.getAttribute('data-out') || '';
+    const cardIn = btn.getAttribute('data-in') || '';
+    await applyDeckSwap(btn, cardOut, cardIn);
+}
+
 async function applyDeckSwap(btn, cardOut, cardIn) {
     if (!activeDeck || !activeDeck.id) {
         showToast("Please save or open a saved deck to apply swaps.", "error");
         return;
     }
 
-    const origText = btn.innerHTML;
-    btn.setAttribute('disabled', 'true');
-    btn.innerHTML = '<span class="inline-block animate-spin mr-1">⟳</span> Applying Swap...';
+    cardOut = cardOut || (btn ? btn.getAttribute('data-out') : '') || '';
+    cardIn = cardIn || (btn ? btn.getAttribute('data-in') : '') || '';
+
+    const origText = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.setAttribute('disabled', 'true');
+        btn.innerHTML = '<span class="inline-block animate-spin mr-1">⟳</span> Applying Swap...';
+    }
 
     try {
         const resp = await fetch(`/api/deck/${activeDeck.id}/apply-swap`, {
@@ -2823,14 +2961,16 @@ async function applyDeckSwap(btn, cardOut, cardIn) {
         activeDeck = data.deck;
         displayDeckInInspector(activeDeck, true);
 
-        showToast(`Successfully swapped ${cardOut} for ${cardIn}!`, "success");
+        showToast(data.message || `Successfully swapped ${cardOut} for ${cardIn}!`, "success");
 
         // Refresh upgrades list
         await loadDualTierUpgrades(activeDeck.id);
 
     } catch (err) {
-        btn.removeAttribute('disabled');
-        btn.innerHTML = origText;
+        if (btn) {
+            btn.removeAttribute('disabled');
+            btn.innerHTML = origText;
+        }
         showToast(`Swap failed: ${err.message}`, "error");
     }
 }
@@ -2935,14 +3075,19 @@ function filterShoppingBracket(bracket) {
                 ${escapeHtml(item.rationale || '')}
             </p>
 
-            <div class="flex items-center gap-2 pt-1">
-                <button onclick="handleUpgradeWatchClick(this)" data-name="${escapeHtml(item.name || '')}"
-                        class="flex-1 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
-                    + Track in Watchlist
+            <div class="flex items-center gap-2 pt-1 flex-wrap">
+                <button type="button" onclick="handleApplySwapClick(this)" data-out="${escapeHtml(item.card_out || '')}" data-in="${escapeHtml(item.name || '')}"
+                        class="flex-1 py-1.5 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-emerald-500/40 transition text-center shadow flex items-center justify-center gap-1">
+                    <span>Slot Card</span>
+                    <span>&rarr;</span>
+                </button>
+                <button type="button" onclick="handleUpgradeWatchClick(this)" data-name="${escapeHtml(item.name || '')}"
+                        class="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 text-xs font-mono font-bold uppercase rounded border border-cyan-500/30 transition text-center">
+                    + Watchlist
                 </button>
                 ${item.tcgplayer_url 
-                    ? `<a href="${item.tcgplayer_url}" target="_blank" class="px-3 py-1.5 bg-[#10141D] hover:bg-[#222B3D] text-slate-300 hover:text-white text-xs font-mono font-bold uppercase rounded border border-slate-700 transition">
-                        TCGplayer &rarr;
+                    ? `<a href="${item.tcgplayer_url}" target="_blank" class="px-2.5 py-1.5 bg-[#10141D] hover:bg-[#222B3D] text-slate-300 hover:text-white text-xs font-mono font-bold uppercase rounded border border-slate-700 transition">
+                        TCG &rarr;
                        </a>`
                     : ''
                 }
