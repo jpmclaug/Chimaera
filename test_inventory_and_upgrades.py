@@ -4,7 +4,7 @@ Comprehensive Test Suite for ManaBox Inventory CSV Ingestion & Dual-Tier Deck Up
 
 import json
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from app import create_app
 from models import db, User, AllowedEmail, DeckAnalysis, UserInventoryCard
 from inventory_parser import ManaBoxInventoryParser, InventoryParseError
@@ -522,6 +522,100 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
         self.assertEqual(data["errors_count"], 1)
         self.assertEqual(data["errors"][0]["row"], 3)
         self.assertIn("Card name is empty", data["errors"][0]["error"])
+
+    def test_gdrive_file_id_extraction(self):
+        """Tests Google Drive file ID extraction across all standard link formats."""
+        expected_id = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+
+        test_urls = [
+            f"https://drive.google.com/file/d/{expected_id}/view?usp=sharing",
+            f"https://drive.google.com/open?id={expected_id}",
+            f"https://docs.google.com/spreadsheets/d/{expected_id}/edit#gid=0",
+            f"https://drive.google.com/uc?id={expected_id}&export=download",
+            expected_id,  # Raw ID
+        ]
+
+        for url in test_urls:
+            extracted = ManaBoxInventoryParser.extract_gdrive_file_id(url)
+            self.assertEqual(extracted, expected_id, f"Failed extracting ID from {url}")
+
+        self.assertIsNone(ManaBoxInventoryParser.extract_gdrive_file_id(""))
+        self.assertIsNone(ManaBoxInventoryParser.extract_gdrive_file_id("invalid-short-id"))
+
+    @patch("requests.Session")
+    def test_download_gdrive_csv(self, mock_session_cls):
+        """Tests download_gdrive_csv with mock HTTP responses."""
+        mock_session = MagicMock()
+        mock_session_cls.return_value = mock_session
+
+        sample_csv = "Name,Quantity,Set code\nSol Ring,1,C21\n"
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = sample_csv
+        mock_resp.content = sample_csv.encode("utf-8")
+        mock_resp.cookies = {}
+        mock_session.get.return_value = mock_resp
+
+        gdrive_url = "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view"
+        content = ManaBoxInventoryParser.download_gdrive_csv(gdrive_url)
+        self.assertIn("Sol Ring", content)
+
+        # Test error handling when Google returns an HTML access denied / login page
+        html_resp = MagicMock()
+        html_resp.status_code = 200
+        html_resp.text = "<!DOCTYPE html><html><title>Google Drive - Access Denied</title></html>"
+        html_resp.content = html_resp.text.encode("utf-8")
+        html_resp.cookies = {}
+        mock_session.get.return_value = html_resp
+
+        with self.assertRaises(InventoryParseError) as ctx:
+            ManaBoxInventoryParser.download_gdrive_csv(gdrive_url)
+        self.assertIn("Anyone with the link can view", str(ctx.exception))
+
+    @patch("inventory_parser.ManaBoxInventoryParser.download_gdrive_csv")
+    def test_api_inventory_gdrive_upload_and_persistence(self, mock_download):
+        """Tests uploading via Google Drive link saves gdrive_url to user profile and imports cards."""
+        user = self.login_as()
+        mock_download.return_value = "Name,Quantity,Set code\nCyclonic Rift,1,RTR\nRhystic Study,1,PR"
+
+        gdrive_url = "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view?usp=sharing"
+        resp = self.client.post(
+            "/api/inventory/upload",
+            json={"gdrive_url": gdrive_url, "mode": "replace"}
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["added_count"], 2)
+
+        # Verify Google Drive URL is persisted to the user record
+        with self.app.app_context():
+            db_user = db.session.get(User, user.id)
+            self.assertEqual(db_user.inventory_gdrive_url, gdrive_url)
+
+    @patch("inventory_parser.ManaBoxInventoryParser.download_gdrive_csv")
+    def test_api_inventory_sync_gdrive_endpoint(self, mock_download):
+        """Tests /api/inventory/sync-gdrive uses saved Google Drive link to re-sync."""
+        user = self.login_as()
+        gdrive_url = "https://drive.google.com/file/d/saved-id-12345678901234567890/view"
+
+        with self.app.app_context():
+            db_user = db.session.get(User, user.id)
+            db_user.inventory_gdrive_url = gdrive_url
+            db.session.commit()
+
+        mock_download.return_value = "Name,Quantity,Set code\nSmothering Tithe,1,RNA\n"
+
+        resp = self.client.post("/api/inventory/sync-gdrive", json={"mode": "replace"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["added_count"], 1)
+
+        with self.app.app_context():
+            cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
+            self.assertEqual(len(cards), 1)
+            self.assertEqual(cards[0].name, "Smothering Tithe")
 
 
 if __name__ == "__main__":

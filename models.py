@@ -22,6 +22,7 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     discord_webhook_url = db.Column(db.String(500), nullable=True)
+    inventory_gdrive_url = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
     last_login = db.Column(db.DateTime, nullable=True)
 
@@ -136,6 +137,7 @@ class User(db.Model):
             "is_admin": self.is_admin,
             "is_active": self.is_active,
             "discord_webhook_url": self.discord_webhook_url,
+            "inventory_gdrive_url": self.inventory_gdrive_url,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "last_active": last_active.isoformat() if last_active else None,

@@ -43,7 +43,7 @@ class InventoryManager:
         # 1. Batch fetch Scryfall metadata for all unique card names
         unique_names = list({c["name"] for c in parsed_cards if c.get("name")})
         try:
-            scryfall_map, _ = self.scryfall_provider.get_cards_collection(unique_names)
+            scryfall_map, _ = self.scryfall_provider.get_cards_collection(unique_names, fallback_named=False)
         except Exception as e:
             logger.error(f"Error fetching Scryfall metadata during inventory import: {e}", exc_info=True)
             scryfall_map = {}

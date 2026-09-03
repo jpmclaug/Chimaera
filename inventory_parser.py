@@ -10,6 +10,7 @@ import io
 import logging
 import re
 from typing import Dict, Any, List, Tuple, Optional
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,126 @@ class ManaBoxInventoryParser:
         "rarity": "rarity",
         "tags": "tags",
     }
+
+    @staticmethod
+    def extract_gdrive_file_id(url: str) -> Optional[str]:
+        """
+        Extracts Google Drive file ID from various link formats or validates a raw ID:
+        - https://drive.google.com/file/d/<id>/view?usp=sharing
+        - https://drive.google.com/open?id=<id>
+        - https://docs.google.com/spreadsheets/d/<id>/edit
+        - https://drive.google.com/uc?id=<id>
+        - Raw ID (25 to 55 alphanumeric characters, hyphens, underscores)
+        """
+        if not url:
+            return None
+        clean = str(url).strip()
+        # Direct raw ID
+        if re.match(r"^[a-zA-Z0-9_-]{25,55}$", clean):
+            return clean
+        # Match /d/<id>
+        m = re.search(r"/d/([a-zA-Z0-9_-]+)", clean)
+        if m:
+            return m.group(1)
+        # Match id=<id>
+        m = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", clean)
+        if m:
+            return m.group(1)
+        return None
+
+    @staticmethod
+    def download_gdrive_csv(url_or_id: str, timeout: int = 45) -> str:
+        """
+        Downloads CSV file content from Google Drive or direct URL.
+        Handles:
+        1. Google Drive files (large file virus scan confirmation, uc download)
+        2. Google Sheets CSV export (/export?format=csv)
+        3. Direct HTTP/HTTPS download URLs
+        Validates that content is CSV rather than an HTML login or access denied page.
+        """
+        if not url_or_id or not str(url_or_id).strip():
+            raise InventoryParseError("No Google Drive link or file ID provided.")
+
+        clean_input = str(url_or_id).strip()
+        file_id = ManaBoxInventoryParser.extract_gdrive_file_id(clean_input)
+
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Chimaera/1.0"
+        })
+
+        content_str = None
+
+        if file_id:
+            candidate_urls = []
+            if "spreadsheets" in clean_input.lower():
+                candidate_urls.append(f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv")
+
+            candidate_urls.extend([
+                f"https://drive.usercontent.google.com/download?id={file_id}&export=download&authuser=0&confirm=t",
+                f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t",
+                f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv",
+            ])
+
+            last_err = None
+            for url in candidate_urls:
+                try:
+                    resp = session.get(url, timeout=timeout, allow_redirects=True)
+                    if resp.status_code == 200:
+                        text = resp.text
+                        if "Google Drive - Virus scan warning" in text or "uc-download-link" in text or "download_warning" in resp.cookies:
+                            token = None
+                            for k, v in resp.cookies.items():
+                                if "download_warning" in k:
+                                    token = v
+                                    break
+                            if not token:
+                                token_match = re.search(r'confirm=([0-9A-Za-z_-]+)', text)
+                                if token_match:
+                                    token = token_match.group(1)
+                            if token:
+                                confirm_url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={token}"
+                                resp = session.get(confirm_url, timeout=timeout, allow_redirects=True)
+
+                        resp_text = resp.content.decode("utf-8-sig", errors="replace").strip()
+
+                        # Verify if this is an HTML page (access denied, private file, or login required)
+                        if resp_text.startswith("<!DOCTYPE") or resp_text.startswith("<html") or "<title>Google Drive - Access Denied" in resp_text or "accounts.google.com" in resp_text:
+                            last_err = "Google Drive access denied. Please ensure your file's sharing permission is set to 'Anyone with the link can view'."
+                            continue
+
+                        if resp_text and ("\n" in resp_text or "," in resp_text):
+                            content_str = resp_text
+                            break
+                except Exception as e:
+                    last_err = str(e)
+
+            if not content_str:
+                if last_err:
+                    raise InventoryParseError(f"Failed to download file from Google Drive: {last_err}")
+                raise InventoryParseError(
+                    "Could not retrieve CSV from Google Drive. Please verify the link and ensure sharing is set to 'Anyone with the link can view'."
+                )
+        elif clean_input.startswith("http://") or clean_input.startswith("https://"):
+            try:
+                resp = session.get(clean_input, timeout=timeout, allow_redirects=True)
+                if resp.status_code != 200:
+                    raise InventoryParseError(f"Download failed with HTTP {resp.status_code}.")
+                resp_text = resp.content.decode("utf-8-sig", errors="replace").strip()
+                if resp_text.startswith("<!DOCTYPE") or resp_text.startswith("<html"):
+                    raise InventoryParseError("The provided URL returned a webpage instead of raw CSV file content.")
+                content_str = resp_text
+            except Exception as e:
+                raise InventoryParseError(f"Failed to download file from URL: {str(e)}")
+        else:
+            raise InventoryParseError(
+                "Invalid Google Drive link format. Expected a link such as: https://drive.google.com/file/d/<FILE_ID>/view?usp=sharing"
+            )
+
+        if not content_str or not content_str.strip():
+            raise InventoryParseError("The downloaded Google Drive file is empty.")
+
+        return content_str
 
     @staticmethod
     def normalize_card_name(name: str) -> str:

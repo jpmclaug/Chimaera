@@ -159,7 +159,7 @@ class ScryfallProvider:
             logger.error(f"Error fetching card named '{card_name}': {e}")
         return None
 
-    def get_cards_collection(self, card_names: list[str]) -> tuple[dict[str, dict], list[str]]:
+    def get_cards_collection(self, card_names: list[str], fallback_named: bool = True) -> tuple[dict[str, dict], list[str]]:
         """
         Batch resolves multiple card names via Scryfall's /cards/collection endpoint.
         Returns a tuple of (found_map, not_found_list).
@@ -210,18 +210,22 @@ class ScryfallProvider:
                 for item in identifiers:
                     not_found_list.append(item["name"])
 
-        # Attempt fallback lookup for any unresolved cards using named endpoint
+        # Attempt fallback lookup for unresolved cards if enabled (up to 15 to prevent timeouts)
         still_unresolved = []
-        for name in not_found_list:
-            if name.lower() in found_map:
-                continue
-            fallback = self.get_card_named(name)
-            if fallback:
-                found_map[name.lower()] = fallback
-                if fallback.get("name"):
-                    found_map[fallback["name"].lower()] = fallback
-            else:
-                still_unresolved.append(name)
+        if fallback_named:
+            lookup_candidates = [n for n in not_found_list if n.lower() not in found_map][:15]
+            for name in lookup_candidates:
+                fallback = self.get_card_named(name)
+                if fallback:
+                    found_map[name.lower()] = fallback
+                    if fallback.get("name"):
+                        found_map[fallback["name"].lower()] = fallback
+                else:
+                    still_unresolved.append(name)
+            remaining = [n for n in not_found_list if n.lower() not in found_map and n not in lookup_candidates]
+            still_unresolved.extend(remaining)
+        else:
+            still_unresolved = [n for n in not_found_list if n.lower() not in found_map]
 
         return found_map, still_unresolved
 

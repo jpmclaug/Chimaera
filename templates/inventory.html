@@ -22,11 +22,19 @@
 
         <!-- Action Buttons -->
         <div class="flex items-center space-x-3">
+            {% if saved_gdrive_url %}
+            <button onclick="triggerQuickGdriveSync()" id="btnQuickGdriveSync" class="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-mono font-bold uppercase transition flex items-center space-x-2 shadow-lg shadow-cyan-950/40" title="Re-sync immediately using your linked Google Drive file">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <span>⚡ Quick Sync Drive</span>
+            </button>
+            {% endif %}
             <button onclick="openUploadModal()" class="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition flex items-center space-x-2 shadow-lg shadow-emerald-950/40">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
                 </svg>
-                <span>Upload / Sync ManaBox CSV</span>
+                <span>Sync Collection / Link CSV</span>
             </button>
             <button onclick="confirmClearInventory()" class="px-3 py-2 bg-[#1B2230] hover:bg-[#DC143C]/20 text-[#94A3B8] hover:text-[#FF3358] border border-[#263245] hover:border-[#DC143C]/50 text-xs font-mono font-bold uppercase transition">
                 Clear Vault
@@ -277,15 +285,27 @@
 
 <!-- ========================================================================= -->
 <!-- Upload / Sync ManaBox CSV Modal                                            -->
-<!-- ========================================================================= -->
-<div id="uploadModal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+<!-- ====================================================================<div id="uploadModal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
     <div class="bg-[#1B2230] border-2 border-[#263245] max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
         <button onclick="closeUploadModal()" class="absolute top-4 right-4 text-[#64748B] hover:text-white font-mono text-lg">&times;</button>
         
         <div>
             <div class="text-[10px] font-mono text-[#10B981] uppercase tracking-wider mb-1">// INVENTORY INGESTION</div>
-            <h2 class="font-heading font-bold text-lg text-white uppercase">Upload ManaBox Collection CSV</h2>
-            <p class="text-xs text-[#94A3B8] font-sans mt-1">Export your collection from ManaBox as CSV and upload here. Double-faced cards (DFCs) and standard finishes are handled automatically.</p>
+            <h2 class="font-heading font-bold text-lg text-white uppercase">Sync ManaBox Collection</h2>
+            <p class="text-xs text-[#94A3B8] font-sans mt-1">Connect your ManaBox collection CSV directly via Google Drive link or upload a local file.</p>
+        </div>
+
+        <!-- Ingestion Source Switcher Tabs -->
+        <div class="flex border-b border-[#263245] gap-2 text-xs font-mono">
+            <button type="button" id="tabBtnGdrive" onclick="switchUploadTab('gdrive')"
+                    class="pb-2 px-3 border-b-2 border-[#10B981] text-[#10B981] font-bold uppercase flex items-center gap-1.5 transition">
+                <span>🔗 Google Drive Link</span>
+                <span class="text-[9px] px-1 py-0.2 bg-emerald-500/20 text-emerald-400 rounded">Recommended</span>
+            </button>
+            <button type="button" id="tabBtnFile" onclick="switchUploadTab('file')"
+                    class="pb-2 px-3 border-b-2 border-transparent text-[#94A3B8] hover:text-white font-bold uppercase flex items-center gap-1.5 transition">
+                <span>📄 Local File Upload</span>
+            </button>
         </div>
 
         <!-- Mode Selection -->
@@ -309,24 +329,57 @@
             </div>
         </div>
 
-        <!-- Drag & Drop Zone -->
-        <div id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleFileDrop(event)"
-             class="border-2 border-dashed border-[#263245] hover:border-[#10B981] bg-[#10141D] p-8 text-center cursor-pointer transition space-y-2"
-             onclick="document.getElementById('csvFileInput').click()">
-            <div class="text-3xl">📄</div>
-            <div class="text-xs font-mono font-bold text-white uppercase" id="dropLabel">Drag & Drop ManaBox .CSV file here</div>
-            <p class="text-[10px] text-[#64748B] font-mono">or click to browse your files</p>
-            <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
+        <!-- Tab Panel 1: Google Drive Link -->
+        <div id="gdriveTabPanel" class="space-y-3">
+            <div>
+                <label for="gdriveUrlInput" class="block text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider mb-1.5">
+                    Google Drive Share Link or File ID:
+                </label>
+                <input type="url" id="gdriveUrlInput"
+                       value="{{ saved_gdrive_url }}"
+                       placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
+                       oninput="handleGdriveInputChanged()"
+                       class="w-full bg-[#10141D] border border-[#263245] focus:border-[#10B981] focus:outline-none px-3 py-2 text-xs font-mono text-white placeholder-slate-600">
+            </div>
+
+            <!-- How to link instructions -->
+            <div class="bg-cyan-950/20 border border-cyan-500/30 p-3 rounded space-y-1.5 text-slate-300 font-sans text-xs">
+                <div class="flex items-center gap-1.5 text-cyan-400 font-mono font-bold text-[11px] uppercase">
+                    <span>💡</span>
+                    <span>Direct Cloud Sync (Bypasses Browser Upload Size Limits)</span>
+                </div>
+                <ol class="list-decimal list-inside text-[11px] space-y-1 text-slate-300">
+                    <li>Upload your ManaBox <code class="text-cyan-400 font-mono">.csv</code> export to Google Drive.</li>
+                    <li>Right-click the file &rarr; select <strong>Share</strong> &rarr; change General access to <strong>"Anyone with the link"</strong> (Viewer).</li>
+                    <li>Click <strong>Copy link</strong> and paste it in the box above.</li>
+                </ol>
+                <p class="text-[10px] text-slate-400 pt-0.5">
+                    Chimaera downloads your file directly on high-speed cloud infrastructure. Your link is remembered so you can re-sync anytime with 1 click!
+                </p>
+            </div>
         </div>
 
-        <!-- Selected File Banner -->
-        <div id="selectedFileInfo" class="hidden bg-[#10141D] border border-[#10B981]/50 p-3 flex items-center justify-between font-mono text-xs">
-            <div class="flex items-center space-x-2 text-white truncate">
-                <span class="text-[#10B981]">✓</span>
-                <span id="selectedFileName" class="truncate font-bold">collection.csv</span>
-                <span id="selectedFileSize" class="text-[10px] text-[#64748B]">(0 KB)</span>
+        <!-- Tab Panel 2: Local File Upload -->
+        <div id="fileTabPanel" class="hidden space-y-3">
+            <!-- Drag & Drop Zone -->
+            <div id="dropZone" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleFileDrop(event)"
+                 class="border-2 border-dashed border-[#263245] hover:border-[#10B981] bg-[#10141D] p-8 text-center cursor-pointer transition space-y-2"
+                 onclick="document.getElementById('csvFileInput').click()">
+                <div class="text-3xl">📄</div>
+                <div class="text-xs font-mono font-bold text-white uppercase" id="dropLabel">Drag & Drop ManaBox .CSV file here</div>
+                <p class="text-[10px] text-[#64748B] font-mono">or click to browse your files (smaller files)</p>
+                <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
             </div>
-            <button onclick="clearSelectedFile(event)" class="text-[#DC143C] hover:underline text-[10px]">Remove</button>
+
+            <!-- Selected File Banner -->
+            <div id="selectedFileInfo" class="hidden bg-[#10141D] border border-[#10B981]/50 p-3 flex items-center justify-between font-mono text-xs">
+                <div class="flex items-center space-x-2 text-white truncate">
+                    <span class="text-[#10B981]">✓</span>
+                    <span id="selectedFileName" class="truncate font-bold">collection.csv</span>
+                    <span id="selectedFileSize" class="text-[10px] text-[#64748B]">(0 KB)</span>
+                </div>
+                <button onclick="clearSelectedFile(event)" class="text-[#DC143C] hover:underline text-[10px]">Remove</button>
+            </div>
         </div>
 
         <!-- Progress Bar -->
@@ -345,7 +398,7 @@
             <button onclick="closeUploadModal()" class="px-4 py-2 bg-[#10141D] hover:bg-[#222B3D] text-[#94A3B8] text-xs font-mono uppercase font-bold border border-[#263245] transition">
                 Cancel
             </button>
-            <button id="btnStartUpload" onclick="submitUpload()" disabled class="px-5 py-2 bg-[#10B981] hover:bg-[#059669] disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-xs font-mono uppercase font-bold transition">
+            <button id="btnStartUpload" onclick="submitUpload()" class="px-5 py-2 bg-[#10B981] hover:bg-[#059669] disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-xs font-mono uppercase font-bold transition">
                 Start Ingestion
             </button>
         </div>
@@ -396,15 +449,79 @@
 </div>
 
 <script>
+let currentUploadTab = 'gdrive';
 let selectedFile = null;
+
+function switchUploadTab(tab) {
+    currentUploadTab = tab;
+    const gdriveBtn = document.getElementById('tabBtnGdrive');
+    const fileBtn = document.getElementById('tabBtnFile');
+    const gdrivePanel = document.getElementById('gdriveTabPanel');
+    const filePanel = document.getElementById('fileTabPanel');
+
+    if (tab === 'gdrive') {
+        gdriveBtn.classList.add('border-[#10B981]', 'text-[#10B981]');
+        gdriveBtn.classList.remove('border-transparent', 'text-[#94A3B8]');
+        fileBtn.classList.remove('border-[#10B981]', 'text-[#10B981]');
+        fileBtn.classList.add('border-transparent', 'text-[#94A3B8]');
+        gdrivePanel.classList.remove('hidden');
+        filePanel.classList.add('hidden');
+        handleGdriveInputChanged();
+    } else {
+        fileBtn.classList.add('border-[#10B981]', 'text-[#10B981]');
+        fileBtn.classList.remove('border-transparent', 'text-[#94A3B8]');
+        gdriveBtn.classList.remove('border-[#10B981]', 'text-[#10B981]');
+        gdriveBtn.classList.add('border-transparent', 'text-[#94A3B8]');
+        filePanel.classList.remove('hidden');
+        gdrivePanel.classList.add('hidden');
+        if (selectedFile) {
+            document.getElementById('btnStartUpload').removeAttribute('disabled');
+        } else {
+            document.getElementById('btnStartUpload').setAttribute('disabled', 'true');
+        }
+    }
+}
+
+function handleGdriveInputChanged() {
+    const val = (document.getElementById('gdriveUrlInput') ? document.getElementById('gdriveUrlInput').value : '').trim();
+    const btn = document.getElementById('btnStartUpload');
+    if (currentUploadTab === 'gdrive') {
+        if (val.length > 0) {
+            btn.removeAttribute('disabled');
+        } else {
+            btn.setAttribute('disabled', 'true');
+        }
+    }
+}
 
 function openUploadModal() {
     document.getElementById('uploadModal').classList.remove('hidden');
+    switchUploadTab(currentUploadTab);
 }
 
 function closeUploadModal() {
     document.getElementById('uploadModal').classList.add('hidden');
     clearSelectedFile();
+    document.getElementById('uploadProgressContainer').classList.add('hidden');
+}
+
+// Quick Sync Drive
+async function triggerQuickGdriveSync() {
+    const btn = document.getElementById('btnQuickGdriveSync');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.setAttribute('disabled', 'true');
+        btn.innerHTML = '<span class="inline-block animate-spin mr-1">⟳</span> Syncing Drive...';
+    }
+
+    openUploadModal();
+    switchUploadTab('gdrive');
+    await submitUpload();
+
+    if (btn) {
+        btn.removeAttribute('disabled');
+        btn.innerHTML = origHtml;
+    }
 }
 
 function openErrorModal(errors, summaryText) {
@@ -473,15 +590,16 @@ function processSelectedFile(file) {
 function clearSelectedFile(e) {
     if (e) e.stopPropagation();
     selectedFile = null;
-    document.getElementById('csvFileInput').value = "";
+    const finput = document.getElementById('csvFileInput');
+    if (finput) finput.value = "";
     document.getElementById('selectedFileInfo').classList.add('hidden');
-    document.getElementById('btnStartUpload').setAttribute('disabled', 'true');
+    if (currentUploadTab === 'file') {
+        document.getElementById('btnStartUpload').setAttribute('disabled', 'true');
+    }
 }
 
-// Upload Submission
+// Ingestion Submission (Google Drive or Local File)
 async function submitUpload() {
-    if (!selectedFile) return;
-
     const btn = document.getElementById('btnStartUpload');
     const mode = document.querySelector('input[name="uploadMode"]:checked').value;
     const progressContainer = document.getElementById('uploadProgressContainer');
@@ -491,35 +609,63 @@ async function submitUpload() {
 
     btn.setAttribute('disabled', 'true');
     progressContainer.classList.remove('hidden');
-    progressBar.style.width = "25%";
-    percentText.innerText = "25%";
-    statusText.innerText = "Reading CSV content...";
-
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-    formData.append("mode", mode);
+    progressBar.style.width = "20%";
+    percentText.innerText = "20%";
 
     try {
-        progressBar.style.width = "60%";
-        percentText.innerText = "60%";
-        statusText.innerText = "Resolving Scryfall metadata & prices...";
+        let resp;
+        if (currentUploadTab === 'gdrive') {
+            const gdriveUrl = document.getElementById('gdriveUrlInput').value.trim();
+            if (!gdriveUrl) {
+                alert("Please provide a Google Drive share link.");
+                btn.removeAttribute('disabled');
+                progressContainer.classList.add('hidden');
+                return;
+            }
 
-        const resp = await fetch("/api/inventory/upload", {
-            method: "POST",
-            body: formData,
-        });
+            statusText.innerText = "Connecting & downloading CSV from Google Drive...";
+            progressBar.style.width = "40%";
+            percentText.innerText = "40%";
+
+            resp = await fetch("/api/inventory/upload", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ gdrive_url: gdriveUrl, mode: mode })
+            });
+
+        } else {
+            if (!selectedFile) {
+                alert("Please select a .CSV file to upload.");
+                btn.removeAttribute('disabled');
+                progressContainer.classList.add('hidden');
+                return;
+            }
+
+            statusText.innerText = "Reading CSV & resolving Scryfall metadata...";
+            progressBar.style.width = "50%";
+            percentText.innerText = "50%";
+
+            const formData = new FormData();
+            formData.append("file", selectedFile);
+            formData.append("mode", mode);
+
+            resp = await fetch("/api/inventory/upload", {
+                method: "POST",
+                body: formData,
+            });
+        }
 
         progressBar.style.width = "100%";
         percentText.innerText = "100%";
-        statusText.innerText = "Complete!";
+        statusText.innerText = "Processing complete!";
 
         const data = await resp.json();
         if (!resp.ok || data.error) {
             closeUploadModal();
             if (data.errors && data.errors.length > 0) {
-                openErrorModal(data.errors, `CSV Upload Failed: ${data.error}`);
+                openErrorModal(data.errors, `Ingestion Warning: ${data.error}`);
             } else {
-                alert(`Upload Failed: ${data.error || 'Server error'}`);
+                alert(`Sync Failed: ${data.error || 'Server error'}`);
             }
             return;
         }
@@ -537,7 +683,7 @@ async function submitUpload() {
         }
 
     } catch (err) {
-        alert(`Upload error: ${err.message}`);
+        alert(`Ingestion error: ${err.message}`);
         btn.removeAttribute('disabled');
         progressContainer.classList.add('hidden');
     }

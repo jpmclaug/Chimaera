@@ -250,6 +250,9 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON user_inventory_card (user_id)"))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_name ON user_inventory_card (name)"))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
+                    user_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(user)")).fetchall()]
+                    if "inventory_gdrive_url" not in user_cols:
+                        conn.execute(db.text("ALTER TABLE user ADD COLUMN inventory_gdrive_url TEXT"))
                     conn.commit()
 
             elif dialect in ("postgresql", "postgres"):
@@ -262,6 +265,7 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
                     conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                     conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
+                    conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS inventory_gdrive_url TEXT"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS microcenter_item (
                             id SERIAL PRIMARY KEY,
@@ -3077,6 +3081,7 @@ def create_app(test_config=None):
         return render_template(
             "inventory.html",
             inventory=summary,
+            saved_gdrive_url=user.inventory_gdrive_url or "",
             active_tab="inventory",
         )
 
@@ -3087,7 +3092,11 @@ def create_app(test_config=None):
         user = get_current_user()
         deck_id = request.args.get("deck_id", type=int)
         summary = inventory_manager.get_inventory_summary(user.id, current_deck_id=deck_id)
-        return jsonify({"success": True, **summary})
+        return jsonify({
+            "success": True,
+            "saved_gdrive_url": user.inventory_gdrive_url or "",
+            **summary
+        })
 
     @app.route("/api/inventory/upload", methods=["POST"])
     @login_required
@@ -3098,8 +3107,30 @@ def create_app(test_config=None):
         if mode not in ("replace", "merge"):
             mode = "replace"
 
+        # Check for Google Drive URL parameter first
+        gdrive_url = request.form.get("gdrive_url")
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+            if not gdrive_url:
+                gdrive_url = data.get("gdrive_url")
+            mode = data.get("mode", mode)
+        if not gdrive_url and request.args.get("gdrive_url"):
+            gdrive_url = request.args.get("gdrive_url")
+
         csv_content = ""
-        if "file" in request.files:
+        if gdrive_url and gdrive_url.strip():
+            gdrive_url = gdrive_url.strip()
+            try:
+                csv_content = ManaBoxInventoryParser.download_gdrive_csv(gdrive_url)
+                # Persist to user profile for future 1-click syncs
+                user.inventory_gdrive_url = gdrive_url
+                db.session.commit()
+            except InventoryParseError as e:
+                return jsonify({"error": str(e), "errors": []}), 400
+            except Exception as e:
+                logger.error(f"Error downloading CSV from Google Drive: {e}", exc_info=True)
+                return jsonify({"error": f"Failed to download file from Google Drive: {str(e)}", "errors": []}), 400
+        elif "file" in request.files:
             file_obj = request.files["file"]
             if file_obj and file_obj.filename:
                 try:
@@ -3114,7 +3145,7 @@ def create_app(test_config=None):
             csv_content = request.form.get("csv_content", "")
 
         if not csv_content or not csv_content.strip():
-            return jsonify({"error": "No CSV content or file provided for upload."}), 400
+            return jsonify({"error": "No CSV content, file, or Google Drive link provided for upload."}), 400
 
         try:
             parsed = ManaBoxInventoryParser.parse(csv_content)
@@ -3149,6 +3180,75 @@ def create_app(test_config=None):
         return jsonify({
             "success": True,
             **import_result,
+            "gdrive_url": user.inventory_gdrive_url or "",
+            "errors": errors,
+            "errors_count": len(errors),
+            "parsed_rows": parsed.get("total_rows", 0),
+        })
+
+    @app.route("/api/inventory/sync-gdrive", methods=["POST"])
+    @login_required
+    def api_inventory_sync_gdrive():
+        """Synchronizes collection inventory from saved or provided Google Drive CSV link."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        gdrive_url = data.get("gdrive_url") or request.form.get("gdrive_url") or user.inventory_gdrive_url
+        mode = (data.get("mode") or request.form.get("mode") or "replace").strip().lower()
+        if mode not in ("replace", "merge"):
+            mode = "replace"
+
+        if not gdrive_url or not gdrive_url.strip():
+            return jsonify({
+                "error": "No Google Drive link found. Please provide a Google Drive share link to your ManaBox CSV."
+            }), 400
+
+        gdrive_url = gdrive_url.strip()
+
+        try:
+            csv_content = ManaBoxInventoryParser.download_gdrive_csv(gdrive_url)
+        except InventoryParseError as e:
+            return jsonify({"error": str(e), "errors": []}), 400
+        except Exception as e:
+            logger.error(f"Error downloading CSV from Google Drive: {e}", exc_info=True)
+            return jsonify({"error": f"Failed to download file from Google Drive: {str(e)}", "errors": []}), 400
+
+        user.inventory_gdrive_url = gdrive_url
+        db.session.commit()
+
+        try:
+            parsed = ManaBoxInventoryParser.parse(csv_content)
+        except InventoryParseError as e:
+            return jsonify({"error": str(e), "errors": []}), 400
+        except Exception as e:
+            logger.error(f"Error parsing inventory CSV: {e}", exc_info=True)
+            return jsonify({"error": f"CSV parse error: {str(e)}", "errors": []}), 400
+
+        valid_cards = parsed.get("valid_cards", [])
+        errors = parsed.get("errors", [])
+
+        if not valid_cards:
+            return jsonify({
+                "error": "No valid cards could be parsed from the Google Drive CSV file.",
+                "errors": errors,
+                "total_rows": parsed.get("total_rows", 0),
+            }), 400
+
+        import_result = inventory_manager.import_inventory(
+            user_id=user.id,
+            parsed_cards=valid_cards,
+            mode=mode,
+        )
+
+        log_activity(
+            "INVENTORY_GDRIVE_SYNC",
+            details=f"Synced {import_result['added_count'] + import_result['updated_count']} cards from Google Drive ({mode} mode) with {len(errors)} row errors",
+            user=user,
+        )
+
+        return jsonify({
+            "success": True,
+            **import_result,
+            "gdrive_url": gdrive_url,
             "errors": errors,
             "errors_count": len(errors),
             "parsed_rows": parsed.get("total_rows", 0),
