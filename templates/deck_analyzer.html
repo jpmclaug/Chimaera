@@ -230,74 +230,77 @@
         <!-- Commander Banner & Tactical Telemetry Header -->
         <div id="deckHeaderBanner" class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
             <div id="commanderBannerBg" class="absolute inset-0 bg-cover bg-center opacity-15 filter blur-sm pointer-events-none"></div>
-            <div class="relative z-10 p-5 md:p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+            <div class="relative z-10 p-4 md:p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
                 
                 <!-- Left: Commander Portrait & Title -->
-                <div class="flex items-center space-x-4">
-                    <div class="relative group">
+                <div class="flex items-center space-x-3 sm:space-x-4">
+                    <div class="relative group flex-shrink-0">
                         <img id="inspectorCmdrArt" src="https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg" alt="Commander Art" 
-                             class="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover border-2 border-cyan-500/40 shadow-xl bg-slate-900">
-                        <div id="cmdrColorPips" class="absolute -bottom-2 -right-2 flex space-x-0.5 bg-slate-950/90 px-1.5 py-0.5 rounded-full border border-slate-700 shadow-md">
+                             class="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-xl object-cover border-2 border-cyan-500/40 shadow-xl bg-slate-900">
+                        <div id="cmdrColorPips" class="absolute -bottom-1.5 -right-1.5 flex space-x-0.5 bg-slate-950/90 px-1.5 py-0.5 rounded-full border border-slate-700 shadow-md">
                             <!-- Color pips injected here -->
                         </div>
                     </div>
 
-                    <div>
-                        <div class="flex items-center gap-2 flex-wrap">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                             <span id="inspectorCardCount" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">100 Cards</span>
                             <span id="inspectorPowerVal" class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">-- / 10</span>
-                            <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">Pre-AI Ready</span>
-                            <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">Commander</span>
+                            <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase truncate max-w-[120px] sm:max-w-none">Pre-AI Ready</span>
+                            <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono hidden sm:inline-block">Commander</span>
                             <span id="inspectorSourceBadge" class="text-[10px] text-slate-400 font-mono">ManaBox</span>
                         </div>
-                        <h2 id="inspectorDeckName" class="text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1">Commander Deck</h2>
-                        <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono">The Ur-Dragon</p>
+                        <h2 id="inspectorDeckName" class="text-lg sm:text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1 truncate">Commander Deck</h2>
+                        <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono truncate">The Ur-Dragon</p>
                     </div>
                 </div>
 
                 <!-- Center & Right: Tactical Stats Pills & Actions -->
-                <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
+                <div class="flex flex-col lg:flex-row items-start lg:items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
                     
-                    <!-- Nonland AMV Badge (Color Coded: Green <= 2.8, Amber 2.9-3.4, Red >= 3.5) -->
-                    <div id="inspectorAmvContainer" class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3 py-1.5 text-center min-w-[85px]">
-                        <span class="block text-[9px] font-mono text-slate-400 uppercase">Nonland AMV</span>
-                        <span id="inspectorAvgCmc" class="text-sm font-black text-amber-400 font-mono">0.00</span>
-                    </div>
+                    <!-- 6 Stat Cards Grid (3 columns on mobile, 6 columns on sm/md, flex row on lg) -->
+                    <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full lg:w-auto">
+                        <!-- Nonland AMV -->
+                        <div id="inspectorAmvContainer" class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[75px]">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Nonland AMV</span>
+                            <span id="inspectorAvgCmc" class="text-xs sm:text-sm font-black text-amber-400 font-mono">0.00</span>
+                        </div>
 
-                    <!-- Fast Ramp (CMC <= 2) -->
-                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3 py-1.5 text-center min-w-[75px]">
-                        <span class="block text-[9px] font-mono text-slate-400 uppercase">Fast Ramp</span>
-                        <span id="inspectorFastRamp" class="text-sm font-black text-emerald-400 font-mono">0</span>
-                    </div>
+                        <!-- Fast Ramp -->
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Fast Ramp</span>
+                            <span id="inspectorFastRamp" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">0</span>
+                        </div>
 
-                    <!-- Instant Speed % -->
-                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3 py-1.5 text-center min-w-[80px]">
-                        <span class="block text-[9px] font-mono text-slate-400 uppercase">Instant %</span>
-                        <span id="inspectorInstantSpeed" class="text-sm font-black text-cyan-400 font-mono">0%</span>
-                    </div>
+                        <!-- Instant Speed % -->
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Instant %</span>
+                            <span id="inspectorInstantSpeed" class="text-xs sm:text-sm font-black text-cyan-400 font-mono">0%</span>
+                        </div>
 
-                    <!-- Tapland Penalty % -->
-                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3 py-1.5 text-center min-w-[80px]">
-                        <span class="block text-[9px] font-mono text-slate-400 uppercase">Tapland %</span>
-                        <span id="inspectorTaplandPenalty" class="text-sm font-black text-rose-400 font-mono">0%</span>
-                    </div>
+                        <!-- Tapland Penalty % -->
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Tapland %</span>
+                            <span id="inspectorTaplandPenalty" class="text-xs sm:text-sm font-black text-rose-400 font-mono">0%</span>
+                        </div>
 
-                    <!-- Engine Draw -->
-                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3 py-1.5 text-center min-w-[75px]">
-                        <span class="block text-[9px] font-mono text-slate-400 uppercase">Engines</span>
-                        <span id="inspectorEngineDraw" class="text-sm font-black text-purple-400 font-mono">0</span>
-                    </div>
+                        <!-- Engines -->
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Engines</span>
+                            <span id="inspectorEngineDraw" class="text-xs sm:text-sm font-black text-purple-400 font-mono">0</span>
+                        </div>
 
-                    <!-- Total Deck Value -->
-                    <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-3 py-1.5 text-center min-w-[90px]">
-                        <span class="block text-[9px] font-mono text-slate-400 uppercase">TCG Value</span>
-                        <span id="inspectorTotalValue" class="text-sm font-black text-emerald-400 font-mono">$0.00</span>
+                        <!-- Total Deck Value -->
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[75px]">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">TCG Value</span>
+                            <span id="inspectorTotalValue" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">$0.00</span>
+                        </div>
                     </div>
 
                     <!-- Action Buttons -->
-                    <div class="flex items-center gap-2 pl-2 border-l border-slate-800">
+                    <div class="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-end pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-800">
                         <select id="inspectorDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
-                                class="bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[200px] truncate"
+                                class="flex-1 lg:flex-initial bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[170px] sm:max-w-[200px] truncate"
                                 title="Switch Deck in Inspector">
                             <option value="">⚡ Switch Deck...</option>
                             {% for d in recent_decks %}
@@ -306,35 +309,56 @@
                         </select>
 
                         <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
-                                class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer">
+                                class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex-shrink-0">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                         </button>
                         
-                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1" title="Return to Deck Vault grid">
+                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault grid">
                             <span>&larr;</span>
                             <span>All Decks</span>
                         </button>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- Inspector Tab Navigation Bar -->
-            <div class="relative z-10 flex border-t border-slate-800 bg-[#0B0F17] px-4 overflow-x-auto">
-                <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
-                    📊 Mana Curve & Composition
+        <!-- Sticky Inspector Tab Navigation Bar (100% visible on Mobile & Desktop) -->
+        <div id="inspectorTabBarContainer" class="sticky top-14 sm:top-16 z-30 bg-[#0B0F17]/95 backdrop-blur-md border border-slate-800 rounded-xl shadow-xl overflow-hidden">
+            <div class="grid grid-cols-4 md:flex md:items-center p-1 md:px-4 md:py-0 gap-1 md:gap-2 overflow-x-auto no-scrollbar">
+                <!-- Tab 1: Mana Curve & Composition -->
+                <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" 
+                        class="py-2.5 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-1 text-center">
+                    <span class="text-sm md:text-base leading-none">📊</span>
+                    <span class="block md:hidden text-[10px] tracking-tight">Curve</span>
+                    <span class="hidden md:inline whitespace-nowrap">Mana Curve & Composition</span>
                 </button>
-                <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
-                    🃏 Full Card Registry (<span id="tabCardCount">100</span>)
+
+                <!-- Tab 2: Full Card Registry -->
+                <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" 
+                        class="py-2.5 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 text-center">
+                    <span class="text-sm md:text-base leading-none">🃏</span>
+                    <span class="block md:hidden text-[10px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
+                    <span class="hidden md:inline whitespace-nowrap">Full Card Registry (<span id="tabCardCount">100</span>)</span>
                 </button>
-                <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
-                    ⚡ Gemini AI Strategic Intel
-                    <span id="aiTabBadge" class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">Ready</span>
+
+                <!-- Tab 3: Gemini AI Strategic Intel -->
+                <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" 
+                        class="py-2.5 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 text-center">
+                    <span class="text-sm md:text-base leading-none">⚡</span>
+                    <span class="block md:hidden text-[10px] tracking-tight">AI Intel</span>
+                    <span class="hidden md:inline whitespace-nowrap">Gemini AI Strategic Intel</span>
+                    <span id="aiTabBadge" class="text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Ready</span>
                 </button>
-                <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
-                    💎 Tactical Upgrades
-                    <span id="upgradesTabBadge" class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Dual-Tier</span>
+
+                <!-- Tab 4: Tactical Upgrades -->
+                <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" 
+                        class="py-2.5 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 text-center">
+                    <span class="text-sm md:text-base leading-none">💎</span>
+                    <span class="block md:hidden text-[10px] tracking-tight">Upgrades</span>
+                    <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
+                    <span id="upgradesTabBadge" class="text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
                 </button>
             </div>
         </div>
@@ -1077,7 +1101,7 @@
                         Cross-referenced against your physical ManaBox collection. Swap owned cards from your binder for immediate zero-cost power boosts, or export prioritized acquisition wishlists.
                     </p>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex flex-wrap items-center gap-2">
                     <a href="/inventory" target="_blank" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
                         <span>Open Binder Vault</span>
                         <span>&rarr;</span>
@@ -1092,16 +1116,16 @@
             </div>
 
             <!-- Dual-Tier Sub-Tab Navigation Bar -->
-            <div class="flex border-b border-slate-800 bg-[#0B0F17] rounded-t-xl px-4 overflow-x-auto gap-2">
+            <div class="grid grid-cols-2 sm:flex border-b border-slate-800 bg-[#0B0F17] rounded-t-xl p-1 sm:px-4 sm:py-0 gap-1 sm:gap-2">
                 <button type="button" onclick="switchUpgradeSubtab('owned')" id="subtab-btn-owned" 
-                        class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border-b-2 border-emerald-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
-                    <span>🎴 In Your Binder (Zero Cost)</span>
-                    <span id="ownedSwapsCountBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold">0 Swaps</span>
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border-b-2 border-emerald-400 bg-emerald-500/10 sm:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">🎴 In Binder</span>
+                    <span id="ownedSwapsCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold">0 Swaps</span>
                 </button>
                 <button type="button" onclick="switchUpgradeSubtab('shop')" id="subtab-btn-shop" 
-                        class="px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer">
-                    <span>🛒 Shopping List (Market Purchases)</span>
-                    <span id="shoppingCountBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold">0 Cards</span>
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">🛒 Shopping List</span>
+                    <span id="shoppingCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold">0 Cards</span>
                 </button>
             </div>
 
@@ -1244,7 +1268,7 @@
 </div>
 
 <!-- Floating Card Hover Preview Tooltip -->
-<div id="cardHoverPreview" class="fixed pointer-events-none z-50 hidden transition-opacity duration-150">
+<div id="cardHoverPreview" onclick="hideCardHover()" class="fixed pointer-events-auto cursor-pointer z-50 hidden transition-opacity duration-150">
     <img id="cardHoverImg" src="" alt="Card Art" class="w-56 rounded-xl shadow-2xl border border-slate-700/80 bg-slate-900">
 </div>
 
@@ -1350,16 +1374,28 @@ function switchInspectorTab(tab) {
         const btn = document.getElementById(`insp-tab-${t}`);
         const content = document.getElementById(`inspectorTabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
         if (btn && content) {
-            if (t === tab) {
-                btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+            if (t === currentInspectorTab) {
+                btn.classList.add('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
+                btn.classList.remove('text-slate-400', 'border-transparent');
                 content.classList.remove('hidden');
             } else {
-                btn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
+                btn.classList.remove('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
+                btn.classList.add('text-slate-400', 'border-transparent');
                 content.classList.add('hidden');
             }
         }
     });
-    if (tab === 'upgrades' && activeDeck && activeDeck.id) {
+
+    // If scrolled past the inspector tab bar, smoothly align scroll to sticky tab bar
+    const tabContainer = document.getElementById('inspectorTabBarContainer');
+    if (tabContainer) {
+        const rect = tabContainer.getBoundingClientRect();
+        if (rect.top < 64) {
+            tabContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    if (currentInspectorTab === 'upgrades' && activeDeck && activeDeck.id) {
         loadDualTierUpgrades(activeDeck.id);
     }
 }
@@ -1500,6 +1536,7 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     safeSetText('inspectorCmdrName', deck.commander_name || (deck.commander ? (Array.isArray(deck.commander) ? deck.commander.join(', ') : deck.commander) : "Commander"));
     safeSetText('inspectorCardCount', `${deck.total_cards || cards.length} Cards`);
     safeSetText('tabCardCount', deck.total_cards || cards.length);
+    document.querySelectorAll('.tabCardCountMobile').forEach(el => el.innerText = deck.total_cards || cards.length);
     safeSetText('inspectorTotalValue', `$${(deck.total_value || stats.total_value || 0).toFixed(2)}`);
     
     // Nonland AMV Badge with Color Coding (Green <= 2.8, Amber 2.9-3.4, Red >= 3.5)
@@ -2075,6 +2112,7 @@ function renderCardRegistryTable(cards) {
                     <div class="flex flex-col gap-0.5">
                         <span class="cursor-pointer hover:text-cyan-300 hover:underline inline-flex items-center gap-1.5"
                               data-img="${escapeHtml(img)}"
+                              onclick="showCardHover(event, this)"
                               onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                             ${escapeHtml(name)}
                             ${c.section === 'commander' ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">Commander</span>' : ''}
@@ -2360,7 +2398,7 @@ function renderAiAnalysis(analysis) {
                 </div>
 
                 <!-- Swap Comparison Cards -->
-                <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     <!-- IN: Addition -->
                     <div class="bg-emerald-950/25 border border-emerald-500/30 p-2.5 rounded space-y-1">
                         <span class="text-[10px] text-emerald-400 uppercase font-bold font-mono block">&darr; IN (RECOMMENDED)</span>
@@ -2368,11 +2406,13 @@ function renderAiAnalysis(analysis) {
                             ${u.card_in_image ? `
                                 <img src="${escapeHtml(u.card_in_image)}" alt="${escapeHtml(u.card_in)}" class="w-7 h-10 object-cover rounded border border-emerald-500/40 flex-shrink-0 cursor-pointer shadow"
                                      data-img="${escapeHtml(u.card_in_image)}"
+                                     onclick="showCardHover(event, this)"
                                      onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                             ` : ''}
                             <div class="min-w-0 flex-1">
                                 <div class="font-bold text-white truncate hover:text-emerald-300 transition cursor-pointer" title="${escapeHtml(u.card_in)}"
                                      data-img="${escapeHtml(u.card_in_image || '')}"
+                                     onclick="showCardHover(event, this)"
                                      onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                                     ${escapeHtml(u.card_in || '')}
                                 </div>
@@ -2391,11 +2431,13 @@ function renderAiAnalysis(analysis) {
                             ${u.card_out_image ? `
                                 <img src="${escapeHtml(u.card_out_image)}" alt="${escapeHtml(u.card_out)}" class="w-7 h-10 object-cover rounded border border-rose-500/40 flex-shrink-0 cursor-pointer shadow"
                                      data-img="${escapeHtml(u.card_out_image)}"
+                                     onclick="showCardHover(event, this)"
                                      onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                             ` : ''}
                             <div class="min-w-0 flex-1">
                                 <div class="font-bold text-slate-300 truncate hover:text-rose-300 transition cursor-pointer" title="${escapeHtml(u.card_out)}"
                                      data-img="${escapeHtml(u.card_out_image || '')}"
+                                     onclick="showCardHover(event, this)"
                                      onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                                     ${escapeHtml(u.card_out || 'Suboptimal Card')}
                                 </div>
@@ -2708,8 +2750,16 @@ function showCardHover(e, elem) {
 }
 function moveCardHover(e) {
     const preview = document.getElementById('cardHoverPreview');
-    preview.style.left = `${e.clientX + 20}px`;
-    preview.style.top = `${Math.min(window.innerHeight - 340, Math.max(10, e.clientY - 100))}px`;
+    if (!preview) return;
+    if (window.innerWidth < 768) {
+        preview.style.left = '50%';
+        preview.style.transform = 'translateX(-50%)';
+        preview.style.top = '70px';
+    } else {
+        preview.style.transform = '';
+        preview.style.left = `${(e && e.clientX ? e.clientX : 0) + 20}px`;
+        preview.style.top = `${Math.min(window.innerHeight - 340, Math.max(10, (e && e.clientY ? e.clientY : 100) - 100))}px`;
+    }
 }
 function hideCardHover() {
     document.getElementById('cardHoverPreview').classList.add('hidden');
@@ -2854,15 +2904,27 @@ function switchUpgradeSubtab(subtab) {
     const shopContent = document.getElementById('subtab-content-shop');
 
     if (subtab === 'owned') {
-        ownedBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border-b-2 border-emerald-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
-        shopBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
-        ownedContent.classList.remove('hidden');
-        shopContent.classList.add('hidden');
+        if (ownedBtn) {
+            ownedBtn.classList.add('text-emerald-400', 'border-emerald-400', 'bg-emerald-500/10');
+            ownedBtn.classList.remove('text-slate-400', 'border-transparent');
+        }
+        if (shopBtn) {
+            shopBtn.classList.remove('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
+            shopBtn.classList.add('text-slate-400', 'border-transparent');
+        }
+        if (ownedContent) ownedContent.classList.remove('hidden');
+        if (shopContent) shopContent.classList.add('hidden');
     } else {
-        shopBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 border-b-2 border-cyan-400 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
-        ownedBtn.className = "px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition flex items-center gap-2 whitespace-nowrap cursor-pointer";
-        shopContent.classList.remove('hidden');
-        ownedContent.classList.add('hidden');
+        if (shopBtn) {
+            shopBtn.classList.add('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
+            shopBtn.classList.remove('text-slate-400', 'border-transparent');
+        }
+        if (ownedBtn) {
+            ownedBtn.classList.remove('text-emerald-400', 'border-emerald-400', 'bg-emerald-500/10');
+            ownedBtn.classList.add('text-slate-400', 'border-transparent');
+        }
+        if (shopContent) shopContent.classList.remove('hidden');
+        if (ownedContent) ownedContent.classList.add('hidden');
     }
 }
 
@@ -2934,7 +2996,7 @@ function renderOwnedSwaps(swaps) {
             </div>
 
             <!-- Card Swap In/Out Comparison Matrix -->
-            <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <!-- IN: Owned Card -->
                 <div class="bg-emerald-950/25 border border-emerald-500/30 p-2.5 rounded space-y-1">
                     <span class="text-[10px] text-emerald-400 uppercase font-bold font-mono block">&darr; IN (FROM BINDER)</span>
@@ -2942,11 +3004,13 @@ function renderOwnedSwaps(swaps) {
                         ${u.card_in_image ? `
                             <img src="${escapeHtml(u.card_in_image)}" alt="${escapeHtml(u.card_in)}" class="w-7 h-10 object-cover rounded border border-emerald-500/40 flex-shrink-0 cursor-pointer shadow"
                                  data-img="${escapeHtml(u.card_in_image)}"
+                                 onclick="showCardHover(event, this)"
                                  onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                         ` : ''}
                         <div class="min-w-0 flex-1">
                             <div class="font-bold text-white truncate hover:text-emerald-300 transition cursor-pointer" title="${escapeHtml(u.card_in)}"
                                  data-img="${escapeHtml(u.card_in_image || '')}"
+                                 onclick="showCardHover(event, this)"
                                  onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                                 ${escapeHtml(u.card_in)}
                             </div>
