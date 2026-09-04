@@ -695,7 +695,94 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
             self.assertIn("Arcane Signet", card_names)
             self.assertEqual(saved.total_cards, 100)
 
+    def test_api_deck_upgrades_endpoint(self):
+        """Tests GET /api/deck/<deck_id>/upgrades endpoint return payload."""
+        user = self.login_as()
+        with self.app.app_context():
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Mono Blue Control",
+                commander_name="Urza, Lord High Artificer",
+                cards_data=json.dumps([
+                    {"name": "Island", "quantity": 99, "cmc": 0.0, "type_line": "Basic Land"},
+                    {"name": "Cancel", "quantity": 1, "cmc": 3.0, "type_line": "Instant"}
+                ]),
+                total_cards=100
+            )
+            inv_card = UserInventoryCard(
+                user_id=user.id,
+                name="Counterspell",
+                quantity=1,
+                type_line="Instant",
+                mana_cost="{U}{U}",
+                cmc=2.0,
+                color_identity="U",
+                price_usd=1.50
+            )
+            db.session.add_all([deck, inv_card])
+            db.session.commit()
+            deck_id = deck.id
+
+        resp = self.client.get(f"/api/deck/{deck_id}/upgrades")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("owned_swaps", data)
+        self.assertIn("shopping_list", data)
+        self.assertIn("owned_count", data)
+        self.assertIn("shopping_count", data)
+
+    def test_api_deck_sync_endpoint(self):
+        """Tests POST /api/deck/<deck_id>/sync refreshes deck telemetry."""
+        user = self.login_as()
+        with self.app.app_context():
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Sync Test Deck",
+                commander_name="Sol Ring Enthusiast",
+                cards_data=json.dumps([
+                    {"name": "Sol Ring", "quantity": 1, "cmc": 1.0, "type_line": "Artifact"}
+                ]),
+                total_cards=1
+            )
+            db.session.add(deck)
+            db.session.commit()
+            deck_id = deck.id
+
+        resp = self.client.post(f"/api/deck/{deck_id}/sync")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("deck", data)
+        self.assertIn("land_drop_probabilities", data["deck"]["stats"])
+
+    def test_deck_status_property(self):
+        """Tests DeckAnalysis status property across ready, stats_only, and draft states."""
+        with self.app.app_context():
+            d1 = DeckAnalysis(
+                deck_name="Draft Deck",
+                cards_data="[]",
+                stats_json="{}",
+                analysis_json=None
+            )
+            d2 = DeckAnalysis(
+                deck_name="Stats Ready Deck",
+                cards_data="[]",
+                stats_json=json.dumps({"land_drop_probabilities": {"T1": 0.5}, "pip_breakdown": {}, "mana_sinks": {}}),
+                analysis_json=None
+            )
+            d3 = DeckAnalysis(
+                deck_name="Fully Analyzed Deck",
+                cards_data="[]",
+                stats_json=json.dumps({"land_drop_probabilities": {"T1": 0.5}}),
+                analysis_json=json.dumps({"card_ratings": [{"name": "Sol Ring"}]})
+            )
+            self.assertEqual(d1.status, "draft")
+            self.assertEqual(d2.status, "stats_only")
+            self.assertEqual(d3.status, "ready")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

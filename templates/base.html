@@ -237,9 +237,9 @@
         </div>
     </nav>
 
-    <!-- Mobile Tactical Secondary Tab Bar -->
+    <!-- Tactical Secondary Tab Bar (Desktop & Mobile) -->
     {% if current_user %}
-    <div class="md:hidden bg-[#1B2230] border-b border-[#263245] px-2 sm:px-4 py-1.5 flex space-x-1 overflow-x-auto no-scrollbar">
+    <div class="bg-[#1B2230] border-b border-[#263245] px-2 sm:px-4 py-1.5 flex space-x-1 overflow-x-auto no-scrollbar">
         <a href="/system-overview" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'system_overview' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
             <span>00 // Manual</span>
         </a>

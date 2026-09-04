@@ -127,6 +127,28 @@ class MightyMeepleProvider:
                 set_code=set_code,
                 collector_number=collector_number,
             )
+            # If collector_number is provided and multiple candidate products exist, narrow down by SKU
+            if collector_number and len(candidate_products) > 1:
+                target_cn = str(collector_number).strip().lower()
+                base_cn = target_cn.rstrip("ps")
+
+                def product_matches_target_sku(prod_item: dict) -> bool:
+                    p_handle = prod_item.get("handle", "")
+                    v_list = self._get_product_variants(p_handle)
+                    for v in v_list:
+                        sku = (v.get("sku") or "").lower()
+                        if target_cn.endswith("p") and (f"-{base_cn}-promo" in sku or f"-{target_cn}-" in sku):
+                            return True
+                        elif target_cn.endswith("s") and (f"-{base_cn}-prerelease" in sku or f"-{target_cn}-" in sku):
+                            return True
+                        elif f"-{target_cn}-" in sku or sku.endswith(f"-{target_cn}"):
+                            return True
+                    return False
+
+                sku_candidates = [p for p in candidate_products if product_matches_target_sku(p)]
+                if sku_candidates:
+                    candidate_products = sku_candidates
+
             if not candidate_products:
                 return self._empty_result(card_name, fallback_search_url)
 
@@ -419,17 +441,6 @@ class MightyMeepleProvider:
                 set_matched.append(p)
 
         if set_matched:
-            # If multiple products in the set, and collector number is standard (not ending in promo/special letters),
-            # prefer product without variant parentheticals
-            if len(set_matched) > 1 and target_coll_num and not target_coll_num.endswith("p") and not target_coll_num.endswith("s"):
-                non_variant = []
-                for p in set_matched:
-                    title = p.get("title", "")
-                    base = re.sub(r"\[.*?\]", "", title).strip()
-                    if "(" not in base:
-                        non_variant.append(p)
-                if non_variant:
-                    return non_variant
             return set_matched
 
         return valid_name_products

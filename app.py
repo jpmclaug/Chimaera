@@ -2437,12 +2437,21 @@ def create_app(test_config=None):
             card_names = [c["name"] for c in cards]
             scryfall_map, _ = scryfall_provider.get_cards_collection(card_names)
 
+            cmdrs = [c.strip() for c in entry.commander_name.split(",") if c.strip()] if entry.commander_name else []
+            analyzed_telemetry = deck_analyzer.analyze({
+                "deck_name": entry.deck_name,
+                "commander": cmdrs,
+                "cards": cards,
+            })
+            stats = analyzed_telemetry.get("stats", {})
+
             deck_payload = {
                 "deck_name": entry.deck_name,
-                "commander": [c.strip() for c in entry.commander_name.split(",") if c.strip()] if entry.commander_name else [],
+                "commander": cmdrs,
                 "cards": cards,
                 "total_cards": entry.total_cards,
                 "raw_text": entry.raw_decklist or "",
+                "stats": stats,
             }
 
             analyzer = GeminiAnalyzer(api_key=effective_key, model=model)
@@ -2495,11 +2504,14 @@ def create_app(test_config=None):
                     power_level = None
 
             actual_model = analysis_result.get("_model_used") or analyzer.model or model
+            entry.stats_json = json.dumps(stats)
             entry.analysis_json = json.dumps(analysis_result)
             entry.model_used = actual_model
             entry.power_level = power_level
             entry.power_bracket = analysis_result.get("power_bracket")
-            entry.archetype = analysis_result.get("archetype")
+            entry.archetype = analysis_result.get("archetype") or stats.get("archetype")
+            entry.total_value = stats.get("total_value", entry.total_value)
+            entry.avg_cmc = stats.get("avg_cmc", entry.avg_cmc)
             entry.updated_at = utc_now()
             db.session.commit()
 

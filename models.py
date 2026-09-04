@@ -776,6 +776,16 @@ class DeckAnalysis(db.Model):
         """Returns True if Gemini analysis has been generated for this deck."""
         return bool(self.analysis_json and self.analysis_json.strip() and self.analysis_json.strip() != "{}")
 
+    @property
+    def status(self) -> str:
+        """Returns clinical lifecycle status: 'ready', 'stats_only', or 'draft'."""
+        if self.has_ai_analysis:
+            return "ready"
+        stats = self.get_stats()
+        if stats and "land_drop_probabilities" in stats:
+            return "stats_only"
+        return "draft"
+
     def get_parsed_cards(self) -> list[dict]:
         """Returns deserialized cards_data list."""
         if not self.cards_data:
@@ -792,7 +802,7 @@ class DeckAnalysis(db.Model):
         if self.stats_json:
             try:
                 data = json.loads(self.stats_json)
-                if isinstance(data, dict) and "pip_breakdown" in data:
+                if isinstance(data, dict) and "pip_breakdown" in data and "land_drop_probabilities" in data and "mana_sinks" in data:
                     return data
             except Exception:
                 pass
@@ -805,8 +815,15 @@ class DeckAnalysis(db.Model):
         try:
             from deck_analyzer import DeckAnalyzer
             analyzer = DeckAnalyzer()
-            res = analyzer.analyze({"cards": cards, "deck_name": self.deck_name, "commander": [self.commander_name] if self.commander_name else []})
-            return res.get("stats", {})
+            cmdrs = [c.strip() for c in (self.commander_name or "").split(",") if c.strip()]
+            res = analyzer.analyze({"cards": cards, "deck_name": self.deck_name, "commander": cmdrs})
+            computed_stats = res.get("stats", {})
+            if computed_stats:
+                try:
+                    self.stats_json = json.dumps(computed_stats)
+                except Exception:
+                    pass
+            return computed_stats
         except Exception:
             # Fallback basic calculation
             type_counts = {}
@@ -901,6 +918,7 @@ class DeckAnalysis(db.Model):
             "avg_cmc": self.avg_cmc if self.avg_cmc is not None else stats.get("avg_cmc", 0.0),
             "color_identity": self.get_color_identity_list(),
             "has_ai_analysis": self.has_ai_analysis,
+            "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "stats": stats,
