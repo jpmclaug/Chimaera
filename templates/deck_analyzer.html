@@ -252,6 +252,17 @@
                         </div>
                         <h2 id="inspectorDeckName" class="text-lg sm:text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1 truncate">Commander Deck</h2>
                         <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono truncate">The Ur-Dragon</p>
+                        
+                        <!-- EDHREC Metadata Badge Strip -->
+                        <div id="edhrecBadgeStrip" class="hidden items-center gap-1.5 sm:gap-2 flex-wrap mt-1 pt-1 border-t border-slate-800/80">
+                            <span id="edhrecRankBadge" class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-bold">Rank: #--</span>
+                            <span id="edhrecDecksBadge" class="text-[10px] px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 font-mono font-bold">Decks: --</span>
+                            <span id="edhrecSaltBadge" class="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono font-bold">Salt: --</span>
+                            <a id="edhrecLinkBadge" href="#" target="_blank" rel="noopener noreferrer" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-cyan-300 border border-slate-700 font-mono font-semibold transition flex items-center gap-1">
+                                <span>View on EDHREC</span>
+                                <span>↗</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
 
@@ -1103,6 +1114,20 @@
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
+                    <!-- Archetype Theme Selector -->
+                    <select id="upgradeThemeSelect" onchange="handleUpgradeThemeChange(this.value)" 
+                            class="bg-[#1B2230] hover:bg-[#222B3D] text-amber-300 border border-slate-700 hover:border-amber-500/50 text-xs font-mono font-bold px-2.5 py-1.5 rounded transition cursor-pointer max-w-[180px] truncate"
+                            title="Filter recommendations by commander archetype/theme">
+                        <option value="">🎯 All Themes (Average)</option>
+                    </select>
+
+                    <!-- Anti-Salt Filter Toggle -->
+                    <button id="antiSaltToggleBtn" type="button" onclick="toggleAntiSaltFilter()" 
+                            class="px-2.5 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-slate-300 border border-slate-700 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer"
+                            title="Exclude high-salt cards from purchase recommendations">
+                        <span>🧂 Casual Mode: <strong id="antiSaltStateText" class="text-slate-400">OFF</strong></span>
+                    </button>
+
                     <a href="/inventory" target="_blank" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
                         <span>Open Binder Vault</span>
                         <span>&rarr;</span>
@@ -1111,13 +1136,13 @@
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
-                        <span>Re-evaluate Swaps</span>
+                        <span>Re-evaluate</span>
                     </button>
                 </div>
             </div>
 
             <!-- Dual-Tier Sub-Tab Navigation Bar -->
-            <div class="grid grid-cols-2 sm:flex border-b border-slate-800 bg-[#0B0F17] rounded-t-xl p-1 sm:px-4 sm:py-0 gap-1 sm:gap-2">
+            <div class="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-800 bg-[#0B0F17] rounded-t-xl p-1 sm:px-4 sm:py-0 gap-1 sm:gap-2">
                 <button type="button" onclick="switchUpgradeSubtab('owned')" id="subtab-btn-owned" 
                         class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border-b-2 border-emerald-400 bg-emerald-500/10 sm:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
                     <span class="whitespace-nowrap">🎴 In Binder</span>
@@ -1127,6 +1152,16 @@
                         class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
                     <span class="whitespace-nowrap">🛒 Shopping List</span>
                     <span id="shoppingCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold">0 Cards</span>
+                </button>
+                <button type="button" onclick="switchUpgradeSubtab('primers')" id="subtab-btn-primers" 
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">📖 Primers & Guides</span>
+                    <span id="articlesCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold">0</span>
+                </button>
+                <button type="button" onclick="switchUpgradeSubtab('combos')" id="subtab-btn-combos" 
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">⚡ Known Combos</span>
+                    <span id="combosCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 font-mono font-bold">0</span>
                 </button>
             </div>
 
@@ -1193,6 +1228,85 @@
                     <!-- Injected dynamically by renderShoppingList() -->
                 </div>
             </div>
+
+            <!-- SUB-TAB 3: PRIMERS & COMMUNITY ARTICLES -->
+            <div id="subtab-content-primers" class="hidden space-y-4">
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h4 class="font-heading font-black text-sm text-white uppercase flex items-center gap-2">
+                            <span>📖</span>
+                            <span>Community Primers & Strategy Articles</span>
+                        </h4>
+                        <p class="text-xs text-slate-400 font-sans mt-0.5">
+                            Curated deck tech breakdowns and strategy articles written by EDHREC authors covering this commander.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="edhrecArticlesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Injected dynamically by renderEdhrecArticles() -->
+                </div>
+
+                <div id="edhrecArticlesEmpty" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-8 text-center space-y-2">
+                    <div class="text-3xl">📰</div>
+                    <h5 class="font-heading font-bold text-white text-sm uppercase">No Curated Primers Found</h5>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto">
+                        No articles specifically tagged for this commander were found in the current EDHREC dataset.
+                    </p>
+                </div>
+            </div>
+
+            <!-- SUB-TAB 4: KNOWN COMBOS (COMMANDER SPELLBOOK VIA EDHREC) -->
+            <div id="subtab-content-combos" class="hidden space-y-4">
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl">
+                    <h4 class="font-heading font-black text-sm text-white uppercase flex items-center gap-2">
+                        <span>⚡</span>
+                        <span>Commander Spellbook Combos</span>
+                    </h4>
+                    <p class="text-xs text-slate-400 font-sans mt-0.5">
+                        Known game-winning loops and synergy combos indexed for this commander. Highlights combos already assembled in your deck or near-combos missing 1–2 cards.
+                    </p>
+                </div>
+
+                <!-- Active Combos in Deck -->
+                <div class="space-y-2">
+                    <h5 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                        <span>✅</span>
+                        <span>Active Combos Assembled in Deck</span>
+                        <span id="activeCombosCountBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0</span>
+                    </h5>
+                    <div id="activeCombosGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Injected dynamically -->
+                    </div>
+                    <div id="activeCombosEmpty" class="hidden text-xs text-slate-500 font-mono italic p-3 bg-[#10141D] border border-slate-800 rounded-lg">
+                        No 100% complete combos detected in current 100-card list.
+                    </div>
+                </div>
+
+                <!-- Near Combos -->
+                <div class="space-y-2 pt-2">
+                    <h5 class="text-xs font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                        <span>⚡</span>
+                        <span>Near Combos (Missing 1–2 Cards)</span>
+                        <span id="nearCombosCountBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">0</span>
+                    </h5>
+                    <div id="nearCombosGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Injected dynamically -->
+                    </div>
+                    <div id="nearCombosEmpty" class="hidden text-xs text-slate-500 font-mono italic p-3 bg-[#10141D] border border-slate-800 rounded-lg">
+                        No near-combos detected for this commander archetype.
+                    </div>
+                </div>
+
+                <div id="combosEmpty" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-8 text-center space-y-2">
+                    <div class="text-3xl">🧩</div>
+                    <h5 class="font-heading font-bold text-white text-sm uppercase">No Known Combos Recorded</h5>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto">
+                        There are no known infinite combos indexed for this commander in the EDHREC database.
+                    </p>
+                </div>
+            </div>
+
 
         </div>
     </div>
@@ -1651,6 +1765,10 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
 
     // Render Full Card Table
     renderCardRegistryTable(cards);
+
+    // Load EDHREC Metadata, Primers & Combos
+    loadEdhrecMetadataForDeck(deck);
+
     if (!keepCurrentTab) {
         switchInspectorTab('stats', { skipScroll: true });
     } else if (currentInspectorTab) {
@@ -2901,36 +3019,59 @@ function dismissAiErrorAlert() {
 let currentUpgradeSubtab = 'owned';
 window.currentShoppingCards = [];
 window.currentShoppingBrackets = { budget: [], moderate: [], high_impact: [] };
+window.currentUpgradeTheme = '';
+window.antiSaltFilterEnabled = false;
 
 function switchUpgradeSubtab(subtab) {
     currentUpgradeSubtab = subtab;
-    const ownedBtn = document.getElementById('subtab-btn-owned');
-    const shopBtn = document.getElementById('subtab-btn-shop');
-    const ownedContent = document.getElementById('subtab-content-owned');
-    const shopContent = document.getElementById('subtab-content-shop');
+    const subtabs = ['owned', 'shop', 'primers', 'combos'];
+    subtabs.forEach(t => {
+        const btn = document.getElementById(`subtab-btn-${t}`);
+        const content = document.getElementById(`subtab-content-${t}`);
+        if (t === subtab) {
+            if (btn) {
+                btn.classList.remove('text-slate-400', 'border-transparent');
+                if (t === 'owned') btn.classList.add('text-emerald-400', 'border-emerald-400', 'bg-emerald-500/10');
+                else if (t === 'shop') btn.classList.add('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
+                else if (t === 'primers') btn.classList.add('text-amber-400', 'border-amber-400', 'bg-amber-500/10');
+                else if (t === 'combos') btn.classList.add('text-purple-400', 'border-purple-400', 'bg-purple-500/10');
+            }
+            if (content) content.classList.remove('hidden');
+        } else {
+            if (btn) {
+                btn.className = "py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center";
+            }
+            if (content) content.classList.add('hidden');
+        }
+    });
+}
 
-    if (subtab === 'owned') {
-        if (ownedBtn) {
-            ownedBtn.classList.add('text-emerald-400', 'border-emerald-400', 'bg-emerald-500/10');
-            ownedBtn.classList.remove('text-slate-400', 'border-transparent');
+function handleUpgradeThemeChange(themeSlug) {
+    window.currentUpgradeTheme = themeSlug || '';
+    if (activeDeck && activeDeck.id) {
+        showToast(themeSlug ? `Filtering recommendations by theme: ${themeSlug}` : "Viewing average commander recommendations", "info");
+        loadDualTierUpgrades(activeDeck.id);
+    }
+}
+
+function toggleAntiSaltFilter() {
+    window.antiSaltFilterEnabled = !window.antiSaltFilterEnabled;
+    const textEl = document.getElementById('antiSaltStateText');
+    const btnEl = document.getElementById('antiSaltToggleBtn');
+    if (textEl) {
+        textEl.innerText = window.antiSaltFilterEnabled ? "ON" : "OFF";
+        textEl.className = window.antiSaltFilterEnabled ? "text-emerald-400 font-black" : "text-slate-400";
+    }
+    if (btnEl) {
+        if (window.antiSaltFilterEnabled) {
+            btnEl.classList.add('border-emerald-500/50', 'bg-emerald-950/30', 'text-emerald-300');
+        } else {
+            btnEl.classList.remove('border-emerald-500/50', 'bg-emerald-950/30', 'text-emerald-300');
         }
-        if (shopBtn) {
-            shopBtn.classList.remove('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
-            shopBtn.classList.add('text-slate-400', 'border-transparent');
-        }
-        if (ownedContent) ownedContent.classList.remove('hidden');
-        if (shopContent) shopContent.classList.add('hidden');
-    } else {
-        if (shopBtn) {
-            shopBtn.classList.add('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
-            shopBtn.classList.remove('text-slate-400', 'border-transparent');
-        }
-        if (ownedBtn) {
-            ownedBtn.classList.remove('text-emerald-400', 'border-emerald-400', 'bg-emerald-500/10');
-            ownedBtn.classList.add('text-slate-400', 'border-transparent');
-        }
-        if (shopContent) shopContent.classList.remove('hidden');
-        if (ownedContent) ownedContent.classList.add('hidden');
+    }
+    if (activeDeck && activeDeck.id) {
+        showToast(window.antiSaltFilterEnabled ? "Casual Mode ON: High salt cards excluded." : "Casual Mode OFF: Showing all cards.", "info");
+        loadDualTierUpgrades(activeDeck.id);
     }
 }
 
@@ -2940,13 +3081,18 @@ async function loadDualTierUpgrades(deckId) {
 
     const loadingElem = document.getElementById('ownedSwapsLoading');
     const emptyElem = document.getElementById('ownedSwapsEmpty');
-    const gridElem = document.getElementById('ownedSwapsGrid');
 
     if (loadingElem) loadingElem.classList.remove('hidden');
     if (emptyElem) emptyElem.classList.add('hidden');
 
     try {
-        const resp = await fetch(`/api/deck/${targetId}/upgrades`);
+        let url = `/api/deck/${targetId}/upgrades`;
+        const params = [];
+        if (window.currentUpgradeTheme) params.push(`theme=${encodeURIComponent(window.currentUpgradeTheme)}`);
+        if (window.antiSaltFilterEnabled) params.push(`anti_salt=1`);
+        if (params.length > 0) url += `?${params.join('&')}`;
+
+        const resp = await fetch(url);
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Failed to load upgrades");
 
@@ -2959,6 +3105,13 @@ async function loadDualTierUpgrades(deckId) {
         renderOwnedSwaps(data.owned_swaps || []);
         renderShoppingList(data.shopping_list || {}, data.all_shopping_cards || []);
 
+        if (data.combos) {
+            renderCombos(data.combos);
+        }
+        if (data.edhrec) {
+            updateEdhrecBadgesAndArticles(data.edhrec);
+        }
+
     } catch (err) {
         if (loadingElem) loadingElem.classList.add('hidden');
         showToast(`Upgrade evaluation failed: ${err.message}`, "error");
@@ -2969,6 +3122,214 @@ function refreshDualTierUpgrades() {
     if (activeDeck && activeDeck.id) {
         showToast("Re-evaluating upgrades against collection...", "info");
         loadDualTierUpgrades(activeDeck.id);
+    }
+}
+
+async function loadEdhrecMetadataForDeck(deck) {
+    const strip = document.getElementById('edhrecBadgeStrip');
+    if (!deck || !deck.id) {
+        if (strip) { strip.classList.add('hidden'); strip.classList.remove('flex'); }
+        return;
+    }
+
+    try {
+        let url = `/api/deck/${deck.id}/edhrec`;
+        if (window.currentUpgradeTheme) url += `?theme=${encodeURIComponent(window.currentUpgradeTheme)}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (resp.ok && data.success && data.found && data.edhrec) {
+            updateEdhrecBadgesAndArticles(data.edhrec);
+            if (data.combos_evaluation) {
+                renderCombos(data.combos_evaluation);
+            }
+        } else {
+            if (strip) { strip.classList.add('hidden'); strip.classList.remove('flex'); }
+        }
+    } catch (e) {
+        console.warn("Could not fetch EDHREC data:", e);
+        if (strip) { strip.classList.add('hidden'); strip.classList.remove('flex'); }
+    }
+}
+
+function updateEdhrecBadgesAndArticles(edhrec) {
+    const strip = document.getElementById('edhrecBadgeStrip');
+    if (!edhrec) {
+        if (strip) { strip.classList.add('hidden'); strip.classList.remove('flex'); }
+        return;
+    }
+
+    if (strip) {
+        strip.classList.remove('hidden');
+        strip.classList.add('flex');
+    }
+
+    const rank = edhrec.rank !== undefined && edhrec.rank !== null ? `#${edhrec.rank} Overall` : 'Unranked';
+    safeSetText('edhrecRankBadge', `Rank: ${rank}`);
+
+    const decks = (edhrec.num_decks || 0).toLocaleString();
+    safeSetText('edhrecDecksBadge', `Decks: ${decks}`);
+
+    const salt = edhrec.salt_score !== null && edhrec.salt_score !== undefined ? edhrec.salt_score : '--';
+    safeSetText('edhrecSaltBadge', `Salt: ${salt}`);
+
+    const linkBadge = document.getElementById('edhrecLinkBadge');
+    if (linkBadge && edhrec.edhrec_url) {
+        linkBadge.href = edhrec.edhrec_url;
+    }
+
+    // Populate theme dropdown
+    const themeSel = document.getElementById('upgradeThemeSelect');
+    if (themeSel && edhrec.themes && Array.isArray(edhrec.themes)) {
+        const currentVal = window.currentUpgradeTheme || '';
+        let optionsHtml = '<option value="">🎯 All Themes (Average)</option>';
+        edhrec.themes.forEach(t => {
+            const isSel = (t.slug === currentVal) ? 'selected' : '';
+            optionsHtml += `<option value="${escapeHtml(t.slug)}" ${isSel}>${escapeHtml(t.name)} (${(t.count || 0).toLocaleString()})</option>`;
+        });
+        themeSel.innerHTML = optionsHtml;
+    }
+
+    // Render articles
+    renderEdhrecArticles(edhrec.articles || []);
+}
+
+function renderEdhrecArticles(articles) {
+    const grid = document.getElementById('edhrecArticlesGrid');
+    const empty = document.getElementById('edhrecArticlesEmpty');
+    safeSetText('articlesCountBadge', (articles || []).length);
+
+    if (!grid) return;
+
+    if (!articles || articles.length === 0) {
+        grid.innerHTML = '';
+        if (empty) empty.classList.remove('hidden');
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+
+    grid.innerHTML = articles.map(art => `
+        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl overflow-hidden shadow-lg flex flex-col justify-between hover:border-cyan-500/50 transition group">
+            <div>
+                ${art.media ? `
+                    <div class="h-36 w-full overflow-hidden bg-slate-900 relative">
+                        <img src="${escapeHtml(art.media)}" alt="${escapeHtml(art.title)}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                    </div>
+                ` : ''}
+                <div class="p-4 space-y-2">
+                    <div class="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                        <span>${escapeHtml(art.author || 'EDHREC Contributor')}</span>
+                        <span>${escapeHtml(art.date || '')}</span>
+                    </div>
+                    <h5 class="font-bold text-white text-sm group-hover:text-cyan-300 transition line-clamp-2">
+                        ${escapeHtml(art.title)}
+                    </h5>
+                    ${art.excerpt ? `
+                        <p class="text-xs text-slate-400 font-sans line-clamp-3 leading-relaxed">
+                            ${escapeHtml(art.excerpt)}
+                        </p>
+                    ` : ''}
+                </div>
+            </div>
+            <div class="p-4 pt-0">
+                <a href="${escapeHtml(art.url)}" target="_blank" rel="noopener noreferrer" 
+                   class="w-full py-2 px-3 rounded bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 text-xs font-mono font-bold uppercase transition flex items-center justify-center gap-1.5">
+                    <span>Read Primer on EDHREC</span>
+                    <span>↗</span>
+                </a>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderCombos(combosEval) {
+    const active = (combosEval && combosEval.active) || [];
+    const near = (combosEval && combosEval.near) || [];
+    const total = active.length + near.length;
+
+    safeSetText('combosCountBadge', total);
+    safeSetText('activeCombosCountBadge', active.length);
+    safeSetText('nearCombosCountBadge', near.length);
+
+    const activeGrid = document.getElementById('activeCombosGrid');
+    const activeEmpty = document.getElementById('activeCombosEmpty');
+    const nearGrid = document.getElementById('nearCombosGrid');
+    const nearEmpty = document.getElementById('nearCombosEmpty');
+    const emptyAll = document.getElementById('combosEmpty');
+
+    if (total === 0) {
+        if (emptyAll) emptyAll.classList.remove('hidden');
+        if (activeGrid) activeGrid.innerHTML = '';
+        if (nearGrid) nearGrid.innerHTML = '';
+        return;
+    }
+    if (emptyAll) emptyAll.classList.add('hidden');
+
+    if (activeGrid) {
+        if (active.length === 0) {
+            activeGrid.innerHTML = '';
+            if (activeEmpty) activeEmpty.classList.remove('hidden');
+        } else {
+            if (activeEmpty) activeEmpty.classList.add('hidden');
+            activeGrid.innerHTML = active.map(c => `
+                <div class="bg-[#1B2230]/90 border border-emerald-500/40 rounded-xl p-4 space-y-2 shadow-lg">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold uppercase border border-emerald-500/40">
+                            Complete Combo Loop
+                        </span>
+                        ${c.url ? `
+                            <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" class="text-xs text-cyan-400 hover:underline font-mono">
+                                Spellbook ↗
+                            </a>
+                        ` : ''}
+                    </div>
+                    <div class="font-bold text-white text-xs">${escapeHtml(c.name)}</div>
+                    <div class="flex flex-wrap gap-1 pt-1">
+                        ${(c.pieces || []).map(p => `
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-mono">
+                                ✔ ${escapeHtml(p)}
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+    }
+
+    if (nearGrid) {
+        if (near.length === 0) {
+            nearGrid.innerHTML = '';
+            if (nearEmpty) nearEmpty.classList.remove('hidden');
+        } else {
+            if (nearEmpty) nearEmpty.classList.add('hidden');
+            nearGrid.innerHTML = near.map(c => `
+                <div class="bg-[#1B2230]/90 border border-amber-500/40 rounded-xl p-4 space-y-2 shadow-lg">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono font-bold uppercase border border-amber-500/40">
+                            Missing ${c.missing_count || 1} Piece${c.missing_count > 1 ? 's' : ''}
+                        </span>
+                        ${c.url ? `
+                            <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" class="text-xs text-cyan-400 hover:underline font-mono">
+                                Spellbook ↗
+                            </a>
+                        ` : ''}
+                    </div>
+                    <div class="font-bold text-white text-xs">${escapeHtml(c.name)}</div>
+                    <div class="flex flex-wrap gap-1.5 pt-1 text-[10px] font-mono">
+                        ${(c.in_deck_pieces || []).map(p => `
+                            <span class="px-1.5 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300">
+                                ✔ In Deck: ${escapeHtml(p)}
+                            </span>
+                        `).join('')}
+                        ${(c.missing_pieces || []).map(m => `
+                            <span class="px-1.5 py-0.5 rounded ${m.in_binder ? 'bg-purple-950/40 border border-purple-500/40 text-purple-300 font-bold' : 'bg-rose-950/40 border border-rose-500/40 text-rose-300'}">
+                                ✖ Missing: ${escapeHtml(m.name)} ${m.in_binder ? '(🎴 In Binder)' : ''}
+                            </span>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
     }
 }
 
@@ -2992,6 +3353,21 @@ function renderOwnedSwaps(swaps) {
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 uppercase font-bold font-mono">
                         ${escapeHtml(u.category || 'Binder Upgrade')}
                     </span>
+                    ${u.synergy_percent !== undefined && u.synergy_percent !== null && u.synergy_percent > 0 ? `
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-mono font-bold shadow-sm">
+                            +${u.synergy_percent}% Synergy
+                        </span>
+                    ` : ''}
+                    ${u.inclusion_percent ? `
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono">
+                            ${u.inclusion_percent}% Decks
+                        </span>
+                    ` : ''}
+                    ${u.salt_score ? `
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono">
+                            🧂 ${u.salt_score}
+                        </span>
+                    ` : ''}
                     <span class="text-[10px] text-slate-400 font-mono">
                         Impact: <strong class="text-emerald-400">${escapeHtml(u.estimated_impact || 'High')}</strong>
                     </span>
@@ -3018,7 +3394,7 @@ function renderOwnedSwaps(swaps) {
                                  data-img="${escapeHtml(u.card_in_image || '')}"
                                  onclick="showCardHover(event, this)"
                                  onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
-                                ${escapeHtml(u.card_in)}
+                                 ${escapeHtml(u.card_in)}
                             </div>
                             <div class="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 flex-wrap pt-0.5">
                                 <span class="text-cyan-400 font-bold">${escapeHtml(u.card_in_set || '---')}</span>
@@ -3099,13 +3475,10 @@ async function applyDeckSwap(btn, cardOut, cardIn) {
             throw new Error(data.error || "Failed to apply card swap.");
         }
 
-        // Update active deck state in memory without bouncing tab away from upgrades
         activeDeck = data.deck;
         displayDeckInInspector(activeDeck, true);
 
         showToast(data.message || `Successfully swapped ${cardOut} for ${cardIn}!`, "success");
-
-        // Refresh upgrades list
         await loadDualTierUpgrades(activeDeck.id);
 
     } catch (err) {
@@ -3168,6 +3541,21 @@ function filterShoppingBracket(bracket) {
                     <span class="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 uppercase font-bold font-mono">
                         ${escapeHtml(item.category || 'Market Acquisition')}
                     </span>
+                    ${item.synergy_percent !== undefined && item.synergy_percent !== null && item.synergy_percent > 0 ? `
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-mono font-bold shadow-sm">
+                            +${item.synergy_percent}% Synergy
+                        </span>
+                    ` : ''}
+                    ${item.inclusion_percent ? `
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono">
+                            ${item.inclusion_percent}% Decks
+                        </span>
+                    ` : ''}
+                    ${item.salt_score ? `
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono">
+                            🧂 ${item.salt_score}
+                        </span>
+                    ` : ''}
                     <span class="text-[10px] text-slate-400 font-mono">
                         Impact: <strong class="text-cyan-400">${escapeHtml(item.estimated_impact || 'High')}</strong>
                     </span>
@@ -3216,6 +3604,7 @@ function filterShoppingBracket(bracket) {
             <p class="text-[11px] text-slate-300 font-sans leading-relaxed">
                 ${escapeHtml(item.rationale || '')}
             </p>
+
 
             <div class="flex items-center gap-2 pt-1 flex-wrap">
                 <button type="button" onclick="handleApplySwapClick(this)" data-out="${escapeHtml(item.card_out || '')}" data-in="${escapeHtml(item.name || '')}"

@@ -1012,4 +1012,67 @@ class UserInventoryCard(db.Model):
         return data
 
 
+class EDHRECCache(db.Model):
+    """Local cache for EDHREC JSON API payloads with 24-hour TTL."""
 
+    __tablename__ = "edhrec_cache"
+
+    id = db.Column(db.Integer, primary_key=True)
+    cache_key = db.Column(db.String(255), unique=True, index=True, nullable=False)
+    data_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    expires_at = db.Column(db.DateTime, index=True, nullable=False)
+
+    @classmethod
+    def get_cached(cls, cache_key: str) -> dict | None:
+        """Retrieves and deserializes unexpired cached data, or None if expired/missing."""
+        import json
+        try:
+            now = utc_now()
+            entry = cls.query.filter(cls.cache_key == cache_key).first()
+            if not entry:
+                return None
+            exp = entry.expires_at
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp < now:
+                return None
+            return json.loads(entry.data_json)
+        except Exception:
+            return None
+
+    @classmethod
+    def set_cached(cls, cache_key: str, data: dict, ttl_hours: int = 24) -> None:
+        """Stores or updates cached data with TTL in hours."""
+        import json
+        try:
+            now = utc_now()
+            expires = now + timedelta(hours=ttl_hours)
+            entry = cls.query.filter_by(cache_key=cache_key).first()
+            if not entry:
+                entry = cls(
+                    cache_key=cache_key,
+                    data_json=json.dumps(data),
+                    created_at=now,
+                    expires_at=expires,
+                )
+                db.session.add(entry)
+            else:
+                entry.data_json = json.dumps(data)
+                entry.created_at = now
+                entry.expires_at = expires
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    @classmethod
+    def clear_expired(cls) -> int:
+        """Deletes expired cache records from the database."""
+        try:
+            now = utc_now()
+            deleted = cls.query.filter(cls.expires_at < now).delete(synchronize_session=False)
+            db.session.commit()
+            return deleted
+        except Exception:
+            db.session.rollback()
+            return 0

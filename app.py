@@ -33,7 +33,7 @@ from models import (
     utc_now,
 )
 from deal_engine import DealEngine
-from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider
+from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider, EDHRECProvider
 from deck_parser import DeckParser, DeckParseError
 from card_classifier import MTGCardClassifier
 from deck_analyzer import DeckAnalyzer
@@ -470,6 +470,10 @@ def create_app(test_config=None):
     )
     inventory_manager = InventoryManager(scryfall_provider=scryfall_provider)
     upgrade_engine = DualTierUpgradeEngine(scryfall_provider=scryfall_provider)
+    edhrec_provider = EDHRECProvider()
+    app.edhrec_provider = edhrec_provider
+    app.upgrade_engine = upgrade_engine
+    app.inventory_manager = inventory_manager
 
     with app.app_context():
         db.create_all()
@@ -3295,7 +3299,7 @@ def create_app(test_config=None):
     @app.route("/api/deck/<int:deck_id>/upgrades", methods=["GET"])
     @login_required
     def api_deck_upgrades(deck_id: int):
-        """Generates dual-tier upgrade recommendations: Owned Swaps ('In Your Binder') & Shopping List ('To Buy')."""
+        """Generates dual-tier upgrade recommendations: Owned Swaps ('In Your Binder') & Shopping List ('To Buy') with EDHREC synergy."""
         user = get_current_user()
         entry = db.session.get(DeckAnalysis, deck_id)
         if not entry:
@@ -3304,18 +3308,110 @@ def create_app(test_config=None):
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
             return jsonify({"error": "Unauthorized access to deck."}), 403
 
+        theme = request.args.get("theme", "").strip() or None
+        anti_salt = request.args.get("anti_salt", "0").strip().lower() in ("1", "true", "yes", "on")
+
         user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
         allocations = inventory_manager.get_user_card_allocations(user.id, current_deck_id=deck_id)
         ai_analysis = entry.get_analysis()
 
-        results = upgrade_engine.generate_upgrades(
+        # Ingest EDHREC commander metadata & synergy scores
+        edhrec_data = None
+        current_edhrec_provider = getattr(app, "edhrec_provider", edhrec_provider)
+        current_upgrade_engine = getattr(app, "upgrade_engine", upgrade_engine)
+        if entry.commander_name:
+            try:
+                edhrec_data = current_edhrec_provider.get_commander_data(entry.commander_name, theme=theme)
+                if edhrec_data:
+                    edhrec_data["top_salt_map"] = current_edhrec_provider.get_top_salt_cards()
+            except Exception as e:
+                logger.warning(f"Failed to fetch EDHREC data for deck {deck_id}: {e}")
+
+        results = current_upgrade_engine.generate_upgrades(
             deck=entry,
             user_inventory=user_cards,
             allocations=allocations,
             ai_analysis=ai_analysis,
+            edhrec_data=edhrec_data,
+            theme=theme,
+            anti_salt=anti_salt,
         )
 
-        return jsonify({"success": True, "deck_id": deck_id, "deck_name": entry.deck_name, **results})
+        edhrec_summary = None
+        if edhrec_data:
+            edhrec_summary = {
+                "slug": edhrec_data.get("slug"),
+                "rank": edhrec_data.get("rank"),
+                "num_decks": edhrec_data.get("num_decks", 0),
+                "salt_score": edhrec_data.get("salt_score"),
+                "edhrec_url": edhrec_data.get("edhrec_url"),
+                "active_theme": edhrec_data.get("active_theme"),
+                "themes": edhrec_data.get("themes", []),
+                "articles": edhrec_data.get("articles", []),
+            }
+
+        return jsonify({
+            "success": True,
+            "deck_id": deck_id,
+            "deck_name": entry.deck_name,
+            "edhrec": edhrec_summary,
+            **results,
+        })
+
+    @app.route("/api/deck/<int:deck_id>/edhrec", methods=["GET"])
+    @login_required
+    def api_deck_edhrec(deck_id: int):
+        """Fetches EDHREC metadata, rankings, primers, themes, and combo status for a saved deck."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized access to deck."}), 403
+
+        theme = request.args.get("theme", "").strip() or None
+        cmdr = entry.commander_name
+        if not cmdr:
+            return jsonify({"success": True, "found": False, "message": "No commander identified for this deck."})
+
+        current_edhrec_provider = getattr(app, "edhrec_provider", edhrec_provider)
+        current_upgrade_engine = getattr(app, "upgrade_engine", upgrade_engine)
+
+        try:
+            data = current_edhrec_provider.get_commander_data(cmdr, theme=theme)
+            if not data:
+                return jsonify({"success": True, "found": False, "commander": cmdr, "message": "Commander not found on EDHREC."})
+
+            cards = entry.get_parsed_cards()
+            user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
+            combo_eval = current_upgrade_engine.evaluate_combos(
+                combos=data.get("combos", []),
+                deck_cards=cards,
+                user_inventory=user_cards,
+            )
+
+            return jsonify({
+                "success": True,
+                "found": True,
+                "deck_id": deck_id,
+                "commander": cmdr,
+                "edhrec": data,
+                "combos_evaluation": combo_eval,
+            })
+        except Exception as e:
+            logger.error(f"Error fetching EDHREC metadata for deck {deck_id}: {e}", exc_info=True)
+            return jsonify({"success": True, "found": False, "error": str(e)}), 200
+
+    @app.route("/api/edhrec/top-salt", methods=["GET"])
+    @login_required
+    def api_edhrec_top_salt():
+        """Returns top salty cards from EDHREC."""
+        try:
+            current_edhrec_provider = getattr(app, "edhrec_provider", edhrec_provider)
+            salt_cards = current_edhrec_provider.get_top_salt_cards()
+            return jsonify({"success": True, "salt_cards": salt_cards})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     @app.route("/api/deck/<int:deck_id>/apply-swap", methods=["POST"])
     @login_required

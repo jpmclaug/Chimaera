@@ -312,9 +312,14 @@ class DualTierUpgradeEngine:
         user_inventory: List[UserInventoryCard],
         allocations: Dict[str, Dict[str, Any]],
         ai_analysis: Optional[Dict[str, Any]] = None,
+        edhrec_data: Optional[Dict[str, Any]] = None,
+        theme: Optional[str] = None,
+        anti_salt: bool = False,
+        max_salt: float = 1.5,
     ) -> Dict[str, Any]:
         """
-        Executes dual-tier upgrade evaluation.
+        Executes dual-tier upgrade evaluation enriched with EDHREC synergy,
+        theme alignment, anti-salt filtering, and combo analysis.
         Returns:
         {
             "owned_swaps": list[dict],
@@ -323,10 +328,21 @@ class DualTierUpgradeEngine:
                 "moderate": list[dict],    # $3.00 - $15.00
                 "high_impact": list[dict]  # > $15.00
             },
+            "synergy_brackets": {
+                "signature": list[dict],    # > 50% synergy
+                "high_synergy": list[dict], # 25% - 50% synergy
+                "standard": list[dict]      # < 25% synergy / staples
+            },
+            "combos": {
+                "active": list[dict],
+                "near": list[dict]
+            },
             "all_shopping_cards": list[dict],
             "deck_color_identity": list[str],
             "owned_count": int,
-            "shopping_count": int
+            "shopping_count": int,
+            "theme_applied": str | None,
+            "anti_salt_applied": bool,
         }
         """
         # 1. Resolve deck attributes
@@ -334,6 +350,11 @@ class DualTierUpgradeEngine:
         deck_id = deck.id if hasattr(deck, "id") else deck.get("id")
         deck_name = deck.deck_name if hasattr(deck, "deck_name") else deck.get("deck_name", "Commander Deck")
         color_identity = set(deck.get_color_identity_list() if hasattr(deck, "get_color_identity_list") else deck.get("color_identity", []))
+
+        # Extract EDHREC metadata & synergy maps if present
+        edhrec_synergies: Dict[str, Dict[str, Any]] = (edhrec_data or {}).get("card_synergies", {})
+        top_salt_map: Dict[str, float] = (edhrec_data or {}).get("top_salt_map", {})
+        edhrec_combos: List[Dict[str, Any]] = (edhrec_data or {}).get("combos", [])
 
         # Build card lookup for current deck (lowercase names)
         deck_cards_set = {c.get("name", "").strip().lower() for c in cards}
@@ -358,6 +379,19 @@ class DualTierUpgradeEngine:
         applied_card_in_names: Set[str] = set()
         assigned_cuts: Set[str] = set()
 
+        def _get_edhrec_info(card_name: str) -> Tuple[float, float, float, Optional[float]]:
+            c_low = card_name.lower().strip()
+            syn_info = edhrec_synergies.get(c_low)
+            if not syn_info and " // " in c_low:
+                syn_info = edhrec_synergies.get(c_low.split(" // ")[0].strip())
+            syn = syn_info.get("synergy", 0.0) if syn_info else 0.0
+            syn_pct = syn_info.get("synergy_percent", 0.0) if syn_info else round(syn * 100.0, 1)
+            inc_pct = syn_info.get("inclusion_percent", 0.0) if syn_info else 0.0
+            salt = top_salt_map.get(c_low)
+            if salt is None and " // " in c_low:
+                salt = top_salt_map.get(c_low.split(" // ")[0].strip())
+            return syn, syn_pct, inc_pct, salt
+
         # A) Check AI suggested upgrades first if present
         if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
             for u in ai_analysis["upgrades"]:
@@ -369,7 +403,6 @@ class DualTierUpgradeEngine:
                 if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in):
                     owned_copies = self._find_owned_inventory_copies(card_in, owned_by_name)
                     if owned_copies:
-                        # Card is in binder!
                         primary_copy = owned_copies[0]
                         alloc_key = card_in.lower()
                         if alloc_key not in allocations and " // " in alloc_key:
@@ -380,12 +413,13 @@ class DualTierUpgradeEngine:
                         other_allocated = alloc_info.get("other_allocated", 0)
                         avail = max(0, total_owned - other_allocated)
 
-                        # Match cut candidate (distinct from other proposed swaps)
                         if card_out and self._is_card_in_deck(card_out, deck_cards_set) and card_out.lower() not in assigned_cuts:
                             matched_cut = card_out
                             assigned_cuts.add(card_out.lower())
                         else:
                             matched_cut = self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
+
+                        syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
 
                         owned_swaps.append({
                             "card_in": primary_copy.name,
@@ -402,6 +436,10 @@ class DualTierUpgradeEngine:
                             "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
                             "category": u.get("category", "Tactical Upgrade"),
                             "estimated_impact": u.get("estimated_impact", "High"),
+                            "synergy": syn,
+                            "synergy_percent": syn_pct,
+                            "inclusion_percent": inc_pct,
+                            "salt_score": salt,
                             "rationale": u.get("rationale") or f"Upgrade into {primary_copy.name} from your binder for enhanced synergy and curve efficiency.",
                             "is_owned": True,
                             "total_owned": total_owned,
@@ -411,7 +449,61 @@ class DualTierUpgradeEngine:
                         })
                         applied_card_in_names.add(card_in.lower())
 
-        # B) Check Curated Tactical Staples against Inventory
+        # B) Check EDHREC High Synergy & Top Cards against User Inventory
+        edhrec_priority_pool = (edhrec_data or {}).get("high_synergy_cards", []) + (edhrec_data or {}).get("top_cards", [])
+        for rec in edhrec_priority_pool:
+            rec_name = rec.get("name", "").strip()
+            rec_lower = rec_name.lower()
+            if not rec_name or self._is_card_in_deck(rec_name, deck_cards_set) or rec_lower in applied_card_in_names:
+                continue
+
+            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name):
+                continue
+
+            owned_copies = self._find_owned_inventory_copies(rec_name, owned_by_name)
+            if owned_copies:
+                primary_copy = owned_copies[0]
+                alloc_key = rec_lower
+                if alloc_key not in allocations and " // " in alloc_key:
+                    alloc_key = alloc_key.split(" // ")[0].strip()
+                alloc_info = allocations.get(alloc_key, {"total_allocated": 0, "other_allocated": 0, "decks": []})
+
+                total_owned = sum(c.quantity for c in owned_copies)
+                other_allocated = alloc_info.get("other_allocated", 0)
+                avail = max(0, total_owned - other_allocated)
+
+                matched_cut = self._find_best_cut(cut_candidates, primary_copy.type_line or "Synergy", used_cuts=assigned_cuts)
+                syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
+
+                owned_swaps.append({
+                    "card_in": primary_copy.name,
+                    "card_in_image": primary_copy.image_uri,
+                    "card_in_mana": primary_copy.mana_cost or "",
+                    "card_in_cmc": primary_copy.cmc or 0,
+                    "card_in_type": primary_copy.type_line or "Card",
+                    "card_in_set": primary_copy.set_code or "",
+                    "card_in_foil": primary_copy.foil or "normal",
+                    "card_in_condition": primary_copy.condition or "Near Mint",
+                    "card_in_price": primary_copy.price_usd,
+                    "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
+                    "card_out_cmc": matched_cut.get("cmc") if isinstance(matched_cut, dict) else None,
+                    "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
+                    "category": "Signature Synergy" if syn >= 0.50 else ("High Synergy" if syn >= 0.25 else "EDHREC Upgrade"),
+                    "estimated_impact": "High" if syn >= 0.25 else "Medium",
+                    "synergy": syn,
+                    "synergy_percent": syn_pct,
+                    "inclusion_percent": inc_pct,
+                    "salt_score": salt,
+                    "rationale": f"High EDHREC synergy (+{syn_pct}% in this commander) owned in your binder. Replace {matched_cut['name'] if isinstance(matched_cut, dict) else matched_cut}.",
+                    "is_owned": True,
+                    "total_owned": total_owned,
+                    "available_copies": avail,
+                    "already_allocated": (avail <= 0 and total_owned > 0),
+                    "allocated_in": [d["deck_name"] for d in alloc_info.get("decks", []) if not d.get("is_current")],
+                })
+                applied_card_in_names.add(rec_lower)
+
+        # C) Check Curated Tactical Staples against Inventory
         for staple in CURATED_UPGRADES:
             s_name = staple["name"]
             s_name_lower = s_name.lower()
@@ -437,6 +529,7 @@ class DualTierUpgradeEngine:
                 avail = max(0, total_owned - other_allocated)
 
                 matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=assigned_cuts)
+                syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
 
                 owned_swaps.append({
                     "card_in": primary_copy.name,
@@ -453,6 +546,10 @@ class DualTierUpgradeEngine:
                     "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
                     "category": staple.get("category", "Power"),
                     "estimated_impact": "High",
+                    "synergy": syn,
+                    "synergy_percent": syn_pct,
+                    "inclusion_percent": inc_pct,
+                    "salt_score": salt,
                     "rationale": f"Replace {matched_cut['name'] if isinstance(matched_cut, dict) else matched_cut} with {primary_copy.name} from your binder: {staple.get('rationale')}",
                     "is_owned": True,
                     "total_owned": total_owned,
@@ -461,6 +558,16 @@ class DualTierUpgradeEngine:
                     "allocated_in": [d["deck_name"] for d in alloc_info.get("decks", []) if not d.get("is_current")],
                 })
                 applied_card_in_names.add(s_name_lower)
+
+        # D) Prioritize Owned Swaps by EDHREC Synergy % descending, then availability
+        owned_swaps.sort(
+            key=lambda x: (
+                x.get("synergy") or 0.0,
+                1 if not x.get("already_allocated") else 0,
+                x.get("total_owned") or 0,
+            ),
+            reverse=True,
+        )
 
         # 3. Build Shopping List ("To Buy / Wishlist")
         shopping_list_raw: List[Dict[str, Any]] = []
@@ -482,11 +589,20 @@ class DualTierUpgradeEngine:
                     except Exception:
                         pass
 
+                    syn, syn_pct, inc_pct, salt = _get_edhrec_info(card_in)
+                    if anti_salt and salt is not None and salt >= max_salt:
+                        continue
+
                     shopping_list_raw.append({
                         "name": card_in,
                         "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
                         "category": u.get("category", "Tactical Upgrade"),
                         "estimated_impact": u.get("estimated_impact", "High"),
+                        "synergy": syn,
+                        "synergy_percent": syn_pct,
+                        "inclusion_percent": inc_pct,
+                        "salt_score": salt,
+                        "is_salty": bool(salt is not None and salt >= max_salt),
                         "rationale": u.get("rationale") or f"Recommended upgrade to increase deck velocity and synergy.",
                         "price_usd": price_val,
                         "image_uri": u.get("card_in_image"),
@@ -497,7 +613,47 @@ class DualTierUpgradeEngine:
                     })
                     shopping_names_applied.add(card_in.lower())
 
-        # B) Add unowned Curated Staples
+        # B) Add unowned EDHREC High Synergy & Top Cards
+        for rec in edhrec_priority_pool:
+            rec_name = rec.get("name", "").strip()
+            rec_lower = rec_name.lower()
+            if (not rec_name or 
+                self._is_card_in_deck(rec_name, deck_cards_set) or 
+                self._find_owned_inventory_copies(rec_name, owned_by_name) or 
+                rec_lower in shopping_names_applied):
+                continue
+
+            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name):
+                continue
+
+            syn, syn_pct, inc_pct, salt = _get_edhrec_info(rec_name)
+            if anti_salt and salt is not None and salt >= max_salt:
+                continue
+
+            matched_cut = self._find_best_cut(cut_candidates, "Synergy Card", used_cuts=assigned_cuts)
+            cat = "Signature Card" if syn >= 0.50 else ("High Synergy" if syn >= 0.25 else "EDHREC Recommendation")
+
+            shopping_list_raw.append({
+                "name": rec_name,
+                "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
+                "category": cat,
+                "estimated_impact": "High" if syn >= 0.25 else "Medium",
+                "synergy": syn,
+                "synergy_percent": syn_pct,
+                "inclusion_percent": inc_pct,
+                "salt_score": salt,
+                "is_salty": bool(salt is not None and salt >= max_salt),
+                "rationale": f"Key synergy recommendation for this commander (+{syn_pct}% synergy, {inc_pct}% deck inclusion).",
+                "price_usd": None,
+                "image_uri": None,
+                "tcgplayer_url": None,
+                "mana_cost": "",
+                "type_line": "Card",
+                "is_owned": False,
+            })
+            shopping_names_applied.add(rec_lower)
+
+        # C) Add unowned Curated Staples
         for staple in CURATED_UPGRADES:
             s_name = staple["name"]
             s_name_lower = s_name.lower()
@@ -511,6 +667,10 @@ class DualTierUpgradeEngine:
             if not self._is_format_legal(s_name):
                 continue
 
+            syn, syn_pct, inc_pct, salt = _get_edhrec_info(s_name)
+            if anti_salt and salt is not None and salt >= max_salt:
+                continue
+
             matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=assigned_cuts)
 
             shopping_list_raw.append({
@@ -518,8 +678,13 @@ class DualTierUpgradeEngine:
                 "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
                 "category": staple.get("category", "Staple Upgrade"),
                 "estimated_impact": "High" if staple.get("rating", 0) >= 9.2 else "Medium",
+                "synergy": syn,
+                "synergy_percent": syn_pct,
+                "inclusion_percent": inc_pct,
+                "salt_score": salt,
+                "is_salty": bool(salt is not None and salt >= max_salt),
                 "rationale": staple.get("rationale", ""),
-                "price_usd": None,  # Will enrich below
+                "price_usd": None,
                 "image_uri": None,
                 "tcgplayer_url": None,
                 "mana_cost": f"{{{staple['cmc']}}}" if staple.get("cmc") is not None else "",
@@ -528,8 +693,8 @@ class DualTierUpgradeEngine:
             })
             shopping_names_applied.add(s_name_lower)
 
-        # Batch resolve prices for unowned cards if missing
-        missing_meta_names = [s["name"] for s in shopping_list_raw if s.get("price_usd") is None]
+        # Batch resolve prices and Scryfall metadata for unowned cards if missing
+        missing_meta_names = [s["name"] for s in shopping_list_raw if s.get("price_usd") is None or not s.get("image_uri")]
         if missing_meta_names:
             try:
                 scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names)
@@ -547,12 +712,12 @@ class DualTierUpgradeEngine:
                             s["tcgplayer_url"] = meta.get("tcgplayer_url")
                         if not s.get("mana_cost") and meta.get("mana_cost"):
                             s["mana_cost"] = meta["mana_cost"]
-                        if not s.get("type_line") and meta.get("type_line"):
+                        if (not s.get("type_line") or s.get("type_line") == "Card") and meta.get("type_line"):
                             s["type_line"] = meta["type_line"]
             except Exception as e:
                 logger.error(f"Error resolving prices for shopping list: {e}")
 
-        # Segregate Shopping List into Budget Brackets
+        # Segregate Shopping List into Budget Brackets (sorted by synergy descending, then price)
         budget_bracket: List[Dict[str, Any]] = []      # < $3.00
         moderate_bracket: List[Dict[str, Any]] = []    # $3.00 - $15.00
         high_impact_bracket: List[Dict[str, Any]] = [] # > $15.00
@@ -560,7 +725,6 @@ class DualTierUpgradeEngine:
         for s in shopping_list_raw:
             price = s.get("price_usd")
             if price is None:
-                # Default to moderate if unpriced
                 moderate_bracket.append(s)
             elif price < 3.0:
                 budget_bracket.append(s)
@@ -569,18 +733,109 @@ class DualTierUpgradeEngine:
             else:
                 high_impact_bracket.append(s)
 
+        # Segregate Shopping List into Synergy Brackets
+        signature_bracket = [s for s in shopping_list_raw if (s.get("synergy") or 0.0) >= 0.50]
+        high_syn_bracket = [s for s in shopping_list_raw if 0.25 <= (s.get("synergy") or 0.0) < 0.50]
+        standard_bracket = [s for s in shopping_list_raw if (s.get("synergy") or 0.0) < 0.25]
+
+        # Evaluate Known Combos from EDHREC / Commander Spellbook
+        combo_results = self.evaluate_combos(
+            combos=edhrec_combos,
+            deck_cards=cards,
+            user_inventory=user_inventory,
+        )
+
         return {
             "owned_swaps": owned_swaps,
             "shopping_list": {
-                "budget": sorted(budget_bracket, key=lambda x: (x.get("price_usd") or 0)),
-                "moderate": sorted(moderate_bracket, key=lambda x: (x.get("price_usd") or 0)),
-                "high_impact": sorted(high_impact_bracket, key=lambda x: (x.get("price_usd") or 0), reverse=True),
+                "budget": sorted(budget_bracket, key=lambda x: (-(x.get("synergy") or 0.0), x.get("price_usd") or 0)),
+                "moderate": sorted(moderate_bracket, key=lambda x: (-(x.get("synergy") or 0.0), x.get("price_usd") or 0)),
+                "high_impact": sorted(high_impact_bracket, key=lambda x: (-(x.get("synergy") or 0.0), -(x.get("price_usd") or 0))),
             },
-            "all_shopping_cards": shopping_list_raw,
+            "synergy_brackets": {
+                "signature": sorted(signature_bracket, key=lambda x: (-(x.get("synergy") or 0.0))),
+                "high_synergy": sorted(high_syn_bracket, key=lambda x: (-(x.get("synergy") or 0.0))),
+                "standard": sorted(standard_bracket, key=lambda x: (-(x.get("synergy") or 0.0))),
+            },
+            "combos": combo_results,
+            "all_shopping_cards": sorted(shopping_list_raw, key=lambda x: (-(x.get("synergy") or 0.0), x.get("price_usd") or 0)),
             "deck_color_identity": sorted(list(color_identity)),
             "owned_count": len(owned_swaps),
             "shopping_count": len(shopping_list_raw),
+            "theme_applied": theme,
+            "anti_salt_applied": anti_salt,
         }
+
+    def evaluate_combos(
+        self,
+        combos: List[Dict[str, Any]],
+        deck_cards: List[Dict[str, Any]],
+        user_inventory: List[UserInventoryCard],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Evaluates EDHREC / Commander Spellbook combos against active deck cards and user inventory.
+        Categorizes combos into:
+        - active: 100% of pieces present in active deck.
+        - near: missing 1 or 2 pieces, flagging if missing piece is in user's binder!
+        """
+        if not combos:
+            return {"active": [], "near": []}
+
+        deck_cards_set: Set[str] = set()
+        for c in deck_cards:
+            name = c.get("name", "").strip().lower()
+            if name:
+                deck_cards_set.add(name)
+                if " // " in name:
+                    deck_cards_set.add(name.split(" // ")[0].strip().lower())
+
+        owned_by_name: Dict[str, List[UserInventoryCard]] = {}
+        for ic in user_inventory:
+            k = ic.name.strip().lower()
+            owned_by_name.setdefault(k, []).append(ic)
+            if " // " in ic.name:
+                owned_by_name.setdefault(ic.name.split(" // ")[0].strip().lower(), []).append(ic)
+
+        active_combos: List[Dict[str, Any]] = []
+        near_combos: List[Dict[str, Any]] = []
+
+        for combo in combos:
+            pieces = combo.get("pieces", [])
+            if len(pieces) < 2:
+                continue
+
+            in_deck: List[str] = []
+            missing: List[Dict[str, Any]] = []
+
+            for p in pieces:
+                if self._is_card_in_deck(p, deck_cards_set):
+                    in_deck.append(p)
+                else:
+                    is_in_binder = bool(self._find_owned_inventory_copies(p, owned_by_name))
+                    missing.append({
+                        "name": p,
+                        "in_binder": is_in_binder,
+                    })
+
+            combo_entry = {
+                "name": combo.get("name", " + ".join(pieces)),
+                "pieces": pieces,
+                "url": combo.get("url", ""),
+                "in_deck_pieces": in_deck,
+                "missing_pieces": missing,
+                "missing_count": len(missing),
+            }
+
+            if len(missing) == 0:
+                active_combos.append(combo_entry)
+            elif len(missing) in (1, 2) and len(in_deck) >= 1:
+                near_combos.append(combo_entry)
+
+        return {
+            "active": active_combos,
+            "near": near_combos,
+        }
+
 
     @staticmethod
     def _is_card_in_deck(card_name: str, deck_cards_set: Set[str]) -> bool:
