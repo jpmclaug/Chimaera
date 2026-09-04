@@ -30,12 +30,24 @@
             <!-- View Switcher & Action Controls -->
             <div class="flex flex-wrap items-center gap-2.5">
                 <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center">
-                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md">
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer">
                         🛸 My Decks (<span id="savedDecksCount">{{ recent_decks|length }}</span>)
                     </button>
-                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white">
+                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer">
                         ➕ Import Single
                     </button>
+                </div>
+
+                <!-- Quick Deck Selector -->
+                <div class="relative flex items-center">
+                    <select id="quickDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
+                            class="bg-[#1B2230] hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[210px] truncate"
+                            title="Quick Switch Deck">
+                        <option value="">⚡ Quick Select Deck...</option>
+                        {% for d in recent_decks %}
+                        <option value="{{ d.id }}">{{ d.deck_name }}{% if d.commander_name %} ({{ d.commander_name }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
                 </div>
 
                 <a href="/system-overview#commander-stats" class="px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Commander Statistical Telemetry & EDH Analytics Field Manual">
@@ -283,7 +295,16 @@
                     </div>
 
                     <!-- Action Buttons -->
-                    <div class="flex items-center gap-1.5 pl-1.5 border-l border-slate-800">
+                    <div class="flex items-center gap-2 pl-2 border-l border-slate-800">
+                        <select id="inspectorDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
+                                class="bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[200px] truncate"
+                                title="Switch Deck in Inspector">
+                            <option value="">⚡ Switch Deck...</option>
+                            {% for d in recent_decks %}
+                            <option value="{{ d.id }}">{{ d.deck_name }}</option>
+                            {% endfor %}
+                        </select>
+
                         <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
                                 class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -291,8 +312,9 @@
                             </svg>
                         </button>
                         
-                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer">
-                            &larr; Vault
+                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1" title="Return to Deck Vault grid">
+                            <span>&larr;</span>
+                            <span>All Decks</span>
                         </button>
                     </div>
                 </div>
@@ -1240,12 +1262,35 @@ let activeDeck = null;
 let currentIngestTab = 'url';
 let currentCardTypeFilter = 'all';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     renderVaultGrid(currentVaultDecks);
-    if (currentVaultDecks.length === 0) {
+    updateDeckDropdowns(currentVaultDecks);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetDeckId = urlParams.get('deck_id') || urlParams.get('deck');
+    if (targetDeckId) {
+        await loadSavedDeckIntoInspector(targetDeckId);
+    } else if (!currentVaultDecks || currentVaultDecks.length === 0) {
         switchMainView('ingest');
     }
+
+    // Background fetch to ensure latest syncs are loaded
+    await refreshVaultList();
 });
+
+// Update Deck Selector Dropdowns
+function updateDeckDropdowns(decks) {
+    const selects = [document.getElementById('quickDeckSelect'), document.getElementById('inspectorDeckSelect')];
+    selects.forEach(sel => {
+        if (!sel) return;
+        const currentVal = sel.value;
+        sel.innerHTML = '<option value="">⚡ Select Deck...</option>' + (decks || []).map(d => {
+            const cmdr = d.commander_name ? ` (${escapeHtml(d.commander_name)})` : '';
+            return `<option value="${d.id}">${escapeHtml(d.deck_name)}${cmdr}</option>`;
+        }).join('');
+        if (currentVal) sel.value = currentVal;
+    });
+}
 
 // View Navigation Switcher
 function switchMainView(viewName) {
@@ -1259,19 +1304,21 @@ function switchMainView(viewName) {
         vaultView.classList.remove('hidden');
         ingestView.classList.add('hidden');
         inspectorView.classList.add('hidden');
-        vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md";
-        ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white";
+        if (vaultBtn) vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer";
+        if (ingestBtn) ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
         renderVaultGrid(currentVaultDecks);
     } else if (viewName === 'ingest') {
         vaultView.classList.add('hidden');
         ingestView.classList.remove('hidden');
         inspectorView.classList.add('hidden');
-        ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md";
-        vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white";
+        if (ingestBtn) ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer";
+        if (vaultBtn) vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
     } else if (viewName === 'inspector') {
         vaultView.classList.add('hidden');
         ingestView.classList.add('hidden');
         inspectorView.classList.remove('hidden');
+        if (vaultBtn) vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
+        if (ingestBtn) ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
     }
 }
 
@@ -1321,15 +1368,18 @@ function switchInspectorTab(tab) {
 function renderVaultGrid(decks) {
     const grid = document.getElementById('vaultGrid');
     const emptyState = document.getElementById('vaultEmptyState');
-    document.getElementById('savedDecksCount').innerText = decks.length;
+    const countElem = document.getElementById('savedDecksCount');
+    if (countElem) countElem.innerText = (decks || []).length;
 
     if (!decks || decks.length === 0) {
-        grid.innerHTML = '';
-        emptyState.classList.remove('hidden');
+        if (grid) grid.innerHTML = '';
+        if (emptyState) emptyState.classList.remove('hidden');
         return;
     }
 
-    emptyState.classList.add('hidden');
+    if (emptyState) emptyState.classList.add('hidden');
+    if (!grid) return;
+
     grid.innerHTML = decks.map(d => {
         const stats = d.stats || {};
         const val = (d.total_value || stats.total_value || 0).toFixed(2);
@@ -1344,10 +1394,10 @@ function renderVaultGrid(decks) {
         }).join('');
 
         return `
-            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl overflow-hidden shadow-xl hover:shadow-cyan-500/10 transition group flex flex-col justify-between">
+            <div onclick="loadSavedDeckIntoInspector(${d.id})" class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/60 rounded-xl overflow-hidden shadow-xl hover:shadow-cyan-500/10 transition duration-200 group flex flex-col justify-between cursor-pointer transform hover:-translate-y-0.5">
                 <div>
                     <!-- Commander Portrait Header -->
-                    <div class="relative h-28 overflow-hidden bg-slate-900">
+                    <div class="relative h-32 overflow-hidden bg-slate-900">
                         <img src="${art}" alt="${escapeHtml(d.deck_name)}" class="w-full h-full object-cover object-center group-hover:scale-105 transition duration-300">
                         <div class="absolute inset-0 bg-gradient-to-t from-[#10141D] via-[#10141D]/40 to-transparent pointer-events-none"></div>
                         
@@ -1385,15 +1435,16 @@ function renderVaultGrid(decks) {
 
                 <!-- Card Actions Footer -->
                 <div class="p-4 pt-0 flex items-center justify-between gap-2 border-t border-slate-800/60 mt-2">
-                    <button onclick="loadSavedDeckIntoInspector(${d.id})" class="flex-1 px-3 py-2 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 font-mono text-xs font-bold uppercase rounded-lg border border-slate-700 hover:border-cyan-500 transition text-center">
-                        Inspect Deck
+                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="flex-1 px-3 py-2 bg-cyan-500/10 group-hover:bg-cyan-500 text-cyan-400 group-hover:text-slate-950 font-mono text-xs font-bold uppercase rounded-lg border border-cyan-500/30 group-hover:border-cyan-500 transition text-center flex items-center justify-center gap-1.5 cursor-pointer">
+                        <span>Select & Inspect</span>
+                        <span>&rarr;</span>
                     </button>
                     ${d.source_url ? `
-                    <button onclick="syncSavedDeck(${d.id})" title="Sync from ManaBox link" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition">
+                    <button onclick="event.stopPropagation(); syncSavedDeck(${d.id})" title="Sync from ManaBox link" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition cursor-pointer">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     </button>
                     ` : ''}
-                    <button onclick="handleDeleteDeckClick(${d.id})" title="Delete from vault" class="p-2 bg-slate-800/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-lg border border-slate-800 transition">
+                    <button onclick="event.stopPropagation(); handleDeleteDeckClick(${d.id})" title="Delete from vault" class="p-2 bg-slate-800/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-lg border border-slate-800 transition cursor-pointer">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
                 </div>
@@ -1408,6 +1459,11 @@ async function loadSavedDeckIntoInspector(deckId) {
         const resp = await fetch(`/api/deck/history/${deckId}`);
         if (!resp.ok) throw new Error("Failed to load saved deck");
         const deck = await resp.json();
+        try {
+            const newUrl = new URL(window.location);
+            newUrl.searchParams.set('deck_id', deckId);
+            window.history.replaceState(null, '', newUrl.toString());
+        } catch (_) {}
         displayDeckInInspector(deck);
     } catch (e) {
         showToast(`Error: ${e.message}`, 'error');
@@ -1427,6 +1483,13 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     if (!deck) return;
     activeDeck = deck;
     switchMainView('inspector');
+
+    if (deck.id) {
+        const quickSel = document.getElementById('quickDeckSelect');
+        if (quickSel) quickSel.value = deck.id;
+        const inspSel = document.getElementById('inspectorDeckSelect');
+        if (inspSel) inspSel.value = deck.id;
+    }
 
     const stats = deck.stats || {};
     const cards = deck.cards_data || deck.cards || [];
@@ -2079,6 +2142,8 @@ async function handleWatchClick(btn) {
         btn.disabled = false;
         btn.innerHTML = origHtml;
     }
+}
+
 // Tactical Quick Add Card Handler
 async function executeQuickAddCard() {
     if (!activeDeck || !activeDeck.id) {
@@ -2598,6 +2663,13 @@ async function refreshVaultList() {
         if (resp.ok) {
             currentVaultDecks = await resp.json();
             renderVaultGrid(currentVaultDecks);
+            updateDeckDropdowns(currentVaultDecks);
+            if (activeDeck && activeDeck.id) {
+                const quickSel = document.getElementById('quickDeckSelect');
+                if (quickSel) quickSel.value = activeDeck.id;
+                const inspSel = document.getElementById('inspectorDeckSelect');
+                if (inspSel) inspSel.value = activeDeck.id;
+            }
         }
     } catch (e) {
         console.error("Failed to refresh vault list", e);

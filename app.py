@@ -2108,7 +2108,8 @@ def create_app(test_config=None):
 
         recent_decks = []
         if user:
-            recent_decks = DeckAnalysis.query.filter_by(user_id=user.id).order_by(DeckAnalysis.created_at.desc()).limit(20).all()
+            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
+            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).limit(100).all()
 
         log_activity("PAGE_VIEW", details="Accessed Commander Deck Analyzer", user=user)
 
@@ -2657,7 +2658,7 @@ def create_app(test_config=None):
         if not user:
             return jsonify([])
 
-        query = DeckAnalysis.query.filter_by(user_id=user.id) if not user.is_admin else DeckAnalysis.query
+        query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
         entries = query.order_by(DeckAnalysis.created_at.desc()).limit(100).all()
         return jsonify([e.to_dict(include_full=False) for e in entries])
 
@@ -2743,7 +2744,7 @@ def create_app(test_config=None):
         user = get_current_user()
         recent_decks = []
         if user:
-            query = DeckAnalysis.query.filter_by(user_id=user.id) if not user.is_admin else DeckAnalysis.query
+            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
             recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
 
         # Compute high-level fleet aggregate metrics
