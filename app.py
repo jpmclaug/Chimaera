@@ -2098,10 +2098,77 @@ def create_app(test_config=None):
     # ---------------------------------------------------------
     # Commander Deck Intelligence & Gemini AI Analysis Routes
     # ---------------------------------------------------------
+    def _compute_fleet_stats(recent_decks):
+        """Helper to aggregate high-level Commander fleet portfolio metrics."""
+        fleet_count = len(recent_decks)
+        total_portfolio_value = 0.0
+        cmc_sum = 0.0
+        cmc_count = 0
+        power_sum = 0.0
+        power_count = 0
+        color_freq = {"W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0}
+        power_brackets = {"Casual (1-4)": 0, "Focused (5-6)": 0, "Optimized (7-8)": 0, "High Power / cEDH (9-10)": 0, "Pre-AI Ready": 0}
+
+        deck_dicts = []
+        for d in recent_decks:
+            d_dict = d.to_dict(include_full=False)
+            deck_dicts.append(d_dict)
+
+            # Value
+            val = d.total_value if d.total_value is not None else (d.get_stats().get("total_value", 0.0) if hasattr(d, "get_stats") else 0.0)
+            if val is not None:
+                total_portfolio_value += float(val)
+
+            # CMC
+            cmc = d.avg_cmc if d.avg_cmc is not None else (d.get_stats().get("avg_cmc") if hasattr(d, "get_stats") else None)
+            if cmc is not None and float(cmc) > 0:
+                cmc_sum += float(cmc)
+                cmc_count += 1
+
+            # Power level & bracket
+            if d.power_level is not None:
+                pwr = float(d.power_level)
+                power_sum += pwr
+                power_count += 1
+                if pwr < 5.0:
+                    power_brackets["Casual (1-4)"] += 1
+                elif pwr < 7.0:
+                    power_brackets["Focused (5-6)"] += 1
+                elif pwr < 9.0:
+                    power_brackets["Optimized (7-8)"] += 1
+                else:
+                    power_brackets["High Power / cEDH (9-10)"] += 1
+            else:
+                power_brackets["Pre-AI Ready"] += 1
+
+            # Colors
+            cols = d.get_color_identity_list() if hasattr(d, "get_color_identity_list") else []
+            if not cols:
+                color_freq["C"] += 1
+            else:
+                for c in cols:
+                    if c in color_freq:
+                        color_freq[c] += 1
+
+        avg_fleet_cmc = round(cmc_sum / cmc_count, 2) if cmc_count > 0 else 0.0
+        avg_fleet_power = round(power_sum / power_count, 1) if power_count > 0 else None
+        avg_deck_value = round(total_portfolio_value / fleet_count, 2) if fleet_count > 0 else 0.0
+
+        fleet_stats = {
+            "total_decks": fleet_count,
+            "total_portfolio_value": round(total_portfolio_value, 2),
+            "avg_deck_value": avg_deck_value,
+            "avg_fleet_cmc": avg_fleet_cmc,
+            "avg_fleet_power": avg_fleet_power,
+            "color_frequencies": color_freq,
+            "power_brackets": power_brackets,
+        }
+        return deck_dicts, fleet_stats
+
     @app.route("/deck-analyzer")
     @login_required
     def deck_analyzer_page():
-        """Tactical Commander Deck Intelligence & Analysis Dashboard."""
+        """Tactical Commander Deck Fleet Intelligence & Analysis Command Hub."""
         user = get_current_user()
         has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
@@ -2113,17 +2180,26 @@ def create_app(test_config=None):
         recent_decks = []
         if user:
             query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).limit(100).all()
+            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
 
-        log_activity("PAGE_VIEW", details="Accessed Commander Deck Analyzer", user=user)
+        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
+
+        log_activity("PAGE_VIEW", details="Accessed Commander Deck Fleet Hub", user=user)
+
+        initial_view = request.args.get("view", "vault")
+        initial_deck_id = request.args.get("deck_id")
 
         return render_template(
             "deck_analyzer.html",
             has_gemini_key=has_gemini_key,
             supported_models=available_models,
             default_model=app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
-            recent_decks=[d.to_dict(include_full=False) for d in recent_decks],
+            recent_decks=deck_dicts,
+            decks=deck_dicts,
+            fleet_stats=fleet_stats,
             active_tab="deck_analyzer",
+            initial_view=initial_view,
+            initial_deck_id=initial_deck_id,
         )
 
     deck_analyzer = DeckAnalyzer()
@@ -2758,83 +2834,31 @@ def create_app(test_config=None):
     def deck_overview_page():
         """Commander Deck Fleet Overview & High-Level Comparison Dashboard."""
         user = get_current_user()
+        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
+        db_key = SystemSetting.get_val("gemini_api_key")
+        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        has_gemini_key = bool(effective_key)
+        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
+
         recent_decks = []
         if user:
             query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
             recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
 
-        # Compute high-level fleet aggregate metrics
-        fleet_count = len(recent_decks)
-        total_portfolio_value = 0.0
-        cmc_sum = 0.0
-        cmc_count = 0
-        power_sum = 0.0
-        power_count = 0
-        color_freq = {"W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0}
-        power_brackets = {"Casual (1-4)": 0, "Focused (5-6)": 0, "Optimized (7-8)": 0, "High Power / cEDH (9-10)": 0, "Pre-AI Ready": 0}
-
-        deck_dicts = []
-        for d in recent_decks:
-            d_dict = d.to_dict(include_full=False)
-            deck_dicts.append(d_dict)
-
-            # Value
-            val = d.total_value if d.total_value is not None else (d.get_stats().get("total_value", 0.0) if hasattr(d, "get_stats") else 0.0)
-            if val is not None:
-                total_portfolio_value += float(val)
-
-            # CMC
-            cmc = d.avg_cmc if d.avg_cmc is not None else (d.get_stats().get("avg_cmc") if hasattr(d, "get_stats") else None)
-            if cmc is not None and float(cmc) > 0:
-                cmc_sum += float(cmc)
-                cmc_count += 1
-
-            # Power level & bracket
-            if d.power_level is not None:
-                pwr = float(d.power_level)
-                power_sum += pwr
-                power_count += 1
-                if pwr < 5.0:
-                    power_brackets["Casual (1-4)"] += 1
-                elif pwr < 7.0:
-                    power_brackets["Focused (5-6)"] += 1
-                elif pwr < 9.0:
-                    power_brackets["Optimized (7-8)"] += 1
-                else:
-                    power_brackets["High Power / cEDH (9-10)"] += 1
-            else:
-                power_brackets["Pre-AI Ready"] += 1
-
-            # Colors
-            cols = d.get_color_identity_list() if hasattr(d, "get_color_identity_list") else []
-            if not cols:
-                color_freq["C"] += 1
-            else:
-                for c in cols:
-                    if c in color_freq:
-                        color_freq[c] += 1
-
-        avg_fleet_cmc = round(cmc_sum / cmc_count, 2) if cmc_count > 0 else 0.0
-        avg_fleet_power = round(power_sum / power_count, 1) if power_count > 0 else None
-        avg_deck_value = round(total_portfolio_value / fleet_count, 2) if fleet_count > 0 else 0.0
-
-        fleet_stats = {
-            "total_decks": fleet_count,
-            "total_portfolio_value": round(total_portfolio_value, 2),
-            "avg_deck_value": avg_deck_value,
-            "avg_fleet_cmc": avg_fleet_cmc,
-            "avg_fleet_power": avg_fleet_power,
-            "color_frequencies": color_freq,
-            "power_brackets": power_brackets,
-        }
+        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
 
         log_activity("PAGE_VIEW", details="Accessed Commander Deck Overview & Comparison", user=user)
 
         return render_template(
-            "deck_overview.html",
+            "deck_analyzer.html",
+            has_gemini_key=has_gemini_key,
+            supported_models=available_models,
+            default_model=app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
+            recent_decks=deck_dicts,
             decks=deck_dicts,
             fleet_stats=fleet_stats,
             active_tab="deck_overview",
+            initial_view="matrix",
         )
 
     @app.route("/api/deck/compare", methods=["POST"])

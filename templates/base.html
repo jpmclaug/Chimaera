@@ -138,30 +138,23 @@
                                     </div>
                                     <span class="text-[#F59E0B]">&rarr;</span>
                                 </a>
-                                <a href="/deck-analyzer" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deck_analyzer' %}border-[#C084FC] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                <a href="/deck-analyzer" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                                     <div class="flex items-center space-x-2">
-                                        <span class="font-bold">05 // Commander Intel</span>
-                                        <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">GEMINI AI</span>
-                                    </div>
-                                    <span class="text-[#C084FC]">&rarr;</span>
-                                </a>
-                                <a href="/deck-overview" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deck_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">06 // Fleet Overview</span>
-                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">COMPARE</span>
+                                        <span class="font-bold">05 // Commander Fleet</span>
+                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">HUB</span>
                                     </div>
                                     <span class="text-[#00CED1]">&rarr;</span>
                                 </a>
                                 <a href="/inventory" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'inventory' %}border-[#10B981] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                                     <div class="flex items-center space-x-2">
-                                        <span class="font-bold">07 // Collection Inventory</span>
+                                        <span class="font-bold">06 // Collection Inventory</span>
                                         <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">BINDER</span>
                                     </div>
                                     <span class="text-[#10B981]">&rarr;</span>
                                 </a>
                                 {% if current_user.is_admin %}
                                 <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
-                                    <span class="font-bold">08 // Admin Console</span>
+                                    <span class="font-bold">07 // Admin Console</span>
                                     <span class="text-[#00CED1]">&rarr;</span>
                                 </a>
                                 {% endif %}
@@ -258,21 +251,17 @@
         <a href="/microcenter" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'microcenter' %}bg-[#10141D] text-white border-[#F59E0B] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
             <span>04 // MicroCenter</span>
         </a>
-        <a href="/deck-analyzer" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'deck_analyzer' %}bg-[#10141D] text-[#C084FC] border-[#A855F7] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
-            <span>05 // Deck Intel</span>
-            <span class="text-[9px] text-[#C084FC] font-bold">AI</span>
-        </a>
-        <a href="/deck-overview" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'deck_overview' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
-            <span>06 // Overview</span>
-            <span class="text-[9px] text-[#00CED1] font-bold">VS</span>
+        <a href="/deck-analyzer" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+            <span>05 // Commander Fleet</span>
+            <span class="text-[9px] text-[#00CED1] font-bold">HUB</span>
         </a>
         <a href="/inventory" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'inventory' %}bg-[#10141D] text-[#10B981] border-[#10B981] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
-            <span>07 // Binder</span>
+            <span>06 // Binder</span>
             <span class="text-[9px] text-[#10B981] font-bold">OWNED</span>
         </a>
         {% if current_user.is_admin %}
         <a href="/admin" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/80 border-transparent{% endif %} whitespace-nowrap">
-            08 // Admin
+            07 // Admin
         </a>
         {% endif %}
     </div>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Commander Deck Vault & AI Intel — Chimaera{% endblock %}
+{% block title %}Commander Fleet Overview & Compare — Chimaera{% endblock %}
 
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
@@ -9,7 +9,7 @@
     <!-- Top Tactical Header HUD -->
     <div class="bg-[#10141D]/90 border border-slate-800 rounded-xl p-4 sm:p-5 md:p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
         <div class="absolute -right-16 -bottom-16 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
             <div>
                 <div class="flex items-center space-x-2.5 sm:space-x-3">
                     <span class="inline-flex items-center justify-center p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex-shrink-0">
@@ -20,21 +20,33 @@
                     <div class="min-w-0">
                         <h1 class="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-wide sm:tracking-wider uppercase font-mono flex flex-wrap items-center gap-1.5 sm:gap-2">
                             <span>Commander Deck Vault</span>
-                            <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Intel + Stats</span>
+                            <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Fleet Overview & Compare</span>
                         </h1>
-                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">ManaBox Deck Ingestion &bull; Scryfall Pricing Telemetry &bull; Mana Curves &bull; Google Gemini AI Evaluation</p>
+                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">ManaBox Deck Ingestion &bull; Live Pricing Telemetry &bull; Side-by-Side Comparison &bull; Fleet Analytics &bull; Google Gemini AI Evaluation</p>
                     </div>
                 </div>
             </div>
 
             <!-- View Switcher & Action Controls -->
             <div class="flex flex-wrap items-center gap-2">
-                <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center">
-                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer">
-                        🛸 My Decks (<span id="savedDecksCount">{{ recent_decks|length }}</span>)
+                <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center flex-wrap gap-0.5">
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center gap-1.5" title="Fleet Vault (Grid & Table)">
+                        <span>🛸 Fleet Vault</span>
+                        <span id="savedDecksCount" class="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
                     </button>
-                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer">
-                        ➕ Import Single
+                    <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="hidden px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1.5" title="Inspect Selected Deck">
+                        <span>🔍 Inspector</span>
+                        <span id="inspectorActiveNameBadge" class="hidden text-[10px] text-cyan-300 font-normal truncate max-w-[85px]"></span>
+                    </button>
+                    <button id="viewCompareBtn" onclick="switchMainView('compare')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1.5" title="Head-to-Head Comparison">
+                        <span>⚔️ Head-to-Head</span>
+                        <span id="compareCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-mono">0</span>
+                    </button>
+                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer" title="Fleet Analytics & Distributions">
+                        <span>📈 Fleet Analytics</span>
+                    </button>
+                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1" title="Import New Deck">
+                        <span>➕ Import Deck</span>
                     </button>
                 </div>
 
@@ -57,20 +69,6 @@
                     <span>📖 Stats Guide</span>
                 </a>
 
-                <a href="/deck-overview" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Fleet Overview & Head-to-Head Comparison">
-                    <svg class="w-3.5 h-3.5 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <span>📊 Fleet Overview &rarr;</span>
-                </a>
-
-                <button onclick="openBulkImportModal()" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
-                    <svg class="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    <span>Bulk Import Links</span>
-                </button>
-
                 <button onclick="openApiKeyModal()" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
                     <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -83,36 +81,219 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- VIEW 1: MY SAVED DECKS (DECK VAULT GRID) -->
+    <!-- VIEW 1: FLEET VAULT (HIGH-LEVEL HUD, DUAL GRID & TABLE VIEWS) -->
     <!-- ========================================================================= -->
     <div id="deckVaultView" class="space-y-4">
-        <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#10141D]/60 border border-slate-800 p-3 rounded-xl">
-            <div class="relative w-full sm:w-80">
-                <input type="text" id="vaultSearchInput" oninput="filterVaultDecks()" placeholder="Search saved decks or commanders..." 
-                       class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono">
-                <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+        
+        <!-- Fleet Aggregate KPI Strip -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <!-- 1. Fleet Count -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Arsenal Fleet</span>
+                    <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-white font-mono tracking-tight">{{ fleet_stats.total_decks if fleet_stats else recent_decks|length }} <span class="text-xs text-slate-400 font-normal">Decks</span></div>
+                    <div class="text-[10px] text-slate-500 font-mono mt-0.5">Active Commander Decks</div>
+                </div>
             </div>
 
-            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <span class="text-xs text-slate-400 font-mono">Sort:</span>
-                <select id="vaultSortSelect" onchange="sortVaultDecks()" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500">
-                    <option value="recent">Recently Added</option>
-                    <option value="name">Deck Name (A-Z)</option>
-                    <option value="price_desc">Market Value ($ High &rarr; Low)</option>
-                    <option value="cmc_asc">Avg CMC (Low &rarr; High)</option>
-                    <option value="power_desc">Power Level (High &rarr; Low)</option>
-                </select>
+            <!-- 2. Portfolio TCG Value -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Portfolio Value</span>
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-emerald-400 font-mono tracking-tight">${{ "%.2f"|format(fleet_stats.total_portfolio_value) if fleet_stats else '0.00' }}</div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">Avg ${{ "%.2f"|format(fleet_stats.avg_deck_value) if fleet_stats else '0.00' }} / deck</div>
+                </div>
+            </div>
+
+            <!-- 3. Fleet Average Power -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Fleet Power</span>
+                    <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-cyan-400 font-mono tracking-tight">
+                        {% if fleet_stats and fleet_stats.avg_fleet_power %}
+                        {{ fleet_stats.avg_fleet_power }} <span class="text-xs text-slate-400 font-normal">/ 10</span>
+                        {% else %}
+                        <span class="text-slate-500 text-lg">Pre-AI</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">
+                        {% if fleet_stats and fleet_stats.avg_fleet_power and fleet_stats.avg_fleet_power >= 8.5 %}cEDH / High Power
+                        {% elif fleet_stats and fleet_stats.avg_fleet_power and fleet_stats.avg_fleet_power >= 7.0 %}Optimized
+                        {% elif fleet_stats and fleet_stats.avg_fleet_power and fleet_stats.avg_fleet_power >= 5.0 %}Focused
+                        {% else %}Casual / Mixed{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Fleet Speed (Avg CMC) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Fleet Speed</span>
+                    <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-amber-400 font-mono tracking-tight">{{ fleet_stats.avg_fleet_cmc if fleet_stats else '0.00' }} <span class="text-xs text-slate-400 font-normal">CMC</span></div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">Nonland Average Mana Value</div>
+                </div>
+            </div>
+
+            <!-- 5. Color Saturation Wheel -->
+            <div class="col-span-2 sm:col-span-1 bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Color Wheel</span>
+                    <span class="text-[9px] text-slate-500 font-mono">WUBRG</span>
+                </div>
+                <div class="mt-2">
+                    <div class="flex items-center justify-between gap-1 py-1">
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#FFFBD5]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.W if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#0E68AB]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.U if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#150B00]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.B if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#D3202A]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.R if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#00733E]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.G if fleet_stats else 0 }}</div>
+                        </div>
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-mono text-center">Decks Represented</div>
+                </div>
             </div>
         </div>
 
-        <!-- Decks Grid Container -->
-        <div id="vaultGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            <!-- Rendered dynamically by renderVaultGrid() -->
+        <!-- Filter, Search & View Controls Bar -->
+        <div class="bg-[#10141D] border border-slate-800 p-3 rounded-xl flex flex-col lg:flex-row items-center justify-between gap-3 shadow-xl">
+            <!-- Search & Color Pills -->
+            <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+                <div class="relative w-full sm:w-72">
+                    <input type="text" id="vaultSearchInput" oninput="filterVaultDecks()" placeholder="Search decks, commanders, archetypes..." 
+                           class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono">
+                    <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+
+                <!-- Color Filter Pills -->
+                <div class="flex items-center gap-1">
+                    <button type="button" onclick="setColorFilter('all')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950" data-color="all">All</button>
+                    <button type="button" onclick="setColorFilter('W')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="W" title="White">W</button>
+                    <button type="button" onclick="setColorFilter('U')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="U" title="Blue">U</button>
+                    <button type="button" onclick="setColorFilter('B')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="B" title="Black">B</button>
+                    <button type="button" onclick="setColorFilter('R')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="R" title="Red">R</button>
+                    <button type="button" onclick="setColorFilter('G')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="G" title="Green">G</button>
+                </div>
+            </div>
+
+            <!-- Mode Toggle, Sort & Table Actions -->
+            <div class="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
+                <!-- Sort Dropdown -->
+                <div class="flex items-center gap-1.5">
+                    <span class="text-xs text-slate-400 font-mono hidden sm:inline">Sort:</span>
+                    <select id="vaultSortSelect" onchange="sortVaultDecks()" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="recent">Recently Added</option>
+                        <option value="name">Deck Name (A-Z)</option>
+                        <option value="price_desc">Market Value ($ High &rarr; Low)</option>
+                        <option value="cmc_asc">Avg CMC (Low &rarr; High)</option>
+                        <option value="power_desc">Power Level (High &rarr; Low)</option>
+                    </select>
+                </div>
+
+                <!-- View Mode Switcher: Grid vs Table -->
+                <div class="bg-[#1B2230] p-0.5 rounded-lg border border-slate-700 flex items-center">
+                    <button id="vaultModeGridBtn" type="button" onclick="switchVaultMode('grid')" class="px-2.5 py-1 text-xs font-mono rounded bg-cyan-500 text-slate-950 font-bold transition shadow-sm" title="Card Grid View">
+                        ⊞ Grid
+                    </button>
+                    <button id="vaultModeTableBtn" type="button" onclick="switchVaultMode('table')" class="px-2.5 py-1 text-xs font-mono rounded text-slate-400 hover:text-white transition" title="Comparative Matrix Table View">
+                        ☰ Table
+                    </button>
+                </div>
+
+                <!-- Table Specific Actions (shown when in Table mode) -->
+                <div id="tableActionControls" class="hidden flex items-center gap-1.5">
+                    <button type="button" onclick="toggleSelectAllDecks()" id="selectAllBtn" class="px-2 py-1 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">
+                        Select All
+                    </button>
+                    <button type="button" onclick="launchComparisonFromSelection()" id="launchCompareBtn" 
+                            class="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase shadow-md transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                        <span>⚔️ Compare (<span id="selectedCountText">0</span>)</span>
+                    </button>
+                </div>
+            </div>
         </div>
 
-        <!-- Empty Vault State -->
+        <!-- SUB-CONTAINER 1A: CARD GRID -->
+        <div id="vaultGridContainer" class="space-y-4">
+            <div id="vaultGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- Rendered dynamically by renderVaultGrid() -->
+            </div>
+        </div>
+
+        <!-- SUB-CONTAINER 1B: MATRIX TABLE -->
+        <div id="vaultTableContainer" class="hidden bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse font-mono text-xs">
+                    <thead>
+                        <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
+                            <th class="py-3 px-3.5 w-10 text-center">
+                                <input type="checkbox" id="headerCheckbox" onchange="toggleSelectAllDecks()" class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0">
+                            </th>
+                            <th class="py-3 px-4 cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('commander')">Commander & Deck</th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('colors')">Colors</th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('power')">Power</th>
+                            <th class="py-3 px-4 text-right cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('value')">TCG Value</th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('cmc')">Avg CMC</th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('speed')">Speed & Pacing</th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('wincon')">Win Path</th>
+                            <th class="py-3 px-4 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('composition')">Lands / Spells</th>
+                            <th class="py-3 px-3 text-center">AI Intel</th>
+                            <th class="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="matrixTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                        <!-- Injected dynamically by renderMatrixTable() -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty Matrix State -->
+            <div id="matrixEmptyState" class="hidden text-center py-16 px-4 bg-[#10141D]/40">
+                <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                </div>
+                <h4 class="text-base font-bold text-white font-mono uppercase tracking-wider">No Decks Match Filter Criteria</h4>
+                <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">Try clearing filters or search query to view your saved Commander fleet.</p>
+                <button onclick="clearMatrixFilters()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs uppercase font-semibold rounded-lg transition">Clear Filters</button>
+            </div>
+        </div>
+
+        <!-- Empty Vault State (Zero decks in database) -->
         <div id="vaultEmptyState" class="hidden text-center py-16 px-4 bg-[#10141D]/40 border border-slate-800/80 rounded-2xl">
             <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-4">
                 <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -249,6 +430,7 @@
                             <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase truncate max-w-[120px] sm:max-w-none">Pre-AI Ready</span>
                             <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono hidden sm:inline-block">Commander</span>
                             <span id="inspectorSourceBadge" class="text-[10px] text-slate-400 font-mono">ManaBox</span>
+                            <span id="inspectorDateBadge" class="text-[10px] px-2 py-0.5 rounded bg-slate-900/90 text-slate-400 border border-slate-800 font-mono">📅 Updated: Recent</span>
                         </div>
                         <h2 id="inspectorDeckName" class="text-lg sm:text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1 truncate">Commander Deck</h2>
                         <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono truncate">The Ur-Dragon</p>
@@ -319,6 +501,11 @@
                             {% endfor %}
                         </select>
 
+                        <button id="inspectorCompareBtn" onclick="launchCompareFromActiveDeck()" title="Compare this deck head-to-head" 
+                                class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500 hover:to-blue-500 hover:text-slate-950 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1.5 flex-shrink-0">
+                            <span>⚔️ Compare</span>
+                        </button>
+
                         <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
                                 class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex-shrink-0">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -326,9 +513,9 @@
                             </svg>
                         </button>
                         
-                        <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault grid">
+                        <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Fleet Vault">
                             <span>&larr;</span>
-                            <span>All Decks</span>
+                            <span>Fleet Vault</span>
                         </button>
                     </div>
                 </div>
@@ -1312,6 +1499,396 @@
     </div>
 </div>
 
+    <!-- ========================================================================= -->
+    <!-- VIEW 4: HEAD-TO-HEAD SIDE-BY-SIDE COMPARE STATION -->
+    <!-- ========================================================================= -->
+    <div id="fleetCompareView" class="hidden space-y-6">
+        
+        <!-- Top Selection Bar for Comparison -->
+        <div class="bg-[#10141D] border border-slate-800 p-4 rounded-xl shadow-xl space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        Head-to-Head Deck Matchup Matcher (Select 2 to 4 Decks)
+                    </h3>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Compare mana curves, archetype matchups, shared staples, and high-value bomb packages.</p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="runActiveComparison()" class="px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-bold text-xs uppercase rounded-lg shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        <span>Refresh Matchup</span>
+                    </button>
+                    <button type="button" onclick="switchMainView('vault')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs uppercase rounded-lg transition cursor-pointer">
+                        &larr; Vault
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dropdown Selectors Grid (2 to 4 slots) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-cyan-400 font-bold">Deck Slot 1</label>
+                    <select id="compareSelect1" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- Choose Deck 1 --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-cyan-400 font-bold">Deck Slot 2</label>
+                    <select id="compareSelect2" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- Choose Deck 2 --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-slate-400 font-bold">Deck Slot 3 (Optional)</label>
+                    <select id="compareSelect3" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- None (2-Way) --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-slate-400 font-bold">Deck Slot 4 (Optional)</label>
+                    <select id="compareSelect4" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- None (3-Way) --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State for Comparison -->
+        <div id="compareLoading" class="hidden text-center py-16 bg-[#10141D] border border-slate-800 rounded-xl space-y-3">
+            <svg class="animate-spin w-8 h-8 text-cyan-400 mx-auto" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold">Generating Comparative Matchup Telemetry...</p>
+        </div>
+
+        <!-- Rendered Comparison Station Results Container -->
+        <div id="compareResultsContainer" class="hidden space-y-6">
+            
+            <!-- 1. Commander Face-Off Cards Grid -->
+            <div id="compareCommanderCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Injected dynamically by renderComparisonResults() -->
+            </div>
+
+            <!-- 2. Side-by-Side Statistical Delta Matrix (When 2 Decks Compared) -->
+            <div id="compareDeltaMatrixSection" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Head-to-Head Statistical Delta Matrix (&Delta; = Deck A - Deck B)
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Direct analytical differential across velocity, interaction speed, mana efficiency, and card advantage.</p>
+                    </div>
+                    <span id="matchupArchetypeSummary" class="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold">Matchup Analysis</span>
+                </div>
+
+                <div class="overflow-x-auto border border-slate-800 rounded-lg">
+                    <table class="w-full text-left font-mono text-xs">
+                        <thead>
+                            <tr class="bg-[#0B0F17] text-slate-400 text-[10px] uppercase border-b border-slate-800">
+                                <th class="py-2.5 px-4">Analytical Metric</th>
+                                <th id="deltaThDeckA" class="py-2.5 px-4 text-center">Deck A</th>
+                                <th id="deltaThDeckB" class="py-2.5 px-4 text-center">Deck B</th>
+                                <th class="py-2.5 px-4 text-center">&Delta; Difference (A - B)</th>
+                                <th class="py-2.5 px-4 text-right">Advantage / Advantage Vector</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deltaMatrixTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                            <!-- Injected dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. Categorized Profiles & Pip vs Source Balance Chart -->
+            <div id="compareCategorizedProfilesSection" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <!-- Velocity Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>⚡ Velocity & Mana Base</span>
+                    </h4>
+                    <div id="compVelocityContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <!-- Interaction Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>🎯 Interaction & Removal</span>
+                    </h4>
+                    <div id="compInteractionContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <!-- Card Advantage Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>🔄 Card Advantage & Tutors</span>
+                    </h4>
+                    <div id="compCardAdvantageContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Comparative Pip Demand vs. Source Supply Radar -->
+            <div id="comparePipRadarSection" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            Comparative Mana Pip Demand vs. Source Supply Balance
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Overlay of color pip demand % and mana source supply % across both decks.</p>
+                    </div>
+                </div>
+                <div class="h-64 flex items-center justify-center p-2 bg-[#0B0F17]/80 rounded-xl border border-slate-800">
+                    <canvas id="comparePipRadarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 5. Side-by-Side Speed & Mana Curves Comparison -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        Comparative Mana Value (CMC) Curves & Acceleration
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">Normalized Distribution</span>
+                </div>
+
+                <div id="compareCurveChartContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                    <!-- Injected dynamically by renderComparisonResults() -->
+                </div>
+            </div>
+
+            <!-- 6. Card Type Composition Balance -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                        Deck Composition Breakdown (Card Types & Land/Spell Ratios)
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">Side-by-Side Breakdown</span>
+                </div>
+
+                <div id="compareTypeCompositionGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                    <!-- Injected dynamically by renderComparisonResults() -->
+                </div>
+            </div>
+
+            <!-- 7. Shared Cards & Staple Overlap Explorer -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            Shared Cards & Staple Overlap Matrix
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Cards present across selected decks (Universal Staples vs Unique Signatures).</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="sharedOverlapSummaryBadge" class="text-[11px] px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/40">0 Shared Cards</span>
+                    </div>
+                </div>
+
+                <!-- Universal Staples Table -->
+                <div class="space-y-2">
+                    <h4 class="text-[11px] font-mono font-bold text-cyan-400 uppercase tracking-wider">Universal Staples (Present in ALL Selected Decks)</h4>
+                    <div class="overflow-x-auto border border-slate-800 rounded-lg">
+                        <table class="w-full text-left font-mono text-xs">
+                            <thead>
+                                <tr class="bg-[#0B0F17] text-slate-400 text-[10px] uppercase border-b border-slate-800">
+                                    <th class="py-2.5 px-3">Card Name</th>
+                                    <th class="py-2.5 px-3">Type</th>
+                                    <th class="py-2.5 px-3">Mana Cost</th>
+                                    <th class="py-2.5 px-3 text-center">CMC</th>
+                                    <th class="py-2.5 px-3 text-right">TCG Market</th>
+                                    <th class="py-2.5 px-3 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sharedAllTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                                <!-- Injected dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Unique Signatures Section -->
+                <div class="pt-2">
+                    <h4 class="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider mb-2">Unique Signature Cards (Exclusive to Each Deck)</h4>
+                    <div id="compareUniqueSignaturesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 8. High-Value Bomb Packages (Top 5 Most Expensive Cards) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        High-Value Bomb Assets (Top 5 Most Expensive Cards Per Deck)
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">TCGplayer Live Market</span>
+                </div>
+
+                <div id="compareTopCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                    <!-- Injected dynamically -->
+                </div>
+            </div>
+
+            <!-- 9. Strategic Playstyle & Win Condition Dynamic -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                        Strategic Archetype & Win-Con Matchup Dynamic
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">Gemini AI Insights</span>
+                </div>
+
+                <div id="compareStrategyGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                    <!-- Injected dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 5: FLEET ANALYTICS & DISTRIBUTION INSIGHTS -->
+    <!-- ========================================================================= -->
+    <div id="fleetAnalyticsView" class="hidden space-y-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 1. Power Level Distribution Matrix -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        Fleet Power Level Distribution
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">{{ fleet_stats.total_decks if fleet_stats else 0 }} Total Decks</span>
+                </div>
+
+                <div class="space-y-3 pt-1">
+                    {% if fleet_stats and fleet_stats.power_brackets %}
+                    {% for bracket, count in fleet_stats.power_brackets.items() %}
+                    {% set pct = ((count / fleet_stats.total_decks) * 100)|round|int if fleet_stats.total_decks > 0 else 0 %}
+                    <div>
+                        <div class="flex justify-between text-xs font-mono mb-1">
+                            <span class="text-slate-300 font-semibold">{{ bracket }}</span>
+                            <span class="text-cyan-400 font-bold">{{ count }} <span class="text-slate-500 font-normal">({{ pct }}%)</span></span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-cyan-600 to-cyan-400 rounded-full" style="width: {{ pct }}%;"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 2. Mana Color Dominance -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                        Color Representation & Mana Saturation
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">Arsenal Breadth</span>
+                </div>
+
+                <div class="space-y-3 pt-1">
+                    {% if fleet_stats and fleet_stats.color_frequencies %}
+                    {% set color_meta = [
+                        ('W', 'White', '#FFFBD5', fleet_stats.color_frequencies.W),
+                        ('U', 'Blue', '#0E68AB', fleet_stats.color_frequencies.U),
+                        ('B', 'Black', '#3B3A39', fleet_stats.color_frequencies.B),
+                        ('R', 'Red', '#D3202A', fleet_stats.color_frequencies.R),
+                        ('G', 'Green', '#00733E', fleet_stats.color_frequencies.G),
+                        ('C', 'Colorless', '#888888', fleet_stats.color_frequencies.C)
+                    ] %}
+
+                    {% for code, label, color_hex, count in color_meta %}
+                    {% set pct = ((count / fleet_stats.total_decks) * 100)|round|int if fleet_stats.total_decks > 0 else 0 %}
+                    <div>
+                        <div class="flex items-center justify-between text-xs font-mono mb-1">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color: {{ color_hex }};"></span>
+                                <span class="text-slate-300 font-semibold">{{ label }} ({{ code }})</span>
+                            </div>
+                            <span class="text-white font-bold">{{ count }} Decks <span class="text-slate-500 font-normal">({{ pct }}%)</span></span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full rounded-full" style="width: {{ pct }}%; background-color: {{ color_hex }};"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Speed & Budget Positioning Matrix -->
+        <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                    Fleet Speed vs Value Matrix
+                </h3>
+                <span class="text-[11px] text-slate-400 font-mono">Sorted by Value</span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for d in (decks or recent_decks) %}
+                {% set val = d.total_value or (d.stats.total_value if d.stats else 0) or 0 %}
+                {% set cmc = d.avg_cmc or (d.stats.avg_cmc if d.stats else 0) or 0 %}
+                <div class="bg-[#1B2230]/70 border border-slate-800 hover:border-cyan-500/40 p-3.5 rounded-xl transition flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <h4 class="text-xs font-bold text-white font-mono truncate">{{ d.deck_name }}</h4>
+                            <span class="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono font-bold">${{ "%.2f"|format(val) }}</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-mono truncate">{{ d.commander_name or 'Commander' }}</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-slate-800/80 font-mono text-[11px]">
+                        <div>
+                            <span class="text-[10px] text-slate-500 uppercase block">Avg CMC</span>
+                            <span class="text-amber-400 font-bold">{{ "%.2f"|format(cmc) }}</span>
+                        </div>
+                        <div>
+                            <span class="text-[10px] text-slate-500 uppercase block">Power</span>
+                            <span class="text-cyan-400 font-bold">{% if d.power_level %}{{ "%.1f"|format(d.power_level) }} / 10{% else %}Pre-AI{% endif %}</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
 <!-- ========================================================================= -->
 <!-- MODAL: BULK IMPORT MANABOX LINKS -->
 <!-- ========================================================================= -->
@@ -1383,7 +1960,7 @@
 </div>
 
 <!-- Floating Card Hover Preview Tooltip -->
-<div id="cardHoverPreview" onclick="hideCardHover()" class="fixed pointer-events-auto cursor-pointer z-50 hidden transition-opacity duration-150">
+<div id="cardHoverPreview" class="fixed pointer-events-none z-50 hidden transition-opacity duration-150">
     <img id="cardHoverImg" src="" alt="Card Art" class="w-56 rounded-xl shadow-2xl border border-slate-700/80 bg-slate-900">
 </div>
 
@@ -1394,21 +1971,87 @@
         <button onclick="hideToast()" class="text-slate-400 hover:text-white text-sm leading-none ml-2 flex-shrink-0" title="Close notification">&times;</button>
     </div>
 </div>
+<div id="overviewToast" class="fixed bottom-6 right-6 z-50 hidden transition-all duration-300 transform translate-y-2 max-w-xl">
+    <div id="overviewToastBox" class="bg-[#10141D] border border-cyan-500/40 text-cyan-300 px-4 py-3 rounded-xl shadow-2xl flex items-start justify-between space-x-3 text-xs font-mono">
+        <span id="overviewToastMsg" class="whitespace-pre-wrap leading-relaxed">Action completed successfully.</span>
+        <button onclick="hideOverviewToast()" class="text-slate-400 hover:text-white text-sm leading-none ml-2 flex-shrink-0" title="Close notification">&times;</button>
+    </div>
+</div>
 <script>
 // State Management
-let currentVaultDecks = {{ recent_decks|tojson }};
+const allDecks = {{ (decks or recent_decks)|tojson }};
+let currentVaultDecks = {{ (recent_decks or decks)|tojson }};
+let filteredDecks = [...(allDecks && allDecks.length > 0 ? allDecks : currentVaultDecks || [])];
+let selectedDeckIds = new Set();
+let currentColorFilter = 'all';
+let currentSortKey = 'recent';
+let currentSortAsc = false;
+let currentVaultMode = 'grid';
+let currentComparison = null;
 let activeDeck = null;
 let currentIngestTab = 'url';
 let currentCardTypeFilter = 'all';
 
+// Relative Date Formatter
+function formatRelativeDate(isoStr) {
+    if (!isoStr) return '';
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '';
+        const now = new Date();
+        const diffMs = now - d;
+        if (diffMs < 0) return 'Just now';
+        const diffSecs = Math.floor(diffMs / 1000);
+        if (diffSecs < 60) return 'Just now';
+        const diffMins = Math.floor(diffSecs / 60);
+        if (diffMins < 60) return `${diffMins}m ago`;
+        const diffHours = Math.floor(diffMins / 60);
+        if (diffHours < 24) return `${diffHours}h ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 7) return `${diffDays}d ago`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    } catch (_) {
+        return '';
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     renderVaultGrid(currentVaultDecks);
+    renderMatrixTable(filteredDecks);
     updateDeckDropdowns(currentVaultDecks);
 
+    // Auto-select first 2 decks for comparison dropdowns if available
+    const decksForCompare = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
+    if (decksForCompare && decksForCompare.length >= 1) {
+        const s1 = document.getElementById('compareSelect1');
+        if (s1) s1.value = decksForCompare[0].id;
+        selectedDeckIds.add(decksForCompare[0].id);
+    }
+    if (decksForCompare && decksForCompare.length >= 2) {
+        const s2 = document.getElementById('compareSelect2');
+        if (s2) s2.value = decksForCompare[1].id;
+        selectedDeckIds.add(decksForCompare[1].id);
+    }
+    updateSelectedCountUI();
+
     const urlParams = new URLSearchParams(window.location.search);
-    const targetDeckId = urlParams.get('deck_id') || urlParams.get('deck');
+    const targetDeckId = urlParams.get('deck_id') || urlParams.get('deck') || '{{ initial_deck_id or "" }}';
+    const initView = urlParams.get('view') || '{{ initial_view or "" }}';
+
     if (targetDeckId) {
         await loadSavedDeckIntoInspector(targetDeckId);
+    } else if (initView === 'matrix') {
+        switchMainView('vault');
+        switchVaultMode('table');
+    } else if (initView === 'compare') {
+        switchMainView('compare');
+        if (selectedDeckIds.size >= 2) {
+            runActiveComparison();
+        }
+    } else if (initView === 'analytics') {
+        switchMainView('analytics');
     } else if (!currentVaultDecks || currentVaultDecks.length === 0) {
         switchMainView('ingest');
     }
@@ -1419,11 +2062,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Update Deck Selector Dropdowns
 function updateDeckDropdowns(decks) {
-    const selects = [document.getElementById('quickDeckSelect'), document.getElementById('inspectorDeckSelect')];
-    selects.forEach(sel => {
+    const selects = [
+        document.getElementById('quickDeckSelect'),
+        document.getElementById('inspectorDeckSelect'),
+        document.getElementById('compareSelect1'),
+        document.getElementById('compareSelect2'),
+        document.getElementById('compareSelect3'),
+        document.getElementById('compareSelect4')
+    ];
+    selects.forEach((sel, idx) => {
         if (!sel) return;
         const currentVal = sel.value;
-        sel.innerHTML = '<option value="">⚡ Select Deck...</option>' + (decks || []).map(d => {
+        const defaultLabel = idx === 0 ? '⚡ Quick Select Deck...' : 
+                             idx === 1 ? '⚡ Select Deck...' : 
+                             idx === 2 ? '-- Choose Deck 1 --' : 
+                             idx === 3 ? '-- Choose Deck 2 --' : 
+                             idx === 4 ? '-- None (2-Way) --' : '-- None (3-Way) --';
+        sel.innerHTML = `<option value="">${defaultLabel}</option>` + (decks || []).map(d => {
             const cmdr = d.commander_name ? ` (${escapeHtml(d.commander_name)})` : '';
             return `<option value="${d.id}">${escapeHtml(d.deck_name)}${cmdr}</option>`;
         }).join('');
@@ -1431,33 +2086,96 @@ function updateDeckDropdowns(decks) {
     });
 }
 
+// Vault Mode Switcher: Grid vs Comparative Table
+function switchVaultMode(mode) {
+    currentVaultMode = mode;
+    const gridContainer = document.getElementById('vaultGridContainer');
+    const tableContainer = document.getElementById('vaultTableContainer');
+    const gridBtn = document.getElementById('vaultModeGridBtn');
+    const tableBtn = document.getElementById('vaultModeTableBtn');
+    const tableControls = document.getElementById('tableActionControls');
+
+    if (mode === 'table') {
+        if (gridContainer) gridContainer.classList.add('hidden');
+        if (tableContainer) tableContainer.classList.remove('hidden');
+        if (gridBtn) gridBtn.className = "px-2.5 py-1 text-xs font-mono rounded text-slate-400 hover:text-white transition cursor-pointer";
+        if (tableBtn) tableBtn.className = "px-2.5 py-1 text-xs font-mono rounded bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer";
+        if (tableControls) tableControls.classList.remove('hidden');
+        renderMatrixTable(filteredDecks);
+    } else {
+        if (gridContainer) gridContainer.classList.remove('hidden');
+        if (tableContainer) tableContainer.classList.add('hidden');
+        if (gridBtn) gridBtn.className = "px-2.5 py-1 text-xs font-mono rounded bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer";
+        if (tableBtn) tableBtn.className = "px-2.5 py-1 text-xs font-mono rounded text-slate-400 hover:text-white transition cursor-pointer";
+        if (tableControls) tableControls.classList.add('hidden');
+        renderVaultGrid(filteredDecks);
+    }
+}
+
 // View Navigation Switcher
 function switchMainView(viewName) {
-    const vaultView = document.getElementById('deckVaultView');
-    const ingestView = document.getElementById('deckIngestView');
-    const inspectorView = document.getElementById('deckInspectorView');
-    const vaultBtn = document.getElementById('viewVaultBtn');
-    const ingestBtn = document.getElementById('viewIngestBtn');
+    const views = {
+        vault: document.getElementById('deckVaultView'),
+        inspector: document.getElementById('deckInspectorView'),
+        compare: document.getElementById('fleetCompareView'),
+        analytics: document.getElementById('fleetAnalyticsView'),
+        ingest: document.getElementById('deckIngestView')
+    };
+
+    const buttons = {
+        vault: document.getElementById('viewVaultBtn'),
+        inspector: document.getElementById('viewInspectorBtn'),
+        compare: document.getElementById('viewCompareBtn'),
+        analytics: document.getElementById('viewAnalyticsBtn'),
+        ingest: document.getElementById('viewIngestBtn')
+    };
+
+    // Hide all views
+    Object.values(views).forEach(v => {
+        if (v) v.classList.add('hidden');
+    });
+
+    // Reset buttons to inactive styling
+    Object.entries(buttons).forEach(([k, b]) => {
+        if (!b) return;
+        const extraClass = (k === 'compare' || k === 'vault' || k === 'inspector') ? ' flex items-center gap-1.5' : (k === 'ingest' ? ' flex items-center gap-1' : '');
+        b.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer" + extraClass;
+    });
+
+    // Activate the requested view
+    const targetView = views[viewName] || views.vault;
+    if (targetView) targetView.classList.remove('hidden');
+
+    const targetBtn = buttons[viewName] || buttons.vault;
+    if (targetBtn) {
+        const extraClass = (viewName === 'compare' || viewName === 'vault' || viewName === 'inspector') ? ' flex items-center gap-1.5' : (viewName === 'ingest' ? ' flex items-center gap-1' : '');
+        targetBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer" + extraClass;
+    }
 
     if (viewName === 'vault') {
-        vaultView.classList.remove('hidden');
-        ingestView.classList.add('hidden');
-        inspectorView.classList.add('hidden');
-        if (vaultBtn) vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer";
-        if (ingestBtn) ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
-        renderVaultGrid(currentVaultDecks);
-    } else if (viewName === 'ingest') {
-        vaultView.classList.add('hidden');
-        ingestView.classList.remove('hidden');
-        inspectorView.classList.add('hidden');
-        if (ingestBtn) ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer";
-        if (vaultBtn) vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
-    } else if (viewName === 'inspector') {
-        vaultView.classList.add('hidden');
-        ingestView.classList.add('hidden');
-        inspectorView.classList.remove('hidden');
-        if (vaultBtn) vaultBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
-        if (ingestBtn) ingestBtn.className = "px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer";
+        if (currentVaultMode === 'table') {
+            renderMatrixTable(filteredDecks);
+        } else {
+            renderVaultGrid(filteredDecks);
+        }
+    } else if (viewName === 'compare') {
+        if (!currentComparison && selectedDeckIds.size >= 2) {
+            runActiveComparison();
+        }
+    }
+}
+
+// Backward Compatibility Alias for switchOverviewView
+function switchOverviewView(view) {
+    if (view === 'matrix') {
+        switchMainView('vault');
+        switchVaultMode('table');
+    } else if (view === 'compare') {
+        switchMainView('compare');
+    } else if (view === 'analytics') {
+        switchMainView('analytics');
+    } else {
+        switchMainView(view);
     }
 }
 
@@ -1538,13 +2256,17 @@ function renderVaultGrid(decks) {
 
     grid.innerHTML = decks.map(d => {
         const stats = d.stats || {};
-        const val = (d.total_value || stats.total_value || 0).toFixed(2);
-        const cmc = (d.avg_cmc || stats.avg_cmc || 0).toFixed(2);
+        const rawVal = (d.total_value !== null && d.total_value !== undefined) ? d.total_value : (stats.total_value || 0);
+        const val = parseFloat(rawVal).toFixed(2);
+        const rawCmc = (d.avg_cmc !== null && d.avg_cmc !== undefined) ? d.avg_cmc : (stats.avg_cmc || 0);
+        const cmc = parseFloat(rawCmc).toFixed(2);
         const art = d.commander_art || 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg';
         const hasAi = d.has_ai_analysis;
         const pwr = d.power_level ? d.power_level.toFixed(1) : null;
+        const rawDate = d.updated_at || d.created_at || (stats && stats.last_synced_at);
+        const relDate = formatRelativeDate(rawDate);
 
-        const colorPipsHtml = (d.color_identity || []).map(c => {
+        const colorPipsHtml = (d.color_identity || stats.color_identity || []).map(c => {
             const colors = { 'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E' };
             return `<span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color:${colors[c] || '#888'}"></span>`;
         }).join('');
@@ -1558,9 +2280,12 @@ function renderVaultGrid(decks) {
                         <div class="absolute inset-0 bg-gradient-to-t from-[#10141D] via-[#10141D]/40 to-transparent pointer-events-none"></div>
                         
                         <!-- Badges -->
-                        <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                            <span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-[10px] font-mono text-slate-300 font-bold">${d.total_cards || 100} Cards</span>
-                            ${hasAi ? `<span class="px-2 py-0.5 rounded bg-cyan-500/90 text-slate-950 text-[10px] font-mono font-black">AI Power: ${pwr || '7.5'}</span>` : `<span class="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-mono">Stats Ready</span>`}
+                        <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5">
+                            <div class="flex items-center gap-1.5">
+                                <span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-[10px] font-mono text-slate-300 font-bold">${d.total_cards || 100} Cards</span>
+                                ${hasAi ? `<span class="px-2 py-0.5 rounded bg-cyan-500/90 text-slate-950 text-[10px] font-mono font-black">AI: ${pwr || '7.5'}</span>` : `<span class="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-mono">Stats Ready</span>`}
+                            </div>
+                            ${relDate ? `<span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-400 font-medium" title="Last Updated: ${escapeHtml(rawDate)}">📅 ${relDate}</span>` : ''}
                         </div>
 
                         <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between">
@@ -1594,6 +2319,9 @@ function renderVaultGrid(decks) {
                     <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="flex-1 px-3 py-2 bg-cyan-500/10 group-hover:bg-cyan-500 text-cyan-400 group-hover:text-slate-950 font-mono text-xs font-bold uppercase rounded-lg border border-cyan-500/30 group-hover:border-cyan-500 transition text-center flex items-center justify-center gap-1.5 cursor-pointer">
                         <span>Select & Inspect</span>
                         <span>&rarr;</span>
+                    </button>
+                    <button onclick="event.stopPropagation(); quickCompareWithFirst(${d.id})" title="Quick compare against Slot 1" class="px-2.5 py-2 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded-lg border border-slate-700 transition cursor-pointer text-xs font-mono font-bold">
+                        VS
                     </button>
                     ${d.source_url ? `
                     <button onclick="event.stopPropagation(); syncSavedDeck(${d.id})" title="Sync from ManaBox link" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition cursor-pointer">
@@ -1659,6 +2387,29 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     document.querySelectorAll('.tabCardCountMobile').forEach(el => el.innerText = deck.total_cards || cards.length);
     safeSetText('inspectorTotalValue', `$${(deck.total_value || stats.total_value || 0).toFixed(2)}`);
     
+    // Relative Date and Header Actions
+    const rawDate = deck.updated_at || deck.created_at || (stats && stats.last_synced_at);
+    const relDate = formatRelativeDate(rawDate);
+    const dateBadge = document.getElementById('inspectorDateBadge');
+    if (dateBadge) {
+        dateBadge.innerText = relDate ? `📅 Updated: ${relDate}` : '📅 Updated: Recent';
+    }
+
+    const inspCompareBtn = document.getElementById('inspectorCompareBtn');
+    if (inspCompareBtn) {
+        inspCompareBtn.onclick = launchCompareFromActiveDeck;
+    }
+
+    const nameBadge = document.getElementById('inspectorActiveNameBadge');
+    if (nameBadge) {
+        nameBadge.innerText = deck.deck_name || 'Active';
+        nameBadge.classList.remove('hidden');
+    }
+    const inspNavBtn = document.getElementById('viewInspectorBtn');
+    if (inspNavBtn) {
+        inspNavBtn.classList.remove('hidden');
+    }
+
     // Nonland AMV Badge with Color Coding (Green <= 2.8, Amber 2.9-3.4, Red >= 3.5)
     const amv = deck.avg_cmc || stats.nonland_amv || stats.avg_cmc || 0;
     const amvElem = document.getElementById('inspectorAvgCmc');
@@ -2842,24 +3593,886 @@ async function refreshVaultList() {
     }
 }
 
-// Vault Filter & Sort
-function filterVaultDecks() {
-    const query = (document.getElementById('vaultSearchInput').value || '').toLowerCase();
-    const filtered = currentVaultDecks.filter(d => 
-        (d.deck_name || '').toLowerCase().includes(query) || 
-        (d.commander_name || '').toLowerCase().includes(query)
-    );
-    renderVaultGrid(filtered);
+// =========================================================================
+// COMPARATIVE MATRIX TABLE & FLEET FILTERING
+// =========================================================================
+
+// Render Matrix Table
+function renderMatrixTable(decks) {
+    const tbody = document.getElementById('matrixTableBody');
+    const emptyState = document.getElementById('matrixEmptyState');
+
+    if (!decks || decks.length === 0) {
+        if (tbody) tbody.innerHTML = '';
+        if (emptyState) emptyState.classList.remove('hidden');
+        return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+    if (!tbody) return;
+
+    const colorsMap = { 'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E' };
+
+    tbody.innerHTML = decks.map(d => {
+        const isSelected = selectedDeckIds.has(d.id);
+        const stats = d.stats || {};
+        const val = (d.total_value !== null && d.total_value !== undefined) ? d.total_value : (stats.total_value || 0);
+        const cmc = (d.avg_cmc !== null && d.avg_cmc !== undefined) ? d.avg_cmc : (stats.avg_cmc || 0);
+        const pwr = d.power_level ? d.power_level.toFixed(1) : null;
+        const art = d.commander_art || 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg';
+
+        const colorPips = (d.color_identity || stats.color_identity || []).map(c => 
+            `<span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color: ${colorsMap[c] || '#888'};"></span>`
+        ).join('');
+
+        // Type breakdown mini segments
+        const typeCounts = stats.type_counts || {};
+        const lands = typeCounts['Lands'] || 0;
+        const total = d.total_cards || 100;
+        const spells = Math.max(0, total - lands);
+        const landPct = Math.round((lands / total) * 100);
+        const spellPct = 100 - landPct;
+
+        const keepRate = d.effective_keepability_rate !== undefined ? d.effective_keepability_rate : (stats.effective_keepability_rate || (stats.opening_hand_keepability && stats.opening_hand_keepability.effective_keep_rate) || 0);
+        const castTurn = d.median_commander_cast_turn !== undefined ? d.median_commander_cast_turn : (stats.median_commander_cast_turn || (stats.earliest_commander_cast && stats.earliest_commander_cast.median_cast_turn) || 4);
+        const wincon = d.primary_wincon || stats.primary_wincon || (stats.win_conditions && stats.win_conditions.primary_wincon && stats.win_conditions.primary_wincon.name) || (d.archetype || 'Combat');
+        const sinks = d.total_mana_sinks !== undefined ? d.total_mana_sinks : (stats.total_mana_sinks || (stats.mana_sinks && stats.mana_sinks.total_sinks) || 0);
+        const rawDate = d.updated_at || d.created_at || (stats && stats.last_synced_at);
+        const relDate = formatRelativeDate(rawDate);
+
+        return `
+            <tr class="hover:bg-[#1B2230]/60 transition ${isSelected ? 'bg-cyan-950/20' : ''}" id="matrix-row-${d.id}">
+                <td class="py-3 px-3.5 text-center">
+                    <input type="checkbox" onchange="toggleDeckSelection(${d.id}, this.checked)" ${isSelected ? 'checked' : ''}
+                           class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0 cursor-pointer">
+                </td>
+                <td class="py-3 px-4">
+                    <div class="flex items-center space-x-3">
+                        <img src="${art}" alt="${escapeHtml(d.commander_name || 'Commander')}" class="w-10 h-10 rounded-lg object-cover border border-slate-700 flex-shrink-0 bg-slate-900">
+                        <div class="min-w-0">
+                            <div class="font-bold text-white uppercase truncate flex items-center gap-2">
+                                <span>${escapeHtml(d.deck_name)}</span>
+                                ${relDate ? `<span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono font-normal">📅 ${relDate}</span>` : ''}
+                            </div>
+                            <div class="text-[11px] text-cyan-300 font-normal truncate">${escapeHtml(d.commander_name || 'Commander')}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="py-3 px-3 text-center">
+                    <div class="flex items-center justify-center gap-1">
+                        ${colorPips || '<span class="text-[10px] text-slate-500 font-mono">Colorless</span>'}
+                    </div>
+                </td>
+                <td class="py-3 px-3 text-center">
+                    ${pwr ? `
+                        <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-bold text-xs">
+                            <span>⚡ ${pwr}</span>
+                        </div>
+                    ` : `
+                        <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Pre-AI</span>
+                    `}
+                </td>
+                <td class="py-3 px-4 text-right font-black text-emerald-400 text-sm">
+                    $${parseFloat(val).toFixed(2)}
+                </td>
+                <td class="py-3 px-3 text-center font-bold text-amber-400">
+                    ${parseFloat(cmc).toFixed(2)}
+                </td>
+                <td class="py-3 px-3 text-center">
+                    <div class="text-[11px] font-mono text-emerald-400 font-bold">${keepRate}% Keep</div>
+                    <div class="text-[10px] font-mono text-slate-400">T${castTurn} Cast</div>
+                </td>
+                <td class="py-3 px-3 text-center">
+                    <div class="text-[11px] font-mono text-cyan-300 font-bold truncate max-w-[120px] mx-auto" title="${escapeHtml(wincon)}">${escapeHtml(wincon)}</div>
+                    <div class="text-[10px] font-mono text-slate-400">${sinks} Sinks</div>
+                </td>
+                <td class="py-3 px-4 text-center">
+                    <div class="text-[11px] font-mono text-slate-300 mb-1">${lands}L / ${spells}S</div>
+                    <div class="w-24 mx-auto h-1.5 bg-slate-800 rounded-full overflow-hidden flex">
+                        <div class="bg-amber-500 h-full" style="width: ${landPct}%" title="${lands} Lands (${landPct}%)"></div>
+                        <div class="bg-cyan-500 h-full" style="width: ${spellPct}%" title="${spells} Spells (${spellPct}%)"></div>
+                    </div>
+                </td>
+                <td class="py-3 px-3 text-center">
+                    ${d.has_ai_analysis ? 
+                        `<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">Analyzed</span>` : 
+                        `<span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Stats Ready</span>`
+                    }
+                </td>
+                <td class="py-3 px-4 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                        <button onclick="quickCompareWithFirst(${d.id})" title="Quick compare with Slot 1" class="px-2 py-1 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-bold border border-slate-700 transition cursor-pointer">
+                            VS
+                        </button>
+                        <button onclick="loadSavedDeckIntoInspector(${d.id})" title="Inspect Deck" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-bold border border-slate-700 transition cursor-pointer">
+                            Inspect &rarr;
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
+// Filter Vault Decks (for both Grid and Table modes)
+function filterVaultDecks() {
+    const input = document.getElementById('vaultSearchInput') || document.getElementById('matrixSearchInput');
+    const query = (input ? input.value : '').toLowerCase();
+    const sourceDecks = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
+
+    filteredDecks = sourceDecks.filter(d => {
+        const matchesQuery = (d.deck_name || '').toLowerCase().includes(query) || 
+                             (d.commander_name || '').toLowerCase().includes(query) ||
+                             (d.archetype || '').toLowerCase().includes(query);
+        let matchesColor = true;
+        if (currentColorFilter !== 'all') {
+            const colors = d.color_identity || (d.stats && d.stats.color_identity) || [];
+            matchesColor = colors.includes(currentColorFilter);
+        }
+        return matchesQuery && matchesColor;
+    });
+
+    sortMatrixInternal();
+    renderVaultGrid(filteredDecks);
+    renderMatrixTable(filteredDecks);
+}
+
+function filterMatrixTable() {
+    filterVaultDecks();
+}
+
+function setColorFilter(color) {
+    currentColorFilter = color;
+    document.querySelectorAll('.color-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-color') === color) {
+            btn.className = "color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950 cursor-pointer";
+        } else {
+            btn.className = "color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700 cursor-pointer";
+        }
+    });
+    filterVaultDecks();
+}
+
+function clearMatrixFilters() {
+    const input = document.getElementById('vaultSearchInput') || document.getElementById('matrixSearchInput');
+    if (input) input.value = '';
+    setColorFilter('all');
+}
+
+// Sorting
 function sortVaultDecks() {
-    const sort = document.getElementById('vaultSortSelect').value;
-    const sorted = [...currentVaultDecks];
-    if (sort === 'name') sorted.sort((a, b) => (a.deck_name || '').localeCompare(b.deck_name || ''));
-    else if (sort === 'price_desc') sorted.sort((a, b) => (b.total_value || 0) - (a.total_value || 0));
-    else if (sort === 'cmc_asc') sorted.sort((a, b) => (a.avg_cmc || 0) - (b.avg_cmc || 0));
-    else if (sort === 'power_desc') sorted.sort((a, b) => (b.power_level || 0) - (a.power_level || 0));
-    renderVaultGrid(sorted);
+    const sort = document.getElementById('vaultSortSelect') ? document.getElementById('vaultSortSelect').value : 'recent';
+    if (sort === 'name') {
+        currentSortKey = 'commander';
+        currentSortAsc = true;
+    } else if (sort === 'price_desc') {
+        currentSortKey = 'value';
+        currentSortAsc = false;
+    } else if (sort === 'cmc_asc') {
+        currentSortKey = 'cmc';
+        currentSortAsc = true;
+    } else if (sort === 'power_desc') {
+        currentSortKey = 'power';
+        currentSortAsc = false;
+    } else {
+        currentSortKey = 'recent';
+        currentSortAsc = false;
+    }
+    sortMatrixInternal();
+    renderVaultGrid(filteredDecks);
+    renderMatrixTable(filteredDecks);
+}
+
+function sortMatrixBy(key) {
+    if (currentSortKey === key) {
+        currentSortAsc = !currentSortAsc;
+    } else {
+        currentSortKey = key;
+        currentSortAsc = false;
+    }
+    sortMatrixInternal();
+    renderVaultGrid(filteredDecks);
+    renderMatrixTable(filteredDecks);
+}
+
+function sortMatrixInternal() {
+    filteredDecks.sort((a, b) => {
+        let valA, valB;
+        if (currentSortKey === 'commander') {
+            valA = (a.deck_name || '').toLowerCase();
+            valB = (b.deck_name || '').toLowerCase();
+            return currentSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else if (currentSortKey === 'value') {
+            valA = a.total_value || (a.stats && a.stats.total_value) || 0;
+            valB = b.total_value || (b.stats && b.stats.total_value) || 0;
+        } else if (currentSortKey === 'cmc') {
+            valA = a.avg_cmc || (a.stats && a.stats.avg_cmc) || 0;
+            valB = b.avg_cmc || (b.stats && b.stats.avg_cmc) || 0;
+        } else if (currentSortKey === 'power') {
+            valA = a.power_level || 0;
+            valB = b.power_level || 0;
+        } else if (currentSortKey === 'colors') {
+            valA = (a.color_identity || []).length;
+            valB = (b.color_identity || []).length;
+        } else if (currentSortKey === 'composition') {
+            valA = (a.stats && a.stats.type_counts && a.stats.type_counts['Lands']) || 0;
+            valB = (b.stats && b.stats.type_counts && b.stats.type_counts['Lands']) || 0;
+        } else if (currentSortKey === 'speed') {
+            valA = a.effective_keepability_rate || (a.stats && a.stats.effective_keepability_rate) || 0;
+            valB = b.effective_keepability_rate || (b.stats && b.stats.effective_keepability_rate) || 0;
+        } else if (currentSortKey === 'wincon') {
+            valA = (a.primary_wincon || (a.stats && a.stats.primary_wincon) || '').toLowerCase();
+            valB = (b.primary_wincon || (b.stats && b.stats.primary_wincon) || '').toLowerCase();
+            return currentSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        } else {
+            valA = new Date(a.updated_at || a.created_at || 0).getTime();
+            valB = new Date(b.updated_at || b.created_at || 0).getTime();
+        }
+        return currentSortAsc ? (valA - valB) : (valB - valA);
+    });
+}
+
+// =========================================================================
+// MULTI-DECK SELECTION & COMPARISON STATION
+// =========================================================================
+
+function toggleDeckSelection(deckId, isChecked) {
+    if (isChecked) {
+        if (selectedDeckIds.size >= 4) {
+            showToast("You can compare up to 4 decks at once.", "info");
+            renderMatrixTable(filteredDecks);
+            return;
+        }
+        selectedDeckIds.add(deckId);
+    } else {
+        selectedDeckIds.delete(deckId);
+    }
+    updateSelectedCountUI();
+    syncDropdownsWithSelection();
+}
+
+function toggleSelectAllDecks() {
+    if (selectedDeckIds.size === filteredDecks.length) {
+        selectedDeckIds.clear();
+    } else {
+        selectedDeckIds.clear();
+        filteredDecks.slice(0, 4).forEach(d => selectedDeckIds.add(d.id));
+    }
+    updateSelectedCountUI();
+    syncDropdownsWithSelection();
+    renderMatrixTable(filteredDecks);
+}
+
+function updateSelectedCountUI() {
+    const count = selectedDeckIds.size;
+    const selectedCountText = document.getElementById('selectedCountText');
+    if (selectedCountText) selectedCountText.innerText = count;
+
+    const badge = document.getElementById('compareCountBadge');
+    if (badge) {
+        if (count > 0) {
+            badge.innerText = count;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+    const compareBtn = document.getElementById('launchCompareBtn');
+    if (compareBtn) compareBtn.disabled = count < 2;
+}
+
+function syncDropdownsWithSelection() {
+    const arr = Array.from(selectedDeckIds);
+    for (let i = 1; i <= 4; i++) {
+        const sel = document.getElementById(`compareSelect${i}`);
+        if (sel) {
+            sel.value = arr[i - 1] || '';
+        }
+    }
+}
+
+function handleDropdownDeckChange() {
+    selectedDeckIds.clear();
+    for (let i = 1; i <= 4; i++) {
+        const sel = document.getElementById(`compareSelect${i}`);
+        if (sel && sel.value) {
+            selectedDeckIds.add(parseInt(sel.value, 10));
+        }
+    }
+    updateSelectedCountUI();
+    renderMatrixTable(filteredDecks);
+    if (selectedDeckIds.size >= 2) {
+        runActiveComparison();
+    }
+}
+
+function launchComparisonFromSelection() {
+    if (selectedDeckIds.size < 2) {
+        showToast("Please select at least 2 decks to compare.", "info");
+        return;
+    }
+    syncDropdownsWithSelection();
+    switchMainView('compare');
+    runActiveComparison();
+}
+
+function quickCompareWithFirst(deckId) {
+    const sourceDecks = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
+    if (sourceDecks.length < 2) {
+        showToast("Add at least 2 decks to your fleet to compare matchups.", "info");
+        return;
+    }
+    const firstDeckId = sourceDecks[0].id === deckId ? (sourceDecks[1] ? sourceDecks[1].id : sourceDecks[0].id) : sourceDecks[0].id;
+    selectedDeckIds.clear();
+    selectedDeckIds.add(firstDeckId);
+    selectedDeckIds.add(deckId);
+    syncDropdownsWithSelection();
+    updateSelectedCountUI();
+    renderMatrixTable(filteredDecks);
+    switchMainView('compare');
+    runActiveComparison();
+}
+
+function launchCompareFromActiveDeck() {
+    if (!activeDeck || !activeDeck.id) return;
+    const sourceDecks = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
+    if (sourceDecks.length < 2) {
+        showToast("Add at least 2 decks to your fleet to compare matchups.", "info");
+        return;
+    }
+    const otherDeck = sourceDecks.find(d => d.id !== activeDeck.id) || sourceDecks[0];
+    selectedDeckIds.clear();
+    selectedDeckIds.add(activeDeck.id);
+    if (otherDeck) selectedDeckIds.add(otherDeck.id);
+    syncDropdownsWithSelection();
+    updateSelectedCountUI();
+    renderMatrixTable(filteredDecks);
+    switchMainView('compare');
+    runActiveComparison();
+}
+
+// Run Active Comparison Request to Server
+async function runActiveComparison() {
+    const deckIds = Array.from(selectedDeckIds);
+    if (deckIds.length < 2) {
+        showToast("Select at least 2 decks to compare.", "info");
+        return;
+    }
+
+    const loader = document.getElementById('compareLoading');
+    const container = document.getElementById('compareResultsContainer');
+    if (loader) loader.classList.remove('hidden');
+    if (container) container.classList.add('hidden');
+
+    try {
+        const resp = await fetch('/api/deck/compare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deck_ids: deckIds })
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || "Comparison calculation failed");
+
+        currentComparison = data;
+        renderComparisonResults(data);
+        if (loader) loader.classList.add('hidden');
+        if (container) container.classList.remove('hidden');
+    } catch (e) {
+        if (loader) loader.classList.add('hidden');
+        showToast(`Comparison Error: ${e.message}`, 'error');
+    }
+}
+
+let comparePipRadarChartInstance = null;
+
+// Render Complete Comparison View
+function renderComparisonResults(data) {
+    const decks = data.decks || [];
+    const colorsMap = { 'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E' };
+
+    // 1. Commander Face-Off Cards
+    const cmdrGrid = document.getElementById('compareCommanderCardsGrid');
+    if (cmdrGrid) {
+        cmdrGrid.className = `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(decks.length, 4)} gap-4`;
+        cmdrGrid.innerHTML = decks.map(d => {
+            const colorPips = (d.color_identity || []).map(c => 
+                `<span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color: ${colorsMap[c] || '#888'};"></span>`
+            ).join('');
+            const art = d.commander_art || 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg';
+
+            return `
+                <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/40 rounded-xl overflow-hidden shadow-2xl flex flex-col justify-between">
+                    <div>
+                        <div class="relative h-32 bg-slate-900 overflow-hidden">
+                            <img src="${art}" alt="${escapeHtml(d.commander_name || 'Commander')}" class="w-full h-full object-cover object-center">
+                            <div class="absolute inset-0 bg-gradient-to-t from-[#10141D] via-[#10141D]/30 to-transparent"></div>
+                            <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between">
+                                <span class="text-xs text-cyan-300 font-mono font-bold truncate">${escapeHtml(d.commander_name || 'Commander')}</span>
+                                <div class="flex items-center gap-0.5 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800">
+                                    ${colorPips || '<span class="text-[9px] text-slate-500">Colorless</span>'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="p-4 space-y-3">
+                            <h4 class="text-sm font-black text-white font-mono uppercase truncate">${escapeHtml(d.deck_name)}</h4>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-bold">${d.power_level ? `${d.power_level.toFixed(1)} Power` : 'Pre-AI'}</span>
+                                <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 font-mono font-bold">${escapeHtml(d.archetype || 'Midrange / Engine')}</span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 bg-[#1B2230]/70 p-2 rounded-lg border border-slate-800 font-mono text-xs">
+                                <div>
+                                    <span class="text-[10px] text-slate-400 uppercase block">TCG Value</span>
+                                    <span class="text-emerald-400 font-bold">$${parseFloat(d.total_value || 0).toFixed(2)}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-slate-400 uppercase block">Avg CMC</span>
+                                    <span class="text-amber-400 font-bold">${parseFloat(d.avg_cmc || 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 2. Head-to-Head Delta Matrix & Categorized Profiles (When 2 Decks Selected)
+    const deltaSection = document.getElementById('compareDeltaMatrixSection');
+    const profilesSection = document.getElementById('compareCategorizedProfilesSection');
+    const radarSection = document.getElementById('comparePipRadarSection');
+
+    if (decks.length === 2 && data.delta_matrix) {
+        if (deltaSection) deltaSection.classList.remove('hidden');
+        if (profilesSection) profilesSection.classList.remove('hidden');
+        if (radarSection) radarSection.classList.remove('hidden');
+
+        safeSetText('deltaThDeckA', decks[0].deck_name);
+        safeSetText('deltaThDeckB', decks[1].deck_name);
+        safeSetText('matchupArchetypeSummary', `${decks[0].archetype || 'Midrange'} vs. ${decks[1].archetype || 'Midrange'}`);
+
+        const matrix = data.delta_matrix;
+        const deltaRows = [
+            { key: 'nonland_amv', name: 'Nonland Avg Mana Value (AMV)', unit: 'CMC', lowerIsBetter: true },
+            { key: 'turn_3_land_pct', name: 'Turn 3 Land Drop % (Hypergeometric)', unit: '%', lowerIsBetter: false },
+            { key: 'keepability_rate', name: 'Opening Hand Keepability Rate', unit: '%', lowerIsBetter: false },
+            { key: 'commander_cast_turn', name: 'Median Commander Cast Turn', unit: 'Turn', lowerIsBetter: true },
+            { key: 'fast_ramp', name: 'Fast Ramp Density (CMC <= 2)', unit: 'cards', lowerIsBetter: false },
+            { key: 'dork_or_rock_ramp', name: 'Mana Dorks & Rocks', unit: 'cards', lowerIsBetter: false },
+            { key: 'land_fetch_ramp', name: 'Land Ramp Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'treasure_ramp', name: 'Treasure Creation Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'instant_speed_ratio', name: 'Instant-Speed Interaction %', unit: '%', lowerIsBetter: false },
+            { key: 'instant_holdout', name: 'Instant Mana Holdout', unit: 'CMC', lowerIsBetter: true },
+            { key: 'tapland_penalty_index', name: 'Tapland Tempo Penalty', unit: '%', lowerIsBetter: true },
+            { key: 'targeted_removal', name: 'Targeted Removal Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'board_wipes', name: 'Board Wipe Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'removal_mana_efficiency', name: 'Removal Mana Efficiency', unit: 'CMC', lowerIsBetter: true },
+            { key: 'draw_engines', name: 'Engine Card Draw Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'virtual_card_advantage', name: 'Virtual Card Advantage (Draw/Impulse/Recursion)', unit: 'cards', lowerIsBetter: false },
+            { key: 'mana_sinks', name: 'Late-Game Mana Sinks', unit: 'outlets', lowerIsBetter: false },
+            { key: 'burst_draw', name: 'Burst Card Draw Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'cantrips', name: 'Low-CMC Cantrips', unit: 'cards', lowerIsBetter: false },
+            { key: 'tutors_general', name: 'General Tutor Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'tutors_land', name: 'Land / Ramp Tutors', unit: 'cards', lowerIsBetter: false },
+            { key: 'portfolio_value', name: 'Total TCG Market Value', unit: '$', lowerIsBetter: false },
+        ];
+
+        const tbody = document.getElementById('deltaMatrixTableBody');
+        if (tbody) {
+            tbody.innerHTML = deltaRows.map(r => {
+                const m = matrix[r.key] || { deck_a: 0, deck_b: 0, delta: 0, advantage: 'Tie' };
+                const deltaVal = m.delta;
+                const formattedA = r.unit === '$' ? `$${(m.deck_a || 0).toFixed(2)}` : `${m.deck_a || 0}${r.unit === '%' ? '%' : ''}`;
+                const formattedB = r.unit === '$' ? `$${(m.deck_b || 0).toFixed(2)}` : `${m.deck_b || 0}${r.unit === '%' ? '%' : ''}`;
+                
+                let deltaBadge = '<span class="text-slate-400 font-bold">0</span>';
+                if (deltaVal > 0) {
+                    const color = r.lowerIsBetter ? 'text-rose-400' : 'text-emerald-400';
+                    deltaBadge = `<span class="${color} font-bold">+${r.unit === '$' ? '$' : ''}${deltaVal}${r.unit === '%' ? '%' : ''}</span>`;
+                } else if (deltaVal < 0) {
+                    const color = r.lowerIsBetter ? 'text-emerald-400' : 'text-rose-400';
+                    deltaBadge = `<span class="${color} font-bold">${r.unit === '$' ? '-$' : ''}${Math.abs(deltaVal)}${r.unit === '%' ? '%' : ''}</span>`;
+                }
+
+                let advBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">Neutral</span>';
+                if (m.advantage === 'deck_a') {
+                    advBadge = `<span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">${escapeHtml(decks[0].deck_name)}</span>`;
+                } else if (m.advantage === 'deck_b') {
+                    advBadge = `<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">${escapeHtml(decks[1].deck_name)}</span>`;
+                }
+
+                return `
+                    <tr class="hover:bg-[#1B2230]/40 transition">
+                        <td class="py-2.5 px-4 font-semibold text-white">${r.name}</td>
+                        <td class="py-2.5 px-4 text-center text-cyan-400 font-bold">${formattedA}</td>
+                        <td class="py-2.5 px-4 text-center text-amber-400 font-bold">${formattedB}</td>
+                        <td class="py-2.5 px-4 text-center">${deltaBadge}</td>
+                        <td class="py-2.5 px-4 text-right">${advBadge}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Populate Categorized Profile Cards
+        const vp = data.velocity_profile || {};
+        const velEl = document.getElementById('compVelocityContent');
+        if (velEl) {
+            velEl.innerHTML = `
+                <div class="flex justify-between"><span class="text-slate-400">Fast Ramp (CMC &le; 2):</span><span class="text-white font-bold">${decks[0].fast_ramp_count || 0} vs ${decks[1].fast_ramp_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Dorks & Rocks / Fetch:</span><span class="text-slate-300">${decks[0].dork_or_rock_count || 0}/${decks[0].land_fetch_count || 0} vs ${decks[1].dork_or_rock_count || 0}/${decks[1].land_fetch_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Treasure Producers:</span><span class="text-amber-400 font-bold">${decks[0].treasure_count || 0} vs ${decks[1].treasure_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Tapland Penalty:</span><span class="text-rose-400 font-bold">${decks[0].tapland_penalty_index || 0}% vs ${decks[1].tapland_penalty_index || 0}%</span></div>
+                <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Velocity Lead:</span><span class="text-emerald-400 font-bold">${vp.velocity_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (vp.velocity_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+            `;
+        }
+
+        const ip = data.interaction_profile || {};
+        const intEl = document.getElementById('compInteractionContent');
+        if (intEl) {
+            intEl.innerHTML = `
+                <div class="flex justify-between"><span class="text-slate-400">Targeted Removal:</span><span class="text-white font-bold">${decks[0].targeted_removal_count || 0} vs ${decks[1].targeted_removal_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Board Wipes:</span><span class="text-slate-300">${decks[0].board_wipe_count || 0} vs ${decks[1].board_wipe_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Removal Efficiency:</span><span class="text-slate-300">${parseFloat(decks[0].removal_mana_efficiency || 0).toFixed(2)} vs ${parseFloat(decks[1].removal_mana_efficiency || 0).toFixed(2)} CMC</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Instant Speed %:</span><span class="text-cyan-400 font-bold">${decks[0].instant_speed_ratio || 0}% vs ${decks[1].instant_speed_ratio || 0}%</span></div>
+                <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Efficiency Lead:</span><span class="text-cyan-400 font-bold">${ip.interaction_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (ip.interaction_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+            `;
+        }
+
+        const cap = data.card_advantage_profile || {};
+        const caEl = document.getElementById('compCardAdvantageContent');
+        if (caEl) {
+            caEl.innerHTML = `
+                <div class="flex justify-between"><span class="text-slate-400">Engine Draw:</span><span class="text-white font-bold">${decks[0].draw_engine_count || 0} vs ${decks[1].draw_engine_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Burst / Cantrips:</span><span class="text-slate-300">${decks[0].draw_burst_count || 0}/${decks[0].draw_cantrip_count || 0} vs ${decks[1].draw_burst_count || 0}/${decks[1].draw_cantrip_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">General / Land Tutors:</span><span class="text-amber-400 font-bold">${decks[0].tutor_general_count || 0}/${decks[0].tutor_land_count || 0} vs ${decks[1].tutor_general_count || 0}/${decks[1].tutor_land_count || 0}</span></div>
+                <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Advantage Lead:</span><span class="text-purple-400 font-bold">${cap.advantage_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (cap.advantage_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+            `;
+        }
+
+        renderComparePipRadar(decks);
+    } else {
+        if (deltaSection) deltaSection.classList.add('hidden');
+        if (profilesSection) profilesSection.classList.add('hidden');
+        if (radarSection) radarSection.classList.add('hidden');
+    }
+
+    // 3. Side-by-Side Mana Curves
+    const curveContainer = document.getElementById('compareCurveChartContainer');
+    if (curveContainer) {
+        curveContainer.className = `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(decks.length, 4)} gap-4 pt-2`;
+        const cmcKeys = ["0", "1", "2", "3", "4", "5", "6", "7+"];
+
+        curveContainer.innerHTML = decks.map(d => {
+            const curve = d.cmc_curve || {};
+            const maxVal = Math.max(1, ...Object.values(curve));
+            const barsHtml = cmcKeys.map(k => {
+                const count = curve[k] || 0;
+                const heightPct = Math.max(8, Math.round((count / maxVal) * 100));
+                return `
+                    <div class="flex-1 flex flex-col items-center h-full justify-end group">
+                        <span class="text-[9px] font-mono text-cyan-400 font-bold mb-1 opacity-0 group-hover:opacity-100 transition">${count}</span>
+                        <div class="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t transition-all duration-300" style="height: ${heightPct}%;"></div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="bg-[#1B2230]/70 border border-slate-800 p-3.5 rounded-xl space-y-2">
+                    <div class="flex items-center justify-between text-xs font-mono">
+                        <span class="font-bold text-white truncate max-w-[140px]">${escapeHtml(d.deck_name)}</span>
+                        <span class="text-amber-400 font-bold">${parseFloat(d.avg_cmc || 0).toFixed(2)} CMC</span>
+                    </div>
+                    <div class="h-32 flex items-end justify-between gap-1.5 pt-4 pb-1 border-b border-slate-800">
+                        ${barsHtml}
+                    </div>
+                    <div class="flex justify-between text-[9px] font-mono text-slate-500">
+                        <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7+</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 4. Card Type Composition Breakdown
+    const compGrid = document.getElementById('compareTypeCompositionGrid');
+    if (compGrid) {
+        compGrid.className = `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(decks.length, 4)} gap-4 pt-2`;
+        compGrid.innerHTML = decks.map(d => {
+            const types = d.type_counts || {};
+            const total = d.total_cards || 100;
+            const typeKeys = ['Creatures', 'Instants', 'Sorceries', 'Artifacts', 'Enchantments', 'Planeswalkers', 'Lands'];
+            
+            const typeRows = typeKeys.map(tKey => {
+                const count = types[tKey] || 0;
+                const pct = Math.round((count / total) * 100);
+                return `
+                    <div>
+                        <div class="flex justify-between text-[11px] font-mono mb-0.5">
+                            <span class="text-slate-400">${tKey}</span>
+                            <span class="text-white font-bold">${count} <span class="text-slate-500 font-normal">(${pct}%)</span></span>
+                        </div>
+                        <div class="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-cyan-500 rounded-full" style="width: ${pct}%;"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="bg-[#1B2230]/70 border border-slate-800 p-3.5 rounded-xl space-y-2.5">
+                    <div class="flex items-center justify-between text-xs font-mono border-b border-slate-800 pb-1.5">
+                        <span class="font-bold text-white truncate max-w-[140px]">${escapeHtml(d.deck_name)}</span>
+                        <span class="text-cyan-400 font-bold">${d.land_count || (types['Lands'] || 0)}L / ${d.nonland_count || (total - (types['Lands'] || 0))}S</span>
+                    </div>
+                    <div class="space-y-1.5">
+                        ${typeRows}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 5. Shared Cards Table
+    const sharedAllList = data.shared_all || [];
+    safeSetText('sharedOverlapSummaryBadge', `${sharedAllList.length} Universal Staples`);
+    const sharedTableBody = document.getElementById('sharedAllTableBody');
+
+    if (sharedTableBody) {
+        if (sharedAllList.length === 0) {
+            sharedTableBody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-slate-500 font-mono">No cards are shared across all ${decks.length} selected decks.</td></tr>`;
+        } else {
+            sharedTableBody.innerHTML = sharedAllList.map(c => {
+                const price = c.price_usd ? `$${parseFloat(c.price_usd).toFixed(2)}` : '--';
+                const img = c.image_uri || '';
+                return `
+                    <tr class="hover:bg-[#1B2230]/50 transition">
+                        <td class="py-2.5 px-3 font-semibold text-white">
+                            <span class="cursor-pointer hover:text-cyan-300 hover:underline" data-img="${escapeHtml(img)}"
+                                  onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                                ${escapeHtml(c.name)}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-3 text-slate-400 text-[11px] truncate max-w-[160px]">${escapeHtml(c.type_line || 'Card')}</td>
+                        <td class="py-2.5 px-3 text-slate-300 font-sans text-xs">${escapeHtml(c.mana_cost || '')}</td>
+                        <td class="py-2.5 px-3 text-center text-amber-400 font-bold">${c.cmc || 0}</td>
+                        <td class="py-2.5 px-3 text-right font-bold text-emerald-400">${price}</td>
+                        <td class="py-2.5 px-3 text-center">
+                            <button onclick="addSharedCardToWatchlist('${escapeHtml(c.name)}', this)" class="px-2 py-0.5 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition cursor-pointer">
+                                + Watch
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    // 6. Unique Signatures Grid
+    const uniqueGrid = document.getElementById('compareUniqueSignaturesGrid');
+    if (uniqueGrid) {
+        uniqueGrid.className = `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(decks.length, 4)} gap-3`;
+        const uniqueMap = data.unique_per_deck || {};
+
+        uniqueGrid.innerHTML = decks.map(d => {
+            const uData = uniqueMap[String(d.id)] || { count: 0, sample: [] };
+            const sampleCardsHtml = (uData.sample || []).map(c => `
+                <li class="text-[11px] text-slate-300 truncate cursor-pointer hover:text-cyan-300" data-img="${escapeHtml(c.image_uri || '')}"
+                    onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                    &bull; ${escapeHtml(c.name)}
+                </li>
+            `).join('');
+
+            return `
+                <div class="bg-[#1B2230]/70 border border-slate-800 p-3 rounded-xl space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-1 text-xs font-mono">
+                        <span class="font-bold text-white truncate max-w-[140px]">${escapeHtml(d.deck_name)}</span>
+                        <span class="text-amber-400 font-bold">${uData.count} Unique</span>
+                    </div>
+                    <ul class="space-y-1 pt-0.5">
+                        ${sampleCardsHtml || '<li class="text-[11px] text-slate-500">None</li>'}
+                    </ul>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 7. Top 5 Most Valuable Cards Grid
+    const topCardsGrid = document.getElementById('compareTopCardsGrid');
+    if (topCardsGrid) {
+        topCardsGrid.className = `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(decks.length, 4)} gap-4 pt-1`;
+        topCardsGrid.innerHTML = decks.map(d => {
+            const cardsList = d.top_cards || [];
+            const itemsHtml = cardsList.map((c, idx) => `
+                <div class="flex items-center justify-between py-1.5 border-b border-slate-800/60 text-xs font-mono">
+                    <div class="min-w-0 pr-2">
+                        <span class="cursor-pointer hover:text-cyan-300 font-medium text-slate-200 truncate block" data-img="${escapeHtml(c.image_uri || '')}"
+                              onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                            ${idx + 1}. ${escapeHtml(c.name)}
+                        </span>
+                    </div>
+                    <span class="font-bold text-emerald-400 flex-shrink-0">$${parseFloat(c.price || 0).toFixed(2)}</span>
+                </div>
+            `).join('');
+
+            return `
+                <div class="bg-[#1B2230]/70 border border-slate-800 p-3.5 rounded-xl space-y-2">
+                    <div class="text-xs font-mono font-bold text-white truncate border-b border-slate-800 pb-1.5">${escapeHtml(d.deck_name)}</div>
+                    <div>${itemsHtml || '<div class="text-xs text-slate-500 font-mono py-2">No pricing available</div>'}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 8. Strategy & Win-Con Comparison
+    const strategyGrid = document.getElementById('compareStrategyGrid');
+    if (strategyGrid) {
+        strategyGrid.className = `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-${Math.min(decks.length, 4)} gap-4 pt-1`;
+        strategyGrid.innerHTML = decks.map(d => {
+            const winCons = d.win_conditions || [];
+            const winConsHtml = winCons.map(wc => `
+                <div class="bg-slate-900/60 p-2 rounded border border-slate-800/80 text-[11px] space-y-0.5">
+                    <div class="font-bold text-amber-300">${escapeHtml(wc.title || 'Win Condition')}</div>
+                    <div class="text-slate-400 font-sans text-[10px]">${escapeHtml(wc.description || '')}</div>
+                </div>
+            `).join('');
+
+            return `
+                <div class="bg-[#1B2230]/70 border border-slate-800 p-3.5 rounded-xl space-y-2.5">
+                    <div class="text-xs font-mono font-bold text-white truncate border-b border-slate-800 pb-1.5">${escapeHtml(d.deck_name)}</div>
+                    <p class="text-xs text-slate-300 font-sans leading-relaxed">${escapeHtml(d.summary || 'Strategic overview ready upon AI analysis.')}</p>
+                    <div class="space-y-1.5 pt-1">
+                        <span class="text-[10px] font-mono text-slate-400 uppercase font-bold block">Primary Win-Cons</span>
+                        ${winConsHtml || '<div class="text-[11px] text-slate-500 font-mono">Run Gemini AI to reveal win-cons.</div>'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+}
+
+// Comparative Radar Chart for Pip Demand Overlay
+function renderComparePipRadar(decks) {
+    const canvas = document.getElementById('comparePipRadarChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    const ctx = canvas.getContext('2d');
+    if (comparePipRadarChartInstance) {
+        comparePipRadarChartInstance.destroy();
+    }
+
+    const labels = ['White (W)', 'Blue (U)', 'Black (B)', 'Red (R)', 'Green (G)', 'Colorless (C)'];
+    const keys = ['W', 'U', 'B', 'R', 'G', 'C'];
+
+    const deckA = decks[0] || {};
+    const deckB = decks[1] || {};
+    const pbA = deckA.pip_breakdown || {};
+    const pbB = deckB.pip_breakdown || {};
+
+    const dataA = keys.map(k => (pbA[k] ? pbA[k].pip_demand_pct : 0));
+    const dataB = keys.map(k => (pbB[k] ? pbB[k].pip_demand_pct : 0));
+
+    comparePipRadarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: `${deckA.deck_name || 'Deck A'} (% Pip Demand)`,
+                    data: dataA,
+                    backgroundColor: 'rgba(6, 182, 212, 0.25)',
+                    borderColor: '#06b6d4',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#06b6d4',
+                },
+                {
+                    label: `${deckB.deck_name || 'Deck B'} (% Pip Demand)`,
+                    data: dataB,
+                    backgroundColor: 'rgba(245, 158, 11, 0.25)',
+                    borderColor: '#f59e0b',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#f59e0b',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                r: {
+                    angleLines: { color: 'rgba(51, 65, 85, 0.6)' },
+                    grid: { color: 'rgba(51, 65, 85, 0.6)' },
+                    pointLabels: {
+                        color: '#94a3b8',
+                        font: { family: 'monospace', size: 10 }
+                    },
+                    ticks: {
+                        backdropColor: 'transparent',
+                        color: '#64748b',
+                        font: { size: 9 },
+                        showLabelBackdrop: false
+                    },
+                    suggestedMin: 0,
+                    suggestedMax: 40
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    labels: {
+                        color: '#cbd5e1',
+                        font: { family: 'monospace', size: 11 }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Watchlist Quick Add from Shared Cards
+async function addSharedCardToWatchlist(cardName, btn) {
+    if (!cardName) return;
+    btn.disabled = true;
+    const origText = btn.innerText;
+    btn.innerText = "...";
+
+    try {
+        const resp = await fetch('/api/watchlist/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: cardName,
+                is_any_version: true,
+                target_price: 1.0,
+                tag: 'Commander Staple'
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            showToast(`Added '${cardName}' to Watchlist!`, 'success');
+            btn.className = "px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded text-[10px] font-mono uppercase font-bold border border-emerald-500/40";
+            btn.innerText = "✓ Watched";
+        } else if (resp.status === 409) {
+            showToast(`'${cardName}' is already on your Watchlist.`, 'info');
+            btn.className = "px-2 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700";
+            btn.innerText = "✓ In List";
+        } else {
+            showToast(data.error || 'Failed to add to watchlist', 'error');
+            btn.disabled = false;
+            btn.innerText = origText;
+        }
+    } catch (e) {
+        showToast(`Error: ${e.message}`, 'error');
+        btn.disabled = false;
+        btn.innerText = origText;
+    }
+}
+
+// Toast aliases for compatibility
+function showOverviewToast(msg, type = 'info') {
+    showToast(msg, type);
+}
+function hideOverviewToast() {
+    hideToast();
 }
 
 // Hover Zoom Image Tooltip
