@@ -7,33 +7,33 @@
 <div class="max-w-7xl mx-auto space-y-6 pb-20">
 
     <!-- Top Tactical Header HUD -->
-    <div class="bg-[#10141D]/90 border border-slate-800 rounded-xl p-5 md:p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
+    <div class="bg-[#10141D]/90 border border-slate-800 rounded-xl p-4 sm:p-5 md:p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
         <div class="absolute -right-16 -bottom-16 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
             <div>
-                <div class="flex items-center space-x-3">
-                    <span class="inline-flex items-center justify-center p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div class="flex items-center space-x-2.5 sm:space-x-3">
+                    <span class="inline-flex items-center justify-center p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex-shrink-0">
+                        <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                         </svg>
                     </span>
-                    <div>
-                        <h1 class="text-2xl md:text-3xl font-black text-white tracking-wider uppercase font-mono flex items-center gap-2">
-                            Commander Deck Vault
-                            <span class="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Intel + Stats</span>
+                    <div class="min-w-0">
+                        <h1 class="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-wide sm:tracking-wider uppercase font-mono flex flex-wrap items-center gap-1.5 sm:gap-2">
+                            <span>Commander Deck Vault</span>
+                            <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Intel + Stats</span>
                         </h1>
-                        <p class="text-xs text-slate-400 mt-0.5">ManaBox Deck Ingestion &bull; Scryfall Pricing Telemetry &bull; Mana Curves &bull; Google Gemini AI Evaluation</p>
+                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">ManaBox Deck Ingestion &bull; Scryfall Pricing Telemetry &bull; Mana Curves &bull; Google Gemini AI Evaluation</p>
                     </div>
                 </div>
             </div>
 
             <!-- View Switcher & Action Controls -->
-            <div class="flex flex-wrap items-center gap-2.5">
+            <div class="flex flex-wrap items-center gap-2">
                 <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center">
-                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer">
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer">
                         🛸 My Decks (<span id="savedDecksCount">{{ recent_decks|length }}</span>)
                     </button>
-                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3.5 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer">
+                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer">
                         ➕ Import Single
                     </button>
                 </div>
@@ -41,7 +41,7 @@
                 <!-- Quick Deck Selector -->
                 <div class="relative flex items-center">
                     <select id="quickDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
-                            class="bg-[#1B2230] hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[210px] truncate"
+                            class="bg-[#1B2230] hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[170px] sm:max-w-[210px] truncate"
                             title="Quick Switch Deck">
                         <option value="">⚡ Quick Select Deck...</option>
                         {% for d in recent_decks %}
@@ -50,29 +50,29 @@
                     </select>
                 </div>
 
-                <a href="/system-overview#commander-stats" class="px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Commander Statistical Telemetry & EDH Analytics Field Manual">
-                    <svg class="w-3.5 h-3.5 text-current" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <a href="/system-overview#commander-stats" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Commander Statistical Telemetry & EDH Analytics Field Manual">
+                    <svg class="w-3.5 h-3.5 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
                     </svg>
                     <span>📖 Stats Guide</span>
                 </a>
 
-                <a href="/deck-overview" class="px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Fleet Overview & Head-to-Head Comparison">
-                    <svg class="w-3.5 h-3.5 text-current" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <a href="/deck-overview" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Fleet Overview & Head-to-Head Comparison">
+                    <svg class="w-3.5 h-3.5 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                     </svg>
-                    <span>📊 Fleet Overview & Compare &rarr;</span>
+                    <span>📊 Fleet Overview &rarr;</span>
                 </a>
 
-                <button onclick="openBulkImportModal()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
-                    <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button onclick="openBulkImportModal()" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
+                    <svg class="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                     </svg>
                     <span>Bulk Import Links</span>
                 </button>
 
-                <button onclick="openApiKeyModal()" class="px-3 py-1.5 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
-                    <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button onclick="openApiKeyModal()" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
+                    <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
                     <span>Gemini Key</span>
@@ -261,46 +261,46 @@
                     <!-- 6 Stat Cards Grid (3 columns on mobile, 6 columns on sm/md, flex row on lg) -->
                     <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full lg:w-auto">
                         <!-- Nonland AMV -->
-                        <div id="inspectorAmvContainer" class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[75px]">
+                        <div id="inspectorAmvContainer" class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
                             <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Nonland AMV</span>
                             <span id="inspectorAvgCmc" class="text-xs sm:text-sm font-black text-amber-400 font-mono">0.00</span>
                         </div>
 
                         <!-- Fast Ramp -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
                             <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Fast Ramp</span>
                             <span id="inspectorFastRamp" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">0</span>
                         </div>
 
                         <!-- Instant Speed % -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
                             <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Instant %</span>
                             <span id="inspectorInstantSpeed" class="text-xs sm:text-sm font-black text-cyan-400 font-mono">0%</span>
                         </div>
 
                         <!-- Tapland Penalty % -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
                             <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Tapland %</span>
                             <span id="inspectorTaplandPenalty" class="text-xs sm:text-sm font-black text-rose-400 font-mono">0%</span>
                         </div>
 
                         <!-- Engines -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[70px]">
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
                             <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Engines</span>
                             <span id="inspectorEngineDraw" class="text-xs sm:text-sm font-black text-purple-400 font-mono">0</span>
                         </div>
 
                         <!-- Total Deck Value -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-center min-w-[75px]">
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
                             <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">TCG Value</span>
                             <span id="inspectorTotalValue" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">$0.00</span>
                         </div>
                     </div>
 
                     <!-- Action Buttons -->
-                    <div class="flex items-center gap-2 w-full lg:w-auto justify-between lg:justify-end pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-800">
+                    <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-800">
                         <select id="inspectorDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
-                                class="flex-1 lg:flex-initial bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[170px] sm:max-w-[200px] truncate"
+                                class="flex-1 sm:flex-initial bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer min-w-0 max-w-[155px] sm:max-w-[200px] truncate"
                                 title="Switch Deck in Inspector">
                             <option value="">⚡ Switch Deck...</option>
                             {% for d in recent_decks %}
@@ -315,7 +315,7 @@
                             </svg>
                         </button>
                         
-                        <button onclick="switchMainView('vault')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault grid">
+                        <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault grid">
                             <span>&larr;</span>
                             <span>All Decks</span>
                         </button>
@@ -349,7 +349,7 @@
                     <span class="text-sm md:text-base leading-none">⚡</span>
                     <span class="block md:hidden text-[10px] tracking-tight">AI Intel</span>
                     <span class="hidden md:inline whitespace-nowrap">Gemini AI Strategic Intel</span>
-                    <span id="aiTabBadge" class="text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Ready</span>
+                    <span id="aiTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Ready</span>
                 </button>
 
                 <!-- Tab 4: Tactical Upgrades -->
@@ -358,7 +358,7 @@
                     <span class="text-sm md:text-base leading-none">💎</span>
                     <span class="block md:hidden text-[10px] tracking-tight">Upgrades</span>
                     <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
-                    <span id="upgradesTabBadge" class="text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
+                    <span id="upgradesTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
                 </button>
             </div>
         </div>
@@ -866,6 +866,7 @@
                 </div>
             </div>
         </div>
+        </div>
 
         <!-- ========================================================================= -->
         <!-- INSPECTOR TAB 2: COMPLETE CARD REGISTRY TABLE -->
@@ -1367,7 +1368,8 @@ function switchIngestTab(tab) {
 // Inspector Tabs
 let currentInspectorTab = 'stats';
 
-function switchInspectorTab(tab) {
+function switchInspectorTab(tab, options = {}) {
+    const { skipScroll = false } = options;
     currentInspectorTab = tab || 'stats';
     const tabs = ['stats', 'cards', 'ai', 'upgrades'];
     tabs.forEach(t => {
@@ -1386,12 +1388,16 @@ function switchInspectorTab(tab) {
         }
     });
 
-    // If scrolled past the inspector tab bar, smoothly align scroll to sticky tab bar
-    const tabContainer = document.getElementById('inspectorTabBarContainer');
-    if (tabContainer) {
-        const rect = tabContainer.getBoundingClientRect();
-        if (rect.top < 64) {
-            tabContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Smoothly dock sticky tab bar below the top navigation bar so the user immediately sees the tab content
+    if (!skipScroll) {
+        const tabContainer = document.getElementById('inspectorTabBarContainer');
+        if (tabContainer) {
+            const navHeight = window.innerWidth >= 640 ? 64 : 56;
+            const containerTop = tabContainer.getBoundingClientRect().top + window.scrollY;
+            window.scrollTo({
+                top: Math.max(0, containerTop - navHeight - 6),
+                behavior: 'smooth'
+            });
         }
     }
 
@@ -1548,14 +1554,14 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
 
     if (amvElem) {
         if (amv <= 2.8) {
-            amvElem.className = "text-sm font-black text-emerald-400 font-mono";
-            if (amvContainer) amvContainer.className = "bg-emerald-500/10 border border-emerald-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
+            amvElem.className = "text-xs sm:text-sm font-black text-emerald-400 font-mono";
+            if (amvContainer) amvContainer.className = "bg-emerald-500/10 border border-emerald-500/40 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial";
         } else if (amv <= 3.4) {
-            amvElem.className = "text-sm font-black text-amber-400 font-mono";
-            if (amvContainer) amvContainer.className = "bg-amber-500/10 border border-amber-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
+            amvElem.className = "text-xs sm:text-sm font-black text-amber-400 font-mono";
+            if (amvContainer) amvContainer.className = "bg-amber-500/10 border border-amber-500/40 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial";
         } else {
-            amvElem.className = "text-sm font-black text-rose-400 font-mono";
-            if (amvContainer) amvContainer.className = "bg-rose-500/10 border border-rose-500/40 rounded-xl px-3 py-1.5 text-center min-w-[85px]";
+            amvElem.className = "text-xs sm:text-sm font-black text-rose-400 font-mono";
+            if (amvContainer) amvContainer.className = "bg-rose-500/10 border border-rose-500/40 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial";
         }
     }
 
@@ -1646,9 +1652,9 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     // Render Full Card Table
     renderCardRegistryTable(cards);
     if (!keepCurrentTab) {
-        switchInspectorTab('stats');
+        switchInspectorTab('stats', { skipScroll: true });
     } else if (currentInspectorTab) {
-        switchInspectorTab(currentInspectorTab);
+        switchInspectorTab(currentInspectorTab, { skipScroll: true });
     }
 }
 
