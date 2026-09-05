@@ -3823,14 +3823,18 @@ async function addAllCardsToWatchlist(excludeLands = true) {
     }
 }
 
+function stripDiacritics(str) {
+    return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 // Filter Card Registry Table
 function filterCardRegistryTable() {
-    const query = (document.getElementById('cardTableSearchInput').value || '').toLowerCase();
+    const query = stripDiacritics(document.getElementById('cardTableSearchInput').value || '').trim();
     const rows = document.querySelectorAll('.card-row');
     rows.forEach(row => {
-        const name = row.getAttribute('data-name') || '';
-        const type = row.getAttribute('data-type') || '';
-        const matchesQuery = name.includes(query) || type.includes(query);
+        const name = stripDiacritics(row.getAttribute('data-name') || '');
+        const type = stripDiacritics(row.getAttribute('data-type') || '');
+        const matchesQuery = !query || name.includes(query) || type.includes(query);
         const matchesType = currentCardTypeFilter === 'all' || type.includes(currentCardTypeFilter);
         row.style.display = (matchesQuery && matchesType) ? '' : 'none';
     });

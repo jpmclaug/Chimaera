@@ -29,7 +29,7 @@ class TestEDHRECSlugNormalization(unittest.TestCase):
         self.assertEqual(EDHRECProvider.normalize_slug("Urza, Lord High Artificer"), "urza-lord-high-artificer")
         self.assertEqual(EDHRECProvider.normalize_slug("Y'shtola, Night's Blessed"), "yshtola-nights-blessed")
         self.assertEqual(EDHRECProvider.normalize_slug("Hazoret the Fervent"), "hazoret-the-fervent")
-        self.assertEqual(EDHRECProvider.normalize_slug("Lim-Dûl the Necromancer"), "lim-d-l-the-necromancer")
+        self.assertEqual(EDHRECProvider.normalize_slug("Lim-Dûl the Necromancer"), "lim-dul-the-necromancer")
 
     def test_normalize_slug_dfc_transform_front_face(self):
         # Front face resolution before ' // '

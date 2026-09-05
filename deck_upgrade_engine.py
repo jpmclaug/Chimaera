@@ -15,6 +15,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 from card_classifier import MTGCardClassifier
 from models import UserInventoryCard, DeckAnalysis
 from providers.scryfall import ScryfallProvider
+from card_utils import get_card_match_keys, strip_accents, fix_mojibake
 
 logger = logging.getLogger(__name__)
 
@@ -356,24 +357,21 @@ class DualTierUpgradeEngine:
         top_salt_map: Dict[str, float] = (edhrec_data or {}).get("top_salt_map", {})
         edhrec_combos: List[Dict[str, Any]] = (edhrec_data or {}).get("combos", [])
 
-        # Build card lookup for current deck (lowercase names)
-        deck_cards_set = {c.get("name", "").strip().lower() for c in cards}
+        # Build card lookup for current deck (all match keys: lowercase, unaccented, front-face)
+        deck_cards_set: Set[str] = set()
         for c in cards:
             c_name = c.get("name", "").strip()
-            if " // " in c_name:
-                deck_cards_set.add(c_name.split(" // ")[0].strip().lower())
+            if c_name:
+                deck_cards_set.update(get_card_match_keys(c_name))
 
         # Extract cut candidates from current deck
         cut_candidates = self._identify_cut_candidates(cards, ai_analysis)
 
-        # 2. Build Inventory Map & Owned Upgrades
+        # 2. Build Inventory Map & Owned Upgrades (indexed by all match keys)
         owned_by_name: Dict[str, List[UserInventoryCard]] = {}
         for ic in user_inventory:
-            name_key = ic.name.strip().lower()
-            owned_by_name.setdefault(name_key, []).append(ic)
-            if " // " in ic.name:
-                front_key = ic.name.split(" // ")[0].strip().lower()
-                owned_by_name.setdefault(front_key, []).append(ic)
+            for k in get_card_match_keys(ic.name):
+                owned_by_name.setdefault(k, []).append(ic)
 
         owned_swaps: List[Dict[str, Any]] = []
         applied_card_in_names: Set[str] = set()
@@ -839,40 +837,27 @@ class DualTierUpgradeEngine:
 
     @staticmethod
     def _is_card_in_deck(card_name: str, deck_cards_set: Set[str]) -> bool:
-        """Checks if a card (or either face of a DFC) is already in the deck."""
+        """Checks if a card (or either face of a DFC, with or without accents) is already in the deck."""
         if not card_name:
             return False
-        c_lower = card_name.strip().lower()
-        if c_lower in deck_cards_set:
-            return True
-        if " // " in c_lower:
-            front = c_lower.split(" // ")[0].strip()
-            if front in deck_cards_set:
-                return True
-        # Check if card_name is the front face of a DFC in the deck
-        for d_card in deck_cards_set:
-            if " // " in d_card and d_card.split(" // ")[0].strip() == c_lower:
-                return True
-        return False
+        return bool(get_card_match_keys(card_name).intersection(deck_cards_set))
 
     @staticmethod
     def _find_owned_inventory_copies(card_name: str, owned_by_name: Dict[str, List[UserInventoryCard]]) -> Optional[List[UserInventoryCard]]:
-        """Looks up owned inventory copies matching full name or DFC front face."""
+        """Looks up owned inventory copies matching full name, DFC front face, or unaccented variant."""
         if not card_name:
             return None
-        c_lower = card_name.strip().lower()
-        if c_lower in owned_by_name:
-            return owned_by_name[c_lower]
-        if " // " in c_lower:
-            front = c_lower.split(" // ")[0].strip()
-            if front in owned_by_name:
-                return owned_by_name[front]
+        for k in get_card_match_keys(card_name):
+            if k in owned_by_name:
+                return owned_by_name[k]
         return None
 
     @staticmethod
     def _is_format_legal(card_name: str) -> bool:
         """Checks if card is legal in Commander (not on banned list)."""
-        clean = (card_name or "").strip().lower()
+        if not card_name:
+            return True
+        clean = strip_accents(card_name).strip().lower()
         if " // " in clean:
             clean = clean.split(" // ")[0].strip()
         return clean not in COMMANDER_BANNED_CARDS

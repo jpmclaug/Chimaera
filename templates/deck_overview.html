@@ -1441,13 +1441,18 @@ function renderMatrixTable(decks) {
     }).join('');
 }
 
+function stripDiacritics(str) {
+    return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 // Filter Matrix
 function filterMatrixTable() {
-    const query = (document.getElementById('matrixSearchInput').value || '').toLowerCase();
+    const query = stripDiacritics(document.getElementById('matrixSearchInput').value || '').trim();
     filteredDecks = allDecks.filter(d => {
-        const matchesQuery = (d.deck_name || '').toLowerCase().includes(query) || 
-                             (d.commander_name || '').toLowerCase().includes(query) ||
-                             (d.archetype || '').toLowerCase().includes(query);
+        const matchesQuery = !query ||
+                             stripDiacritics(d.deck_name || '').includes(query) || 
+                             stripDiacritics(d.commander_name || '').includes(query) ||
+                             stripDiacritics(d.archetype || '').includes(query);
         
         let matchesColor = true;
         if (currentColorFilter !== 'all') {

@@ -12,6 +12,7 @@ import re
 from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
+from card_utils import fix_mojibake, normalize_card_name, strip_accents
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,7 @@ class DeckParser:
             if resp.status_code != 200:
                 raise DeckParseError(f"ManaBox returned HTTP {resp.status_code}. Please verify the deck link is public.")
 
+            resp.encoding = "utf-8"
             html_text = resp.text
             soup = BeautifulSoup(html_text, "html.parser")
             deck_name = "ManaBox Commander Deck"
@@ -511,6 +513,7 @@ class DeckParser:
             if resp.status_code != 200:
                 raise DeckParseError(f"Scryfall returned HTTP {resp.status_code}.")
 
+            resp.encoding = "utf-8"
             result = DeckParser.parse_text(resp.text)
             result["source_type"] = "scryfall_url"
             return result
@@ -534,6 +537,7 @@ class DeckParser:
             if resp.status_code != 200:
                 raise DeckParseError(f"MTGGoldfish returned HTTP {resp.status_code}.")
 
+            resp.encoding = "utf-8"
             result = DeckParser.parse_text(resp.text)
             result["source_type"] = "mtggoldfish_url"
             return result
@@ -656,7 +660,7 @@ class DeckParser:
         current_section = "mainboard"
 
         line_pattern = re.compile(
-            r"^(?:(\d+)[xX]?\s+)?([A-Za-z0-9',/\-\.\s\u2019]+?)(?:\s+\(([A-Za-z0-9]+)\)\s*([A-Za-z0-9]+)?)?(?:\s+\*.*?\*)?$"
+            r"^(?:(\d+)[xX]?\s+)?([^\r\n()]+?)(?:\s+\(([A-Za-z0-9]+)\)\s*([A-Za-z0-9]+)?)?(?:\s+\*.*?\*)?$"
         )
 
         for raw_line in text.splitlines():
@@ -726,12 +730,4 @@ class DeckParser:
     @staticmethod
     def _clean_card_name(name: str) -> str:
         """Cleans card name by removing foil tags, set annotations, HTML tags, or extraneous symbols."""
-        if not name:
-            return ""
-        name = re.sub(r"<[^>]+>", "", name)
-        name = html.unescape(name)
-        name = re.sub(r"\s*\*.*?\*", "", name)
-        name = re.sub(r"\s*\([A-Za-z0-9]+\)\s*[A-Za-z0-9]*$", "", name)
-        name = name.replace("\u2019", "'").replace("\u2018", "'")
-        name = name.replace("\u201C", '"').replace("\u201D", '"')
-        return name.strip()
+        return normalize_card_name(name)

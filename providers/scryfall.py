@@ -2,6 +2,7 @@ import logging
 import re
 import urllib.parse
 import requests
+from card_utils import fix_mojibake, strip_accents, get_card_match_keys, normalize_card_name
 
 logger = logging.getLogger(__name__)
 
@@ -144,26 +145,94 @@ class ScryfallProvider:
             "keywords": card.get("keywords", []),
         }
 
+    def _index_card_in_map(self, found_map: dict[str, dict], formatted: dict, extra_names: list[str] = None):
+        """Indexes formatted card into found_map under multiple canonical and unaccented match keys."""
+        c_name = formatted.get("name", "")
+        if not c_name:
+            return
+
+        keys = get_card_match_keys(c_name)
+        if extra_names:
+            for extra in extra_names:
+                if extra:
+                    keys.update(get_card_match_keys(extra))
+
+        for k in keys:
+            found_map[k] = formatted
+
     def get_card_named(self, card_name: str) -> dict | None:
-        """Fetches canonical card object from Scryfall by exact card name."""
+        """Fetches canonical card object from Scryfall by card name with accent, DFC, and fuzzy fallbacks."""
         if not card_name:
             return None
 
+        clean_name = fix_mojibake(str(card_name)).strip()
+        if not clean_name:
+            return None
+
+        url = f"{SCRYFALL_BASE_URL}/cards/named"
+
+        # 1. Try exact match with clean name
         try:
-            url = f"{SCRYFALL_BASE_URL}/cards/named"
-            response = self.session.get(url, params={"exact": card_name.strip()}, timeout=8)
+            response = self.session.get(url, params={"exact": clean_name}, timeout=8)
             if response.status_code == 200:
                 return self._format_card_object(response.json())
-            logger.warning(f"Scryfall named lookup failed for '{card_name}' (status: {response.status_code})")
         except Exception as e:
-            logger.error(f"Error fetching card named '{card_name}': {e}")
+            logger.debug(f"Scryfall exact named lookup error for '{clean_name}': {e}")
+
+        # 2. Try unaccented name if accents were present (e.g. 'Glóin the Mighty' -> 'Gloin the Mighty')
+        ascii_name = strip_accents(clean_name)
+        if ascii_name != clean_name:
+            try:
+                response = self.session.get(url, params={"exact": ascii_name}, timeout=8)
+                if response.status_code == 200:
+                    return self._format_card_object(response.json())
+            except Exception as e:
+                logger.debug(f"Scryfall ascii named lookup error for '{ascii_name}': {e}")
+
+        # 3. Try front face for split / DFC / adventure cards (e.g. 'Glóin the Mighty // Easy Pickings' -> 'Glóin the Mighty')
+        if " // " in clean_name:
+            front = clean_name.split(" // ")[0].strip()
+            try:
+                response = self.session.get(url, params={"exact": front}, timeout=8)
+                if response.status_code == 200:
+                    return self._format_card_object(response.json())
+            except Exception as e:
+                logger.debug(f"Scryfall front-face exact lookup error for '{front}': {e}")
+
+            front_ascii = strip_accents(front)
+            if front_ascii != front:
+                try:
+                    response = self.session.get(url, params={"exact": front_ascii}, timeout=8)
+                    if response.status_code == 200:
+                        return self._format_card_object(response.json())
+                except Exception as e:
+                    logger.debug(f"Scryfall front-face ascii lookup error for '{front_ascii}': {e}")
+
+        # 4. Try fuzzy match as fallback
+        try:
+            response = self.session.get(url, params={"fuzzy": clean_name}, timeout=8)
+            if response.status_code == 200:
+                return self._format_card_object(response.json())
+        except Exception as e:
+            logger.debug(f"Scryfall fuzzy named lookup error for '{clean_name}': {e}")
+
+        if " // " in clean_name:
+            front = clean_name.split(" // ")[0].strip()
+            try:
+                response = self.session.get(url, params={"fuzzy": front}, timeout=8)
+                if response.status_code == 200:
+                    return self._format_card_object(response.json())
+            except Exception as e:
+                logger.debug(f"Scryfall front-face fuzzy lookup error for '{front}': {e}")
+
+        logger.warning(f"Scryfall named lookup failed for '{card_name}'")
         return None
 
     def get_cards_collection(self, card_names: list[str], fallback_named: bool = True) -> tuple[dict[str, dict], list[str]]:
         """
         Batch resolves multiple card names via Scryfall's /cards/collection endpoint.
         Returns a tuple of (found_map, not_found_list).
-        found_map keys are lowercase card names.
+        found_map is indexed by exact lowercase, unaccented, front face, and query names.
         """
         if not card_names:
             return {}, []
@@ -175,7 +244,19 @@ class ScryfallProvider:
         batch_size = 75
         for i in range(0, len(card_names), batch_size):
             chunk = card_names[i:i + batch_size]
-            identifiers = [{"name": name.strip()} for name in chunk if name.strip()]
+            identifiers = []
+            ident_to_original: dict[str, list[str]] = {}
+
+            for raw_name in chunk:
+                if not raw_name or not str(raw_name).strip():
+                    continue
+                clean = fix_mojibake(str(raw_name)).strip()
+                # For split/adventure cards, Scryfall collection works best with front face
+                lookup_name = clean.split(" // ")[0].strip() if " // " in clean else clean
+                ident_to_original.setdefault(lookup_name.lower(), []).append(raw_name)
+                ident_to_original.setdefault(clean.lower(), []).append(raw_name)
+                identifiers.append({"name": lookup_name})
+
             if not identifiers:
                 continue
 
@@ -192,40 +273,43 @@ class ScryfallProvider:
                     for card in payload.get("data", []):
                         formatted = self._format_card_object(card)
                         c_name = formatted.get("name", "")
-                        found_map[c_name.lower()] = formatted
-                        # Also index by base name before // for double-faced cards
-                        if " // " in c_name:
-                            found_map[c_name.split(" // ")[0].lower()] = formatted
+                        # Find original query names mapped to this card
+                        extras = []
+                        for k in [c_name.lower(), c_name.split(" // ")[0].lower() if " // " in c_name else c_name.lower()]:
+                            if k in ident_to_original:
+                                extras.extend(ident_to_original[k])
+                        self._index_card_in_map(found_map, formatted, extra_names=extras)
 
                     for nf in payload.get("not_found", []):
                         nf_name = nf.get("name", "")
                         if nf_name:
-                            not_found_list.append(nf_name)
+                            origs = ident_to_original.get(nf_name.lower(), [nf_name])
+                            not_found_list.extend(origs)
                 else:
                     logger.warning(f"Scryfall collection endpoint returned status {response.status_code}")
                     for item in identifiers:
-                        not_found_list.append(item["name"])
+                        origs = ident_to_original.get(item["name"].lower(), [item["name"]])
+                        not_found_list.extend(origs)
             except Exception as e:
                 logger.error(f"Error during Scryfall collection lookup: {e}")
                 for item in identifiers:
-                    not_found_list.append(item["name"])
+                    origs = ident_to_original.get(item["name"].lower(), [item["name"]])
+                    not_found_list.extend(origs)
 
-        # Attempt fallback lookup for unresolved cards if enabled (up to 15 to prevent timeouts)
+        # Attempt fallback lookup for unresolved cards if enabled (up to 20)
         still_unresolved = []
         if fallback_named:
-            lookup_candidates = [n for n in not_found_list if n.lower() not in found_map][:15]
+            lookup_candidates = [n for n in not_found_list if n.lower() not in found_map and strip_accents(n.lower()) not in found_map][:20]
             for name in lookup_candidates:
                 fallback = self.get_card_named(name)
                 if fallback:
-                    found_map[name.lower()] = fallback
-                    if fallback.get("name"):
-                        found_map[fallback["name"].lower()] = fallback
+                    self._index_card_in_map(found_map, fallback, extra_names=[name])
                 else:
                     still_unresolved.append(name)
-            remaining = [n for n in not_found_list if n.lower() not in found_map and n not in lookup_candidates]
+            remaining = [n for n in not_found_list if n.lower() not in found_map and strip_accents(n.lower()) not in found_map and n not in lookup_candidates]
             still_unresolved.extend(remaining)
         else:
-            still_unresolved = [n for n in not_found_list if n.lower() not in found_map]
+            still_unresolved = [n for n in not_found_list if n.lower() not in found_map and strip_accents(n.lower()) not in found_map]
 
         return found_map, still_unresolved
 
@@ -235,9 +319,10 @@ class ScryfallProvider:
             return []
 
         # 1. Clean base name (strip set brackets and variant parentheticals)
-        clean_name = re.sub(r"\[.*?\]|\(.*?\)", "", card_name).strip()
+        clean_name = fix_mojibake(card_name)
+        clean_name = re.sub(r"\[.*?\]|\(.*?\)", "", clean_name).strip()
         if not clean_name:
-            clean_name = card_name.strip()
+            clean_name = fix_mojibake(card_name).strip()
 
         # Handle split / double-faced cards (e.g. Fire // Ice)
         primary_name = clean_name.split(" // ")[0].strip()
@@ -245,6 +330,15 @@ class ScryfallProvider:
         candidates = [clean_name]
         if primary_name != clean_name:
             candidates.append(primary_name)
+        
+        # Add unaccented candidates if diacritics are present
+        ascii_clean = strip_accents(clean_name)
+        if ascii_clean not in candidates:
+            candidates.append(ascii_clean)
+        ascii_primary = strip_accents(primary_name)
+        if ascii_primary not in candidates:
+            candidates.append(ascii_primary)
+
         if card_name.strip() not in candidates:
             candidates.append(card_name.strip())
 

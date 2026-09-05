@@ -724,18 +724,23 @@ async function confirmClearInventory() {
     }
 }
 
+// Helper to normalize diacritics for accent-insensitive search
+function stripDiacritics(str) {
+    return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 // Table Filtering and Sorting
 function filterInventoryTable() {
-    const q = (document.getElementById('inventorySearch').value || '').toLowerCase().trim();
+    const q = stripDiacritics(document.getElementById('inventorySearch').value || '').trim();
     const allocFilter = document.getElementById('filterAllocation').value;
     const foilFilter = document.getElementById('filterFoil').value;
     const rows = document.querySelectorAll('.inventory-row');
 
     rows.forEach(r => {
-        const name = r.getAttribute('data-name') || '';
-        const set = r.getAttribute('data-set') || '';
-        const type = r.getAttribute('data-type') || '';
-        const binder = r.getAttribute('data-binder') || '';
+        const name = stripDiacritics(r.getAttribute('data-name') || '');
+        const set = stripDiacritics(r.getAttribute('data-set') || '');
+        const type = stripDiacritics(r.getAttribute('data-type') || '');
+        const binder = stripDiacritics(r.getAttribute('data-binder') || '');
         const foil = r.getAttribute('data-foil') || 'normal';
         const isAllocated = r.getAttribute('data-allocated') === 'true';
 

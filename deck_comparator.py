@@ -9,6 +9,7 @@ Compares two analyzed deck payloads (Deck A and Deck B) and computes:
 
 from typing import Dict, Any, List, Optional
 from deck_analyzer import DeckAnalyzer
+from card_utils import get_card_match_keys, strip_accents, normalize_card_name
 
 
 class DeckComparator:
@@ -536,16 +537,33 @@ class DeckComparator:
         cards_a = deck_a.get("cards", []) or deck_a.get("cards_data", [])
         cards_b = deck_b.get("cards", []) or deck_b.get("cards_data", [])
 
-        set_a = {c.get("name", "").strip().lower(): c for c in cards_a if c.get("name")}
-        set_b = {c.get("name", "").strip().lower(): c for c in cards_b if c.get("name")}
+        def _canonical_key(c_dict):
+            raw = c_dict.get("name", "")
+            return strip_accents(normalize_card_name(raw)).lower()
 
-        shared_keys = set(set_a.keys()).intersection(set(set_b.keys()))
-        unique_a_keys = set(set_a.keys()) - set(set_b.keys())
-        unique_b_keys = set(set_b.keys()) - set(set_a.keys())
+        map_a = {}
+        for c in cards_a:
+            if c.get("name"):
+                map_a[_canonical_key(c)] = c
 
-        shared_cards = [set_a[k] for k in sorted(list(shared_keys))]
-        unique_cards_a = [set_a[k] for k in sorted(list(unique_a_keys))]
-        unique_cards_b = [set_b[k] for k in sorted(list(unique_b_keys))]
+        map_b = {}
+        for c in cards_b:
+            if c.get("name"):
+                map_b[_canonical_key(c)] = c
+
+        shared_a_keys = set()
+        shared_b_keys = set()
+        for ka, ca in map_a.items():
+            keys_a = get_card_match_keys(ca.get("name"))
+            for kb, cb in map_b.items():
+                keys_b = get_card_match_keys(cb.get("name"))
+                if keys_a.intersection(keys_b):
+                    shared_a_keys.add(ka)
+                    shared_b_keys.add(kb)
+
+        shared_cards = [map_a[k] for k in sorted(list(shared_a_keys))]
+        unique_cards_a = [map_a[k] for k in sorted(list(set(map_a.keys()) - shared_a_keys))]
+        unique_cards_b = [map_b[k] for k in sorted(list(set(map_b.keys()) - shared_b_keys))]
 
         return {
             "success": True,

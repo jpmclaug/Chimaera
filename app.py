@@ -41,6 +41,7 @@ from deck_comparator import DeckComparator
 from inventory_parser import ManaBoxInventoryParser, InventoryParseError
 from inventory_manager import InventoryManager
 from deck_upgrade_engine import DualTierUpgradeEngine
+from card_utils import fix_mojibake, strip_accents, get_card_match_keys, normalize_card_name, card_names_match
 from gemini_analyzer import (
     GeminiAnalyzer,
     GeminiAnalysisError,
@@ -2213,9 +2214,14 @@ def create_app(test_config=None):
         enriched_cards = []
         for c in parsed.get("cards", []):
             raw_name = c["name"]
-            name = re.sub(r"<[^>]+>", "", raw_name).strip()
+            name = normalize_card_name(raw_name)
             qty = c.get("quantity", 1)
             meta = scryfall_map.get(name.lower(), {})
+            if not meta:
+                for k in get_card_match_keys(name):
+                    if k in scryfall_map:
+                        meta = scryfall_map[k]
+                        break
 
             img_uri = meta.get("image_uri") or meta.get("small_image_uri") or c.get("image_uri")
             small_img = meta.get("small_image_uri") or c.get("small_image_uri") or img_uri
@@ -2252,7 +2258,13 @@ def create_app(test_config=None):
         commander_art = parsed.get("commander_art")
         if not commander_art:
             for cmd_name in parsed.get("commander", []):
-                cmd_meta = scryfall_map.get(cmd_name.lower(), {})
+                clean_cmd = normalize_card_name(cmd_name)
+                cmd_meta = scryfall_map.get(clean_cmd.lower(), {})
+                if not cmd_meta:
+                    for k in get_card_match_keys(clean_cmd):
+                        if k in scryfall_map:
+                            cmd_meta = scryfall_map[k]
+                            break
                 if cmd_meta.get("art_crop_uri"):
                     commander_art = cmd_meta["art_crop_uri"]
                     break
@@ -2260,7 +2272,7 @@ def create_app(test_config=None):
                     commander_art = cmd_meta["image_uri"]
                     break
 
-        clean_deck_name = re.sub(r"<[^>]+>", "", parsed.get("deck_name", "Commander Deck")).strip()
+        clean_deck_name = fix_mojibake(re.sub(r"<[^>]+>", "", parsed.get("deck_name", "Commander Deck"))).strip()
 
         deck_payload = {
             "deck_name": clean_deck_name or "Commander Deck",

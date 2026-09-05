@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 import requests
+from card_utils import fix_mojibake, strip_accents
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class EDHRECProvider:
         if not commander_name:
             return ""
 
-        raw = str(commander_name).strip()
+        raw = strip_accents(fix_mojibake(str(commander_name))).strip()
 
         # Handle split / double-faced / transform cards: EDHREC indexes by front face
         if " // " in raw:

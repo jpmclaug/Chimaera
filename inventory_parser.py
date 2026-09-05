@@ -191,34 +191,14 @@ class ManaBoxInventoryParser:
     def normalize_card_name(name: str) -> str:
         """
         Normalizes card names:
+        - Repairs mojibake
         - Strips HTML markup, extra spaces, surrounding quotes
         - Converts curly/smart apostrophes and quotes to standard ASCII
         - Strips trailing foil or set annotations like '*F*'
         - Normalizes double-faced card (DFC) slashes to standard ' // '
         """
-        if not name:
-            return ""
-        
-        # 1. Strip HTML tags and unescape entities
-        clean = re.sub(r"<[^>]+>", "", str(name)).strip()
-        clean = html.unescape(clean).strip("\"'").strip()
-
-        # 2. Standardize curly quotes and apostrophes
-        clean = clean.replace("\u2019", "'").replace("\u2018", "'")
-        clean = clean.replace("\u201C", '"').replace("\u201D", '"')
-
-        # 3. Strip trailing annotation asterisks (e.g. *F*, *Etched*)
-        clean = re.sub(r"\s*\*.*?\*\s*$", "", clean)
-
-        # 4. Standardize Double-Faced Card (DFC) slashes
-        # Matches single or multiple slashes surrounded by optional whitespace
-        # e.g. "Delver of Secrets/Insectile Aberration" or "Delver of Secrets // Insectile Aberration"
-        if "/" in clean:
-            parts = [p.strip() for p in re.split(r"\s*/+\s*", clean) if p.strip()]
-            if len(parts) >= 2:
-                clean = " // ".join(parts)
-
-        return clean.strip().strip("\"'").strip()
+        from card_utils import normalize_card_name as util_norm
+        return util_norm(name)
 
     @staticmethod
     def parse(csv_content: str) -> Dict[str, Any]:

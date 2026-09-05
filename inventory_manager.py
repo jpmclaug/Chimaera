@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from models import db, UserInventoryCard, DeckAnalysis, utc_now
 from providers.scryfall import ScryfallProvider
+from card_utils import fix_mojibake, strip_accents, get_card_match_keys, normalize_card_name
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,7 @@ class InventoryManager:
     @staticmethod
     def _build_card_key(name: str, set_code: Optional[str], col_num: Optional[str], foil: Optional[str]) -> str:
         """Constructs unique composite key for a specific card printing and finish."""
-        c_name = (name or "").strip().lower()
+        c_name = normalize_card_name(name).lower()
         c_set = (set_code or "").strip().lower()
         c_col = (col_num or "").strip().lower()
         c_foil = (foil or "normal").strip().lower()
@@ -182,7 +183,7 @@ class InventoryManager:
     def get_user_card_allocations(user_id: int, current_deck_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
         """
         Scans all saved decks for the user to determine physical card allocations.
-        Returns a mapping from lowercase card name to allocation info:
+        Returns a mapping from lowercase card name (and match keys) to allocation info:
         {
             "card_name_lower": {
                 "total_allocated": int,
@@ -207,41 +208,32 @@ class InventoryManager:
             cards = d.get_parsed_cards()
             is_current = (current_deck_id is not None and d.id == current_deck_id)
             for c in cards:
-                c_name = c.get("name", "").strip().lower()
+                c_name = c.get("name", "").strip()
                 if not c_name:
                     continue
                 qty = max(1, int(c.get("quantity", 1)))
+                match_keys = get_card_match_keys(c_name)
 
-                if c_name not in allocations:
-                    allocations[c_name] = {
-                        "total_allocated": 0,
-                        "other_allocated": 0,
-                        "decks": [],
-                    }
-
-                allocations[c_name]["total_allocated"] += qty
-                if not is_current:
-                    allocations[c_name]["other_allocated"] += qty
-
-                allocations[c_name]["decks"].append({
+                deck_entry = {
                     "deck_id": d.id,
                     "deck_name": d.deck_name,
                     "quantity": qty,
                     "is_current": is_current,
-                })
+                }
 
-                # Also map front face of DFC
-                if " // " in c_name:
-                    front_name = c_name.split(" // ")[0].strip()
-                    if front_name not in allocations:
-                        allocations[front_name] = {
+                for k in match_keys:
+                    if k not in allocations:
+                        allocations[k] = {
                             "total_allocated": 0,
                             "other_allocated": 0,
                             "decks": [],
                         }
-                    allocations[front_name]["total_allocated"] += qty
+
+                    allocations[k]["total_allocated"] += qty
                     if not is_current:
-                        allocations[front_name]["other_allocated"] += qty
+                        allocations[k]["other_allocated"] += qty
+
+                    allocations[k]["decks"].append(deck_entry)
 
         return allocations
 
@@ -255,20 +247,28 @@ class InventoryManager:
         total_value = 0.0
         foil_count = 0
 
-        # Precompute total owned copies per card name in O(N) instead of O(N^2)
+        # Precompute total owned copies per card name across all match keys in O(N)
         total_owned_map: Dict[str, int] = {}
         for item in cards:
-            n_low = item.name.lower()
-            total_owned_map[n_low] = total_owned_map.get(n_low, 0) + item.quantity
+            for k in get_card_match_keys(item.name):
+                total_owned_map[k] = total_owned_map.get(k, 0) + item.quantity
 
         card_list = []
         for c in cards:
             c_dict = c.to_dict()
-            name_lower = c.name.lower()
-            alloc_info = allocations.get(name_lower, {"total_allocated": 0, "other_allocated": 0, "decks": []})
+            alloc_info = {"total_allocated": 0, "other_allocated": 0, "decks": []}
+            for k in get_card_match_keys(c.name):
+                if k in allocations:
+                    alloc_info = allocations[k]
+                    break
 
             # Calculate availability in O(1)
-            total_owned_of_name = total_owned_map.get(name_lower, c.quantity)
+            total_owned_of_name = c.quantity
+            for k in get_card_match_keys(c.name):
+                if k in total_owned_map:
+                    total_owned_of_name = total_owned_map[k]
+                    break
+
             other_allocated = alloc_info.get("other_allocated", 0)
             total_allocated = alloc_info.get("total_allocated", 0)
             available_copies = max(0, total_owned_of_name - other_allocated)
