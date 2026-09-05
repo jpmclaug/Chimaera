@@ -88,9 +88,9 @@
         <!-- Fleet Aggregate KPI Strip -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
             <!-- 1. Fleet Count -->
-            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="arsenal_fleet">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Arsenal Fleet</span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Arsenal Fleet <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                     </svg>
@@ -102,9 +102,9 @@
             </div>
 
             <!-- 2. Portfolio TCG Value -->
-            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-emerald-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="portfolio_value">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Portfolio Value</span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Portfolio Value <span class="text-emerald-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -116,9 +116,9 @@
             </div>
 
             <!-- 3. Fleet Average Power -->
-            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="fleet_power">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Fleet Power</span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Fleet Power <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
@@ -141,9 +141,9 @@
             </div>
 
             <!-- 4. Fleet Speed (Avg CMC) -->
-            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="fleet_speed">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Fleet Speed</span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Fleet Speed <span class="text-amber-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
@@ -155,9 +155,9 @@
             </div>
 
             <!-- 5. Color Saturation Wheel -->
-            <div class="col-span-2 sm:col-span-1 bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+            <div class="col-span-2 sm:col-span-1 bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="color_wheel">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider">Color Wheel</span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Color Wheel <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <span class="text-[9px] text-slate-500 font-mono">WUBRG</span>
                 </div>
                 <div class="mt-2">
@@ -264,15 +264,15 @@
                             <th class="py-3 px-3.5 w-10 text-center">
                                 <input type="checkbox" id="headerCheckbox" onchange="toggleSelectAllDecks()" class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0">
                             </th>
-                            <th class="py-3 px-4 cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('commander')">Commander & Deck</th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('colors')">Colors</th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('power')">Power</th>
-                            <th class="py-3 px-4 text-right cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('value')">TCG Value</th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('cmc')">Avg CMC</th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('speed')">Speed & Pacing</th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('wincon')">Win Path</th>
-                            <th class="py-3 px-4 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('composition')">Lands / Spells</th>
-                            <th class="py-3 px-3 text-center">AI Intel</th>
+                            <th class="py-3 px-4 cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('commander')" data-tooltip-key="commander_deck">Commander & Deck <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('colors')" data-tooltip-key="color_identity">Colors <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('power')" data-tooltip-key="power_level">Power <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-4 text-right cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('value')" data-tooltip-key="tcg_value">TCG Value <span class="text-[10px] text-emerald-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('cmc')" data-tooltip-key="amv">Avg CMC <span class="text-[10px] text-amber-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('speed')" data-tooltip-key="speed_pacing">Speed & Pacing <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('wincon')" data-tooltip-key="win_conditions">Win Path <span class="text-[10px] text-purple-400">ⓘ</span></th>
+                            <th class="py-3 px-4 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('composition')" data-tooltip-key="card_types">Lands / Spells <span class="text-[10px] text-blue-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center" data-tooltip-key="ai_intel">AI Intel <span class="text-[10px] text-amber-400">ⓘ</span></th>
                             <th class="py-3 px-4 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -425,10 +425,10 @@
 
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                            <span id="inspectorCardCount" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">100 Cards</span>
-                            <span id="inspectorPowerVal" class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">-- / 10</span>
-                            <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase truncate max-w-[120px] sm:max-w-none">Pre-AI Ready</span>
-                            <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono hidden sm:inline-block">Commander</span>
+                            <span id="inspectorCardCount" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold cursor-help hover:border-cyan-400 transition" data-tooltip-key="deck_size">100 Cards <span class="text-cyan-400 text-[9px]">ⓘ</span></span>
+                            <span id="inspectorPowerVal" class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">-- / 10 <span class="text-cyan-300 text-[9px]">ⓘ</span></span>
+                            <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase truncate max-w-[120px] sm:max-w-none cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">Pre-AI Ready</span>
+                            <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono hidden sm:inline-block cursor-help hover:border-cyan-400 transition" data-tooltip-key="archetype">Commander <span class="text-cyan-400 text-[9px]">ⓘ</span></span>
                             <span id="inspectorSourceBadge" class="text-[10px] text-slate-400 font-mono">ManaBox</span>
                             <span id="inspectorDateBadge" class="text-[10px] px-2 py-0.5 rounded bg-slate-900/90 text-slate-400 border border-slate-800 font-mono">📅 Updated: Recent</span>
                         </div>
@@ -436,7 +436,7 @@
                         <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono truncate">The Ur-Dragon</p>
                         
                         <!-- EDHREC Metadata Badge Strip -->
-                        <div id="edhrecBadgeStrip" class="hidden items-center gap-1.5 sm:gap-2 flex-wrap mt-1 pt-1 border-t border-slate-800/80">
+                        <div id="edhrecBadgeStrip" class="hidden items-center gap-1.5 sm:gap-2 flex-wrap mt-1 pt-1 border-t border-slate-800/80 cursor-help" data-tooltip-key="edhrec_metrics">
                             <span id="edhrecRankBadge" class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-bold">Rank: #--</span>
                             <span id="edhrecDecksBadge" class="text-[10px] px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 font-mono font-bold">Decks: --</span>
                             <span id="edhrecSaltBadge" class="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono font-bold">Salt: --</span>
@@ -454,38 +454,38 @@
                     <!-- 6 Stat Cards Grid (3 columns on mobile, 6 columns on sm/md, flex row on lg) -->
                     <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 w-full lg:w-auto">
                         <!-- Nonland AMV -->
-                        <div id="inspectorAmvContainer" class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
-                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Nonland AMV</span>
+                        <div id="inspectorAmvContainer" class="bg-[#1B2230]/90 border border-slate-700/80 hover:border-amber-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="amv">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Nonland AMV <span class="text-amber-400">ⓘ</span></span>
                             <span id="inspectorAvgCmc" class="text-xs sm:text-sm font-black text-amber-400 font-mono">0.00</span>
                         </div>
 
                         <!-- Fast Ramp -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
-                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Fast Ramp</span>
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="fast_ramp">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Fast Ramp <span class="text-emerald-400">ⓘ</span></span>
                             <span id="inspectorFastRamp" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">0</span>
                         </div>
 
                         <!-- Instant Speed % -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
-                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Instant %</span>
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 hover:border-cyan-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="instant_speed">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Instant % <span class="text-cyan-400">ⓘ</span></span>
                             <span id="inspectorInstantSpeed" class="text-xs sm:text-sm font-black text-cyan-400 font-mono">0%</span>
                         </div>
 
                         <!-- Tapland Penalty % -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
-                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Tapland %</span>
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 hover:border-rose-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="tapland_penalty">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Tapland % <span class="text-rose-400">ⓘ</span></span>
                             <span id="inspectorTaplandPenalty" class="text-xs sm:text-sm font-black text-rose-400 font-mono">0%</span>
                         </div>
 
                         <!-- Engines -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
-                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Engines</span>
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 hover:border-purple-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="draw_engines">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Engines <span class="text-purple-400">ⓘ</span></span>
                             <span id="inspectorEngineDraw" class="text-xs sm:text-sm font-black text-purple-400 font-mono">0</span>
                         </div>
 
                         <!-- Total Deck Value -->
-                        <div class="bg-[#1B2230]/90 border border-slate-700/80 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial">
-                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">TCG Value</span>
+                        <div class="bg-[#1B2230]/90 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="tcg_value">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">TCG Value <span class="text-emerald-400">ⓘ</span></span>
                             <span id="inspectorTotalValue" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">$0.00</span>
                         </div>
                     </div>
@@ -571,18 +571,19 @@
                 <!-- Mana Curve Bar Chart -->
                 <div class="lg:col-span-2 bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl">
                     <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="mana_curve">
                             <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                            Mana Value (CMC) Curve (Non-Lands)
+                            <span>Mana Value (CMC) Curve (Non-Lands)</span>
+                            <span class="text-cyan-400 text-xs">ⓘ</span>
                         </h3>
-                        <span id="curveAvgCmc" class="text-xs font-mono text-cyan-400 font-bold">Avg CMC: 3.20</span>
+                        <span id="curveAvgCmc" class="text-xs font-mono text-cyan-400 font-bold cursor-help" data-tooltip-key="amv">Avg CMC: 3.20</span>
                     </div>
 
                     <!-- Bars -->
-                    <div id="manaCurveContainer" class="h-44 flex items-end justify-between gap-2 md:gap-3 pt-6 pb-2 px-2 border-b border-slate-800">
+                    <div id="manaCurveContainer" class="h-44 flex items-end justify-between gap-2 md:gap-3 pt-6 pb-2 px-2 border-b border-slate-800 cursor-help" data-tooltip-key="mana_curve">
                         <!-- Injected by renderManaCurve() -->
                     </div>
-                    <div class="flex justify-between px-2 pt-2 text-[10px] font-mono text-slate-400">
+                    <div class="flex justify-between px-2 pt-2 text-[10px] font-mono text-slate-400 cursor-help" data-tooltip-key="mana_curve">
                         <span>0 CMC</span>
                         <span>1</span>
                         <span>2</span>
@@ -596,11 +597,12 @@
 
                 <!-- Card Type Distribution -->
                 <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
-                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="card_types">
                         <span class="w-2 h-2 rounded-full bg-blue-400"></span>
-                        Card Type Breakdown
+                        <span>Card Type Breakdown</span>
+                        <span class="text-blue-400 text-xs">ⓘ</span>
                     </h3>
-                    <div id="typeBreakdownList" class="space-y-2.5 pt-1">
+                    <div id="typeBreakdownList" class="space-y-2.5 pt-1 cursor-help" data-tooltip-key="card_types">
                         <!-- Injected by renderTypeBreakdown() -->
                     </div>
                 </div>
@@ -609,14 +611,15 @@
             <!-- Row 2: Mana Pip Demand vs Source Supply Breakdown (Radar & Matrix) -->
             <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-5">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                    <div>
+                    <div class="cursor-help" data-tooltip-key="pip_source_balance">
                         <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                            Mana Pip Demand vs. Source Supply Balance
+                            <span>Mana Pip Demand vs. Source Supply Balance</span>
+                            <span class="text-emerald-400 text-xs">ⓘ</span>
                         </h3>
                         <p class="text-[11px] text-slate-400 mt-0.5">Compares colored spell pips demand % against land/rock mana source supply % across W, U, B, R, G, C.</p>
                     </div>
-                    <div class="flex items-center gap-2 text-[11px] font-mono">
+                    <div class="flex items-center gap-2 text-[11px] font-mono cursor-help" data-tooltip-key="pip_source_balance">
                         <span class="inline-flex items-center gap-1 text-cyan-400"><span class="w-2 h-2 rounded-full bg-cyan-400"></span> % Pip Demand</span>
                         <span class="inline-flex items-center gap-1 text-amber-400 ml-2"><span class="w-2 h-2 rounded-full bg-amber-400"></span> % Source Supply</span>
                     </div>
@@ -624,7 +627,7 @@
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
                     <!-- Chart.js Radar Canvas -->
-                    <div class="lg:col-span-1 flex items-center justify-center p-2 bg-[#0B0F17]/80 rounded-xl border border-slate-800 h-64">
+                    <div class="lg:col-span-1 flex items-center justify-center p-2 bg-[#0B0F17]/80 rounded-xl border border-slate-800 h-64 cursor-help" data-tooltip-key="pip_source_balance">
                         <canvas id="pipSourceRadarChart"></canvas>
                     </div>
 
@@ -640,29 +643,30 @@
                 <!-- Velocity Profile -->
                 <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5">
+                        <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5 cursor-help" data-tooltip-key="speed_pacing">
                             <span>⚡ Velocity & Mana Base</span>
+                            <span class="text-xs">ⓘ</span>
                         </h4>
                     </div>
                     <div class="space-y-1.5 text-xs font-mono">
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="fast_ramp">
                             <span class="text-slate-400">Fast Ramp (CMC &le; 2):</span>
                             <span id="velFastRamp" class="text-emerald-400 font-bold">0</span>
                         </div>
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="std_ramp">
                             <span class="text-slate-400">Standard Ramp (CMC &ge; 3):</span>
                             <span id="velStdRamp" class="text-slate-300 font-bold">0</span>
                         </div>
-                        <div class="flex justify-between text-[11px] text-slate-400 bg-slate-900/60 px-2 py-1 rounded border border-slate-800/60">
+                        <div class="flex justify-between text-[11px] text-slate-400 bg-slate-900/60 px-2 py-1 rounded border border-slate-800/60 cursor-help" data-tooltip-key="ramp_taxonomy">
                             <span>Dorks & Rocks: <b id="velDorkRock" class="text-cyan-300 font-bold">0</b></span>
                             <span>Fetch: <b id="velLandFetch" class="text-emerald-300 font-bold">0</b></span>
                             <span>Treasure: <b id="velTreasure" class="text-amber-300 font-bold">0</b></span>
                         </div>
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="tapland_penalty">
                             <span class="text-slate-400">Total Lands / Taplands:</span>
                             <span id="velLandsSummary" class="text-slate-300 font-bold">0 / 0</span>
                         </div>
-                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5">
+                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5 cursor-help hover:text-white transition" data-tooltip-key="tapland_penalty">
                             <span class="text-slate-400">Tapland Penalty Index:</span>
                             <span id="velTaplandPenalty" class="text-rose-400 font-bold">0%</span>
                         </div>
@@ -672,24 +676,25 @@
                 <!-- Interaction Profile -->
                 <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
+                        <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5 cursor-help" data-tooltip-key="threat_coverage">
                             <span>🎯 Interaction & Removal</span>
+                            <span class="text-xs">ⓘ</span>
                         </h4>
                     </div>
                     <div class="space-y-2 text-xs font-mono">
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="targeted_removal">
                             <span class="text-slate-400">Targeted Removal:</span>
                             <span id="intTargeted" class="text-cyan-400 font-bold">0</span>
                         </div>
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="board_wipes">
                             <span class="text-slate-400">Board Wipes:</span>
                             <span id="intWipes" class="text-amber-400 font-bold">0</span>
                         </div>
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="removal_efficiency">
                             <span class="text-slate-400">Removal Efficiency:</span>
                             <span id="intEfficiency" class="text-slate-300 font-bold">0.0 CMC</span>
                         </div>
-                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5">
+                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5 cursor-help hover:text-white transition" data-tooltip-key="instant_speed">
                             <span class="text-slate-400">Instant Speed Nonlands:</span>
                             <span id="intInstantSpeed" class="text-cyan-400 font-bold">0%</span>
                         </div>
@@ -699,49 +704,55 @@
                 <!-- Card Advantage Profile -->
                 <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5">
+                        <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5 cursor-help" data-tooltip-key="virtual_card_advantage">
                             <span>🔄 Card Advantage & Tutors</span>
+                            <span class="text-xs">ⓘ</span>
                         </h4>
                     </div>
                     <div class="space-y-2 text-xs font-mono">
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="draw_engines">
                             <span class="text-slate-400">Engine Draw:</span>
                             <span id="caEngine" class="text-purple-400 font-bold">0</span>
                         </div>
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="burst_cantrip">
                             <span class="text-slate-400">Burst Draw & Cantrips:</span>
                             <span id="caBurstCantrip" class="text-slate-300 font-bold">0 / 0</span>
                         </div>
-                        <div class="flex justify-between">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="general_tutors">
                             <span class="text-slate-400">General Tutors:</span>
                             <span id="caTutorGen" class="text-amber-400 font-bold">0</span>
                         </div>
-                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5">
+                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5 cursor-help hover:text-white transition" data-tooltip-key="land_tutors">
                             <span class="text-slate-400">Land Search / Ramp Tutors:</span>
                             <span id="caTutorLand" class="text-emerald-400 font-bold">0</span>
                         </div>
                     </div>
                 </div>
+            </div>
             <!-- Row 4: Mana & Speed Station (Land Drops, Keepability & Commander Cast) -->
             <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                    <div>
+                    <div class="cursor-help" data-tooltip-key="speed_pacing">
                         <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                            Mana Pacing & Speed Telemetry
+                            <span>Mana Pacing & Speed Telemetry</span>
+                            <span class="text-cyan-400 text-xs">ⓘ</span>
                         </h3>
                         <p class="text-[11px] text-slate-400 mt-0.5">Hypergeometric land drop distribution, simulated 7-card opening hand keepability, and median Commander cast timing.</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">1 Free Mulligan Included</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono cursor-help" data-tooltip-key="land_drop_probs">1 Free Mulligan Included ⓘ</span>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <!-- Turn 1-4 Land Drop Probability (Hypergeometric) -->
-                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-3">
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-cyan-500/40 p-4 space-y-3 cursor-help transition" data-tooltip-key="land_drop_probs">
                         <div class="flex items-center justify-between">
-                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase">🎲 Land Drop Chances</h4>
+                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1">
+                                <span>🎲 Land Drop Chances</span>
+                                <span class="text-xs">ⓘ</span>
+                            </h4>
                             <span id="speedCantripCount" class="text-[10px] font-mono text-slate-400">0 Cantrips</span>
                         </div>
                         <div class="space-y-2.5 text-xs font-mono">
@@ -785,10 +796,13 @@
                     </div>
 
                     <!-- Opening Hand Keepability Rate -->
-                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-3 flex flex-col justify-between">
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-emerald-500/40 p-4 space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="hand_keepability">
                         <div>
                             <div class="flex items-center justify-between">
-                                <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase">✋ Opening Hand Keepability</h4>
+                                <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1">
+                                    <span>✋ Opening Hand Keepability</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
                                 <span id="keepAvgLands" class="text-[10px] font-mono text-slate-400">Avg 0 Lands</span>
                             </div>
                             <div class="mt-3 flex items-baseline gap-2">
@@ -818,10 +832,13 @@
                     </div>
 
                     <!-- Earliest Commander Cast Turn -->
-                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-3 flex flex-col justify-between">
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-purple-500/40 p-4 space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="commander_cast">
                         <div>
                             <div class="flex items-center justify-between">
-                                <h4 class="text-xs font-mono font-bold text-purple-400 uppercase">👑 Commander Cast Timing</h4>
+                                <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1">
+                                    <span>👑 Commander Cast Timing</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
                                 <span id="cmdrCastEarliest" class="text-[10px] font-mono text-purple-300">Earliest T0</span>
                             </div>
                             <div class="mt-3 flex items-baseline gap-2">
@@ -850,29 +867,33 @@
             <!-- Row 5: Interaction & Threat Matrix (Coverage, Protection & Instant Holdout) -->
             <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-                    <div>
+                    <div class="cursor-help" data-tooltip-key="threat_coverage">
                         <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                            Interaction & Defense Matrix
+                            <span>Interaction & Defense Matrix</span>
+                            <span class="text-cyan-400 text-xs">ⓘ</span>
                         </h3>
                         <p class="text-[11px] text-slate-400 mt-0.5">Permanent threat type coverage, counterspell vs. commander protection density, and instant-speed mana holdout requirements.</p>
                     </div>
-                    <div id="holdoutRatingBadge" class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                        Holdout: -- CMC
+                    <div id="holdoutRatingBadge" class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 cursor-help" data-tooltip-key="instant_holdout">
+                        Holdout: -- CMC ⓘ
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
                     <!-- Threat Type Coverage Cards -->
                     <div class="lg:col-span-2 space-y-3">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-mono font-bold text-slate-300 uppercase">Threat Type Coverage</span>
+                        <div class="flex items-center justify-between cursor-help" data-tooltip-key="threat_coverage">
+                            <span class="text-xs font-mono font-bold text-slate-300 uppercase flex items-center gap-1">
+                                <span>Threat Type Coverage</span>
+                                <span class="text-cyan-400 text-xs">ⓘ</span>
+                            </span>
                             <span class="text-[10px] font-mono text-slate-500">Instant vs. Sorcery answers</span>
                         </div>
                         <div id="threatCoverageGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                             <!-- Injected by renderThreatCoverage() -->
                         </div>
-                        <div id="threatVulnerabilitiesContainer" class="hidden text-xs font-mono bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-rose-300 space-y-1">
+                        <div id="threatVulnerabilitiesContainer" class="hidden text-xs font-mono bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-rose-300 space-y-1 cursor-help" data-tooltip-key="threat_coverage">
                             <!-- Injected vulnerabilities list -->
                         </div>
                     </div>
@@ -880,9 +901,12 @@
                     <!-- Counterspell vs Protection & Instant Holdout Meter -->
                     <div class="space-y-4">
                         <!-- Counter vs Protection -->
-                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-2.5">
+                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-cyan-500/40 p-4 space-y-2.5 cursor-help transition" data-tooltip-key="stack_vs_protection">
                             <div class="flex items-center justify-between">
-                                <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase">🛡️ Stack vs. Protection</h4>
+                                <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1">
+                                    <span>🛡️ Stack vs. Protection</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
                                 <span id="cpStanceBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono">Balanced</span>
                             </div>
                             <div class="flex justify-between text-xs font-mono pt-1">
@@ -899,9 +923,12 @@
                         </div>
 
                         <!-- Instant Speed Holdout -->
-                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 p-4 space-y-2">
+                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-amber-500/40 p-4 space-y-2 cursor-help transition" data-tooltip-key="instant_holdout">
                             <div class="flex items-center justify-between">
-                                <h4 class="text-xs font-mono font-bold text-amber-400 uppercase">⚡ Instant Holdout Mana</h4>
+                                <h4 class="text-xs font-mono font-bold text-amber-400 uppercase flex items-center gap-1">
+                                    <span>⚡ Instant Holdout Mana</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
                                 <span id="holdoutAvgValue" class="text-xs font-mono font-black text-amber-400">0.0 CMC</span>
                             </div>
                             <p id="holdoutRatingDesc" class="text-[10px] text-slate-400 font-mono">Average mana required to pass turn holding interaction.</p>
@@ -920,11 +947,12 @@
             <!-- Row 6: Engine & Synergy Station (Enablers vs Payoffs & Typal Kindred) -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <!-- Enabler-to-Payoff Ratio -->
-                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                <div class="bg-[#10141D] border border-slate-800 hover:border-purple-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="enabler_payoff">
                     <div>
                         <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                             <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5">
                                 <span>⚙️ Enabler-to-Payoff Ratio</span>
+                                <span class="text-xs">ⓘ</span>
                             </h4>
                             <span id="engineThemeBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">Engine</span>
                         </div>
@@ -943,11 +971,12 @@
                 </div>
 
                 <!-- Typal / Kindred Density -->
-                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="typal_density">
                     <div>
                         <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                             <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
                                 <span>🐾 Typal / Kindred Synergy</span>
+                                <span class="text-xs">ⓘ</span>
                             </h4>
                             <span id="typalDeckBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">Non-Typal</span>
                         </div>
@@ -972,11 +1001,12 @@
                 </div>
 
                 <!-- Virtual Card Advantage -->
-                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                <div class="bg-[#10141D] border border-slate-800 hover:border-emerald-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="virtual_card_advantage">
                     <div>
                         <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                             <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5">
                                 <span>📚 Virtual Card Advantage</span>
+                                <span class="text-xs">ⓘ</span>
                             </h4>
                             <span id="virtualTotalAdvantage" class="text-xs font-mono font-black text-emerald-400">0 Resources</span>
                         </div>
@@ -1008,10 +1038,11 @@
             <!-- Row 7: Endgame & Win Conditions Station (Win Paths & Late-Game Mana Sinks) -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <!-- Win Condition Classification -->
-                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                <div class="bg-[#10141D] border border-slate-800 hover:border-amber-500/40 rounded-xl p-5 shadow-xl space-y-3 cursor-help transition" data-tooltip-key="win_conditions">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                         <h4 class="text-xs font-mono font-bold text-amber-400 uppercase flex items-center gap-1.5">
                             <span>🏆 Win Condition Paths</span>
+                            <span class="text-xs">ⓘ</span>
                         </h4>
                         <span id="winconClockEstimate" class="text-[10px] font-mono text-slate-400">Clock: Turns 7-9</span>
                     </div>
@@ -1036,11 +1067,12 @@
                 </div>
 
                 <!-- Mana Sink Availability -->
-                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between">
+                <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="mana_sinks">
                     <div>
                         <div class="flex items-center justify-between border-b border-slate-800 pb-2">
                             <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
                                 <span>🚰 Late-Game Mana Sinks</span>
+                                <span class="text-xs">ⓘ</span>
                             </h4>
                             <span id="manaSinkTotalBadge" class="text-xs font-mono font-black text-cyan-400">0 Outlets</span>
                         </div>
@@ -1246,9 +1278,10 @@
                     <!-- Card-by-Card 1-10 Ratings Table -->
                     <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
                         <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
-                            <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                            <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="card_ratings">
                                 <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                                Card-by-Card Effectiveness Ratings (1–10)
+                                <span>Card-by-Card Effectiveness Ratings (1–10)</span>
+                                <span class="text-cyan-400 text-xs">ⓘ</span>
                             </h3>
                             <div class="flex items-center gap-2">
                                 <select id="ratingFilterSelect" onchange="filterCardRatings()" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono">
@@ -1784,9 +1817,10 @@
             <!-- 1. Power Level Distribution Matrix -->
             <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
                 <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                    <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="power_level">
                         <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                        Fleet Power Level Distribution
+                        <span>Fleet Power Level Distribution</span>
+                        <span class="text-cyan-400 text-xs">ⓘ</span>
                     </h3>
                     <span class="text-[11px] text-slate-400 font-mono">{{ fleet_stats.total_decks if fleet_stats else 0 }} Total Decks</span>
                 </div>
@@ -1795,9 +1829,9 @@
                     {% if fleet_stats and fleet_stats.power_brackets %}
                     {% for bracket, count in fleet_stats.power_brackets.items() %}
                     {% set pct = ((count / fleet_stats.total_decks) * 100)|round|int if fleet_stats.total_decks > 0 else 0 %}
-                    <div>
+                    <div class="cursor-help" data-tooltip-key="power_bracket">
                         <div class="flex justify-between text-xs font-mono mb-1">
-                            <span class="text-slate-300 font-semibold">{{ bracket }}</span>
+                            <span class="text-slate-300 font-semibold">{{ bracket }} ⓘ</span>
                             <span class="text-cyan-400 font-bold">{{ count }} <span class="text-slate-500 font-normal">({{ pct }}%)</span></span>
                         </div>
                         <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -1812,9 +1846,10 @@
             <!-- 2. Mana Color Dominance -->
             <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
                 <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 class="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                    <h3 class="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="color_distribution">
                         <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                        Color Representation & Mana Saturation
+                        <span>Color Representation & Mana Saturation</span>
+                        <span class="text-amber-400 text-xs">ⓘ</span>
                     </h3>
                     <span class="text-[11px] text-slate-400 font-mono">Arsenal Breadth</span>
                 </div>
@@ -1832,7 +1867,7 @@
 
                     {% for code, label, color_hex, count in color_meta %}
                     {% set pct = ((count / fleet_stats.total_decks) * 100)|round|int if fleet_stats.total_decks > 0 else 0 %}
-                    <div>
+                    <div class="cursor-help" data-tooltip-key="color_wheel">
                         <div class="flex items-center justify-between text-xs font-mono mb-1">
                             <div class="flex items-center gap-2">
                                 <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color: {{ color_hex }};"></span>
@@ -1853,9 +1888,10 @@
         <!-- 3. Speed & Budget Positioning Matrix -->
         <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="speed_vs_budget">
                     <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                    Fleet Speed vs Value Matrix
+                    <span>Fleet Speed vs Value Matrix</span>
+                    <span class="text-cyan-400 text-xs">ⓘ</span>
                 </h3>
                 <span class="text-[11px] text-slate-400 font-mono">Sorted by Value</span>
             </div>
@@ -1868,18 +1904,18 @@
                     <div>
                         <div class="flex items-center justify-between gap-2 mb-1.5">
                             <h4 class="text-xs font-bold text-white font-mono truncate">{{ d.deck_name }}</h4>
-                            <span class="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono font-bold">${{ "%.2f"|format(val) }}</span>
+                            <span class="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono font-bold cursor-help" data-tooltip-key="tcg_value">${{ "%.2f"|format(val) }}</span>
                         </div>
                         <p class="text-[11px] text-slate-400 font-mono truncate">{{ d.commander_name or 'Commander' }}</p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-slate-800/80 font-mono text-[11px]">
-                        <div>
-                            <span class="text-[10px] text-slate-500 uppercase block">Avg CMC</span>
+                        <div class="cursor-help" data-tooltip-key="amv">
+                            <span class="text-[10px] text-slate-500 uppercase block">Avg CMC ⓘ</span>
                             <span class="text-amber-400 font-bold">{{ "%.2f"|format(cmc) }}</span>
                         </div>
-                        <div>
-                            <span class="text-[10px] text-slate-500 uppercase block">Power</span>
+                        <div class="cursor-help" data-tooltip-key="power_level">
+                            <span class="text-[10px] text-slate-500 uppercase block">Power ⓘ</span>
                             <span class="text-cyan-400 font-bold">{% if d.power_level %}{{ "%.1f"|format(d.power_level) }} / 10{% else %}Pre-AI{% endif %}</span>
                         </div>
                     </div>
@@ -1959,6 +1995,39 @@
     </div>
 </div>
 
+<!-- Floating Strategic Analytics Tooltip Popover -->
+<div id="analyticsTooltipPopover" class="fixed pointer-events-none z-[60] hidden transition-all duration-150 max-w-sm sm:max-w-md w-[calc(100vw-2rem)] sm:w-full p-4 rounded-xl bg-[#10141D]/95 backdrop-blur-md border border-cyan-500/50 shadow-2xl font-mono text-xs text-slate-200">
+    <div class="flex items-start justify-between gap-2 border-b border-slate-800 pb-2.5 mb-2.5">
+        <div>
+            <div id="ttCategory" class="text-[9px] uppercase tracking-wider text-cyan-400 font-bold">TACTICAL TELEMETRY</div>
+            <h4 id="ttTitle" class="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-1.5">Metric Name</h4>
+        </div>
+        <button type="button" id="ttCloseBtn" onclick="hideAnalyticsTooltip(true)" class="sm:hidden pointer-events-auto text-slate-400 hover:text-white text-lg leading-none p-1 cursor-pointer">&times;</button>
+    </div>
+    
+    <div class="space-y-2 text-[11px] leading-relaxed">
+        <div class="bg-slate-900/80 rounded-lg p-2.5 border border-slate-800/80">
+            <span class="text-[10px] font-bold text-cyan-300 uppercase tracking-wider block mb-0.5">💡 What It Means</span>
+            <p id="ttMeaning" class="text-slate-300 font-sans leading-relaxed">Explanation</p>
+        </div>
+
+        <div class="bg-slate-900/80 rounded-lg p-2.5 border border-slate-800/80">
+            <span class="text-[10px] font-bold text-amber-300 uppercase tracking-wider block mb-0.5">📐 Calculation / Formula</span>
+            <p id="ttCalculation" class="text-slate-300 font-mono text-[10px] leading-relaxed">Formula</p>
+        </div>
+
+        <div class="bg-slate-900/80 rounded-lg p-2.5 border border-slate-800/80">
+            <span class="text-[10px] font-bold text-emerald-300 uppercase tracking-wider block mb-0.5">🎯 EDH Relevance</span>
+            <p id="ttRelevance" class="text-slate-300 font-sans leading-relaxed">Why it matters</p>
+        </div>
+
+        <div class="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[10px]">
+            <span class="text-slate-400 font-bold uppercase">📊 Target Benchmark:</span>
+            <span id="ttBenchmark" class="text-amber-400 font-bold">Target</span>
+        </div>
+    </div>
+</div>
+
 <!-- Floating Card Hover Preview Tooltip -->
 <div id="cardHoverPreview" class="fixed pointer-events-none z-50 hidden transition-opacity duration-150">
     <img id="cardHoverImg" src="" alt="Card Art" class="w-56 rounded-xl shadow-2xl border border-slate-700/80 bg-slate-900">
@@ -2017,7 +2086,557 @@ function formatRelativeDate(isoStr) {
     }
 }
 
+// =========================================================================
+// STRATEGIC EDH ANALYTICS TOOLTIP ENCYCLOPEDIA & HUD ENGINE
+// =========================================================================
+const EDH_ANALYTICS_TOOLTIPS = {
+    'arsenal_fleet': {
+        category: 'FLEET OVERVIEW',
+        title: 'Arsenal Fleet Size',
+        meaning: 'The total number of Commander decks cataloged and tracked within your physical or digital collection.',
+        calculation: 'Sum of all unique deck lists saved in the Chimaera SQLite vault database.',
+        relevance: 'Provides high-level collection perspective, helping identify gaps in archetype variety, color saturation, and budget allocation across your pod.',
+        benchmark: 'Pod dependent (Typical active fleet: 3 – 12 decks)'
+    },
+    'portfolio_value': {
+        category: 'FINANCIAL TELEMETRY',
+        title: 'Total Portfolio / Deck Market Value',
+        meaning: 'The live replacement market value of the cards in your deck or across your entire fleet, based on TCGplayer Market pricing.',
+        calculation: 'Sum of Scryfall/TCGplayer market USD prices for all 100 cards: Total = Σ(Card_Price × Quantity). Basic lands count as $0.00.',
+        relevance: 'Helps evaluate collection equity, assess budget brackets for playgroup rule-zero discussions, and determine price-to-power efficiency.',
+        benchmark: '$50 – $150 (Budget), $200 – $500 (Mid-Power), $1,000+ (High/cEDH)'
+    },
+    'fleet_power': {
+        category: 'FLEET OVERVIEW',
+        title: 'Fleet Mean Power Level',
+        meaning: 'The aggregate average competitive power rating across all analyzed decks in your collection on a standard 1.0 to 10.0 scale.',
+        calculation: 'Fleet Average = Σ(Deck Power Level) / Count(Analyzed Decks), weighted by mana curve, tutor density, fast ramp, and AI evaluation.',
+        relevance: 'Ensures you bring appropriately calibrated decks to game nights and helps maintain a balanced power dynamic within your playgroup.',
+        benchmark: '6.0 – 7.5 (Casual/Focused Mid-Power average)'
+    },
+    'fleet_speed': {
+        category: 'FLEET OVERVIEW',
+        title: 'Fleet Average Pacing (Avg CMC)',
+        meaning: 'The mean Average Mana Value (AMV) across all nonland spells in your entire fleet of Commander decks.',
+        calculation: 'Fleet AMV = Σ(All Nonland CMC) / Σ(All Nonland Spells across all fleet decks).',
+        relevance: 'Indicates whether your collection leans toward fast, low-to-the-ground burst decks or heavy, battlecruiser late-game strategies.',
+        benchmark: '3.00 – 3.35 CMC (Fleet average)'
+    },
+    'color_wheel': {
+        category: 'FLEET OVERVIEW',
+        title: 'Color Distribution & Saturation',
+        meaning: 'The frequency and representation of the 5 Magic colors (White, Blue, Black, Red, Green) and Colorless across your entire fleet.',
+        calculation: 'Color Share % = (Decks containing Color C / Total Decks) × 100.',
+        relevance: 'Reveals personal deckbuilding color biases, overlaps in staple mana bases (fetchlands/shocklands), and unrepresented color pairs in your roster.',
+        benchmark: 'Even 20% distribution per color represents complete color balance'
+    },
+    'col_cmdr': {
+        category: 'MATRIX TELEMETRY',
+        title: 'Commander & Identity',
+        meaning: 'The legendary creature(s) or planeswalker leading the deck and determining its color identity rules.',
+        calculation: 'Extracted from Scryfall color_identity and card types. Color identity includes casting cost pips and rules text mana symbols.',
+        relevance: 'The commander defines your deck’s strategy, access to colors, and repeatable command zone card advantage.',
+        benchmark: '100-card singleton legality rule compliance'
+    },
+    'col_colors': {
+        category: 'MATRIX TELEMETRY',
+        title: 'Color Identity',
+        meaning: 'The color identity combination of the deck (Mono, Guild, Shard/Wedge, 4-Color, or 5-Color).',
+        calculation: 'Union of all mana symbols in the commander’s mana cost and rules text.',
+        relevance: 'Determines color fixing requirements, susceptibility to nonbasic land hate (Blood Moon), and access to color-specific interaction and tutor suites.',
+        benchmark: '1–3 Colors recommended for optimal mana consistency'
+    },
+    'col_power': {
+        category: 'TACTICAL TELEMETRY',
+        title: 'Commander Power Level',
+        meaning: 'Normalized 1.0–10.0 rating benchmarking deck velocity, interaction speed, synergy, and combo resilience against the global EDH metagame.',
+        calculation: 'Algorithmic synthesis of fast ramp count, removal efficiency, tutor density, average CMC, and Gemini AI strategic assessment.',
+        relevance: 'Critical for Rule 0 pre-game discussions to avoid pubstomping and ensure balanced 4-player games.',
+        benchmark: '5-6: Casual Precon+, 7-8: Focused/Optimized, 9-10: Max Power/cEDH'
+    },
+    'col_value': {
+        category: 'FINANCIAL TELEMETRY',
+        title: 'TCG Market Value',
+        meaning: 'Real-time market valuation of all 100 cards aggregated from TCGplayer Market prices via Scryfall.',
+        calculation: 'Σ(Card Price USD × Quantity). Unpriced tokens/basics are counted as $0.00.',
+        relevance: 'Allows evaluating whether deck performance is driven by raw expensive staples (Mana Crypt, Duals) or tight mechanical synergy.',
+        benchmark: '$75 – $300 (Standard Casual/Focused)'
+    },
+    'col_cmc': {
+        category: 'SPEED & MANA',
+        title: 'Average Nonland CMC',
+        meaning: 'The mean converted mana cost of every nonland card in the 99-card deck and command zone.',
+        calculation: 'AMV = Σ(Card CMC for non-lands) / Total Nonland Cards. X-spells count X as 0.',
+        relevance: 'Lower AMV allows you to cast multiple spells per turn and hold up interaction on opponents’ turns.',
+        benchmark: '2.80 – 3.30 (Casual/Mid), < 2.40 (cEDH)'
+    },
+    'col_speed': {
+        category: 'SPEED & MANA',
+        title: 'Speed & Pacing Telemetry',
+        meaning: 'Composite metrics measuring early-game consistency: Turn 3 Land Drop %, Opening Hand Keepability %, and Median Commander Cast Turn.',
+        calculation: 'Derived from Hypergeometric distribution of lands and 5,000-run Monte Carlo opening hand simulations.',
+        relevance: 'Determines if your deck stumbles in early turns (turns 1-3) or consistently curves out ahead of opponents.',
+        benchmark: 'T3 Land > 80%, Keepability > 80%, Cast Turn ≤ T4'
+    },
+    'col_winpath': {
+        category: 'ENDGAME & WINCONS',
+        title: 'Win Path & Late-Game Outlets',
+        meaning: 'The primary lethal vector (Combat, Combo, Aristocrats, Incidental Burn) and the count of repeatable late-game mana sinks.',
+        calculation: 'Pattern-matched card signatures (infinite combos, overrun effects, storm engines) + repeatable mana sink activation abilities.',
+        relevance: 'Ensures the deck can close out 120 life in 4-player pods without stalling or running out of steam when flooded.',
+        benchmark: '1 Primary Wincon + 1 Secondary Backup + ≥ 3 Sinks'
+    },
+    'col_composition': {
+        category: 'DECK COMPOSITION',
+        title: 'Land vs. Spell Ratio',
+        meaning: 'The structural balance between mana-producing lands and proactive/reactive nonland spells.',
+        calculation: 'Lands Count vs Nonland Spells Count (e.g. 36 Lands / 64 Spells = 36% / 64%).',
+        relevance: 'The foundation of draw consistency. Too few lands leads to mana screw; too many causes late-game topdeck exhaustion.',
+        benchmark: '35 – 38 Lands (Normal curve), 30 – 34 Lands (Heavy low-CMC ramp/cEDH)'
+    },
+    'col_ai': {
+        category: 'AI DIAGNOSTICS',
+        title: 'Gemini AI Tactical Intel',
+        meaning: 'Status of Google Gemini multi-turn strategic assessment and card-by-card 1–10 effectiveness scoring.',
+        calculation: 'Processed via Gemini Flash models examining commander synergies, combo lines, and cut/upgrade candidates.',
+        relevance: 'Provides personalized strategic advice, identifying non-obvious dead cards and optimal upgrade swaps from your ManaBox binder.',
+        benchmark: "'Analyzed' status indicates full strategic telemetry active"
+    },
+    'power_level': {
+        category: 'TACTICAL TELEMETRY',
+        title: 'Tactical Power Level (1.0 – 10.0)',
+        meaning: 'A standardized composite rating measuring deck velocity, interaction density, tutor count, and win condition speed in Commander.',
+        calculation: 'Algorithmic composite: Base Power = f(AMV, Fast Ramp, Removal Efficiency, Tutors, Wincon Turn) calibrated with Gemini strategic audit.',
+        relevance: 'Sets expectations for Rule 0 discussions before starting a game. Prevents accidental pod mismatches and salt.',
+        benchmark: '1-4: Casual/Jank, 5-6: Precon+, 7-8: Optimized Mid-Power, 9-10: High/cEDH'
+    },
+    'power_bracket': {
+        category: 'TACTICAL TELEMETRY',
+        title: 'Power Bracket Classification',
+        meaning: 'Metagame bracket category grouping decks by intended play environment and table speed.',
+        calculation: 'Tier mapped directly from Power Level: Casual (< 6.0), Focused (6.0 - 7.4), Optimized (7.5 - 8.9), Competitive cEDH (≥ 9.0).',
+        relevance: 'Helps you categorize decks quickly when organizing game nights or selecting pods with friends.',
+        benchmark: 'Match deck bracket with all 3 pod opponents for optimal gameplay'
+    },
+    'archetype': {
+        category: 'TACTICAL TELEMETRY',
+        title: 'Strategic Deck Archetype',
+        meaning: 'The macro-strategy and operational framework of your deck (e.g., Aristocrats, Spellslinger, Voltron, Stax, Ramp, Combo, Tokens, Control).',
+        calculation: 'Identified via card keyword density, commander static/triggered abilities, and wincon card clustering.',
+        relevance: 'Dictates optimal mulligan decisions, target prioritization, and game pacing against opposing deck archetypes.',
+        benchmark: 'Aligned with commander’s core mechanical text'
+    },
+    'edhrec_stats': {
+        category: 'METAGAME TELEMETRY',
+        title: 'EDHREC Rank, Deck Count & Salt Score',
+        meaning: 'Global community popularity ranking, total number of registered decks on EDHREC, and community-voted Salt Score (0.00 - 4.00).',
+        calculation: 'Direct live sync from EDHREC API for the active commander. Salt score aggregates community votes on unfun/oppressive cards.',
+        relevance: 'High salt scores indicate cards or commanders that generate table grievance (e.g., Vorinclex, Armageddon, Tergrid); high ranks mean opponents know your lines.',
+        benchmark: 'Rank < 200 (Highly Popular), Salt < 0.75 (Low Salt / Casual Friendly)'
+    },
+    'amv': {
+        category: 'SPEED & MANA',
+        title: 'Nonland Average Mana Value (AMV)',
+        meaning: 'The mathematical average converted mana cost of all nonland cards in the deck.',
+        calculation: 'AMV = Σ(Converted Mana Cost of all nonland cards) / Total Nonland Cards. Lands are excluded to measure true spell mana weight.',
+        relevance: 'In Commander, games are often won by mana efficiency—casting multiple spells per turn cycle while holding up mana for reactive interaction.',
+        benchmark: '2.80 – 3.30 (Casual/Mid), 2.00 – 2.50 (High/cEDH)'
+    },
+    'fast_ramp': {
+        category: 'SPEED & MANA',
+        title: 'Fast Mana & Early Ramp (CMC ≤ 2)',
+        meaning: 'Permanent mana accelerators that cost 2 or fewer mana (e.g., Sol Ring, Arcane Signet, Llanowar Elves, Nature’s Lore, Talismans).',
+        calculation: 'Count of all artifacts, creatures, and sorceries that cost ≤ 2 mana and produce or search for permanent mana.',
+        relevance: 'Turn 1-2 ramp accelerates your curve by a full turn cycle, allowing you to cast 4-drops on Turn 3 and establish engine dominance before opponents.',
+        benchmark: '8 – 12 Fast Ramp pieces (Normal), 14+ (Turbo/High Power)'
+    },
+    'instant_ratio': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Instant-Speed Interaction %',
+        meaning: 'The percentage of your nonland interaction, removal, and utility cards that can be cast at instant speed on opponents’ turns.',
+        calculation: 'Instant % = (Instant Spells + Flash Permanents) / Total Nonland Spells × 100.',
+        relevance: 'Sorcery speed removal lets three opponents untap and exploit the board first. Instant-speed spells allow you to respond to game-winning combos and board wipes.',
+        benchmark: '≥ 50% of interaction suite should be Instant speed'
+    },
+    'tapland_ratio': {
+        category: 'SPEED & MANA',
+        title: 'Tapland Tempo Penalty Index',
+        meaning: 'The percentage of lands in your mana base that enter the battlefield tapped unconditionally or with difficult conditions.',
+        calculation: 'Tapland % = (Lands Entering Tapped / Total Lands) × 100. Measures virtual mana wasted on ETB turn.',
+        relevance: 'Every tapland played sets you exactly one turn behind on curve tempo. Multiple taplands cause you to cast spells a turn later than opponents on untapped lands.',
+        benchmark: '< 15% (Healthy Mid-Power), < 5% (Optimized), 0% (cEDH)'
+    },
+    'draw_engines': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Repeatable Card Draw Engines',
+        meaning: 'Permanents that draw cards repeatedly over multiple turns or triggers (e.g., Rhystic Study, Beast Whisperer, Esper Sentinel, Skullclamp, Phyrexian Arena).',
+        calculation: 'Count of nonland permanents with repeatable card draw static abilities or activated/triggered draw mechanisms.',
+        relevance: 'In a 4-player game with 3 opponents drawing 3 cards per turn cycle, one-shot draw spells run dry. Repeatable engines provide sustained gas to stay ahead.',
+        benchmark: '5 – 8 Repeatable Draw Engines'
+    },
+    'tcg_value': {
+        category: 'FINANCIAL TELEMETRY',
+        title: 'TCGplayer Market Deck Value',
+        meaning: 'Current fair market replacement cost of the physical cards in the deck, updated live via Scryfall market pricing.',
+        calculation: 'Sum of individual card prices: Total USD = Σ(Market Price × Quantity). Basic lands count as $0.00.',
+        relevance: 'Enables budget monitoring, insurance tracking, and analyzing whether deck performance stems from expensive reserve list staples or smart synergy.',
+        benchmark: '$75 – $250 (Budget/Focused), $300 – $800 (Optimized)'
+    },
+    'mana_curve': {
+        category: 'SPEED & MANA',
+        title: 'Nonland Mana Value Curve',
+        meaning: 'The distribution histogram of nonland cards across mana values from 0 CMC to 7+ CMC.',
+        calculation: 'Binned counts of nonland spells by CMC: [0, 1, 2, 3, 4, 5, 6, 7+].',
+        relevance: 'A healthy curve resembles a bell curve centered around 2-3 CMC with a steep drop-off at 5+. Top-heavy curves cause uncastable opening hands and tempo loss.',
+        benchmark: 'Peak at 2 and 3 CMC; ≤ 6 cards at 6+ CMC unless specialized ramp'
+    },
+    'card_types': {
+        category: 'DECK COMPOSITION',
+        title: 'Card Type Breakdown',
+        meaning: 'The proportional allocation of cards across Magic’s major types: Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers, and Lands.',
+        calculation: 'Percentage and count per primary card type out of the 100-card deck.',
+        relevance: 'Determines vulnerability to mass removal (Farewell, Bane of Progress) and synergy with type-specific card draw (Beast Whisperer vs Archmage Emeritus).',
+        benchmark: '35-38 Lands, 25-35 Creatures (in creature decks), 10-18 Instants'
+    },
+    'pip_source_balance': {
+        category: 'SPEED & MANA',
+        title: 'Mana Pip Demand vs. Source Supply Balance',
+        meaning: 'Radar comparison matching colored mana pip symbols on your spells against colored mana production sources from lands and mana rocks.',
+        calculation: 'Pip Demand % = (Color Pips / Total Colored Pips) × 100. Source Supply % = (Color Sources / Total Colored Sources) × 100.',
+        relevance: 'Color imbalance causes "color screw"—having mana available but lacking the specific colored pips (e.g. UU for Counterspell) to cast your cards on time.',
+        benchmark: 'Delta between Demand % and Supply % within ± 5% for each color'
+    },
+    'speed_pacing': {
+        category: 'SPEED & MANA',
+        title: 'Velocity & Mana Base Telemetry',
+        meaning: 'Holistic evaluation of deck velocity, including fast mana rocks, dorks, land-fetch spells, and treasure creation engines.',
+        calculation: 'Aggregated count of mana ramp (CMC ≤ 2 vs CMC ≥ 3) + tapland penalty percentage.',
+        relevance: 'High velocity decks develop mana faster than opponents, deploying threats and engines 1 to 2 turns ahead of the table curve.',
+        benchmark: '10 – 14 Total Acceleration Sources'
+    },
+    'interaction_defense': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Interaction & Removal Suite',
+        meaning: 'The complete tactical package of targeted spot removal, board wipes, counterspells, and permanent protection.',
+        calculation: 'Σ(Targeted Spot Removal) + Σ(Mass Board Wipes) + Σ(Counterspells) + Σ(Protection/Phase Out).',
+        relevance: 'Without sufficient interaction, your opponents will assemble game-winning loops or runaway engines uninterrupted.',
+        benchmark: '10 – 14 Targeted Removal, 2 – 4 Board Wipes, 4 – 8 Protection/Counters'
+    },
+    'card_advantage': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Card Advantage & Tutor Velocity',
+        meaning: 'The combined card flow suite consisting of repeatable draw engines, burst draw spells, cheap cantrips, and targeted tutors.',
+        calculation: 'Engines + Burst Draw + Cantrips + General Tutors + Land Fetch Tutors.',
+        relevance: 'In multiplayer Magic, card advantage is the #1 predictor of victory. Refills your hand after board wipes and finds win conditions.',
+        benchmark: '10 – 14 Total Card Advantage sources, 2 – 4 Tutors'
+    },
+    'land_drops': {
+        category: 'SPEED & MANA',
+        title: 'Hypergeometric Land Drop Consistency',
+        meaning: 'The exact mathematical probability of drawing and playing lands on curve for Turns 1, 2, 3, 4, and 5 without missing a drop.',
+        calculation: 'Calculated via Cumulative Hypergeometric Distribution: P(X ≥ k) = Σ( [C(M, i) × C(N-M, n-i)] / C(N, n) ) where N=99, M=Lands, n=7+Turn-1 cards drawn.',
+        relevance: 'Missing your 3rd or 4th land drop drops your win rate dramatically. Turn 3 land drop consistency should always exceed 80%.',
+        benchmark: 'Turn 3 ≥ 82%, Turn 4 ≥ 68%, Turn 5 ≥ 50%'
+    },
+    'opening_hand': {
+        category: 'SPEED & MANA',
+        title: 'Opening Hand Keepability Rate',
+        meaning: 'The simulated percentage of opening 7-card hands that are viable keeps under the London Mulligan rule.',
+        calculation: '5,000-iteration Monte Carlo simulation. Hands with 2-5 lands, ≥ 1 colored source matching early spells, and ≥ 1 spell with CMC ≤ 3 are scored as Keepable.',
+        relevance: 'High unkeepable rates force aggressive mulligans to 6 or 5 cards, starting the game down card advantage before Turn 1 begins.',
+        benchmark: '≥ 80% Keepable Hands, < 10% Unkeepable Hands'
+    },
+    'commander_cast': {
+        category: 'SPEED & MANA',
+        title: 'Earliest & Median Commander Cast Turn',
+        meaning: 'The simulated game turn on which you are statistically able to cast your Commander for the first time, accounting for lands, ramp, and color fixing.',
+        calculation: '2,000-game Monte Carlo simulation tracking mana generation curve and colored pip availability turn-by-turn.',
+        relevance: 'Tells you when your deck’s core engine comes online and highlights color bottlenecks that delay your commander.',
+        benchmark: 'Cast turn should match or beat Commander CMC (e.g., CMC 4 cast on Turn 3 or 4)'
+    },
+    'threat_coverage': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Threat Coverage Matrix (7 Categories)',
+        meaning: 'Evaluation of your interaction package across all 7 card threat types: Creatures, Artifacts, Enchantments, Planeswalkers, Graveyards, Lands, and Spells (Stack).',
+        calculation: 'Parsing of removal spell targeting text, categorized into Instant vs Sorcery speed answers per threat type.',
+        relevance: 'Blind spots (e.g. zero artifact removal vs Torpor Orb, or zero graveyard hate vs Reanimator) can leave you completely helpless against specific pod archetypes.',
+        benchmark: 'Answers for at least 5 of 7 categories, including graveyard hate and stack answers'
+    },
+    'counter_vs_protection': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Stack Control vs. Board Protection',
+        meaning: 'The ratio of proactive stack interruption (Counterspells) to reactive defensive protection (Hexproof, Indestructible, Phasing, Ward, Flicker).',
+        calculation: 'Counterspell Count vs Protection Spell Count. Stance classified as Stack-Heavy, Protective, or Balanced.',
+        relevance: 'Counterspells stop combos and board wipes before they resolve; protection spells preserve existing board investments through targeted removal and wipes.',
+        benchmark: '4 – 7 Counterspells in Blue; 3 – 5 Protection spells in Green/White'
+    },
+    'instant_holdout': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Instant-Speed Mana Holdout Cost',
+        meaning: 'The average mana you must keep unspent when passing your turn in order to hold up your available instant-speed interaction and protection.',
+        calculation: 'Holdout AMV = Σ(CMC of all Instant-speed removal & counterspells) / Total Instant Interaction Spells.',
+        relevance: 'If your holdout cost is 3-4 CMC, you are forced to choose between progressing your board and keeping up answers. Lower holdout (1-2 CMC) allows doing both.',
+        benchmark: '≤ 2.0 CMC (Efficient/Optimized), > 2.8 CMC (Heavy/Clunky)'
+    },
+    'enabler_payoff': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Engine Enabler-to-Payoff Ratio',
+        meaning: 'The mathematical ratio between setup cards ("Enablers" like sacrifice fodder, discard outlets, self-mill) and reward cards ("Payoffs" like Blood Artist, Syr Konrad).',
+        calculation: 'Ratio = Total Enablers / Total Payoffs. Target ratio is approximately 2.0 to 2.5 enablers for every 1 payoff.',
+        relevance: 'Too many payoffs without enablers leaves you with dead high-cost cards; too many enablers without payoffs means you build engines that do not win.',
+        benchmark: '1.8 : 1 to 2.5 : 1 (Healthy Engine Balance)'
+    },
+    'typal_synergy': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Typal / Kindred Density & Support',
+        meaning: 'For creature-type focused decks (Elves, Dragons, Vampires, Zombies), measures the density of the chosen type and dedicated kindred lord/support cards.',
+        calculation: 'Matching Creature Count / Total Creatures × 100 + Count of dedicated typal support spells (lords, anthems, kindred tutors).',
+        relevance: 'Typal payoff cards (e.g. Elvish Archdruid, Crux of Fate) become dead draws if your creature type density drops below critical threshold.',
+        benchmark: '≥ 22-26 Matching Creatures (65%+ of creatures) for dedicated typal decks'
+    },
+    'virtual_ca': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Virtual Card Advantage Index',
+        meaning: 'Comprehensive card velocity combining raw card draw, impulse exile draw, graveyard recursion, and targeted tutors into a single card-flow score.',
+        calculation: 'VCA Score = Raw Draw Spells + (0.9 × Impulse Draw) + (0.85 × Recursion Spells) + (1.2 × Tutors).',
+        relevance: 'Modern Commander utilizes red impulse draw and black/green graveyard loops just as effectively as blue card draw. Measures total card access.',
+        benchmark: '≥ 12 – 16 Total Virtual Card Advantage sources'
+    },
+    'win_conditions': {
+        category: 'ENDGAME & WINCONS',
+        title: 'Primary & Secondary Win Paths',
+        meaning: 'Algorithmic classification of the primary lethal vector (Combat Swarm, Infinite Combo, Commander Damage/Voltron, Aristocrats Drain, Incidental Burn).',
+        calculation: 'Identifies game-winning loops from Commander Spellbook, high-power overrun spells (Craterhoof, Triumph of the Hordes), and repeatable drain triggers.',
+        relevance: 'Decks with no clear win path stall games into 2-hour board stalls. Having distinct primary and backup wincons ensures you can finish the game.',
+        benchmark: '1 Dedicated Primary Win Path + 1 Resilient Backup Path'
+    },
+    'mana_sinks': {
+        category: 'ENDGAME & WINCONS',
+        title: 'Late-Game Mana Sinks & Outlets',
+        meaning: 'Repeatable activated abilities, utility lands, and X-cost spells that can absorb excess mana on turns 7+ to prevent flooding.',
+        calculation: 'Count of cards featuring repeatable mana activation costs (e.g., "{4}: Draw a card", "{X}: Create tokens") or "{X}" casting costs.',
+        relevance: 'Commander games often stall into late-game mana flood. Mana sinks turn 10+ spare mana into game-winning card advantage or lethal board pressure.',
+        benchmark: '≥ 3 – 5 Repeatable Mana Outlets or X-spells'
+    },
+    'card_ratings': {
+        category: 'AI DIAGNOSTICS',
+        title: 'Card Effectiveness Rating (1.0 – 10.0)',
+        meaning: 'Individual card performance score evaluating mana efficiency, synergy with commander, and floor/ceiling performance in 4-player games.',
+        calculation: 'Evaluated by Gemini AI contextual model: 9-10 (Core Staples), 7-8.9 (Strong Synergizers), 5-6.9 (Solid Role Players), < 5.0 (Cut Candidates).',
+        relevance: 'Quickly pinpoints low-impact or outdated cards in your 99 to replace with high-synergy upgrades from your physical collection.',
+        benchmark: 'Average deck rating ≥ 7.2; cuts recommended for cards rated < 5.0'
+    },
+    'color_distribution': {
+        category: 'FLEET OVERVIEW',
+        title: 'Color Frequency & Representation',
+        meaning: 'Distribution of colors across all decks in your vault, showing which color slices you play most and least.',
+        calculation: 'Count and percentage of decks in the fleet containing White, Blue, Black, Red, Green, or Colorless.',
+        relevance: 'Helps you balance your deck portfolio and prevents building repetitive decks that compete for the exact same staple mana base cards.',
+        benchmark: 'Pod dependent; ideal fleet has at least one deck in each color combination'
+    },
+    'speed_vs_budget': {
+        category: 'FLEET OVERVIEW',
+        title: 'Speed vs. Budget Positioning',
+        meaning: 'Matrix positioning of each deck comparing its speed (Avg CMC) against its financial investment (TCGplayer Market Value).',
+        calculation: 'Plotted as coordinate (Avg CMC, TCG Market Value) across all decks in your Vault.',
+        relevance: 'Identifies ultra-efficient budget gems (low CMC, low price) versus inefficient "dollar-heavy" decks that run expensive, slow cards.',
+        benchmark: 'High power efficiency = Low CMC (< 3.0) with balanced budget'
+    },
+    'ramp_density': {
+        category: 'SPEED & MANA',
+        title: 'Mana Dorks, Rocks & Ramp Spells',
+        meaning: 'Total permanent and spell acceleration including mana dorks (creatures), mana rocks (artifacts), and land-search sorceries.',
+        calculation: 'Total Ramp = Dorks + Rocks + Land Ramp (Rampant Growth, Cultivate) + Rituals.',
+        relevance: 'Guarantees you reach your commander and high-impact spells 1 to 2 turns ahead of the natural curve.',
+        benchmark: '10 – 14 Ramp sources'
+    },
+    'treasure_count': {
+        category: 'SPEED & MANA',
+        title: 'Treasure & Burst Mana Generation',
+        meaning: 'Cards that create artifact Treasure tokens for flexible, multi-color burst mana acceleration.',
+        calculation: 'Count of all nonland cards with "create... Treasure token" text in rules.',
+        relevance: 'Treasures provide temporary color fixing, storm mana for explosive multi-spell turns, and artifact sacrifice synergies.',
+        benchmark: 'Archetype dependent (3 – 8 in Black/Red/Green treasure decks)'
+    },
+    'targeted_removal': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Targeted Spot Removal Spells',
+        meaning: 'Single-target removal spells that destroy, exile, or bounce problematic opposing permanents.',
+        calculation: 'Count of nonland spells with "destroy target", "exile target", or "return target permanent to its owner\'s hand".',
+        relevance: 'Essential for removing high-threat commanders, combo pieces, or stax pieces without resetting the entire board state.',
+        benchmark: '8 – 12 Targeted Removal spells'
+    },
+    'board_wipes': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Mass Board Wipes & Sweepers',
+        meaning: 'Symmetrical mass removal spells that destroy, exile, or bounce all or most creatures, artifacts, or permanents.',
+        calculation: 'Count of spells with "destroy all", "exile all", or mass damage effects (e.g. Blasphemous Act, Toxic Deluge, Wrath of God).',
+        relevance: 'The ultimate reset button when falling behind in 4-player games against go-wide token swarms or overwhelming boards.',
+        benchmark: '2 – 4 Mass Board Wipes'
+    },
+    'removal_efficiency': {
+        category: 'INTERACTION & DEFENSE',
+        title: 'Removal Mana Efficiency',
+        meaning: 'The average converted mana cost of your targeted removal and interaction spells.',
+        calculation: 'Efficiency CMC = Σ(CMC of targeted removal spells) / Count of targeted removal spells.',
+        relevance: 'High-CMC removal (4-5 CMC) leaves you tapped out and vulnerable. Low-CMC removal (1-2 CMC) allows answering threats while still developing your board.',
+        benchmark: '≤ 2.20 CMC (High Efficiency), 2.20 – 3.00 CMC (Normal)'
+    },
+    'burst_draw': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Burst Card Draw Spells',
+        meaning: 'One-shot spells that draw multiple cards in a single resolution (e.g., Harmonize, Fact or Fiction, Rishkar’s Expertise, Stroke of Genius).',
+        calculation: 'Count of non-permanent instants, sorceries, or ETBs that draw ≥ 2 cards upon resolution.',
+        relevance: 'Provides an immediate hand refill after spending your resources or recovering from a board wipe.',
+        benchmark: '3 – 6 Burst Draw spells'
+    },
+    'cantrips': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Low-CMC Cantrips',
+        meaning: '1-to-2 CMC spells that replace themselves immediately by drawing a card while providing minor utility or selection (e.g., Ponder, Brainstorm, Consider).',
+        calculation: 'Count of nonland cards costing ≤ 2 mana with "draw a card" in rules.',
+        relevance: 'Smooths early-game land drops, digs for key answers, and triggers spellslinger and magecraft mechanics cheaply.',
+        benchmark: '0 – 4 in Midrange; 8 – 14 in Spellslinger/Combo'
+    },
+    'tutors': {
+        category: 'CARD ADVANTAGE & SYNERGY',
+        title: 'Tutor Density (General & Land)',
+        meaning: 'Cards that search your library for a specific card and put it into your hand, graveyard, or onto the battlefield.',
+        calculation: 'General Tutors (search for any card/permanent) + Land Tutors (search for specific lands).',
+        relevance: 'Tutors dramatically increase deck consistency, effectively functioning as extra copies of your best win conditions and silver-bullet answers.',
+        benchmark: '0 – 1 (Casual), 2 – 4 (Focused/Optimized), 5+ (High Power/cEDH)'
+    },
+    'deck_composition': {
+        category: 'DECK COMPOSITION',
+        title: 'Deck Composition & Land Ratio',
+        meaning: 'The overall macro-split between lands (mana resource) and nonland spells (action cards).',
+        calculation: 'Percentage and count of Lands vs Spells (Total cards = 100).',
+        relevance: 'Determines overall draw reliability and resistance to mana flood versus mana screw across multi-turn games.',
+        benchmark: '35 – 38% Lands (35-38 lands), 62 – 65% Nonland Spells'
+    }
+};
+
+let currentActiveTooltipKey = null;
+
+function showAnalyticsTooltip(key, event) {
+    if (!key) return;
+    const data = EDH_ANALYTICS_TOOLTIPS[key];
+    if (!data) return;
+
+    currentActiveTooltipKey = key;
+    const popover = document.getElementById('analyticsTooltipPopover');
+    if (!popover) return;
+
+    safeSetText('ttCategory', data.category || 'TACTICAL TELEMETRY');
+    safeSetText('ttTitle', data.title || key);
+    safeSetText('ttMeaning', data.meaning || '');
+    safeSetText('ttCalculation', data.calculation || '');
+    safeSetText('ttRelevance', data.relevance || '');
+    safeSetText('ttBenchmark', data.benchmark || 'N/A');
+
+    popover.classList.remove('hidden');
+    positionAnalyticsTooltip(event);
+}
+
+function moveAnalyticsTooltip(event) {
+    if (!currentActiveTooltipKey) return;
+    positionAnalyticsTooltip(event);
+}
+
+function hideAnalyticsTooltip(force = false) {
+    const popover = document.getElementById('analyticsTooltipPopover');
+    if (!popover) return;
+    popover.classList.add('hidden');
+    currentActiveTooltipKey = null;
+}
+
+function positionAnalyticsTooltip(e) {
+    const popover = document.getElementById('analyticsTooltipPopover');
+    if (!popover || popover.classList.contains('hidden')) return;
+
+    if (window.innerWidth < 640) {
+        popover.style.left = '1rem';
+        popover.style.right = '1rem';
+        popover.style.bottom = '1rem';
+        popover.style.top = 'auto';
+        popover.style.maxWidth = 'calc(100vw - 2rem)';
+        return;
+    }
+
+    const margin = 16;
+    const popoverRect = popover.getBoundingClientRect();
+    const w = popoverRect.width || 380;
+    const h = popoverRect.height || 260;
+
+    let clientX = e ? (e.clientX || (e.touches && e.touches[0] ? e.touches[0].clientX : 0)) : 0;
+    let clientY = e ? (e.clientY || (e.touches && e.touches[0] ? e.touches[0].clientY : 0)) : 0;
+
+    let x = clientX + 16;
+    let y = clientY + 16;
+
+    if (x + w > window.innerWidth - margin) {
+        x = clientX - w - 16;
+    }
+    if (y + h > window.innerHeight - margin) {
+        y = clientY - h - 16;
+    }
+
+    x = Math.max(margin, Math.min(x, window.innerWidth - w - margin));
+    y = Math.max(margin, Math.min(y, window.innerHeight - h - margin));
+
+    popover.style.left = `${x}px`;
+    popover.style.top = `${y}px`;
+    popover.style.right = 'auto';
+    popover.style.bottom = 'auto';
+}
+
+function setupAnalyticsTooltips() {
+    // Delegated listeners for hover and click interactions
+    document.addEventListener('mouseover', (e) => {
+        const target = e.target.closest('[data-tooltip-key]');
+        if (target) {
+            const key = target.getAttribute('data-tooltip-key');
+            if (key) showAnalyticsTooltip(key, e);
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (currentActiveTooltipKey) {
+            moveAnalyticsTooltip(e);
+        }
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        const target = e.target.closest('[data-tooltip-key]');
+        if (target) {
+            const related = e.relatedTarget ? e.relatedTarget.closest('[data-tooltip-key]') : null;
+            if (related !== target) {
+                hideAnalyticsTooltip();
+            }
+        }
+    });
+
+    // Touch & mobile click support
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-tooltip-key]');
+        const popover = document.getElementById('analyticsTooltipPopover');
+        if (target) {
+            const key = target.getAttribute('data-tooltip-key');
+            if (key) {
+                if (currentActiveTooltipKey === key && popover && !popover.classList.contains('hidden')) {
+                    hideAnalyticsTooltip();
+                } else {
+                    showAnalyticsTooltip(key, e);
+                }
+            }
+        } else if (popover && !popover.contains(e.target)) {
+            hideAnalyticsTooltip();
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    setupAnalyticsTooltips();
     renderVaultGrid(currentVaultDecks);
     renderMatrixTable(filteredDecks);
     updateDeckDropdowns(currentVaultDecks);
@@ -2283,14 +2902,14 @@ function renderVaultGrid(decks) {
                         <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5">
                             <div class="flex items-center gap-1.5">
                                 <span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-[10px] font-mono text-slate-300 font-bold">${d.total_cards || 100} Cards</span>
-                                ${hasAi ? `<span class="px-2 py-0.5 rounded bg-cyan-500/90 text-slate-950 text-[10px] font-mono font-black">AI: ${pwr || '7.5'}</span>` : `<span class="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-mono">Stats Ready</span>`}
+                                ${hasAi ? `<span class="px-2 py-0.5 rounded bg-cyan-500/90 text-slate-950 text-[10px] font-mono font-black cursor-help" data-tooltip-key="power_level">AI: ${pwr || '7.5'} ⓘ</span>` : `<span class="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-mono">Stats Ready</span>`}
                             </div>
                             ${relDate ? `<span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-400 font-medium" title="Last Updated: ${escapeHtml(rawDate)}">📅 ${relDate}</span>` : ''}
                         </div>
 
                         <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between">
                             <span class="text-xs text-cyan-300 font-mono truncate font-semibold">${escapeHtml(d.commander_name || 'Commander')}</span>
-                            <div class="flex items-center gap-0.5 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800">
+                            <div class="flex items-center gap-0.5 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800 cursor-help" data-tooltip-key="col_colors">
                                 ${colorPipsHtml || '<span class="text-[9px] text-slate-500 font-mono">Colorless</span>'}
                             </div>
                         </div>
@@ -2302,12 +2921,12 @@ function renderVaultGrid(decks) {
                         
                         <!-- Telemetry Grid -->
                         <div class="grid grid-cols-2 gap-2 bg-[#1B2230]/60 p-2 rounded-lg border border-slate-800 font-mono text-xs">
-                            <div>
-                                <span class="text-[10px] text-slate-400 uppercase block">TCG Value</span>
+                            <div class="cursor-help" data-tooltip-key="tcg_value">
+                                <span class="text-[10px] text-slate-400 uppercase block">TCG Value ⓘ</span>
                                 <span class="text-emerald-400 font-bold">$${val}</span>
                             </div>
-                            <div>
-                                <span class="text-[10px] text-slate-400 uppercase block">Avg Nonland CMC</span>
+                            <div class="cursor-help" data-tooltip-key="amv">
+                                <span class="text-[10px] text-slate-400 uppercase block">Avg Nonland CMC ⓘ</span>
                                 <span class="text-amber-400 font-bold">${cmc}</span>
                             </div>
                         </div>
@@ -3658,12 +4277,12 @@ function renderMatrixTable(decks) {
                         </div>
                     </div>
                 </td>
-                <td class="py-3 px-3 text-center">
+                <td class="py-3 px-3 text-center cursor-help" data-tooltip-key="col_colors">
                     <div class="flex items-center justify-center gap-1">
                         ${colorPips || '<span class="text-[10px] text-slate-500 font-mono">Colorless</span>'}
                     </div>
                 </td>
-                <td class="py-3 px-3 text-center">
+                <td class="py-3 px-3 text-center cursor-help" data-tooltip-key="power_level">
                     ${pwr ? `
                         <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-bold text-xs">
                             <span>⚡ ${pwr}</span>
@@ -3672,28 +4291,28 @@ function renderMatrixTable(decks) {
                         <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Pre-AI</span>
                     `}
                 </td>
-                <td class="py-3 px-4 text-right font-black text-emerald-400 text-sm">
+                <td class="py-3 px-4 text-right font-black text-emerald-400 text-sm cursor-help" data-tooltip-key="tcg_value">
                     $${parseFloat(val).toFixed(2)}
                 </td>
-                <td class="py-3 px-3 text-center font-bold text-amber-400">
+                <td class="py-3 px-3 text-center font-bold text-amber-400 cursor-help" data-tooltip-key="amv">
                     ${parseFloat(cmc).toFixed(2)}
                 </td>
-                <td class="py-3 px-3 text-center">
+                <td class="py-3 px-3 text-center cursor-help" data-tooltip-key="speed_pacing">
                     <div class="text-[11px] font-mono text-emerald-400 font-bold">${keepRate}% Keep</div>
                     <div class="text-[10px] font-mono text-slate-400">T${castTurn} Cast</div>
                 </td>
-                <td class="py-3 px-3 text-center">
+                <td class="py-3 px-3 text-center cursor-help" data-tooltip-key="win_conditions">
                     <div class="text-[11px] font-mono text-cyan-300 font-bold truncate max-w-[120px] mx-auto" title="${escapeHtml(wincon)}">${escapeHtml(wincon)}</div>
                     <div class="text-[10px] font-mono text-slate-400">${sinks} Sinks</div>
                 </td>
-                <td class="py-3 px-4 text-center">
+                <td class="py-3 px-4 text-center cursor-help" data-tooltip-key="deck_composition">
                     <div class="text-[11px] font-mono text-slate-300 mb-1">${lands}L / ${spells}S</div>
                     <div class="w-24 mx-auto h-1.5 bg-slate-800 rounded-full overflow-hidden flex">
                         <div class="bg-amber-500 h-full" style="width: ${landPct}%" title="${lands} Lands (${landPct}%)"></div>
                         <div class="bg-cyan-500 h-full" style="width: ${spellPct}%" title="${spells} Spells (${spellPct}%)"></div>
                     </div>
                 </td>
-                <td class="py-3 px-3 text-center">
+                <td class="py-3 px-3 text-center cursor-help" data-tooltip-key="col_ai">
                     ${d.has_ai_analysis ? 
                         `<span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">Analyzed</span>` : 
                         `<span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">Stats Ready</span>`
@@ -4054,28 +4673,28 @@ function renderComparisonResults(data) {
 
         const matrix = data.delta_matrix;
         const deltaRows = [
-            { key: 'nonland_amv', name: 'Nonland Avg Mana Value (AMV)', unit: 'CMC', lowerIsBetter: true },
-            { key: 'turn_3_land_pct', name: 'Turn 3 Land Drop % (Hypergeometric)', unit: '%', lowerIsBetter: false },
-            { key: 'keepability_rate', name: 'Opening Hand Keepability Rate', unit: '%', lowerIsBetter: false },
-            { key: 'commander_cast_turn', name: 'Median Commander Cast Turn', unit: 'Turn', lowerIsBetter: true },
-            { key: 'fast_ramp', name: 'Fast Ramp Density (CMC <= 2)', unit: 'cards', lowerIsBetter: false },
-            { key: 'dork_or_rock_ramp', name: 'Mana Dorks & Rocks', unit: 'cards', lowerIsBetter: false },
-            { key: 'land_fetch_ramp', name: 'Land Ramp Spells', unit: 'cards', lowerIsBetter: false },
-            { key: 'treasure_ramp', name: 'Treasure Creation Spells', unit: 'cards', lowerIsBetter: false },
-            { key: 'instant_speed_ratio', name: 'Instant-Speed Interaction %', unit: '%', lowerIsBetter: false },
-            { key: 'instant_holdout', name: 'Instant Mana Holdout', unit: 'CMC', lowerIsBetter: true },
-            { key: 'tapland_penalty_index', name: 'Tapland Tempo Penalty', unit: '%', lowerIsBetter: true },
-            { key: 'targeted_removal', name: 'Targeted Removal Spells', unit: 'cards', lowerIsBetter: false },
-            { key: 'board_wipes', name: 'Board Wipe Spells', unit: 'cards', lowerIsBetter: false },
-            { key: 'removal_mana_efficiency', name: 'Removal Mana Efficiency', unit: 'CMC', lowerIsBetter: true },
-            { key: 'draw_engines', name: 'Engine Card Draw Density', unit: 'cards', lowerIsBetter: false },
-            { key: 'virtual_card_advantage', name: 'Virtual Card Advantage (Draw/Impulse/Recursion)', unit: 'cards', lowerIsBetter: false },
-            { key: 'mana_sinks', name: 'Late-Game Mana Sinks', unit: 'outlets', lowerIsBetter: false },
-            { key: 'burst_draw', name: 'Burst Card Draw Spells', unit: 'cards', lowerIsBetter: false },
-            { key: 'cantrips', name: 'Low-CMC Cantrips', unit: 'cards', lowerIsBetter: false },
-            { key: 'tutors_general', name: 'General Tutor Density', unit: 'cards', lowerIsBetter: false },
-            { key: 'tutors_land', name: 'Land / Ramp Tutors', unit: 'cards', lowerIsBetter: false },
-            { key: 'portfolio_value', name: 'Total TCG Market Value', unit: '$', lowerIsBetter: false },
+            { key: 'nonland_amv', tooltipKey: 'amv', name: 'Nonland Avg Mana Value (AMV)', unit: 'CMC', lowerIsBetter: true },
+            { key: 'turn_3_land_pct', tooltipKey: 'land_drops', name: 'Turn 3 Land Drop % (Hypergeometric)', unit: '%', lowerIsBetter: false },
+            { key: 'keepability_rate', tooltipKey: 'opening_hand', name: 'Opening Hand Keepability Rate', unit: '%', lowerIsBetter: false },
+            { key: 'commander_cast_turn', tooltipKey: 'commander_cast', name: 'Median Commander Cast Turn', unit: 'Turn', lowerIsBetter: true },
+            { key: 'fast_ramp', tooltipKey: 'fast_ramp', name: 'Fast Ramp Density (CMC <= 2)', unit: 'cards', lowerIsBetter: false },
+            { key: 'dork_or_rock_ramp', tooltipKey: 'ramp_density', name: 'Mana Dorks & Rocks', unit: 'cards', lowerIsBetter: false },
+            { key: 'land_fetch_ramp', tooltipKey: 'ramp_density', name: 'Land Ramp Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'treasure_ramp', tooltipKey: 'treasure_count', name: 'Treasure Creation Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'instant_speed_ratio', tooltipKey: 'instant_ratio', name: 'Instant-Speed Interaction %', unit: '%', lowerIsBetter: false },
+            { key: 'instant_holdout', tooltipKey: 'instant_holdout', name: 'Instant Mana Holdout', unit: 'CMC', lowerIsBetter: true },
+            { key: 'tapland_penalty_index', tooltipKey: 'tapland_ratio', name: 'Tapland Tempo Penalty', unit: '%', lowerIsBetter: true },
+            { key: 'targeted_removal', tooltipKey: 'targeted_removal', name: 'Targeted Removal Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'board_wipes', tooltipKey: 'board_wipes', name: 'Board Wipe Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'removal_mana_efficiency', tooltipKey: 'removal_efficiency', name: 'Removal Mana Efficiency', unit: 'CMC', lowerIsBetter: true },
+            { key: 'draw_engines', tooltipKey: 'draw_engines', name: 'Engine Card Draw Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'virtual_card_advantage', tooltipKey: 'virtual_ca', name: 'Virtual Card Advantage (Draw/Impulse/Recursion)', unit: 'cards', lowerIsBetter: false },
+            { key: 'mana_sinks', tooltipKey: 'mana_sinks', name: 'Late-Game Mana Sinks', unit: 'outlets', lowerIsBetter: false },
+            { key: 'burst_draw', tooltipKey: 'burst_draw', name: 'Burst Card Draw Spells', unit: 'cards', lowerIsBetter: false },
+            { key: 'cantrips', tooltipKey: 'cantrips', name: 'Low-CMC Cantrips', unit: 'cards', lowerIsBetter: false },
+            { key: 'tutors_general', tooltipKey: 'tutors', name: 'General Tutor Density', unit: 'cards', lowerIsBetter: false },
+            { key: 'tutors_land', tooltipKey: 'tutors', name: 'Land / Ramp Tutors', unit: 'cards', lowerIsBetter: false },
+            { key: 'portfolio_value', tooltipKey: 'tcg_value', name: 'Total TCG Market Value', unit: '$', lowerIsBetter: false },
         ];
 
         const tbody = document.getElementById('deltaMatrixTableBody');
@@ -4103,8 +4722,11 @@ function renderComparisonResults(data) {
                 }
 
                 return `
-                    <tr class="hover:bg-[#1B2230]/40 transition">
-                        <td class="py-2.5 px-4 font-semibold text-white">${r.name}</td>
+                    <tr class="hover:bg-[#1B2230]/40 transition cursor-help" data-tooltip-key="${r.tooltipKey || ''}">
+                        <td class="py-2.5 px-4 font-semibold text-white flex items-center gap-1.5">
+                            <span>${r.name}</span>
+                            <span class="text-cyan-400 text-xs">ⓘ</span>
+                        </td>
                         <td class="py-2.5 px-4 text-center text-cyan-400 font-bold">${formattedA}</td>
                         <td class="py-2.5 px-4 text-center text-amber-400 font-bold">${formattedB}</td>
                         <td class="py-2.5 px-4 text-center">${deltaBadge}</td>
@@ -4119,11 +4741,11 @@ function renderComparisonResults(data) {
         const velEl = document.getElementById('compVelocityContent');
         if (velEl) {
             velEl.innerHTML = `
-                <div class="flex justify-between"><span class="text-slate-400">Fast Ramp (CMC &le; 2):</span><span class="text-white font-bold">${decks[0].fast_ramp_count || 0} vs ${decks[1].fast_ramp_count || 0}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Dorks & Rocks / Fetch:</span><span class="text-slate-300">${decks[0].dork_or_rock_count || 0}/${decks[0].land_fetch_count || 0} vs ${decks[1].dork_or_rock_count || 0}/${decks[1].land_fetch_count || 0}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Treasure Producers:</span><span class="text-amber-400 font-bold">${decks[0].treasure_count || 0} vs ${decks[1].treasure_count || 0}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Tapland Penalty:</span><span class="text-rose-400 font-bold">${decks[0].tapland_penalty_index || 0}% vs ${decks[1].tapland_penalty_index || 0}%</span></div>
-                <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Velocity Lead:</span><span class="text-emerald-400 font-bold">${vp.velocity_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (vp.velocity_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="fast_ramp"><span class="text-slate-400">Fast Ramp (CMC &le; 2) ⓘ:</span><span class="text-white font-bold">${decks[0].fast_ramp_count || 0} vs ${decks[1].fast_ramp_count || 0}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="ramp_density"><span class="text-slate-400">Dorks & Rocks / Fetch ⓘ:</span><span class="text-slate-300">${decks[0].dork_or_rock_count || 0}/${decks[0].land_fetch_count || 0} vs ${decks[1].dork_or_rock_count || 0}/${decks[1].land_fetch_count || 0}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="treasure_count"><span class="text-slate-400">Treasure Producers ⓘ:</span><span class="text-amber-400 font-bold">${decks[0].treasure_count || 0} vs ${decks[1].treasure_count || 0}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="tapland_ratio"><span class="text-slate-400">Tapland Penalty ⓘ:</span><span class="text-rose-400 font-bold">${decks[0].tapland_penalty_index || 0}% vs ${decks[1].tapland_penalty_index || 0}%</span></div>
+                <div class="flex justify-between border-t border-slate-800 pt-1.5 cursor-help" data-tooltip-key="speed_pacing"><span class="text-slate-400">Velocity Lead:</span><span class="text-emerald-400 font-bold">${vp.velocity_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (vp.velocity_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
             `;
         }
 
@@ -4131,11 +4753,11 @@ function renderComparisonResults(data) {
         const intEl = document.getElementById('compInteractionContent');
         if (intEl) {
             intEl.innerHTML = `
-                <div class="flex justify-between"><span class="text-slate-400">Targeted Removal:</span><span class="text-white font-bold">${decks[0].targeted_removal_count || 0} vs ${decks[1].targeted_removal_count || 0}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Board Wipes:</span><span class="text-slate-300">${decks[0].board_wipe_count || 0} vs ${decks[1].board_wipe_count || 0}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Removal Efficiency:</span><span class="text-slate-300">${parseFloat(decks[0].removal_mana_efficiency || 0).toFixed(2)} vs ${parseFloat(decks[1].removal_mana_efficiency || 0).toFixed(2)} CMC</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Instant Speed %:</span><span class="text-cyan-400 font-bold">${decks[0].instant_speed_ratio || 0}% vs ${decks[1].instant_speed_ratio || 0}%</span></div>
-                <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Efficiency Lead:</span><span class="text-cyan-400 font-bold">${ip.interaction_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (ip.interaction_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="targeted_removal"><span class="text-slate-400">Targeted Removal ⓘ:</span><span class="text-white font-bold">${decks[0].targeted_removal_count || 0} vs ${decks[1].targeted_removal_count || 0}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="board_wipes"><span class="text-slate-400">Board Wipes ⓘ:</span><span class="text-slate-300">${decks[0].board_wipe_count || 0} vs ${decks[1].board_wipe_count || 0}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="removal_efficiency"><span class="text-slate-400">Removal Efficiency ⓘ:</span><span class="text-slate-300">${parseFloat(decks[0].removal_mana_efficiency || 0).toFixed(2)} vs ${parseFloat(decks[1].removal_mana_efficiency || 0).toFixed(2)} CMC</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="instant_ratio"><span class="text-slate-400">Instant Speed % ⓘ:</span><span class="text-cyan-400 font-bold">${decks[0].instant_speed_ratio || 0}% vs ${decks[1].instant_speed_ratio || 0}%</span></div>
+                <div class="flex justify-between border-t border-slate-800 pt-1.5 cursor-help" data-tooltip-key="interaction_defense"><span class="text-slate-400">Efficiency Lead:</span><span class="text-cyan-400 font-bold">${ip.interaction_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (ip.interaction_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
             `;
         }
 
@@ -4143,10 +4765,10 @@ function renderComparisonResults(data) {
         const caEl = document.getElementById('compCardAdvantageContent');
         if (caEl) {
             caEl.innerHTML = `
-                <div class="flex justify-between"><span class="text-slate-400">Engine Draw:</span><span class="text-white font-bold">${decks[0].draw_engine_count || 0} vs ${decks[1].draw_engine_count || 0}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Burst / Cantrips:</span><span class="text-slate-300">${decks[0].draw_burst_count || 0}/${decks[0].draw_cantrip_count || 0} vs ${decks[1].draw_burst_count || 0}/${decks[1].draw_cantrip_count || 0}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">General / Land Tutors:</span><span class="text-amber-400 font-bold">${decks[0].tutor_general_count || 0}/${decks[0].tutor_land_count || 0} vs ${decks[1].tutor_general_count || 0}/${decks[1].tutor_land_count || 0}</span></div>
-                <div class="flex justify-between border-t border-slate-800 pt-1.5"><span class="text-slate-400">Advantage Lead:</span><span class="text-purple-400 font-bold">${cap.advantage_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (cap.advantage_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="draw_engines"><span class="text-slate-400">Engine Draw ⓘ:</span><span class="text-white font-bold">${decks[0].draw_engine_count || 0} vs ${decks[1].draw_engine_count || 0}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="burst_draw"><span class="text-slate-400">Burst / Cantrips ⓘ:</span><span class="text-slate-300">${decks[0].draw_burst_count || 0}/${decks[0].draw_cantrip_count || 0} vs ${decks[1].draw_burst_count || 0}/${decks[1].draw_cantrip_count || 0}</span></div>
+                <div class="flex justify-between cursor-help" data-tooltip-key="tutors"><span class="text-slate-400">General / Land Tutors ⓘ:</span><span class="text-amber-400 font-bold">${decks[0].tutor_general_count || 0}/${decks[0].tutor_land_count || 0} vs ${decks[1].tutor_general_count || 0}/${decks[1].tutor_land_count || 0}</span></div>
+                <div class="flex justify-between border-t border-slate-800 pt-1.5 cursor-help" data-tooltip-key="card_advantage"><span class="text-slate-400">Advantage Lead:</span><span class="text-purple-400 font-bold">${cap.advantage_leader === 'deck_a' ? escapeHtml(decks[0].deck_name) : (cap.advantage_leader === 'deck_b' ? escapeHtml(decks[1].deck_name) : 'Tied')}</span></div>
             `;
         }
 
