@@ -2,19 +2,19 @@ name: Chimaera Market Surveillance Worker
 
 on:
   schedule:
-    # Runs every 6 hours starting at 5:00 AM EDT (09:00 UTC)
-    # 09:00 UTC = 5:00 AM EDT
-    # 15:00 UTC = 11:00 AM EDT
-    # 21:00 UTC = 5:00 PM EDT
-    # 03:00 UTC = 11:00 PM EDT
-    - cron: '0 3,9,15,21 * * *'
+    # Runs every 6 hours at an off-peak minute (:17) to prevent GitHub Actions scheduler queue delays:
+    # 03:17 UTC = 11:17 PM EDT
+    # 09:17 UTC = 5:17 AM EDT
+    # 15:17 UTC = 11:17 AM EDT
+    # 21:17 UTC = 5:17 PM EDT
+    - cron: '17 3,9,15,21 * * *'
   workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
   surveillance-sweep:
     name: Run Price Surveillance Sweep
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Code

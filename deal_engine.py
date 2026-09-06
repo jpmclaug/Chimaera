@@ -1,8 +1,10 @@
 import logging
+import time
 from datetime import datetime, timezone
 import requests
 from config import Config
-from models import db, WatchlistItem, VendorPrice, SystemSetting, User, MicrocenterItem
+from models import db, WatchlistItem, VendorPrice, SystemSetting, User, MicrocenterItem, ActivityLog
+from card_utils import fix_mojibake
 from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider, MicrocenterProvider
 
 logger = logging.getLogger(__name__)
@@ -26,34 +28,67 @@ class DealEngine:
         Polls all 3 providers for a single WatchlistItem, upserts VendorPrice records,
         and dispatches a Discord deal alert if a new deal threshold is met.
         """
+        # Proactive card name sanitization for corrupted encoding/mojibake
+        if "\ufffd" in item.name or any(marker in item.name for marker in ("\u00c3", "\u00c2")):
+            repaired = fix_mojibake(item.name)
+            if repaired and repaired != item.name and "\ufffd" not in repaired:
+                logger.info(f"Auto-repaired card name mojibake: '{item.name}' -> '{repaired}'")
+                item.name = repaired
+            elif "\ufffd" in item.name and item.scryfall_id:
+                try:
+                    sf_card = self.scryfall.get_card_by_id(item.scryfall_id)
+                    if sf_card and sf_card.get("name"):
+                        logger.info(f"Resolved canonical card name from Scryfall: '{item.name}' -> '{sf_card['name']}'")
+                        item.name = sf_card["name"]
+                except Exception as name_err:
+                    logger.debug(f"Could not resolve canonical name from Scryfall: {name_err}")
+
         is_any = item.is_any_version
         version_label = "Any Version" if is_any else (item.set_code or "N/A")
         logger.info(f"Polling prices for: {item.name} ({version_label}, {item.finish})")
 
-        # 1. Scryfall / TCGplayer
-        if is_any:
-            tcg_data = self.scryfall.get_cheapest_tcgplayer_price(item.name, finish=item.finish)
-        else:
-            tcg_data = self.scryfall.get_tcgplayer_price(item.scryfall_id, finish=item.finish)
+        # 1. Scryfall / TCGplayer (with error isolation and fallback)
+        tcg_data = None
+        try:
+            if is_any:
+                tcg_data = self.scryfall.get_cheapest_tcgplayer_price(item.name, finish=item.finish)
+            else:
+                tcg_data = self.scryfall.get_tcgplayer_price(item.scryfall_id, finish=item.finish)
+                # Fallback to cheapest price if specific printing has no direct price listed
+                if not tcg_data or not tcg_data.get("in_stock") or tcg_data.get("price", 0) <= 0:
+                    cheapest_fallback = self.scryfall.get_cheapest_tcgplayer_price(item.name, finish=item.finish)
+                    if cheapest_fallback and cheapest_fallback.get("price", 0) > 0:
+                        tcg_data = cheapest_fallback
+        except Exception as sf_err:
+            logger.warning(f"Error querying Scryfall/TCGplayer for {item.name}: {sf_err}")
+
         ref_price = tcg_data.get("price") if tcg_data and tcg_data.get("in_stock") else None
 
-        # 2. Mighty Meeple
-        set_name = self.scryfall.get_set_name(item.set_code) if not is_any and item.set_code else None
-        mm_data = self.mightymeeple.search_card(
-            card_name=item.name,
-            set_name=set_name,
-            set_code=None if is_any else item.set_code,
-            collector_number=None if is_any else item.collector_number,
-            finish=item.finish,
-        )
+        # 2. Mighty Meeple (with error isolation)
+        mm_data = None
+        try:
+            set_name = self.scryfall.get_set_name(item.set_code) if not is_any and item.set_code else None
+            mm_data = self.mightymeeple.search_card(
+                card_name=item.name,
+                set_name=set_name,
+                set_code=None if is_any else item.set_code,
+                collector_number=None if is_any else item.collector_number,
+                finish=item.finish,
+            )
+        except Exception as mm_err:
+            logger.warning(f"Error querying Mighty Meeple for {item.name}: {mm_err}")
 
-        # 3. eBay
-        ebay_data = self.ebay.search_card(
-            card_name=item.name,
-            set_code=None if is_any else item.set_code,
-            finish=item.finish,
-            reference_price=ref_price,
-        )
+        # 3. eBay (with error isolation)
+        ebay_data = None
+        try:
+            ebay_data = self.ebay.search_card(
+                card_name=item.name,
+                set_code=None if is_any else item.set_code,
+                finish=item.finish,
+                reference_price=ref_price,
+            )
+        except Exception as ebay_err:
+            logger.warning(f"Error querying eBay for {item.name}: {ebay_err}")
 
         now = datetime.now(timezone.utc)
         results = [tcg_data, mm_data, ebay_data]
@@ -150,6 +185,28 @@ class DealEngine:
             )
         except Exception as e:
             logger.debug(f"Could not persist telemetry to SystemSetting: {e}")
+
+        # Record persistent audit telemetry in ActivityLog for historical tracking
+        try:
+            target_user_id = items[0].user_id if items else None
+            admin_user = User.query.filter_by(is_admin=True).first() if not target_user_id else None
+            effective_uid = target_user_id or (admin_user.id if admin_user else None)
+            admin_email = admin_user.email if admin_user else "system.worker@chimera.local"
+            sweep_log = ActivityLog(
+                user_id=effective_uid,
+                user_email=admin_email,
+                action="SURVEILLANCE_SWEEP",
+                endpoint="worker.poll_all_cards",
+                details=(
+                    f"Surveillance cycle complete: {len(summary)} targets monitored, "
+                    f"{deals_found} active deals detected."
+                ),
+                created_at=now,
+            )
+            db.session.add(sweep_log)
+            db.session.commit()
+        except Exception as log_err:
+            logger.debug(f"Could not record ActivityLog for surveillance sweep: {log_err}")
 
         logger.info(f"Completed poll for all watchlist items ({len(summary)} scanned, {deals_found} deals).")
         return summary
@@ -297,16 +354,27 @@ class DealEngine:
                 "embeds": [embed],
             }
 
-            resp = requests.post(dest_url, json=payload, timeout=8)
-            if resp.status_code in (200, 204):
-                logger.info(f"Discord deal alert sent successfully for {item_name} to {dest_url[:45]}...")
-                return True
-            elif resp.status_code == 429:
-                logger.warning(f"Discord webhook rate limited (429) for {dest_url[:45]}...")
-            elif resp.status_code in (401, 404):
-                logger.warning(f"Discord webhook invalid/unauthorized ({resp.status_code}) for {dest_url[:45]}...")
-            else:
-                logger.warning(f"Discord webhook failed with status code {resp.status_code}: {resp.text}")
+            for attempt in range(2):
+                resp = requests.post(dest_url, json=payload, timeout=10)
+                if resp.status_code in (200, 204):
+                    logger.info(f"Discord deal alert sent successfully for {item_name} to {dest_url[:45]}...")
+                    time.sleep(0.5)
+                    return True
+                elif resp.status_code == 429:
+                    retry_sec = 2.0
+                    try:
+                        retry_sec = float(resp.json().get("retry_after", 2.0))
+                    except Exception:
+                        pass
+                    logger.warning(f"Discord webhook rate limited (429) for {dest_url[:45]}. Retrying in {retry_sec:.1f}s...")
+                    time.sleep(retry_sec)
+                    continue
+                elif resp.status_code in (401, 404):
+                    logger.warning(f"Discord webhook invalid/unauthorized ({resp.status_code}) for {dest_url[:45]}...")
+                    break
+                else:
+                    logger.warning(f"Discord webhook failed with status code {resp.status_code}: {resp.text}")
+                    break
         except Exception as e:
             logger.error(f"Failed to send Discord webhook deal alert: {e}")
 
@@ -394,16 +462,27 @@ class DealEngine:
                 "embeds": [embed],
             }
 
-            resp = requests.post(dest_url, json=payload, timeout=8)
-            if resp.status_code in (200, 204):
-                logger.info(f"Discord Mighty Meeple stock alert sent successfully for {item_name} to {dest_url[:45]}...")
-                return True
-            elif resp.status_code == 429:
-                logger.warning(f"Discord webhook rate limited (429) for {dest_url[:45]}...")
-            elif resp.status_code in (401, 404):
-                logger.warning(f"Discord webhook invalid/unauthorized ({resp.status_code}) for {dest_url[:45]}...")
-            else:
-                logger.warning(f"Discord Mighty Meeple alert failed with status code {resp.status_code}: {resp.text}")
+            for attempt in range(2):
+                resp = requests.post(dest_url, json=payload, timeout=10)
+                if resp.status_code in (200, 204):
+                    logger.info(f"Discord Mighty Meeple stock alert sent successfully for {item_name} to {dest_url[:45]}...")
+                    time.sleep(0.5)
+                    return True
+                elif resp.status_code == 429:
+                    retry_sec = 2.0
+                    try:
+                        retry_sec = float(resp.json().get("retry_after", 2.0))
+                    except Exception:
+                        pass
+                    logger.warning(f"Discord webhook rate limited (429) for {dest_url[:45]}. Retrying in {retry_sec:.1f}s...")
+                    time.sleep(retry_sec)
+                    continue
+                elif resp.status_code in (401, 404):
+                    logger.warning(f"Discord webhook invalid/unauthorized ({resp.status_code}) for {dest_url[:45]}...")
+                    break
+                else:
+                    logger.warning(f"Discord Mighty Meeple alert failed with status code {resp.status_code}: {resp.text}")
+                    break
         except Exception as e:
             logger.error(f"Failed to send Discord Mighty Meeple stock alert: {e}")
 
