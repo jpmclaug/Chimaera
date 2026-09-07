@@ -612,7 +612,7 @@
                 showToast(data.message || "MicroCenter sync completed successfully!", "success");
                 await loadItems();
             } else {
-                showToast(data.error || "Sync encountered an error", "error");
+                showToast(data.error || data.message || "Sync encountered an error", "error");
             }
         } catch (err) {
             console.error("Sync error:", err);

@@ -14,9 +14,16 @@ CHARLOTTE_STORE_NAME = "Charlotte"
 MICROCENTER_SEARCH_BASE = "https://www.microcenter.com/search/search_results.aspx"
 MICROCENTER_DEFAULT_FQ = "category:Tabletop+Games|646,brand:Wizards+of+the+Coast,Subcategory:Trading+Card+Game"
 DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 )
+DEFAULT_IMPERSONATION_TARGETS = [
+    "safari17_0",
+    "safari",
+    "safari_ios",
+    "chrome124",
+    "chrome",
+]
 
 
 class MicrocenterProvider:
@@ -25,12 +32,19 @@ class MicrocenterProvider:
     Extracts Magic: The Gathering products, stock quantities, and pricing without requiring an API.
     """
 
-    def __init__(self, store_id: str = CHARLOTTE_STORE_ID, store_name: str = CHARLOTTE_STORE_NAME):
+    def __init__(
+        self,
+        store_id: str = CHARLOTTE_STORE_ID,
+        store_name: str = CHARLOTTE_STORE_NAME,
+        impersonation_targets: list[str] | None = None,
+    ):
         self.store_id = str(store_id or CHARLOTTE_STORE_ID).strip()
         self.store_name = str(store_name or CHARLOTTE_STORE_NAME).strip()
+        self.impersonation_targets = list(impersonation_targets or DEFAULT_IMPERSONATION_TARGETS)
+        self.active_impersonation = self.impersonation_targets[0] if self.impersonation_targets else "safari17_0"
 
     def _get_session(self):
-        """Creates a requests session configured with Charlotte store cookies and Chrome TLS impersonation."""
+        """Creates a requests session configured with Charlotte store cookies and TLS impersonation."""
         try:
             from curl_cffi import requests as cffi_requests
             session = cffi_requests.Session()
@@ -50,6 +64,47 @@ class MicrocenterProvider:
             session.cookies.set("myStore", "true", domain=".microcenter.com")
             session.cookies.set("rpp", "96", domain=".microcenter.com")
             return session, False
+
+    @staticmethod
+    def _is_cloudflare_challenge(resp) -> bool:
+        """Detects if response is a Cloudflare managed challenge or block."""
+        if resp is None:
+            return True
+        if resp.status_code in (403, 429, 503):
+            return True
+        if hasattr(resp, "headers") and "cf-mitigated" in resp.headers:
+            return True
+        text_lower = (getattr(resp, "text", "") or "")[:1500].lower()
+        if "<title>just a moment...</title>" in text_lower or "challenges.cloudflare.com" in text_lower:
+            return True
+        return False
+
+    def _fetch_with_impersonation(self, session, is_cffi: bool, url: str, timeout: int = 25):
+        """Fetches a URL, attempting the active impersonation target and rotating through fallbacks if blocked."""
+        if not is_cffi:
+            return session.get(url, timeout=timeout)
+
+        # Build list of targets starting with the currently active one
+        targets = [self.active_impersonation] + [t for t in self.impersonation_targets if t != self.active_impersonation]
+        last_resp = None
+
+        for target in targets:
+            try:
+                resp = session.get(url, impersonate=target, timeout=timeout)
+                if self._is_cloudflare_challenge(resp):
+                    logger.warning(
+                        f"MicroCenter request with impersonation '{target}' flagged by Cloudflare (HTTP {resp.status_code}). Attempting fallback..."
+                    )
+                    last_resp = resp
+                    continue
+                # Successful or non-challenge response
+                self.active_impersonation = target
+                return resp
+            except Exception as e:
+                logger.warning(f"Error fetching MicroCenter using impersonation '{target}': {e}")
+                continue
+
+        return last_resp
 
     def scrape_charlotte_inventory(self, rpp: int = 96, max_pages: int = 5) -> list[dict]:
         """
@@ -71,13 +126,11 @@ class MicrocenterProvider:
             logger.info(f"Fetching MicroCenter Charlotte MTG inventory (Page {page}, Store {self.store_id})...")
 
             try:
-                if is_cffi:
-                    resp = session.get(url, impersonate="chrome120", timeout=25)
-                else:
-                    resp = session.get(url, timeout=25)
+                resp = self._fetch_with_impersonation(session, is_cffi, url, timeout=25)
 
-                if resp.status_code != 200:
-                    logger.warning(f"MicroCenter scraper received HTTP {resp.status_code} on page {page}")
+                if resp is None or resp.status_code != 200 or self._is_cloudflare_challenge(resp):
+                    status = resp.status_code if resp is not None else "No Response"
+                    logger.warning(f"MicroCenter scraper received HTTP {status} on page {page}")
                     break
 
                 page_products = self.parse_search_html(resp.text)
@@ -251,10 +304,16 @@ class MicrocenterProvider:
         scraped_products = self.scrape_charlotte_inventory()
 
         if not scraped_products:
-            logger.warning("MicroCenter sync: No products retrieved from Charlotte store scrape.")
+            err_msg = "No products could be scraped from MicroCenter (Cloudflare challenge or connection error)."
+            logger.warning(f"MicroCenter sync: {err_msg}")
+            try:
+                SystemSetting.set_val("microcenter_last_scan_status", f"Failed: {err_msg}")
+            except Exception:
+                pass
             return {
                 "success": False,
-                "message": "No products could be scraped from MicroCenter.",
+                "error": err_msg,
+                "message": err_msg,
                 "total_scanned": 0,
                 "new_items": 0,
                 "updated_items": 0,

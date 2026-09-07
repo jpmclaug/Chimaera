@@ -1324,10 +1324,12 @@ def create_app(test_config=None):
         try:
             result = deal_engine.sync_microcenter(notify=True)
             log_activity("MICROCENTER_SYNC", details=result.get("message"), user=user)
+            if not result.get("success") and "error" not in result:
+                result["error"] = result.get("message", "MicroCenter sweep failed")
             return jsonify(result)
         except Exception as e:
             logger.error(f"Manual MicroCenter sync failed: {e}", exc_info=True)
-            return jsonify({"success": False, "error": str(e)}), 500
+            return jsonify({"success": False, "error": str(e), "message": str(e)}), 500
 
     @app.route("/api/microcenter/item/<int:item_id>/update", methods=["POST"])
     @login_required
