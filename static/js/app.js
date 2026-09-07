@@ -976,6 +976,282 @@ async function deleteCard(itemId, cardName) {
 }
 
 // =========================================================================
+// Multi-Card Target Selection & Bulk Operations Engine
+// =========================================================================
+let selectedCardIds = new Set();
+let bulkSelectModeActive = false;
+
+function toggleBulkSelectMode() {
+    bulkSelectModeActive = !bulkSelectModeActive;
+    const btn = document.getElementById("btn-toggle-select-mode");
+    const label = document.getElementById("btn-select-mode-text");
+    if (btn) {
+        if (bulkSelectModeActive) {
+            btn.classList.add("active");
+            if (label) label.textContent = "Exit Select";
+        } else {
+            btn.classList.remove("active");
+            if (label) label.textContent = "Select";
+            clearCardSelection();
+        }
+    }
+    updateBulkActionBar();
+}
+
+function handleCardSelectChange(cardId, isChecked) {
+    cardId = Number(cardId);
+    if (isChecked) {
+        selectedCardIds.add(cardId);
+    } else {
+        selectedCardIds.delete(cardId);
+    }
+    syncCardSelectionUI(cardId);
+    updateBulkActionBar();
+}
+
+function toggleSingleCardSelection(cardId) {
+    cardId = Number(cardId);
+    const isSelected = selectedCardIds.has(cardId);
+    handleCardSelectChange(cardId, !isSelected);
+}
+
+function syncCardSelectionUI(cardId) {
+    const isSelected = selectedCardIds.has(cardId);
+
+    // Synchronize checkboxes
+    const chkGrid = document.getElementById(`chk-grid-${cardId}`);
+    if (chkGrid) chkGrid.checked = isSelected;
+    const chkCompact = document.getElementById(`chk-compact-${cardId}`);
+    if (chkCompact) chkCompact.checked = isSelected;
+
+    // Synchronize button labels & styling across Grid, Compact, Swipe
+    const labels = document.querySelectorAll(`.btn-select-label-${cardId}`);
+    labels.forEach(lbl => {
+        lbl.textContent = isSelected ? "✓ Selected" : "Select";
+        const btn = lbl.closest("button");
+        if (btn) {
+            if (isSelected) {
+                btn.classList.add("text-[#00CED1]");
+                btn.classList.remove("text-[#94A3B8]");
+            } else {
+                btn.classList.remove("text-[#00CED1]");
+                btn.classList.add("text-[#94A3B8]");
+            }
+        }
+    });
+
+    // Synchronize visual card container highlights
+    const gridCard = document.getElementById(`card-row-${cardId}`);
+    if (gridCard) {
+        if (isSelected) gridCard.classList.add("is-selected");
+        else gridCard.classList.remove("is-selected");
+    }
+
+    const compactCard = document.getElementById(`compact-card-${cardId}`);
+    if (compactCard) {
+        if (isSelected) compactCard.classList.add("is-selected");
+        else compactCard.classList.remove("is-selected");
+    }
+}
+
+function getCurrentlyVisibleCardIds() {
+    const gridCards = document.querySelectorAll("#watchlist-grid .watchlist-card");
+    const visibleIds = [];
+    if (gridCards.length > 0) {
+        gridCards.forEach(card => {
+            if (!card.classList.contains("hidden")) {
+                const id = Number(card.id.replace("card-row-", ""));
+                if (id) visibleIds.push(id);
+            }
+        });
+    } else {
+        const compactCards = document.querySelectorAll("#watchlist-compact .compact-card");
+        compactCards.forEach(card => {
+            if (!card.classList.contains("hidden")) {
+                const id = Number(card.id.replace("compact-card-", ""));
+                if (id) visibleIds.push(id);
+            }
+        });
+    }
+    return visibleIds;
+}
+
+function updateBulkActionBar() {
+    const bar = document.getElementById("watchlist-bulk-bar");
+    const badge = document.getElementById("bulk-selected-count-badge");
+    const count = selectedCardIds.size;
+
+    if (badge) {
+        badge.textContent = `[ ${count} TARGET${count === 1 ? '' : 'S'} SELECTED ]`;
+    }
+
+    if (bar) {
+        if (count > 0) {
+            bar.classList.remove("hidden");
+        } else {
+            bar.classList.add("hidden");
+        }
+    }
+
+    const selectAllBtn = document.getElementById("btn-bulk-select-all");
+    if (selectAllBtn) {
+        const visibleCards = getCurrentlyVisibleCardIds();
+        const allVisibleSelected = visibleCards.length > 0 && visibleCards.every(id => selectedCardIds.has(id));
+        selectAllBtn.textContent = allVisibleSelected ? "Deselect All" : "Select All";
+    }
+}
+
+function selectAllVisibleCards() {
+    const visibleIds = getCurrentlyVisibleCardIds();
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedCardIds.has(id));
+
+    if (allVisibleSelected) {
+        visibleIds.forEach(id => {
+            selectedCardIds.delete(id);
+            syncCardSelectionUI(id);
+        });
+    } else {
+        visibleIds.forEach(id => {
+            selectedCardIds.add(id);
+            syncCardSelectionUI(id);
+        });
+    }
+    updateBulkActionBar();
+}
+
+function clearCardSelection() {
+    const prevSelected = Array.from(selectedCardIds);
+    selectedCardIds.clear();
+    prevSelected.forEach(id => syncCardSelectionUI(id));
+    updateBulkActionBar();
+}
+
+async function executeBulkTerminate() {
+    const count = selectedCardIds.size;
+    if (count === 0) {
+        showToast("No targets selected.", "error");
+        return;
+    }
+
+    if (!confirm(`CONFIRM BULK TARGET DE-REGISTRATION:\nPermanently remove ${count} target(s) from surveillance registry?`)) {
+        return;
+    }
+
+    const cardIds = Array.from(selectedCardIds);
+    try {
+        const res = await fetch("/api/watchlist/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ card_ids: cardIds }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || `De-registered ${count} targets.`, "success");
+            cardIds.forEach(id => {
+                const elem = document.getElementById(`card-row-${id}`);
+                const compactElem = document.getElementById(`compact-card-${id}`);
+                [elem, compactElem].forEach(el => {
+                    if (el) {
+                        el.style.transition = "opacity 0.25s, transform 0.25s";
+                        el.style.opacity = "0";
+                        el.style.transform = "scale(0.96)";
+                    }
+                });
+            });
+            clearCardSelection();
+            setTimeout(() => window.location.reload(), 350);
+        } else {
+            showToast(data.error || "Failed to remove targets.", "error");
+        }
+    } catch (err) {
+        console.error("Bulk delete error:", err);
+        showToast("Network error removing targets.", "error");
+    }
+}
+
+function openBulkTagModal() {
+    const count = selectedCardIds.size;
+    if (count === 0) {
+        showToast("No targets selected for tagging.", "error");
+        return;
+    }
+    const modal = document.getElementById("modal-bulk-tag");
+    const countLabel = document.getElementById("bulk-tag-count-label");
+    const input = document.getElementById("bulk-assign-tag-input");
+
+    if (countLabel) {
+        countLabel.textContent = `${count} Target${count === 1 ? '' : 's'} Selected`;
+    }
+    if (input) {
+        input.value = "";
+        input.placeholder = "e.g. Atraxa Commander, Modern Burn, Sideboard...";
+    }
+    if (modal) {
+        modal.classList.remove("hidden");
+        if (input) input.focus();
+    }
+}
+
+function closeBulkTagModal() {
+    const modal = document.getElementById("modal-bulk-tag");
+    if (modal) modal.classList.add("hidden");
+}
+
+function clearBulkTagInput() {
+    const input = document.getElementById("bulk-assign-tag-input");
+    if (input) {
+        input.value = "";
+        input.placeholder = "[ TAGS WILL BE CLEARED / STRIPPED ]";
+        input.focus();
+    }
+}
+
+async function submitBulkTag() {
+    const count = selectedCardIds.size;
+    if (count === 0) {
+        showToast("No targets selected.", "error");
+        return;
+    }
+    const input = document.getElementById("bulk-assign-tag-input");
+    const tag = input ? input.value.trim() : "";
+    const cardIds = Array.from(selectedCardIds);
+
+    const submitBtn = document.getElementById("btn-submit-bulk-tag");
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Applying...";
+    }
+
+    try {
+        const res = await fetch("/api/watchlist/bulk-tag", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ card_ids: cardIds, tag: tag }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || `Updated tags for ${count} targets.`, "success");
+            closeBulkTagModal();
+            clearCardSelection();
+            setTimeout(() => window.location.reload(), 350);
+        } else {
+            showToast(data.error || "Failed to update tags.", "error");
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Apply Tags";
+            }
+        }
+    } catch (err) {
+        console.error("Bulk tag error:", err);
+        showToast("Network error updating tags.", "error");
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Apply Tags";
+        }
+    }
+}
+
+// =========================================================================
 // View Mode Switching & Swipe Deck Touch Engine
 // =========================================================================
 function setViewMode(mode) {
@@ -1198,6 +1474,7 @@ function filterWatchlist() {
         swipeTrackState["registry-swipe-track"].index = 0;
     }
     updateSwipeDeckPosition("registry-swipe-track");
+    updateBulkActionBar();
 }
 
 // =========================================================================

@@ -109,6 +109,13 @@
                     </button>
                 </div>
 
+                <button onclick="toggleBulkSelectMode()" id="btn-toggle-select-mode" class="btn-bridge px-2.5 py-1.5 sm:py-2 text-xs text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center space-x-1 uppercase font-mono font-bold" title="Toggle Multi-Card Selection">
+                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                    </svg>
+                    <span id="btn-select-mode-text">Select</span>
+                </button>
+
                 <button onclick="openBulkAddModal()" class="btn-bridge px-2.5 py-1.5 sm:py-2 text-xs text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center space-x-1 uppercase font-mono font-bold" title="Bulk Register Targets">
                     <span>+ Bulk</span>
                 </button>
@@ -175,7 +182,15 @@
             
             <div>
                 <!-- Card Header -->
-                <div class="flex items-start space-x-3.5">
+                <div class="flex items-start space-x-3">
+                    <div class="pt-0.5 flex-shrink-0">
+                        <input type="checkbox" 
+                            class="card-select-checkbox w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer"
+                            data-card-id="{{ item.id }}"
+                            id="chk-grid-{{ item.id }}"
+                            onchange="handleCardSelectChange({{ item.id }}, this.checked)"
+                            title="Select {{ item.name }}">
+                    </div>
                     {% if item.image_uri %}
                     <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0">
                     {% else %}
@@ -351,7 +366,10 @@
                     <span>Poll</span>
                 </button>
 
-                <div class="flex items-center space-x-3">
+                <div class="flex items-center space-x-2.5 sm:space-x-3">
+                    <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-grid-{{ item.id }}" class="text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold flex items-center space-x-1" title="Toggle Target Selection">
+                        <span class="btn-select-label-{{ item.id }}">Select</span>
+                    </button>
                     <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" class="text-[#00CED1] hover:text-white uppercase font-bold">
                         Edit Target
                     </button>
@@ -382,7 +400,13 @@
             id="compact-card-{{ item.id }}">
             
             <!-- Left: Thumbnail & Name -->
-            <div class="flex items-center space-x-3 min-w-0 flex-1">
+            <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
+                <input type="checkbox" 
+                    class="card-select-checkbox w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer flex-shrink-0"
+                    data-card-id="{{ item.id }}"
+                    id="chk-compact-{{ item.id }}"
+                    onchange="handleCardSelectChange({{ item.id }}, this.checked)"
+                    title="Select {{ item.name }}">
                 {% if item.image_uri %}
                 <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-10 h-14 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0">
                 {% else %}
@@ -432,6 +456,10 @@
 
                 <!-- Best Vendor Action / Link -->
                 <div class="flex items-center space-x-1.5">
+                    <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-compact-{{ item.id }}" class="btn-bridge px-2 py-1 text-[11px] text-[#94A3B8] hover:text-[#00CED1]" title="Toggle Target Selection">
+                        <span class="btn-select-label-{{ item.id }}">Select</span>
+                    </button>
+
                     {% if best and best.product_url %}
                     <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson px-2.5 py-1 text-[11px] uppercase font-bold" title="Buy on {{ best.vendor_name }} (${{ "%.2f"|format(best.price) }})">
                         Buy ${{ "%.2f"|format(best.price) }}
@@ -601,6 +629,9 @@
                             </button>
 
                             <div class="flex items-center space-x-2">
+                                <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-swipe-{{ item.id }}" class="btn-bridge px-2.5 py-1.5 text-xs text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold" title="Toggle Target Selection">
+                                    <span class="btn-select-label-{{ item.id }}">Select</span>
+                                </button>
                                 <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" class="btn-bridge px-3 py-1.5 text-[#00CED1] hover:text-white uppercase font-bold">
                                     Edit Target
                                 </button>
@@ -619,6 +650,31 @@
         <p class="text-center text-[11px] font-mono text-[#64748B]">
             Swipe left/right or use arrow buttons to navigate through targets
         </p>
+    </div>
+
+    <!-- =========================================================================
+         TACTICAL FLOATING BULK ACTION BAR
+         ========================================================================= -->
+    <div id="watchlist-bulk-bar" class="hidden fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#1B2230] border-2 border-[#00CED1] shadow-2xl p-2.5 sm:p-3 px-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 font-mono text-xs max-w-2xl w-[94vw] sm:w-auto transition-all duration-300">
+        <div class="flex items-center space-x-2 sm:space-x-3">
+            <span class="w-2 h-2 rounded-full bg-[#00CED1] animate-ping inline-block flex-shrink-0"></span>
+            <span id="bulk-selected-count-badge" class="font-bold text-[#00CED1] tracking-wider text-xs sm:text-sm whitespace-nowrap">[ 0 TARGETS SELECTED ]</span>
+        </div>
+
+        <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <button type="button" onclick="selectAllVisibleCards()" id="btn-bulk-select-all" class="btn-bridge px-2.5 py-1.5 text-[11px] uppercase font-bold text-white hover:text-[#00CED1]" title="Select all currently visible targets">
+                Select All
+            </button>
+            <button type="button" onclick="openBulkTagModal()" class="btn-bridge px-2.5 py-1.5 text-[11px] uppercase font-bold text-[#C084FC] border-[#9333EA]/50 hover:bg-[#9333EA]/20 flex items-center space-x-1" title="Assign tag to selected targets">
+                <span>🏷️ Bulk Tag</span>
+            </button>
+            <button type="button" onclick="executeBulkTerminate()" class="btn-crimson px-2.5 sm:px-3 py-1.5 text-[11px] uppercase font-bold flex items-center space-x-1" title="De-register selected targets">
+                <span>🗑️ Bulk Terminate</span>
+            </button>
+            <button type="button" onclick="clearCardSelection()" class="btn-bridge px-2.5 py-1.5 text-[11px] text-[#94A3B8] hover:text-white" title="Clear selection">
+                ✕
+            </button>
+        </div>
     </div>
     {% endif %}
 

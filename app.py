@@ -1899,6 +1899,7 @@ def create_app(test_config=None):
             return jsonify({"error": "Card not found in your target registry."}), 404
 
         card_name = item.name
+        VendorPrice.query.filter_by(watchlist_id=item.id).delete(synchronize_session=False)
         db.session.delete(item)
         db.session.commit()
 
@@ -1906,6 +1907,102 @@ def create_app(test_config=None):
         return jsonify({
             "message": f"Removed {card_name} from watchlist.",
             "deleted_id": item_id,
+        })
+
+    @app.route("/api/watchlist/bulk-delete", methods=["POST"])
+    @login_required
+    def bulk_delete_cards():
+        """Remove multiple cards and their associated vendor prices."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        card_ids = data.get("card_ids", [])
+        if not card_ids or not isinstance(card_ids, list):
+            return jsonify({"error": "No target card IDs provided."}), 400
+
+        try:
+            valid_ids = [int(cid) for cid in card_ids]
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid card ID format."}), 400
+
+        items = WatchlistItem.query.filter(
+            WatchlistItem.id.in_(valid_ids),
+            WatchlistItem.user_id == user.id,
+        ).all()
+
+        if not items:
+            return jsonify({"error": "No matching cards found in your target registry."}), 404
+
+        deleted_ids = []
+        deleted_names = []
+        for item in items:
+            deleted_ids.append(item.id)
+            deleted_names.append(item.name)
+
+        VendorPrice.query.filter(VendorPrice.watchlist_id.in_(deleted_ids)).delete(synchronize_session=False)
+
+        for item in items:
+            db.session.delete(item)
+
+        db.session.commit()
+
+        names_summary = ", ".join(deleted_names[:5])
+        if len(deleted_names) > 5:
+            names_summary += f" and {len(deleted_names) - 5} more"
+        log_activity(
+            "CARD_BULK_DELETE",
+            details=f"Bulk removed {len(deleted_ids)} targets: {names_summary}",
+            user=user,
+        )
+
+        return jsonify({
+            "message": f"Successfully de-registered {len(deleted_ids)} target(s) from surveillance registry.",
+            "deleted_ids": deleted_ids,
+            "count": len(deleted_ids),
+        })
+
+    @app.route("/api/watchlist/bulk-tag", methods=["POST"])
+    @login_required
+    def bulk_tag_cards():
+        """Update or clear tags for multiple cards in user's watchlist."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        card_ids = data.get("card_ids", [])
+        if not card_ids or not isinstance(card_ids, list):
+            return jsonify({"error": "No target card IDs provided."}), 400
+
+        try:
+            valid_ids = [int(cid) for cid in card_ids]
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid card ID format."}), 400
+
+        items = WatchlistItem.query.filter(
+            WatchlistItem.id.in_(valid_ids),
+            WatchlistItem.user_id == user.id,
+        ).all()
+
+        if not items:
+            return jsonify({"error": "No matching cards found in your target registry."}), 404
+
+        raw_tag = (data.get("tag") or "").strip()
+        new_tag = raw_tag or None
+
+        for item in items:
+            item.tag = new_tag
+
+        db.session.commit()
+
+        tag_label = f"'{new_tag}'" if new_tag else "cleared"
+        log_activity(
+            "CARD_BULK_TAG",
+            details=f"Updated tag to {tag_label} for {len(items)} targets",
+            user=user,
+        )
+
+        return jsonify({
+            "message": f"Updated tag to {tag_label} for {len(items)} target(s).",
+            "updated_ids": [item.id for item in items],
+            "tag": new_tag,
+            "count": len(items),
         })
 
     @app.route("/api/card/price-intel")

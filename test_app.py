@@ -1999,6 +1999,149 @@ class ChimeraTestSuite(unittest.TestCase):
         self.assertEqual(resp_auth.status_code, 200)
         self.assertIn("Tactical Field Manual & System Overview", resp_auth.data.decode("utf-8"))
 
+    def test_bulk_delete_watchlist_items(self):
+        """Tests bulk deletion of watchlist targets, cascading vendor price cleanup, and user isolation."""
+        with self.app.app_context():
+            user1 = self.admin_user
+            user2 = self.login_as("operator_beta@gmail.com", is_admin=False)
+
+            # Re-login as user 1
+            self.login_as("jpmclaug@gmail.com", is_admin=True)
+
+            # Create cards for user 1
+            c1 = WatchlistItem(name="Sol Ring", user_id=user1.id, finish="nonfoil")
+            c2 = WatchlistItem(name="Mana Crypt", user_id=user1.id, finish="nonfoil")
+            c3 = WatchlistItem(name="Rhystic Study", user_id=user1.id, finish="nonfoil")
+            # Create card for user 2
+            c_other = WatchlistItem(name="Black Lotus", user_id=user2.id, finish="nonfoil")
+            db.session.add_all([c1, c2, c3, c_other])
+            db.session.commit()
+
+            # Add vendor price to c1 and c2
+            vp1 = VendorPrice(watchlist_id=c1.id, vendor_name="TCGplayer", price=1.50, in_stock=True)
+            vp2 = VendorPrice(watchlist_id=c2.id, vendor_name="Mighty Meeple", price=150.00, in_stock=True)
+            db.session.add_all([vp1, vp2])
+            db.session.commit()
+            vp1_id, vp2_id = vp1.id, vp2.id
+            c1_id, c2_id, c3_id, c_other_id = c1.id, c2.id, c3.id, c_other.id
+
+            # 1. Invalid payload tests
+            resp_bad1 = self.client.post("/api/watchlist/bulk-delete", data=json.dumps({}), content_type="application/json")
+            self.assertEqual(resp_bad1.status_code, 400)
+
+            resp_bad2 = self.client.post("/api/watchlist/bulk-delete", data=json.dumps({"card_ids": "not-a-list"}), content_type="application/json")
+            self.assertEqual(resp_bad2.status_code, 400)
+
+            resp_bad3 = self.client.post("/api/watchlist/bulk-delete", data=json.dumps({"card_ids": ["invalid-id"]}), content_type="application/json")
+            self.assertEqual(resp_bad3.status_code, 400)
+
+            # 2. Attempting to delete another user's card
+            resp_iso = self.client.post("/api/watchlist/bulk-delete", data=json.dumps({"card_ids": [c_other_id]}), content_type="application/json")
+            self.assertEqual(resp_iso.status_code, 404)
+            self.assertIsNotNone(db.session.get(WatchlistItem, c_other_id))
+
+            # 3. Bulk delete user 1's cards (c1 and c2) plus user 2's card (c_other should be ignored/excluded)
+            resp_del = self.client.post(
+                "/api/watchlist/bulk-delete",
+                data=json.dumps({"card_ids": [c1_id, c2_id, c_other_id]}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp_del.status_code, 200)
+            data = resp_del.get_json()
+            self.assertEqual(data["count"], 2)
+            self.assertIn(c1_id, data["deleted_ids"])
+            self.assertIn(c2_id, data["deleted_ids"])
+            self.assertNotIn(c_other_id, data["deleted_ids"])
+
+            # Verify database state
+            self.assertIsNone(db.session.get(WatchlistItem, c1_id))
+            self.assertIsNone(db.session.get(WatchlistItem, c2_id))
+            self.assertIsNone(db.session.get(VendorPrice, vp1_id))
+            self.assertIsNone(db.session.get(VendorPrice, vp2_id))
+            self.assertIsNotNone(db.session.get(WatchlistItem, c3_id))
+            self.assertIsNotNone(db.session.get(WatchlistItem, c_other_id))
+
+            # Verify activity telemetry log
+            log = ActivityLog.query.filter_by(action="CARD_BULK_DELETE", user_id=user1.id).first()
+            self.assertIsNotNone(log)
+            self.assertIn("Bulk removed 2 targets", log.details)
+
+    def test_bulk_tag_watchlist_items(self):
+        """Tests bulk tag assignment, tag clearing, and user isolation."""
+        with self.app.app_context():
+            user1 = self.admin_user
+            user2 = self.login_as("operator_gamma@gmail.com", is_admin=False)
+
+            self.login_as("jpmclaug@gmail.com", is_admin=True)
+
+            c1 = WatchlistItem(name="Lightning Bolt", user_id=user1.id, finish="nonfoil", tag=None)
+            c2 = WatchlistItem(name="Lava Spike", user_id=user1.id, finish="nonfoil", tag="Legacy")
+            c_other = WatchlistItem(name="Counterspell", user_id=user2.id, finish="nonfoil", tag="Control")
+            db.session.add_all([c1, c2, c_other])
+            db.session.commit()
+            c1_id, c2_id, c_other_id = c1.id, c2.id, c_other.id
+
+            # 1. Invalid payload
+            resp_bad = self.client.post("/api/watchlist/bulk-tag", data=json.dumps({"card_ids": []}), content_type="application/json")
+            self.assertEqual(resp_bad.status_code, 400)
+
+            # 2. Isolation check
+            resp_iso = self.client.post("/api/watchlist/bulk-tag", data=json.dumps({"card_ids": [c_other_id], "tag": "Burn"}), content_type="application/json")
+            self.assertEqual(resp_iso.status_code, 404)
+            self.assertEqual(db.session.get(WatchlistItem, c_other_id).tag, "Control")
+
+            # 3. Bulk apply tag
+            resp_tag = self.client.post(
+                "/api/watchlist/bulk-tag",
+                data=json.dumps({"card_ids": [c1_id, c2_id], "tag": "Modern Burn"}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp_tag.status_code, 200)
+            data = resp_tag.get_json()
+            self.assertEqual(data["count"], 2)
+            self.assertEqual(data["tag"], "Modern Burn")
+
+            c1_db = db.session.get(WatchlistItem, c1_id)
+            c2_db = db.session.get(WatchlistItem, c2_id)
+            self.assertEqual(c1_db.tag, "Modern Burn")
+            self.assertEqual(c2_db.tag, "Modern Burn")
+
+            # 4. Bulk clear tag
+            resp_clear = self.client.post(
+                "/api/watchlist/bulk-tag",
+                data=json.dumps({"card_ids": [c1_id, c2_id], "tag": ""}),
+                content_type="application/json",
+            )
+            self.assertEqual(resp_clear.status_code, 200)
+            self.assertIsNone(resp_clear.get_json()["tag"])
+
+            db.session.refresh(c1_db)
+            db.session.refresh(c2_db)
+            self.assertIsNone(c1_db.tag)
+            self.assertIsNone(c2_db.tag)
+
+            # Verify activity telemetry log
+            log = ActivityLog.query.filter_by(action="CARD_BULK_TAG", user_id=user1.id).first()
+            self.assertIsNotNone(log)
+
+    def test_ui_bulk_controls_rendered(self):
+        """Tests that registry dashboard contains multi-card selection and bulk operation elements."""
+        with self.app.app_context():
+            user = self.admin_user
+            card = WatchlistItem(name="Demonic Tutor", user_id=user.id, finish="nonfoil")
+            db.session.add(card)
+            db.session.commit()
+
+            resp = self.client.get("/")
+            self.assertEqual(resp.status_code, 200)
+            html = resp.data.decode("utf-8")
+            self.assertIn("btn-toggle-select-mode", html)
+            self.assertIn("watchlist-bulk-bar", html)
+            self.assertIn("card-select-checkbox", html)
+            self.assertIn("modal-bulk-tag", html)
+            self.assertIn("Bulk Terminate", html)
+            self.assertIn("Bulk Tag", html)
+
 
 if __name__ == "__main__":
     unittest.main()

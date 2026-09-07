@@ -614,6 +614,61 @@
         </div>
     </div>
 
+    <!-- Bulk Assign Tag Modal -->
+    <div id="modal-bulk-tag" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-md w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">PROTOCOL // 0x5C</span>
+                        <span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-[10px] px-1.5 py-0.2 font-mono font-bold uppercase">BATCH TAGGING</span>
+                    </div>
+                    <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider mt-0.5">Bulk Target Tag Assignment</h3>
+                </div>
+                <button onclick="closeBulkTagModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+            </div>
+
+            <!-- Scrollable Modal Body -->
+            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 modal-scrollable">
+                <div class="bg-[#10141D] p-3 border border-[#263245] space-y-1">
+                    <span class="text-xs font-mono text-[#94A3B8]">Target Allocation:</span>
+                    <div id="bulk-tag-count-label" class="text-sm font-mono font-bold text-[#00CED1]">0 Targets Selected</div>
+                    <div class="text-[11px] text-[#64748B] font-mono">Assign a unified deck or category tag to all selected cards, or clear their existing tags.</div>
+                </div>
+
+                <!-- Tag Input -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Tag / Deck / Category</label>
+                        <button type="button" onclick="clearBulkTagInput()" class="text-[10px] font-mono text-[#DC143C] hover:text-[#FF3358] uppercase underline">
+                            [ Strip / Clear Tag ]
+                        </button>
+                    </div>
+                    <input type="text" id="bulk-assign-tag-input" list="user-tags-datalist" placeholder="e.g. Atraxa Commander, Modern Burn, Sideboard..." 
+                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono">
+                    {% if user_tags %}
+                    <div class="mt-2">
+                        <span class="text-[10px] font-mono text-[#64748B] uppercase block mb-1">Quick Select Existing Tag:</span>
+                        <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                            {% for tag in user_tags %}
+                            <button type="button" onclick="setModalTag('bulk-assign-tag-input', '{{ tag|replace("'", "\\'") }}')" class="text-[10px] font-mono bg-[#10141D] hover:bg-[#222B3D] text-[#C084FC] hover:text-white border border-[#9333EA]/40 px-2 py-0.5 transition">
+                                🏷️ {{ tag }}
+                            </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Sticky Pinned Action Footer -->
+            <div class="flex justify-end space-x-2 pt-3 border-t border-[#263245] flex-shrink-0 mt-3 sm:mt-4">
+                <button type="button" onclick="closeBulkTagModal()" class="btn-bridge px-3.5 py-2 text-xs">Cancel</button>
+                <button type="button" onclick="submitBulkTag()" id="btn-submit-bulk-tag" class="btn-crimson px-4 py-2 text-xs">Apply Tags</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Global Datalist for Tags Autocomplete -->
     <datalist id="user-tags-datalist">
         {% if user_tags %}

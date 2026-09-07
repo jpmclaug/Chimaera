@@ -363,4 +363,39 @@ input:focus, select:focus, textarea:focus {
     background: #3D4F6B;
 }
 
+/* =========================================================================
+   Card Selection & Multi-Target Bulk Action Bar
+   ========================================================================= */
+.watchlist-card.is-selected,
+.compact-card.is-selected {
+    border-color: var(--accent-teal-bright) !important;
+    background-color: rgba(0, 206, 209, 0.08) !important;
+    box-shadow: 0 0 12px rgba(0, 206, 209, 0.25);
+}
+
+.card-select-checkbox {
+    accent-color: var(--accent-teal-bright);
+}
+
+#btn-toggle-select-mode.active {
+    background-color: var(--surface-elevated);
+    color: var(--accent-teal-bright);
+    border-color: var(--accent-teal-bright);
+}
+
+#watchlist-bulk-bar {
+    animation: bulkBarSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bulkBarSlideUp {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 16px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
 
