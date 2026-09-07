@@ -2268,7 +2268,7 @@ def create_app(test_config=None):
     @app.route("/deck-analyzer")
     @login_required
     def deck_analyzer_page():
-        """Tactical Commander Deck Fleet Intelligence & Analysis Command Hub."""
+        """Tactical Commander Deck Intelligence & Analysis Command Hub."""
         user = get_current_user()
         has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
@@ -2284,7 +2284,7 @@ def create_app(test_config=None):
 
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
 
-        log_activity("PAGE_VIEW", details="Accessed Commander Deck Fleet Hub", user=user)
+        log_activity("PAGE_VIEW", details="Accessed Commander Deck Hub", user=user)
 
         initial_view = request.args.get("view", "vault")
         initial_deck_id = request.args.get("deck_id")
@@ -2943,7 +2943,7 @@ def create_app(test_config=None):
     @app.route("/deck-overview")
     @login_required
     def deck_overview_page():
-        """Commander Deck Fleet Overview & High-Level Comparison Dashboard."""
+        """Commander Deck Overview & High-Level Comparison Dashboard."""
         user = get_current_user()
         has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")

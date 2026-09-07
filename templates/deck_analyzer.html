@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Commander Fleet Overview & Compare — Chimaera{% endblock %}
+{% block title %}Commander Overview & Compare — Chimaera{% endblock %}
 
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
@@ -20,9 +20,9 @@
                     <div class="min-w-0">
                         <h1 class="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-wide sm:tracking-wider uppercase font-mono flex flex-wrap items-center gap-1.5 sm:gap-2">
                             <span>Commander Deck Vault</span>
-                            <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Fleet Overview & Compare</span>
+                            <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Overview & Compare</span>
                         </h1>
-                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">ManaBox Deck Ingestion &bull; Live Pricing Telemetry &bull; Side-by-Side Comparison &bull; Fleet Analytics &bull; Google Gemini AI Evaluation</p>
+                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">ManaBox Deck Ingestion &bull; Live Pricing Telemetry &bull; Side-by-Side Comparison &bull; Analytics &bull; Google Gemini AI Evaluation</p>
                     </div>
                 </div>
             </div>
@@ -30,8 +30,8 @@
             <!-- View Switcher & Action Controls -->
             <div class="flex flex-wrap items-center gap-2">
                 <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center flex-wrap gap-0.5">
-                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center gap-1.5" title="Fleet Vault (Grid & Table)">
-                        <span>🛸 Fleet Vault</span>
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center gap-1.5" title="Deck Vault (Grid & Table)">
+                        <span>🛸 Deck Vault</span>
                         <span id="savedDecksCount" class="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
                     </button>
                     <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="hidden px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1.5" title="Inspect Selected Deck">
@@ -42,8 +42,8 @@
                         <span>⚔️ Head-to-Head</span>
                         <span id="compareCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-mono">0</span>
                     </button>
-                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer" title="Fleet Analytics & Distributions">
-                        <span>📈 Fleet Analytics</span>
+                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer" title="Analytics & Distributions">
+                        <span>📈 Analytics</span>
                     </button>
                     <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1" title="Import New Deck">
                         <span>➕ Import Deck</span>
@@ -81,16 +81,16 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- VIEW 1: FLEET VAULT (HIGH-LEVEL HUD, DUAL GRID & TABLE VIEWS) -->
+    <!-- VIEW 1: DECK VAULT (HIGH-LEVEL HUD, DUAL GRID & TABLE VIEWS) -->
     <!-- ========================================================================= -->
     <div id="deckVaultView" class="space-y-4">
         
-        <!-- Fleet Aggregate KPI Strip -->
+        <!-- Aggregate KPI Strip -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            <!-- 1. Fleet Count -->
+            <!-- 1. Arsenal Count -->
             <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="arsenal_fleet">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Arsenal Fleet <span class="text-cyan-400 text-xs">ⓘ</span></span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Arsenal <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                     </svg>
@@ -115,10 +115,10 @@
                 </div>
             </div>
 
-            <!-- 3. Fleet Average Power -->
+            <!-- 3. Power -->
             <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="fleet_power">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Fleet Power <span class="text-cyan-400 text-xs">ⓘ</span></span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Power <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
@@ -140,10 +140,10 @@
                 </div>
             </div>
 
-            <!-- 4. Fleet Speed (Avg CMC) -->
+            <!-- 4. Speed (Avg CMC) -->
             <div class="bg-[#10141D] border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition" data-tooltip-key="fleet_speed">
                 <div class="flex items-center justify-between text-slate-400">
-                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Fleet Speed <span class="text-amber-400 text-xs">ⓘ</span></span>
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Speed <span class="text-amber-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
@@ -288,7 +288,7 @@
                     <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                 </div>
                 <h4 class="text-base font-bold text-white font-mono uppercase tracking-wider">No Decks Match Filter Criteria</h4>
-                <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">Try clearing filters or search query to view your saved Commander fleet.</p>
+                <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">Try clearing filters or search query to view your saved Commander decks.</p>
                 <button onclick="clearMatrixFilters()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs uppercase font-semibold rounded-lg transition">Clear Filters</button>
             </div>
         </div>
@@ -513,9 +513,9 @@
                             </svg>
                         </button>
                         
-                        <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Fleet Vault">
+                        <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault">
                             <span>&larr;</span>
-                            <span>Fleet Vault</span>
+                            <span>Deck Vault</span>
                         </button>
                     </div>
                 </div>
@@ -1809,7 +1809,7 @@
     </div>
 
     <!-- ========================================================================= -->
-    <!-- VIEW 5: FLEET ANALYTICS & DISTRIBUTION INSIGHTS -->
+    <!-- VIEW 5: ANALYTICS & DISTRIBUTION INSIGHTS -->
     <!-- ========================================================================= -->
     <div id="fleetAnalyticsView" class="hidden space-y-6">
         
@@ -1819,7 +1819,7 @@
                 <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                     <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="power_level">
                         <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                        <span>Fleet Power Level Distribution</span>
+                        <span>Power Level Distribution</span>
                         <span class="text-cyan-400 text-xs">ⓘ</span>
                     </h3>
                     <span class="text-[11px] text-slate-400 font-mono">{{ fleet_stats.total_decks if fleet_stats else 0 }} Total Decks</span>
@@ -1890,7 +1890,7 @@
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="speed_vs_budget">
                     <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
-                    <span>Fleet Speed vs Value Matrix</span>
+                    <span>Speed vs Value Matrix</span>
                     <span class="text-cyan-400 text-xs">ⓘ</span>
                 </h3>
                 <span class="text-[11px] text-slate-400 font-mono">Sorted by Value</span>
@@ -2091,41 +2091,41 @@ function formatRelativeDate(isoStr) {
 // =========================================================================
 const EDH_ANALYTICS_TOOLTIPS = {
     'arsenal_fleet': {
-        category: 'FLEET OVERVIEW',
-        title: 'Arsenal Fleet Size',
+        category: 'OVERVIEW',
+        title: 'Arsenal Size',
         meaning: 'The total number of Commander decks cataloged and tracked within your physical or digital collection.',
         calculation: 'Sum of all unique deck lists saved in the Chimaera SQLite vault database.',
         relevance: 'Provides high-level collection perspective, helping identify gaps in archetype variety, color saturation, and budget allocation across your pod.',
-        benchmark: 'Pod dependent (Typical active fleet: 3 – 12 decks)'
+        benchmark: 'Pod dependent (Typical active collection: 3 – 12 decks)'
     },
     'portfolio_value': {
         category: 'FINANCIAL TELEMETRY',
         title: 'Total Portfolio / Deck Market Value',
-        meaning: 'The live replacement market value of the cards in your deck or across your entire fleet, based on TCGplayer Market pricing.',
+        meaning: 'The live replacement market value of the cards in your deck or across your entire collection, based on TCGplayer Market pricing.',
         calculation: 'Sum of Scryfall/TCGplayer market USD prices for all 100 cards: Total = Σ(Card_Price × Quantity). Basic lands count as $0.00.',
         relevance: 'Helps evaluate collection equity, assess budget brackets for playgroup rule-zero discussions, and determine price-to-power efficiency.',
         benchmark: '$50 – $150 (Budget), $200 – $500 (Mid-Power), $1,000+ (High/cEDH)'
     },
     'fleet_power': {
-        category: 'FLEET OVERVIEW',
-        title: 'Fleet Mean Power Level',
+        category: 'OVERVIEW',
+        title: 'Mean Power Level',
         meaning: 'The aggregate average competitive power rating across all analyzed decks in your collection on a standard 1.0 to 10.0 scale.',
-        calculation: 'Fleet Average = Σ(Deck Power Level) / Count(Analyzed Decks), weighted by mana curve, tutor density, fast ramp, and AI evaluation.',
+        calculation: 'Collection Average = Σ(Deck Power Level) / Count(Analyzed Decks), weighted by mana curve, tutor density, fast ramp, and AI evaluation.',
         relevance: 'Ensures you bring appropriately calibrated decks to game nights and helps maintain a balanced power dynamic within your playgroup.',
         benchmark: '6.0 – 7.5 (Casual/Focused Mid-Power average)'
     },
     'fleet_speed': {
-        category: 'FLEET OVERVIEW',
-        title: 'Fleet Average Pacing (Avg CMC)',
-        meaning: 'The mean Average Mana Value (AMV) across all nonland spells in your entire fleet of Commander decks.',
-        calculation: 'Fleet AMV = Σ(All Nonland CMC) / Σ(All Nonland Spells across all fleet decks).',
+        category: 'OVERVIEW',
+        title: 'Average Pacing (Avg CMC)',
+        meaning: 'The mean Average Mana Value (AMV) across all nonland spells in your entire collection of Commander decks.',
+        calculation: 'Average AMV = Σ(All Nonland CMC) / Σ(All Nonland Spells across all decks).',
         relevance: 'Indicates whether your collection leans toward fast, low-to-the-ground burst decks or heavy, battlecruiser late-game strategies.',
-        benchmark: '3.00 – 3.35 CMC (Fleet average)'
+        benchmark: '3.00 – 3.35 CMC (Collection average)'
     },
     'color_wheel': {
-        category: 'FLEET OVERVIEW',
+        category: 'OVERVIEW',
         title: 'Color Distribution & Saturation',
-        meaning: 'The frequency and representation of the 5 Magic colors (White, Blue, Black, Red, Green) and Colorless across your entire fleet.',
+        meaning: 'The frequency and representation of the 5 Magic colors (White, Blue, Black, Red, Green) and Colorless across your entire collection.',
         calculation: 'Color Share % = (Decks containing Color C / Total Decks) × 100.',
         relevance: 'Reveals personal deckbuilding color biases, overlaps in staple mana bases (fetchlands/shocklands), and unrepresented color pairs in your roster.',
         benchmark: 'Even 20% distribution per color represents complete color balance'
@@ -2427,15 +2427,15 @@ const EDH_ANALYTICS_TOOLTIPS = {
         benchmark: 'Average deck rating ≥ 7.2; cuts recommended for cards rated < 5.0'
     },
     'color_distribution': {
-        category: 'FLEET OVERVIEW',
+        category: 'OVERVIEW',
         title: 'Color Frequency & Representation',
         meaning: 'Distribution of colors across all decks in your vault, showing which color slices you play most and least.',
-        calculation: 'Count and percentage of decks in the fleet containing White, Blue, Black, Red, Green, or Colorless.',
+        calculation: 'Count and percentage of decks containing White, Blue, Black, Red, Green, or Colorless.',
         relevance: 'Helps you balance your deck portfolio and prevents building repetitive decks that compete for the exact same staple mana base cards.',
-        benchmark: 'Pod dependent; ideal fleet has at least one deck in each color combination'
+        benchmark: 'Pod dependent; ideal collection has at least one deck in each color combination'
     },
     'speed_vs_budget': {
-        category: 'FLEET OVERVIEW',
+        category: 'OVERVIEW',
         title: 'Speed vs. Budget Positioning',
         meaning: 'Matrix positioning of each deck comparing its speed (Avg CMC) against its financial investment (TCGplayer Market Value).',
         calculation: 'Plotted as coordinate (Avg CMC, TCG Market Value) across all decks in your Vault.',
@@ -4217,7 +4217,7 @@ async function refreshVaultList() {
 }
 
 // =========================================================================
-// COMPARATIVE MATRIX TABLE & FLEET FILTERING
+// COMPARATIVE MATRIX TABLE & FILTERING
 // =========================================================================
 
 // Render Matrix Table
@@ -4542,7 +4542,7 @@ function launchComparisonFromSelection() {
 function quickCompareWithFirst(deckId) {
     const sourceDecks = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
     if (sourceDecks.length < 2) {
-        showToast("Add at least 2 decks to your fleet to compare matchups.", "info");
+        showToast("Add at least 2 decks to compare matchups.", "info");
         return;
     }
     const firstDeckId = sourceDecks[0].id === deckId ? (sourceDecks[1] ? sourceDecks[1].id : sourceDecks[0].id) : sourceDecks[0].id;
@@ -4560,7 +4560,7 @@ function launchCompareFromActiveDeck() {
     if (!activeDeck || !activeDeck.id) return;
     const sourceDecks = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
     if (sourceDecks.length < 2) {
-        showToast("Add at least 2 decks to your fleet to compare matchups.", "info");
+        showToast("Add at least 2 decks to compare matchups.", "info");
         return;
     }
     const otherDeck = sourceDecks.find(d => d.id !== activeDeck.id) || sourceDecks[0];

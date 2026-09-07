@@ -643,7 +643,7 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
                 resp = client.get("/deck-overview")
                 self.assertEqual(resp.status_code, 200)
                 html = resp.data.decode("utf-8")
-                self.assertIn("Fleet Overview & Compare", html)
+                self.assertIn("Overview & Compare", html)
                 self.assertIn("Dragon Fleet", html)
                 self.assertIn("Vampire Bloodline", html)
                 self.assertIn("600.00", html)  # Total portfolio value 350 + 250
