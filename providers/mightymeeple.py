@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import unicodedata
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -63,12 +64,26 @@ class MightyMeepleProvider:
     """Live stock and price scanner targeting Mighty Meeple (BinderPOS/Shopify backend)."""
 
     def __init__(self, session=None):
-        self.session = session or requests.Session()
-        self.session.headers.update({
-            "User-Agent": DEFAULT_USER_AGENT,
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Accept-Language": "en-US,en;q=0.9",
-        })
+        self.is_cffi = False
+        if session:
+            self.session = session
+        else:
+            try:
+                from curl_cffi import requests as cffi_requests
+                self.session = cffi_requests.Session(impersonate="chrome120")
+                self.is_cffi = True
+                logger.debug("MightyMeepleProvider initialized with curl_cffi Chrome TLS impersonation.")
+            except ImportError:
+                self.session = requests.Session()
+                self.is_cffi = False
+                logger.debug("MightyMeepleProvider initialized with standard requests.Session.")
+
+        if not self.is_cffi:
+            self.session.headers.update({
+                "User-Agent": DEFAULT_USER_AGENT,
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language": "en-US,en;q=0.9",
+            })
 
     def search_card(
         self,
@@ -160,8 +175,18 @@ class MightyMeepleProvider:
             else:
                 is_foil_target = finish_clean in ("foil", "etched")
 
-            for prod in candidate_products:
+            for idx, prod in enumerate(candidate_products):
+                is_prod_avail = bool(prod.get("available", False))
+                # Stop checking if we already found valid in-stock match(es) and reached out-of-stock candidates
+                if in_stock_matches and not is_prod_avail:
+                    break
+                # If everything is out of stock, cap reference queries to at most 3 candidates
+                if not in_stock_matches and not is_prod_avail and len(out_of_stock_matches) >= 3:
+                    break
+
                 handle = prod.get("handle")
+                if idx > 0 and handle and handle not in MightyMeepleProvider._variant_cache:
+                    time.sleep(0.25)
                 prod_url = prod.get("url") or f"/products/{handle}"
                 if not prod_url.startswith("http"):
                     prod_url = f"{MIGHTY_MEEPLE_BASE}{prod_url}"
@@ -169,25 +194,7 @@ class MightyMeepleProvider:
                 # Query product detail json for exact variants
                 variants = self._get_product_variants(handle)
                 if not variants:
-                    # Fallback to product min price
-                    raw_price = prod.get("price") or prod.get("price_min")
-                    try:
-                        price_num = float(raw_price) if raw_price else 0.0
-                    except (ValueError, TypeError):
-                        price_num = 0.0
-
-                    is_avail = bool(prod.get("available", False))
-                    entry = {
-                        "vendor_name": "Mighty Meeple",
-                        "price": round(price_num, 2),
-                        "condition": "NM/LP" if is_avail else "NM",
-                        "in_stock": is_avail,
-                        "product_url": prod_url,
-                    }
-                    if is_avail and price_num > 0:
-                        in_stock_matches.append(entry)
-                    else:
-                        out_of_stock_matches.append(entry)
+                    logger.debug(f"No variant data fetched for {handle}; skipping candidate.")
                     continue
 
                 # Match variants by finish and condition
@@ -239,6 +246,9 @@ class MightyMeepleProvider:
         """Fetches product suggestions from Mighty Meeple Shopify suggest endpoint."""
         try:
             resp = self.session.get(url, timeout=8)
+            if self._is_cloudflare_challenge(resp):
+                logger.warning(f"Cloudflare/bot challenge on suggest query: {url}")
+                return []
             if resp.status_code == 200:
                 data = resp.json()
                 if "resources" in data and "results" in data["resources"]:
@@ -251,25 +261,61 @@ class MightyMeepleProvider:
 
     _variant_cache: dict[str, list[dict]] = {}
 
+    @staticmethod
+    def _is_cloudflare_challenge(resp) -> bool:
+        """Detects if response is a Cloudflare managed challenge or rate-limiting block."""
+        if resp is None:
+            return True
+        if resp.status_code in (403, 429, 503):
+            return True
+        if hasattr(resp, "headers") and "cf-mitigated" in resp.headers:
+            return True
+        text = getattr(resp, "text", "") or ""
+        return (
+            "Just a moment..." in text
+            or "challenge-platform" in text
+            or "cf-chl-widget" in text
+            or "Verifying your connection..." in text
+        )
+
     def _get_product_variants(self, handle: str) -> list[dict]:
-        """Fetches Shopify product variant details via .js endpoint with caching."""
+        """Fetches Shopify product variant details via .js endpoint with caching and backoff."""
         if not handle:
             return []
         if handle in MightyMeepleProvider._variant_cache:
             return MightyMeepleProvider._variant_cache[handle]
 
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 url = f"{MIGHTY_MEEPLE_BASE}/products/{handle}.js"
                 r = self.session.get(url, timeout=8)
+                if self._is_cloudflare_challenge(r):
+                    retry_sec = 2.0
+                    if hasattr(r, "headers") and "Retry-After" in r.headers:
+                        try:
+                            retry_sec = max(2.0, float(r.headers["Retry-After"]))
+                        except (ValueError, TypeError):
+                            pass
+                    logger.warning(
+                        f"Mighty Meeple Cloudflare/rate challenge (HTTP {getattr(r, 'status_code', 'N/A')}) on {handle} (attempt {attempt+1}/3, backoff {retry_sec}s)"
+                    )
+                    time.sleep(retry_sec * (attempt + 1))
+                    continue
+
                 if r.status_code == 200:
-                    data = r.json()
-                    variants = data.get("variants", [])
-                    if variants:
-                        MightyMeepleProvider._variant_cache[handle] = variants
-                        return variants
+                    try:
+                        data = r.json()
+                        variants = data.get("variants", [])
+                        if variants:
+                            MightyMeepleProvider._variant_cache[handle] = variants
+                            return variants
+                    except Exception as json_err:
+                        logger.debug(f"JSON decode error on {handle}: {json_err}")
+                elif r.status_code == 429:
+                    time.sleep(2.0 * (attempt + 1))
             except Exception as e:
                 logger.debug(f"Attempt {attempt+1} failed to fetch variants for handle {handle}: {e}")
+                time.sleep(0.5)
         return []
 
     def _is_card_name_match(self, title: str, card_name: str) -> bool:
@@ -341,29 +387,37 @@ class MightyMeepleProvider:
         if not valid_name_products:
             return []
 
-        # If Any Version: return all valid name matches
+        # If Any Version: prioritize in-stock and standard printings
         is_any = not set_code or set_code.strip().upper() in ("ANY", "")
         if is_any:
-            return valid_name_products
+            def _any_sort_key(p):
+                avail = bool(p.get("available", False))
+                title = (p.get("title") or "").lower()
+                is_special = any(k in title for k in ("serialized", "poster", "oversized", "art card", "showcase"))
+                return (not avail, is_special)
+            return sorted(valid_name_products, key=_any_sort_key)
 
         target_set_code = (set_code or "").upper().strip()
         target_coll_num = str(collector_number or "").lower().strip() if collector_number else ""
         target_coll_digits = re.sub(r"[^\d]", "", target_coll_num)
         target_set_name = (set_name or "").lower().strip()
 
-        # Pre-fetch product variants concurrently for all candidates to guarantee instant SKU checks
-        uncached_handles = [
-            p.get("handle") for p in valid_name_products
-            if p.get("handle") and p.get("handle") not in MightyMeepleProvider._variant_cache
-        ]
-        if uncached_handles:
-            with ThreadPoolExecutor(max_workers=min(len(uncached_handles), 8)) as executor:
-                list(executor.map(self._get_product_variants, uncached_handles))
+        # Prioritize candidates whose title or handle matches target set name/code
+        if target_set_name or target_set_code:
+            def _set_match_priority(p):
+                title = (p.get("title") or "").lower()
+                handle = (p.get("handle") or "").lower()
+                matches_name = bool(target_set_name and (target_set_name in title or target_set_name.replace(" ", "-") in handle))
+                matches_code = bool(target_set_code and (f"[{target_set_code.lower()}]" in title or f"-{target_set_code.lower()}-" in handle or handle.endswith(f"-{target_set_code.lower()}")))
+                return (not (matches_name or matches_code), not matches_name)
+            valid_name_products = sorted(valid_name_products, key=_set_match_priority)
 
         # Step 2: Specific Version Matching via SKU (Highest Precision)
         if target_set_code and target_coll_num:
-            for p in valid_name_products:
+            for idx, p in enumerate(valid_name_products):
                 handle = p.get("handle")
+                if idx > 0 and handle and handle not in MightyMeepleProvider._variant_cache:
+                    time.sleep(0.25)
                 variants = self._get_product_variants(handle)
                 title_lower = p.get("title", "").lower()
                 for v in variants:

@@ -166,12 +166,16 @@ class DealEngine:
         summary = []
         logger.info(f"Starting scheduled poll for {len(items)} watchlist items...")
 
-        for item in items:
+        for idx, item in enumerate(items):
             try:
                 res = self.poll_card(item, notify=notify)
                 summary.append(res)
             except Exception as e:
                 logger.error(f"Error polling card {item.name} (ID: {item.id}): {e}")
+
+            # Polite inter-target pacing to avoid vendor 429 rate limits
+            if idx < len(items) - 1:
+                time.sleep(0.5)
 
         deals_found = sum(1 for s in summary if s.get("is_deal"))
         now = datetime.now(timezone.utc)
@@ -214,12 +218,16 @@ class DealEngine:
     def poll_user_cards(self, items: list[WatchlistItem], notify: bool = True) -> list[dict]:
         """Polls prices for a specific user's WatchlistItems."""
         summary = []
-        for item in items:
+        for idx, item in enumerate(items):
             try:
                 res = self.poll_card(item, notify=notify)
                 summary.append(res)
             except Exception as e:
                 logger.error(f"Error polling card {item.name} (ID: {item.id}): {e}")
+
+            # Polite inter-target pacing to avoid vendor 429 rate limits
+            if idx < len(items) - 1:
+                time.sleep(0.5)
         return summary
 
     def get_effective_webhook_url(

@@ -257,8 +257,13 @@ def _migrate_db_schema(app):
                     conn.commit()
 
             elif dialect in ("postgresql", "postgres"):
-                with db.engine.connect() as conn:
-                    logger.info("Verifying PostgreSQL watchlist_item and user constraints and columns...")
+                try:
+                    with db.engine.connect() as conn:
+                        try:
+                            conn.execute(db.text("SET lock_timeout = '4s'"))
+                        except Exception:
+                            pass
+                        logger.info("Verifying PostgreSQL watchlist_item and user constraints and columns...")
                     conn.execute(db.text("ALTER TABLE watchlist_item ALTER COLUMN scryfall_id DROP NOT NULL"))
                     conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
                     conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
@@ -374,6 +379,8 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
                     conn.commit()
                     logger.info("PostgreSQL migration check completed.")
+                except Exception as pg_err:
+                    logger.warning(f"PostgreSQL migration check skipped or timed out: {pg_err}")
 
             # Bootstrap Initial Primary Admin
             admin_email = (app.config.get("ADMIN_EMAIL") or "jpmclaug@gmail.com").strip().lower()
