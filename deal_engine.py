@@ -176,7 +176,7 @@ class DealEngine:
         deals_found = sum(1 for s in summary if s.get("is_deal"))
         now = datetime.now(timezone.utc)
         try:
-            SystemSetting.set_val("last_poll_time", now.isoformat())
+            SystemSetting.record_successful_run("registry", dt=now)
             SystemSetting.set_val("last_poll_count", len(summary))
             SystemSetting.set_val("last_poll_deals", deals_found)
             SystemSetting.set_val(

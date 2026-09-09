@@ -2142,6 +2142,109 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn("Bulk Terminate", html)
             self.assertIn("Bulk Tag", html)
 
+    def test_45_last_3_successful_sweeps_telemetry(self):
+        """Tests recording, retrieval, and template rendering of the last 3 successful sweep times for MicroCenter and Registry."""
+        from datetime import datetime, timezone, timedelta
+        from unittest.mock import patch
+
+        base_time = datetime(2026, 9, 7, 12, 0, 0, tzinfo=timezone.utc)
+
+        with self.app.app_context():
+            # 1. Test record_successful_run for MicroCenter
+            t1 = (base_time - timedelta(hours=3)).isoformat()
+            t2 = (base_time - timedelta(hours=2)).isoformat()
+            t3 = (base_time - timedelta(hours=1)).isoformat()
+            t4 = base_time.isoformat()
+
+            SystemSetting.record_successful_run("microcenter", dt=base_time - timedelta(hours=3))
+            SystemSetting.record_successful_run("microcenter", dt=base_time - timedelta(hours=2))
+            SystemSetting.record_successful_run("microcenter", dt=base_time - timedelta(hours=1))
+            SystemSetting.record_successful_run("microcenter", dt=base_time)
+
+            recent_mc = SystemSetting.get_recent_successful_runs("microcenter", limit=3)
+            self.assertEqual(len(recent_mc), 3)
+            self.assertEqual(recent_mc[0], t4)
+            self.assertEqual(recent_mc[1], t3)
+            self.assertEqual(recent_mc[2], t2)
+            self.assertEqual(SystemSetting.get_val("microcenter_last_scan_time"), t4)
+
+            # 2. Test record_successful_run for Registry
+            r1 = (base_time - timedelta(hours=6)).isoformat()
+            r2 = (base_time - timedelta(hours=4)).isoformat()
+            r3 = (base_time - timedelta(hours=2)).isoformat()
+            r4 = base_time.isoformat()
+
+            SystemSetting.record_successful_run("registry", dt=base_time - timedelta(hours=6))
+            SystemSetting.record_successful_run("registry", dt=base_time - timedelta(hours=4))
+            SystemSetting.record_successful_run("registry", dt=base_time - timedelta(hours=2))
+            SystemSetting.record_successful_run("registry", dt=base_time)
+
+            recent_reg = SystemSetting.get_recent_successful_runs("registry", limit=3)
+            self.assertEqual(len(recent_reg), 3)
+            self.assertEqual(recent_reg[0], r4)
+            self.assertEqual(recent_reg[1], r3)
+            self.assertEqual(recent_reg[2], r2)
+            self.assertEqual(SystemSetting.get_val("last_poll_time"), r4)
+
+        # 3. Test GET / renders last 3 successful sweeps
+        resp_index = self.client.get("/")
+        self.assertEqual(resp_index.status_code, 200)
+        index_html = resp_index.data.decode("utf-8")
+        self.assertIn("registry-telemetry-status", index_html)
+        self.assertIn("LAST 3 SUCCESSFUL SWEEPS:", index_html)
+        self.assertIn("#1:", index_html)
+        self.assertIn("#2:", index_html)
+        self.assertIn("#3:", index_html)
+        self.assertIn("EST", index_html)
+
+        # 4. Test GET /microcenter renders last 3 successful sweeps
+        resp_mc = self.client.get("/microcenter")
+        self.assertEqual(resp_mc.status_code, 200)
+        mc_html = resp_mc.data.decode("utf-8")
+        self.assertIn("mc-telemetry-status", mc_html)
+        self.assertIn("LAST 3 SUCCESSFUL SWEEPS:", mc_html)
+        self.assertIn("#1:", mc_html)
+        self.assertIn("#2:", mc_html)
+        self.assertIn("#3:", mc_html)
+        self.assertIn("EST", mc_html)
+
+        # 5. Test API: GET /api/microcenter/items includes recent_scan_times
+        resp_items = self.client.get("/api/microcenter/items")
+        self.assertEqual(resp_items.status_code, 200)
+        items_json = resp_items.get_json()
+        self.assertIn("recent_scan_times", items_json)
+        self.assertEqual(len(items_json["recent_scan_times"]), 3)
+        self.assertEqual(items_json["recent_scan_times"][0], t4)
+
+        # 6. Test API: POST /api/microcenter/sync includes recent_scan_times
+        mock_sync_result = {
+            "success": True,
+            "message": "Synchronized 10 items",
+            "total_scanned": 10,
+        }
+        with patch.object(DealEngine, "sync_microcenter", return_value=mock_sync_result):
+            resp_sync = self.client.post("/api/microcenter/sync")
+            self.assertEqual(resp_sync.status_code, 200)
+            sync_json = resp_sync.get_json()
+            self.assertIn("recent_scan_times", sync_json)
+            self.assertEqual(len(sync_json["recent_scan_times"]), 3)
+
+        # 7. Test API: GET /api/settings/telemetry includes recent_poll_times
+        resp_telem = self.client.get("/api/settings/telemetry")
+        self.assertEqual(resp_telem.status_code, 200)
+        telem_json = resp_telem.get_json()
+        self.assertIn("recent_poll_times", telem_json)
+        self.assertEqual(len(telem_json["recent_poll_times"]), 3)
+        self.assertEqual(telem_json["recent_poll_times"][0], r4)
+
+        # 8. Test API: POST /api/watchlist/refresh-all records sweep and returns recent_poll_times
+        with patch.object(DealEngine, "poll_user_cards", return_value=[]):
+            resp_refresh = self.client.post("/api/watchlist/refresh-all")
+            self.assertEqual(resp_refresh.status_code, 200)
+            refresh_json = resp_refresh.get_json()
+            self.assertIn("recent_poll_times", refresh_json)
+            self.assertGreaterEqual(len(refresh_json["recent_poll_times"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

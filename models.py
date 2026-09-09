@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime, timezone, timedelta
 from flask_sqlalchemy import SQLAlchemy
@@ -444,6 +445,116 @@ class SystemSetting(db.Model):
             row.updated_at = utc_now()
         db.session.commit()
         return row
+
+    @classmethod
+    def record_successful_run(cls, process_name: str, dt: datetime | None = None, max_keep: int = 10) -> list[str]:
+        """
+        Records a successful run timestamp for the given process ('microcenter' or 'registry').
+        Maintains a JSON list of ISO timestamp strings ordered from newest to oldest.
+        Also updates the legacy single-timestamp setting ('microcenter_last_scan_time' or 'last_poll_time').
+        Returns the updated list of recent ISO timestamp strings.
+        """
+        if dt is None:
+            dt = utc_now()
+        iso_str = dt.isoformat()
+
+        if process_name == "microcenter":
+            list_key = "microcenter_recent_scan_times"
+            legacy_key = "microcenter_last_scan_time"
+        else:
+            list_key = "registry_recent_poll_times"
+            legacy_key = "last_poll_time"
+
+        # Load existing list
+        raw = cls.get_val(list_key)
+        existing = []
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    existing = [str(x) for x in parsed if x]
+            except Exception:
+                existing = []
+
+        # If list was empty, check if legacy key has an existing timestamp to preserve
+        if not existing:
+            legacy_val = cls.get_val(legacy_key)
+            if legacy_val and legacy_val != iso_str:
+                existing.append(legacy_val)
+
+        # Prepend new timestamp, avoiding duplicates at index 0
+        if not existing or existing[0] != iso_str:
+            existing.insert(0, iso_str)
+
+        # Limit to max_keep
+        trimmed = existing[:max_keep]
+
+        # Save both keys
+        cls.set_val(list_key, json.dumps(trimmed))
+        cls.set_val(legacy_key, iso_str)
+        return trimmed
+
+    @classmethod
+    def get_recent_successful_runs(cls, process_name: str, limit: int = 3) -> list[str]:
+        """
+        Retrieves the last `limit` successful run ISO timestamp strings for the process (newest first).
+        Falls back to legacy single timestamp and/or ActivityLog if the recent list is empty.
+        """
+        if process_name == "microcenter":
+            list_key = "microcenter_recent_scan_times"
+            legacy_key = "microcenter_last_scan_time"
+        else:
+            list_key = "registry_recent_poll_times"
+            legacy_key = "last_poll_time"
+
+        raw = cls.get_val(list_key)
+        results: list[str] = []
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    results = [str(x) for x in parsed if x]
+            except Exception:
+                results = []
+
+        # If we have enough results, return them
+        if len(results) >= limit:
+            return results[:limit]
+
+        # Fallback 1: Include legacy key if not already present
+        legacy_val = cls.get_val(legacy_key)
+        if legacy_val and legacy_val not in results:
+            results.append(legacy_val)
+
+        # Fallback 2: Check ActivityLog for past successful runs if still needed
+        if len(results) < limit:
+            try:
+                if process_name == "microcenter":
+                    logs = ActivityLog.query.filter(
+                        ActivityLog.action.in_(["MICROCENTER_SYNC", "MICROCENTER_SWEEP"])
+                    ).order_by(ActivityLog.created_at.desc()).limit(limit * 2).all()
+                    for l in logs:
+                        if l.created_at:
+                            iso = l.created_at.isoformat()
+                            if iso not in results:
+                                results.append(iso)
+                                if len(results) >= limit:
+                                    break
+                else:
+                    logs = ActivityLog.query.filter(
+                        ActivityLog.action.in_(["SURVEILLANCE_SWEEP", "PRICE_REFRESH"])
+                    ).order_by(ActivityLog.created_at.desc()).limit(limit * 2).all()
+                    for l in logs:
+                        if l.created_at:
+                            iso = l.created_at.isoformat()
+                            if iso not in results:
+                                results.append(iso)
+                                if len(results) >= limit:
+                                    break
+            except Exception:
+                pass
+
+        return results[:limit]
 
     def to_dict(self):
         """Serializes setting record into a dict."""

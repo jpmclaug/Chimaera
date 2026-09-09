@@ -130,15 +130,28 @@
     </div>
 
     <!-- Scan Telemetry Feedback Bar -->
-    <div id="mc-telemetry-status" class="bg-[#10141D] border border-[#263245] px-3.5 py-2 text-[11px] font-mono text-[#94A3B8] flex items-center justify-between">
-        <div class="flex items-center space-x-2 min-w-0">
+    <div id="mc-telemetry-status" class="bg-[#10141D] border border-[#263245] px-3.5 py-2 text-[11px] font-mono text-[#94A3B8] flex flex-col md:flex-row md:items-center justify-between gap-2">
+        <div class="flex items-center space-x-2 min-w-0 flex-wrap">
             <span class="w-1.5 h-1.5 bg-[#00CED1] inline-block flex-shrink-0"></span>
-            <span class="truncate">
-                <span class="text-[#64748B]">LAST SURVEILLANCE SWEEP:</span>
-                <span class="text-white font-bold" id="mc-last-scan-label">
-                    {% if last_scan_time %}{{ last_scan_time|eastern('%Y-%m-%d %H:%M:%S EST') }}{% else %}Awaiting initial sync{% endif %}
-                </span>
-            </span>
+            <span class="text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">LAST 3 SUCCESSFUL SWEEPS:</span>
+            <div id="mc-recent-scans-container" class="inline-flex flex-wrap items-center gap-1.5">
+                {% if recent_scan_times and recent_scan_times|length > 0 %}
+                    {% for t in recent_scan_times %}
+                    <span class="inline-flex items-center space-x-1 bg-[#1B2230] border {% if loop.first %}border-[#00CED1]/50 text-white font-bold{% else %}border-[#263245] text-[#94A3B8]{% endif %} px-2 py-0.5 text-[10px]">
+                        <span class="{% if loop.first %}text-[#00CED1]{% else %}text-[#64748B]{% endif %} font-bold">#{{ loop.index }}:</span>
+                        <span>{{ t|eastern('%Y-%m-%d %H:%M:%S EST') }}</span>
+                    </span>
+                    {% endfor %}
+                {% elif last_scan_time %}
+                    <span class="inline-flex items-center space-x-1 bg-[#1B2230] border border-[#00CED1]/50 text-white font-bold px-2 py-0.5 text-[10px]">
+                        <span class="text-[#00CED1] font-bold">#1:</span>
+                        <span>{{ last_scan_time|eastern('%Y-%m-%d %H:%M:%S EST') }}</span>
+                    </span>
+                {% else %}
+                    <span class="text-[#94A3B8] italic">Awaiting initial sync</span>
+                {% endif %}
+            </div>
+            <span id="mc-last-scan-label" class="hidden">{% if last_scan_time %}{{ last_scan_time|eastern('%Y-%m-%d %H:%M:%S EST') }}{% endif %}</span>
         </div>
         <div class="text-[10px] text-[#64748B] uppercase font-bold flex-shrink-0">
             <a href="https://www.microcenter.com/search/search_results.aspx?fq=category:Tabletop+Games|646,brand:Wizards+of+the+Coast,Subcategory:Trading+Card+Game&storeid=175" target="_blank" rel="noopener noreferrer" class="hover:text-[#F59E0B] transition flex items-center space-x-1">
@@ -350,6 +363,24 @@
         loadItems();
     });
 
+    function renderMicrocenterRecentScans(recentTimes) {
+        const container = document.getElementById("mc-recent-scans-container");
+        if (!container) return;
+        if (!recentTimes || recentTimes.length === 0) {
+            container.innerHTML = `<span class="text-[#94A3B8] italic">Awaiting initial sync</span>`;
+            return;
+        }
+        container.innerHTML = recentTimes.slice(0, 3).map((t, idx) => {
+            const isFirst = idx === 0;
+            const borderClass = isFirst ? "border-[#00CED1]/50 text-white font-bold" : "border-[#263245] text-[#94A3B8]";
+            const badgeClass = isFirst ? "text-[#00CED1]" : "text-[#64748B]";
+            return `<span class="inline-flex items-center space-x-1 bg-[#1B2230] border ${borderClass} px-2 py-0.5 text-[10px]">
+                <span class="${badgeClass} font-bold">#${idx + 1}:</span>
+                <span>${formatEST(t)}</span>
+            </span>`;
+        }).join("");
+    }
+
     async function loadItems() {
         const loadingEl = document.getElementById("mc-loading");
         const emptyEl = document.getElementById("mc-empty-state");
@@ -366,7 +397,13 @@
             document.getElementById("stat-in-stock-items").innerText = data.in_stock_tracked || allItems.filter(i => i.in_stock).length;
             document.getElementById("stat-deals-items").innerText = data.deals_tracked || allItems.filter(i => i.is_deal).length;
             if (data.last_scan_time) {
-                document.getElementById("mc-last-scan-label").innerText = formatEST(data.last_scan_time);
+                const legacyLabel = document.getElementById("mc-last-scan-label");
+                if (legacyLabel) legacyLabel.innerText = formatEST(data.last_scan_time);
+            }
+            if (data.recent_scan_times && data.recent_scan_times.length > 0) {
+                renderMicrocenterRecentScans(data.recent_scan_times);
+            } else if (data.last_scan_time) {
+                renderMicrocenterRecentScans([data.last_scan_time]);
             }
 
             applyFilters();

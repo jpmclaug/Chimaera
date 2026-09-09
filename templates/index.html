@@ -143,6 +143,37 @@
         </div>
     </div>
 
+    <!-- Registry Scan Telemetry Feedback Bar -->
+    <div id="registry-telemetry-status" class="bg-[#10141D] border border-[#263245] px-3.5 py-2 text-[11px] font-mono text-[#94A3B8] flex flex-col md:flex-row md:items-center justify-between gap-2">
+        <div class="flex items-center space-x-2 min-w-0 flex-wrap">
+            <span class="w-1.5 h-1.5 bg-[#00CED1] inline-block flex-shrink-0"></span>
+            <span class="text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">LAST 3 SUCCESSFUL SWEEPS:</span>
+            <div id="registry-last-scans-container" class="inline-flex flex-wrap items-center gap-1.5">
+                {% if recent_poll_times and recent_poll_times|length > 0 %}
+                    {% for t in recent_poll_times %}
+                    <span class="inline-flex items-center space-x-1 bg-[#1B2230] border {% if loop.first %}border-[#00CED1]/50 text-white font-bold{% else %}border-[#263245] text-[#94A3B8]{% endif %} px-2 py-0.5 text-[10px]">
+                        <span class="{% if loop.first %}text-[#00CED1]{% else %}text-[#64748B]{% endif %} font-bold">#{{ loop.index }}:</span>
+                        <span>{{ t|eastern('%Y-%m-%d %H:%M:%S EST') }}</span>
+                    </span>
+                    {% endfor %}
+                {% elif last_poll_time %}
+                    <span class="inline-flex items-center space-x-1 bg-[#1B2230] border border-[#00CED1]/50 text-white font-bold px-2 py-0.5 text-[10px]">
+                        <span class="text-[#00CED1] font-bold">#1:</span>
+                        <span>{{ last_poll_time|eastern('%Y-%m-%d %H:%M:%S EST') }}</span>
+                    </span>
+                {% else %}
+                    <span class="text-[#94A3B8] italic">Awaiting initial sync</span>
+                {% endif %}
+            </div>
+            <span id="registry-last-poll-label" class="hidden">{% if last_poll_time %}{{ last_poll_time|eastern('%Y-%m-%d %H:%M:%S EST') }}{% endif %}</span>
+        </div>
+        <div class="text-[10px] text-[#64748B] uppercase font-bold flex-shrink-0 flex items-center space-x-3">
+            <button onclick="triggerRefreshAll()" class="hover:text-[#00CED1] transition flex items-center space-x-1 font-bold">
+                <span>⚡ Poll Registry Now &rarr;</span>
+            </button>
+        </div>
+    </div>
+
     <!-- Empty Watchlist State -->
     {% if items|length == 0 %}
     <div class="bg-[#1B2230] border border-[#263245] p-10 sm:p-12 text-center relative overflow-hidden">

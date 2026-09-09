@@ -1624,6 +1624,44 @@ async function fetchCadenceTelemetry() {
             }
         }
 
+        // Render modal last 3 successful sweeps
+        const modalPollsList = document.getElementById("telemetry-recent-polls-list");
+        if (modalPollsList) {
+            const recent = data.recent_poll_times || (data.last_poll_time ? [data.last_poll_time] : []);
+            if (recent.length > 0) {
+                modalPollsList.innerHTML = recent.slice(0, 3).map((t, idx) => {
+                    const isFirst = idx === 0;
+                    const textClass = isFirst ? "text-white font-bold" : "text-[#94A3B8]";
+                    const badgeClass = isFirst ? "text-[#00CED1] font-bold" : "text-[#64748B]";
+                    return `<div class="flex items-center justify-between text-[11px] bg-[#10141D] px-2 py-1 border border-[#263245]">
+                        <span class="${badgeClass}">#${idx + 1}</span>
+                        <span class="${textClass}">${formatESTDate(t)}</span>
+                    </div>`;
+                }).join("");
+            } else {
+                modalPollsList.innerHTML = `<span class="text-[#64748B] text-[11px]">Awaiting initial sync</span>`;
+            }
+        }
+
+        // Render index.html registry-last-scans-container if present
+        const regScansContainer = document.getElementById("registry-last-scans-container");
+        if (regScansContainer) {
+            const recent = data.recent_poll_times || (data.last_poll_time ? [data.last_poll_time] : []);
+            if (recent.length > 0) {
+                regScansContainer.innerHTML = recent.slice(0, 3).map((t, idx) => {
+                    const isFirst = idx === 0;
+                    const borderClass = isFirst ? "border-[#00CED1]/50 text-white font-bold" : "border-[#263245] text-[#94A3B8]";
+                    const badgeClass = isFirst ? "text-[#00CED1]" : "text-[#64748B]";
+                    return `<span class="inline-flex items-center space-x-1 bg-[#1B2230] border ${borderClass} px-2 py-0.5 text-[10px]">
+                        <span class="${badgeClass} font-bold">#${idx + 1}:</span>
+                        <span>${formatESTDate(t)}</span>
+                    </span>`;
+                }).join("");
+            } else {
+                regScansContainer.innerHTML = `<span class="text-[#94A3B8] italic">Awaiting initial sync</span>`;
+            }
+        }
+
         const webhookInput = document.getElementById("user-discord-webhook-input");
         const routingBadge = document.getElementById("webhook-routing-badge");
 

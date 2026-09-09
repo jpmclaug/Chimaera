@@ -518,7 +518,7 @@ class MicrocenterProvider:
         # Update telemetry in SystemSetting
         total_tracked = MicrocenterItem.query.filter_by(store_id=self.store_id).count()
         in_stock_tracked = MicrocenterItem.query.filter_by(store_id=self.store_id, in_stock=True).count()
-        SystemSetting.set_val("microcenter_last_scan_time", now.isoformat())
+        SystemSetting.record_successful_run("microcenter", dt=now)
         SystemSetting.set_val("microcenter_item_count", total_tracked)
         SystemSetting.set_val("microcenter_in_stock_count", in_stock_tracked)
         SystemSetting.set_val("microcenter_price_changes_count", len(price_changes))

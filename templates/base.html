@@ -697,9 +697,14 @@
                         <span class="text-[#94A3B8]">Worker Telemetry:</span>
                         <span id="telemetry-worker-status" class="font-bold text-[#00CED1] uppercase">[ STANDALONE READY ]</span>
                     </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-[#94A3B8]">Last Sweep:</span>
-                        <span id="telemetry-last-poll" class="text-white">--</span>
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[#94A3B8]">Last 3 Successful Sweeps:</span>
+                            <span id="telemetry-last-poll" class="text-white hidden">--</span>
+                        </div>
+                        <div id="telemetry-recent-polls-list" class="space-y-1">
+                            <span class="text-[#64748B] text-[11px]">Awaiting initial sync</span>
+                        </div>
                     </div>
                     <div class="border-t border-[#263245]/60 pt-1.5 text-[11px] text-[#94A3B8]" id="telemetry-status-message">
                         Telemetry nominal.

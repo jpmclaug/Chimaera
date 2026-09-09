@@ -1148,6 +1148,8 @@ def create_app(test_config=None):
 
         # Unique active tags
         user_tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
+        last_poll_time = SystemSetting.get_val("last_poll_time")
+        recent_poll_times = SystemSetting.get_recent_successful_runs("registry", limit=3)
         log_activity("PAGE_VIEW", details="Accessed Registry Dashboard", user=user)
 
         return render_template(
@@ -1158,6 +1160,8 @@ def create_app(test_config=None):
             total_target_value=total_target_value,
             lowest_market_sum=lowest_market_sum,
             user_tags=user_tags,
+            last_poll_time=last_poll_time,
+            recent_poll_times=recent_poll_times,
             active_tab="wishlist",
         )
 
@@ -1214,6 +1218,7 @@ def create_app(test_config=None):
         deals_count = sum(1 for item in all_items if item.is_deal)
         last_scan_time = SystemSetting.get_val("microcenter_last_scan_time")
         last_scan_status = SystemSetting.get_val("microcenter_last_scan_status")
+        recent_scan_times = SystemSetting.get_recent_successful_runs("microcenter", limit=3)
 
         log_activity("PAGE_VIEW", details=f"Accessed MicroCenter {store_name} Surveillance Dashboard", user=user)
 
@@ -1225,6 +1230,7 @@ def create_app(test_config=None):
             in_stock_items=in_stock_items,
             deals_count=deals_count,
             last_scan_time=last_scan_time,
+            recent_scan_times=recent_scan_times,
             last_scan_status=last_scan_status,
             active_tab="microcenter",
         )
@@ -1296,6 +1302,7 @@ def create_app(test_config=None):
             "in_stock_tracked": in_stock_tracked,
             "deals_tracked": deals_tracked,
             "last_scan_time": SystemSetting.get_val("microcenter_last_scan_time"),
+            "recent_scan_times": SystemSetting.get_recent_successful_runs("microcenter", limit=3),
             "last_scan_status": SystemSetting.get_val("microcenter_last_scan_status"),
         })
 
@@ -1326,6 +1333,7 @@ def create_app(test_config=None):
             log_activity("MICROCENTER_SYNC", details=result.get("message"), user=user)
             if not result.get("success") and "error" not in result:
                 result["error"] = result.get("message", "MicroCenter sweep failed")
+            result["recent_scan_times"] = SystemSetting.get_recent_successful_runs("microcenter", limit=3)
             return jsonify(result)
         except Exception as e:
             logger.error(f"Manual MicroCenter sync failed: {e}", exc_info=True)
@@ -1885,10 +1893,20 @@ def create_app(test_config=None):
         user = get_current_user()
         items = WatchlistItem.query.filter_by(user_id=user.id).all()
         results = deal_engine.poll_user_cards(items, notify=True)
+        now = utc_now()
+        recent_times = SystemSetting.record_successful_run("registry", dt=now)
+        deals_found = sum(1 for s in results if s.get("is_deal"))
+        SystemSetting.set_val("last_poll_count", len(results))
+        SystemSetting.set_val("last_poll_deals", deals_found)
+        SystemSetting.set_val(
+            "last_poll_status",
+            f"Surveillance cycle complete: {len(results)} targets monitored, {deals_found} active deals triggered."
+        )
         log_activity("PRICE_REFRESH", details=f"Refreshed all {len(results)} targets", user=user)
         return jsonify({
             "message": f"Successfully refreshed {len(results)} cards.",
             "count": len(results),
+            "recent_poll_times": recent_times[:3],
         })
 
     @app.route("/api/watchlist/delete/<int:item_id>", methods=["DELETE", "POST"])
@@ -2119,6 +2137,7 @@ def create_app(test_config=None):
             "notify_mm_stock_enabled": notify_mm_stock,
             "ebay_link_mode": ebay_link_mode,
             "last_poll_time": last_poll_time,
+            "recent_poll_times": SystemSetting.get_recent_successful_runs("registry", limit=3),
             "last_poll_status": last_poll_status,
             "last_poll_count": int(last_poll_count) if str(last_poll_count).isdigit() else 0,
             "last_poll_deals": int(last_poll_deals) if str(last_poll_deals).isdigit() else 0,
