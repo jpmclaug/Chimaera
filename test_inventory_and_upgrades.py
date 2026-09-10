@@ -226,6 +226,49 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
             self.assertEqual(cards_map["Demonic Tutor"]["available_copies"], 0)
             self.assertTrue(cards_map["Demonic Tutor"]["already_allocated_elsewhere"])
 
+    def test_paginated_inventory_endpoint_and_search(self):
+        """Tests /api/inventory/cards pagination, search query, finish filter, and sorting."""
+        user = self.login_as()
+        manager = InventoryManager()
+
+        with self.app.app_context():
+            # Create 15 distinct cards
+            cards = [
+                {"name": f"Card Alpha {i:02d}", "quantity": i, "foil": "foil" if i % 2 == 0 else "normal", "purchase_price": float(i)}
+                for i in range(1, 16)
+            ]
+            cards.append({"name": "Sol Ring", "quantity": 2, "foil": "normal", "purchase_price": 2.50, "binder_name": "Commander Binder"})
+            manager.import_inventory(user.id, cards, mode="replace")
+
+            # 1. Test pagination page 1 (per_page=5)
+            resp = self.client.get("/api/inventory/cards?page=1&per_page=5")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            self.assertTrue(data["success"])
+            self.assertEqual(data["total_count"], 16)
+            self.assertEqual(len(data["cards"]), 5)
+            self.assertEqual(data["total_pages"], 4)
+            self.assertEqual(data["page"], 1)
+
+            # 2. Test search query
+            resp_search = self.client.get("/api/inventory/cards?q=Sol Ring")
+            self.assertEqual(resp_search.status_code, 200)
+            data_search = resp_search.get_json()
+            self.assertEqual(data_search["total_count"], 1)
+            self.assertEqual(data_search["cards"][0]["name"], "Sol Ring")
+
+            # 3. Test filter by foil
+            resp_foil = self.client.get("/api/inventory/cards?foil=foil")
+            data_foil = resp_foil.get_json()
+            for c in data_foil["cards"]:
+                self.assertIn(c["foil"], ["foil", "etched"])
+
+            # 4. Test fast telemetry
+            telem = manager.get_collection_telemetry(user.id)
+            self.assertEqual(telem["unique_cards"], 16)
+            self.assertGreater(telem["total_cards"], 16)
+            self.assertGreater(telem["total_value"], 0.0)
+
     # ----------------------------------------------------------------------
     # 3. Dual-Tier Upgrade Engine Tests
     # ----------------------------------------------------------------------

@@ -3252,16 +3252,45 @@ def create_app(test_config=None):
     @app.route("/inventory")
     @login_required
     def inventory_view():
-        """User collection and inventory dashboard overview page."""
+        """User collection and inventory dashboard overview page with lightweight shell and fast telemetry."""
         user = get_current_user()
-        summary = inventory_manager.get_inventory_summary(user.id)
+        telemetry = inventory_manager.get_collection_telemetry(user.id)
+        telemetry["allocated_cards"] = inventory_manager.get_allocated_cards_count(user.id)
         log_activity("PAGE_VIEW", details="Accessed Collection Inventory Dashboard", user=user)
         return render_template(
             "inventory.html",
-            inventory=summary,
+            inventory=telemetry,
             saved_gdrive_url=user.inventory_gdrive_url or "",
             active_tab="inventory",
         )
+
+    @app.route("/api/inventory/cards", methods=["GET"])
+    @login_required
+    def api_inventory_cards():
+        """Returns paginated, searchable, and filtered card inventory records."""
+        user = get_current_user()
+        page = request.args.get("page", 1, type=int)
+        per_page = request.args.get("per_page", 50, type=int)
+        q = request.args.get("q", type=str)
+        allocation = request.args.get("allocation", "all", type=str)
+        foil = request.args.get("foil", "all", type=str)
+        sort = request.args.get("sort", "name_asc", type=str)
+        deck_id = request.args.get("deck_id", type=int)
+
+        result = inventory_manager.get_paginated_inventory(
+            user_id=user.id,
+            page=page,
+            per_page=per_page,
+            q=q,
+            allocation=allocation,
+            foil=foil,
+            sort=sort,
+            current_deck_id=deck_id,
+        )
+        return jsonify({
+            "success": True,
+            **result,
+        })
 
     @app.route("/api/inventory", methods=["GET"])
     @login_required
@@ -3269,7 +3298,8 @@ def create_app(test_config=None):
         """Returns JSON collection telemetry and cards for current user."""
         user = get_current_user()
         deck_id = request.args.get("deck_id", type=int)
-        summary = inventory_manager.get_inventory_summary(user.id, current_deck_id=deck_id)
+        include_cards = request.args.get("include_cards", "false").lower() in ("true", "1", "yes")
+        summary = inventory_manager.get_inventory_summary(user.id, current_deck_id=deck_id, include_cards=include_cards)
         return jsonify({
             "success": True,
             "saved_gdrive_url": user.inventory_gdrive_url or "",

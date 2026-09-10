@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_MODEL = "gemini-3.7-flash"
 SUPPORTED_MODELS = [
+    {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Latest)", "description": "Next-generation ultra-high accuracy and speed tactical MTG evaluations."},
     {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash (Default)", "description": "High speed, high accuracy tactical MTG evaluations."},
     {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "description": "High performance low latency MTG analysis."},
     {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "description": "Fast tactical Commander evaluations."},
@@ -40,6 +41,7 @@ SUPPORTED_MODELS = [
 ]
 
 MODEL_TIER_SEQUENCE = [
+    "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
@@ -47,6 +49,11 @@ MODEL_TIER_SEQUENCE = [
 ]
 
 MODEL_FALLBACK_MAP = {
+    "gemini-3.8": "gemini-3.8-flash",
+    "gemini-3.8-pro": "gemini-3.8-flash",
+    "3.8": "gemini-3.8-flash",
+    "gemini-3.7": "gemini-3.7-flash",
+    "3.7": "gemini-3.7-flash",
     "gemini-2.5-pro": "gemini-3.7-flash",
     "gemini-3.1-pro-preview": "gemini-3.7-flash",
     "gemini-2.5-flash": "gemini-3.5-flash",

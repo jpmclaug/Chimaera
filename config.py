@@ -18,6 +18,7 @@ class Config:
     # Fallback to local SQLite if DATABASE_URL is not set
     SQLALCHEMY_DATABASE_URI = db_url if db_url else "sqlite:///chimera.db"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    MAX_CONTENT_LENGTH = 32 * 1024 * 1024  # 32 MB upload limit for large MTG collection CSVs
 
     # Engine options for Neon Serverless auto-suspend & connection longevity
     # SQLite memory/single connections are handled gracefully as well

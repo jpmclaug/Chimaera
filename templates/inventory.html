@@ -92,7 +92,7 @@
         <div class="bg-[#1B2230] border border-[#263245] p-4 relative overflow-hidden col-span-2 sm:col-span-2 lg:col-span-1">
             <div class="text-[10px] font-mono text-[#94A3B8] uppercase tracking-wider">Deck Allocations</div>
             <div id="statAllocatedCards" class="text-2xl sm:text-3xl font-mono font-black text-[#C084FC] mt-1">
-                {{ inventory.cards | selectattr("is_allocated") | list | length }}
+                {{ inventory.allocated_cards if inventory.allocated_cards is defined else 0 }}
             </div>
             <div class="text-[10px] font-mono text-[#94A3B8] mt-1">
                 <span>SLOTTED IN SAVED DECKS</span>
@@ -103,29 +103,30 @@
     <!-- Inventory Filter & Search Toolbar -->
     <div class="bg-[#1B2230] border border-[#263245] p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div class="flex-1 w-full sm:w-auto relative">
-            <input type="text" id="inventorySearch" oninput="filterInventoryTable()" placeholder="Search cards by name, set code, type line, or binder..."
+            <input type="text" id="inventorySearch" oninput="handleSearchInput()" placeholder="Search cards by name, set code, type line, or binder..."
                    class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs font-mono text-white placeholder-[#64748B] focus:border-[#10B981] focus:outline-none transition">
             <span class="absolute right-3 top-2.5 text-[#64748B] font-mono text-xs">/</span>
         </div>
 
         <div class="flex items-center space-x-2 w-full sm:w-auto overflow-x-auto">
             <!-- Allocation Filter -->
-            <select id="filterAllocation" onchange="filterInventoryTable()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
+            <select id="filterAllocation" onchange="onFilterChanged()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
                 <option value="all">All Cards</option>
                 <option value="free">Available in Binder</option>
                 <option value="allocated">Allocated to Decks</option>
             </select>
 
             <!-- Foil Filter -->
-            <select id="filterFoil" onchange="filterInventoryTable()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
+            <select id="filterFoil" onchange="onFilterChanged()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
                 <option value="all">All Finishes</option>
                 <option value="normal">Nonfoil</option>
                 <option value="foil">Foil / Etched</option>
             </select>
 
             <!-- Sort -->
-            <select id="filterSort" onchange="sortInventoryTable()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
+            <select id="filterSort" onchange="onFilterChanged()" class="bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-[#94A3B8] focus:border-[#10B981] focus:outline-none">
                 <option value="name_asc">Name (A-Z)</option>
+                <option value="name_desc">Name (Z-A)</option>
                 <option value="price_desc">Price: High to Low</option>
                 <option value="price_asc">Price: Low to High</option>
                 <option value="qty_desc">Quantity: High to Low</option>
@@ -152,133 +153,57 @@
                     </tr>
                 </thead>
                 <tbody id="inventoryTableBody" class="divide-y divide-[#263245]/60 text-slate-300">
-                    {% if inventory.cards %}
-                        {% for card in inventory.cards %}
-                        <tr class="hover:bg-[#222B3D] transition inventory-row" 
-                            data-name="{{ card.name | lower }}"
-                            data-set="{{ card.set_code | lower }}"
-                            data-type="{{ card.type_line | lower }}"
-                            data-binder="{{ card.binder_name | lower }}"
-                            data-foil="{{ card.foil | lower }}"
-                            data-allocated="{{ 'true' if card.is_allocated else 'false' }}"
-                            data-price="{{ card.effective_price or 0 }}"
-                            data-qty="{{ card.quantity }}"
-                            data-cmc="{{ card.cmc }}">
-                            
-                            <!-- Quantity -->
-                            <td class="py-3 px-4 text-center font-black text-white text-sm">
-                                <span class="bg-[#10141D] border border-[#263245] px-2 py-0.5 text-xs font-bold text-[#10B981]">
-                                    {{ card.quantity }}x
-                                </span>
-                            </td>
-
-                            <!-- Name & Thumbnail -->
-                            <td class="py-3 px-4">
-                                <div class="flex items-center space-x-3">
-                                    {% if card.image_uri %}
-                                    <div class="w-9 h-12 bg-black border border-[#263245] overflow-hidden flex-shrink-0 group relative">
-                                        <img src="{{ card.image_uri }}" alt="{{ card.name }}" class="w-full h-full object-cover">
-                                    </div>
-                                    {% endif %}
-                                    <div>
-                                        <div class="font-bold text-white hover:text-[#00CED1] transition cursor-pointer">
-                                            {{ card.name }}
-                                        </div>
-                                        <div class="text-[10px] text-[#64748B] flex items-center gap-2 mt-0.5">
-                                            <span>#{{ card.collector_number or '?' }}</span>
-                                            <span>&bull;</span>
-                                            <span>{{ card.condition or 'NM' }}</span>
-                                            {% if card.binder_name %}
-                                            <span>&bull;</span>
-                                            <span class="text-slate-400">📁 {{ card.binder_name }}</span>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                </div>
-                            </td>
-
-                            <!-- Set -->
-                            <td class="py-3 px-3">
-                                <span class="px-1.5 py-0.5 bg-[#10141D] border border-[#263245] text-[#00CED1] font-bold text-[10px] uppercase">
-                                    {{ card.set_code or '---' }}
-                                </span>
-                            </td>
-
-                            <!-- Finish -->
-                            <td class="py-3 px-3">
-                                {% if card.foil and card.foil in ['foil', 'etched'] %}
-                                <span class="px-1.5 py-0.5 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] font-bold uppercase">
-                                    ★ {{ card.foil }}
-                                </span>
-                                {% else %}
-                                <span class="text-[#64748B] text-[10px]">Nonfoil</span>
-                                {% endif %}
-                            </td>
-
-                            <!-- Type -->
-                            <td class="py-3 px-3 text-[#94A3B8] text-xs">
-                                {{ card.type_line or 'Card' }}
-                            </td>
-
-                            <!-- Allocation -->
-                            <td class="py-3 px-3">
-                                {% if card.is_allocated %}
-                                    <div class="space-y-0.5">
-                                        <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/40 uppercase font-bold">
-                                            <span>In {{ card.allocated_decks | length }} Deck{% if card.allocated_decks | length > 1 %}s{% endif %}</span>
-                                        </span>
-                                        <div class="text-[9px] text-[#64748B] truncate max-w-[200px]" title="{{ card.allocated_decks | map(attribute='deck_name') | join(', ') }}">
-                                            {{ card.allocated_decks | map(attribute='deck_name') | join(', ') }}
-                                        </div>
-                                    </div>
-                                {% else %}
-                                    <span class="text-[10px] px-1.5 py-0.5 bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold uppercase">
-                                        Free in Binder
-                                    </span>
-                                {% endif %}
-                            </td>
-
-                            <!-- Single Price -->
-                            <td class="py-3 px-3 text-right text-slate-300">
-                                {% if card.effective_price %}
-                                    ${{ "%.2f"|format(card.effective_price) }}
-                                {% else %}
-                                    <span class="text-[#64748B]">--</span>
-                                {% endif %}
-                            </td>
-
-                            <!-- Total Value -->
-                            <td class="py-3 px-3 text-right font-bold text-[#10B981]">
-                                ${{ "%.2f"|format(card.total_value) }}
-                            </td>
-
-                            <!-- Actions -->
-                            <td class="py-3 px-4 text-center">
-                                <button onclick="deleteCard({{ card.id }}, '{{ card.name | escape }}')" 
-                                        class="p-1 hover:bg-[#DC143C]/20 text-[#64748B] hover:text-[#FF3358] border border-transparent hover:border-[#DC143C]/50 transition" title="Delete card">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                                    </svg>
+                    <tr id="loadingTablePlaceholder">
+                        <td colspan="9" class="py-12 text-center text-[#94A3B8]">
+                            <div class="flex items-center justify-center space-x-2 text-xs font-mono text-[#10B981]">
+                                <span class="inline-block animate-spin text-base">⟳</span>
+                                <span>Accessing collection vault & resolving deck allocations...</span>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr id="emptyTablePlaceholder" class="hidden">
+                        <td colspan="9" class="py-12 text-center text-[#94A3B8]">
+                            <div class="max-w-md mx-auto space-y-3">
+                                <div class="text-3xl">📦</div>
+                                <div class="font-heading font-bold text-white text-base">No Cards Found</div>
+                                <p class="text-xs text-[#64748B]">No cards match your current search and filter criteria.</p>
+                                <button onclick="resetInventoryFilters()" class="mt-2 px-4 py-2 bg-[#1B2230] hover:bg-[#222B3D] border border-[#263245] text-white text-xs font-mono font-bold uppercase transition">
+                                    Reset Filters
                                 </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr id="emptyTablePlaceholder">
-                            <td colspan="9" class="py-12 text-center text-[#94A3B8]">
-                                <div class="max-w-md mx-auto space-y-3">
-                                    <div class="text-3xl">📦</div>
-                                    <div class="font-heading font-bold text-white text-base">Your Inventory Vault is Empty</div>
-                                    <p class="text-xs text-[#64748B]">Upload your ManaBox collection CSV export to track physical inventory and power immediate zero-cost swaps.</p>
-                                    <button onclick="openUploadModal()" class="mt-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition">
-                                        Upload ManaBox CSV
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    {% endif %}
+                            </div>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- Pagination & Results Bar -->
+        <div id="paginationBar" class="bg-[#10141D] border-t border-[#263245] p-3 sm:px-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono">
+            <!-- Results Count & Page Size -->
+            <div class="flex items-center space-x-3 text-[#94A3B8]">
+                <span id="resultsCountText">Showing 0–0 of 0 cards</span>
+                <div class="flex items-center space-x-1">
+                    <span class="text-[10px] uppercase text-[#64748B]">Per Page:</span>
+                    <select id="selectPerPage" onchange="changePerPage(this.value)" class="bg-[#1B2230] border border-[#263245] text-white px-2 py-1 text-xs focus:border-[#10B981] focus:outline-none">
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="flex items-center space-x-1.5" id="paginationControls">
+                <button id="btnPrevPage" onclick="goToPage(currentPage - 1)" class="px-2.5 py-1 bg-[#1B2230] hover:bg-[#222B3D] border border-[#263245] text-[#94A3B8] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition">
+                    &laquo; Prev
+                </button>
+                <div id="pageNumbersContainer" class="flex items-center space-x-1">
+                    <!-- Populated dynamically -->
+                </div>
+                <button id="btnNextPage" onclick="goToPage(currentPage + 1)" class="px-2.5 py-1 bg-[#1B2230] hover:bg-[#222B3D] border border-[#263245] text-[#94A3B8] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition">
+                    Next &raquo;
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -724,59 +649,279 @@ async function confirmClearInventory() {
     }
 }
 
-// Helper to normalize diacritics for accent-insensitive search
-function stripDiacritics(str) {
-    return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// =========================================================================
+// Server-Side Paginated Table & Real-Time Filtering
+// =========================================================================
+let currentPage = 1;
+let currentPerPage = 50;
+let currentTotalPages = 1;
+let currentTotalCount = 0;
+let searchDebounceTimer = null;
+let isLoadingCards = false;
+
+function handleSearchInput() {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+        currentPage = 1;
+        loadCardsPage(1);
+    }, 300);
 }
 
-// Table Filtering and Sorting
-function filterInventoryTable() {
-    const q = stripDiacritics(document.getElementById('inventorySearch').value || '').trim();
-    const allocFilter = document.getElementById('filterAllocation').value;
-    const foilFilter = document.getElementById('filterFoil').value;
-    const rows = document.querySelectorAll('.inventory-row');
-
-    rows.forEach(r => {
-        const name = stripDiacritics(r.getAttribute('data-name') || '');
-        const set = stripDiacritics(r.getAttribute('data-set') || '');
-        const type = stripDiacritics(r.getAttribute('data-type') || '');
-        const binder = stripDiacritics(r.getAttribute('data-binder') || '');
-        const foil = r.getAttribute('data-foil') || 'normal';
-        const isAllocated = r.getAttribute('data-allocated') === 'true';
-
-        const matchesQuery = !q || name.includes(q) || set.includes(q) || type.includes(q) || binder.includes(q);
-        const matchesAlloc = (allocFilter === 'all') || (allocFilter === 'allocated' && isAllocated) || (allocFilter === 'free' && !isAllocated);
-        const matchesFoil = (foilFilter === 'all') || (foilFilter === 'foil' && (foil === 'foil' || foil === 'etched')) || (foilFilter === 'normal' && foil === 'normal');
-
-        if (matchesQuery && matchesAlloc && matchesFoil) {
-            r.style.display = '';
-        } else {
-            r.style.display = 'none';
-        }
-    });
+function onFilterChanged() {
+    currentPage = 1;
+    loadCardsPage(1);
 }
 
-function sortInventoryTable() {
-    const sortVal = document.getElementById('filterSort').value;
+function changePerPage(val) {
+    currentPerPage = parseInt(val, 10) || 50;
+    currentPage = 1;
+    loadCardsPage(1);
+}
+
+function goToPage(page) {
+    if (page < 1 || page > currentTotalPages || page === currentPage || isLoadingCards) return;
+    loadCardsPage(page);
+}
+
+function resetInventoryFilters() {
+    document.getElementById('inventorySearch').value = '';
+    document.getElementById('filterAllocation').value = 'all';
+    document.getElementById('filterFoil').value = 'all';
+    document.getElementById('filterSort').value = 'name_asc';
+    currentPage = 1;
+    loadCardsPage(1);
+}
+
+async function loadCardsPage(page = 1) {
+    if (isLoadingCards) return;
+    isLoadingCards = true;
+    currentPage = page;
+
     const tbody = document.getElementById('inventoryTableBody');
-    const rows = Array.from(tbody.querySelectorAll('.inventory-row'));
+    const resultsText = document.getElementById('resultsCountText');
+    const prevBtn = document.getElementById('btnPrevPage');
+    const nextBtn = document.getElementById('btnNextPage');
+    const pageContainer = document.getElementById('pageNumbersContainer');
 
-    rows.sort((a, b) => {
-        if (sortVal === 'name_asc') {
-            return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
-        } else if (sortVal === 'price_desc') {
-            return parseFloat(b.getAttribute('data-price') || 0) - parseFloat(a.getAttribute('data-price') || 0);
-        } else if (sortVal === 'price_asc') {
-            return parseFloat(a.getAttribute('data-price') || 0) - parseFloat(b.getAttribute('data-price') || 0);
-        } else if (sortVal === 'qty_desc') {
-            return parseInt(b.getAttribute('data-qty') || 0) - parseInt(a.getAttribute('data-qty') || 0);
-        } else if (sortVal === 'cmc_asc') {
-            return parseFloat(a.getAttribute('data-cmc') || 0) - parseFloat(b.getAttribute('data-cmc') || 0);
+    const q = (document.getElementById('inventorySearch').value || '').trim();
+    const allocation = document.getElementById('filterAllocation').value;
+    const foil = document.getElementById('filterFoil').value;
+    const sort = document.getElementById('filterSort').value;
+
+    // Show loading state
+    tbody.innerHTML = `
+        <tr id="loadingTablePlaceholder">
+            <td colspan="9" class="py-12 text-center text-[#94A3B8]">
+                <div class="flex items-center justify-center space-x-2 text-xs font-mono text-[#10B981]">
+                    <span class="inline-block animate-spin text-base">⟳</span>
+                    <span>Accessing collection vault...</span>
+                </div>
+            </td>
+        </tr>
+    `;
+
+    try {
+        const params = new URLSearchParams({
+            page: currentPage,
+            per_page: currentPerPage,
+            sort: sort,
+            allocation: allocation,
+            foil: foil,
+        });
+        if (q) params.append('q', q);
+
+        const resp = await fetch(`/api/inventory/cards?${params.toString()}`);
+        if (!resp.ok) {
+            throw new Error(`Server returned HTTP ${resp.status}`);
         }
-        return 0;
-    });
+        const data = await resp.json();
 
-    rows.forEach(r => tbody.appendChild(r));
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to load cards');
+        }
+
+        currentTotalCount = data.total_count || 0;
+        currentTotalPages = data.total_pages || 1;
+        currentPage = data.page || 1;
+
+        if (!data.cards || data.cards.length === 0) {
+            tbody.innerHTML = `
+                <tr id="emptyTablePlaceholder">
+                    <td colspan="9" class="py-12 text-center text-[#94A3B8]">
+                        <div class="max-w-md mx-auto space-y-3">
+                            <div class="text-3xl">📦</div>
+                            <div class="font-heading font-bold text-white text-base">${q || allocation !== 'all' || foil !== 'all' ? 'No Matching Cards' : 'Your Inventory Vault is Empty'}</div>
+                            <p class="text-xs text-[#64748B]">${q || allocation !== 'all' || foil !== 'all' ? 'No cards match your filter criteria.' : 'Upload your ManaBox collection CSV export to track physical inventory and power zero-cost swaps.'}</p>
+                            ${q || allocation !== 'all' || foil !== 'all' 
+                                ? '<button onclick="resetInventoryFilters()" class="mt-2 px-4 py-2 bg-[#1B2230] hover:bg-[#222B3D] border border-[#263245] text-white text-xs font-mono font-bold uppercase transition">Reset Filters</button>' 
+                                : '<button onclick="openUploadModal()" class="mt-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition">Upload ManaBox CSV</button>'
+                            }
+                        </div>
+                    </td>
+                </tr>
+            `;
+            resultsText.innerText = 'Showing 0 of 0 cards';
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            pageContainer.innerHTML = '';
+            return;
+        }
+
+        // Render card rows
+        const rowsHtml = data.cards.map(card => renderCardRow(card)).join('');
+        tbody.innerHTML = rowsHtml;
+
+        // Update result text & buttons
+        const startIdx = (currentPage - 1) * currentPerPage + 1;
+        const endIdx = Math.min(currentPage * currentPerPage, currentTotalCount);
+        resultsText.innerText = `Showing ${startIdx.toLocaleString()}–${endIdx.toLocaleString()} of ${currentTotalCount.toLocaleString()} cards`;
+
+        prevBtn.disabled = (currentPage <= 1);
+        nextBtn.disabled = (currentPage >= currentTotalPages);
+
+        renderPaginationButtons(currentPage, currentTotalPages);
+
+    } catch (err) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="py-8 text-center text-[#FF3358] font-mono text-xs">
+                    Failed to load cards: ${escapeHtml(err.message)}
+                    <button onclick="loadCardsPage(currentPage)" class="ml-2 underline text-[#10B981]">Retry</button>
+                </td>
+            </tr>
+        `;
+    } finally {
+        isLoadingCards = false;
+    }
+}
+
+function renderPaginationButtons(current, total) {
+    const container = document.getElementById('pageNumbersContainer');
+    if (!container) return;
+
+    if (total <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const pages = [];
+    const delta = 2;
+
+    for (let i = 1; i <= total; i++) {
+        if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
+            pages.push(i);
+        } else if (pages[pages.length - 1] !== '...') {
+            pages.push('...');
+        }
+    }
+
+    container.innerHTML = pages.map(p => {
+        if (p === '...') {
+            return `<span class="px-2 text-[#64748B]">...</span>`;
+        }
+        if (p === current) {
+            return `<button class="px-2.5 py-1 bg-[#10B981] text-slate-950 font-bold border border-[#10B981]">${p}</button>`;
+        }
+        return `<button onclick="goToPage(${p})" class="px-2.5 py-1 bg-[#1B2230] hover:bg-[#222B3D] border border-[#263245] text-[#94A3B8] hover:text-white transition">${p}</button>`;
+    }).join('');
+}
+
+function renderCardRow(card) {
+    const effectivePrice = card.effective_price ? `$${card.effective_price.toFixed(2)}` : '--';
+    const totalVal = card.total_value ? `$${card.total_value.toFixed(2)}` : '$0.00';
+    const isAllocated = !!card.is_allocated;
+    const allocatedDecks = card.allocated_decks || [];
+
+    let finishHtml = '<span class="text-[#64748B] text-[10px]">Nonfoil</span>';
+    if (card.foil && (card.foil.toLowerCase() === 'foil' || card.foil.toLowerCase() === 'etched')) {
+        finishHtml = `<span class="px-1.5 py-0.5 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] font-bold uppercase">★ ${escapeHtml(card.foil)}</span>`;
+    }
+
+    let allocHtml = '';
+    if (isAllocated) {
+        const deckNames = allocatedDecks.map(d => escapeHtml(d.deck_name)).join(', ');
+        allocHtml = `
+            <div class="space-y-0.5">
+                <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/40 uppercase font-bold">
+                    <span>In ${allocatedDecks.length} Deck${allocatedDecks.length > 1 ? 's' : ''}</span>
+                </span>
+                <div class="text-[9px] text-[#64748B] truncate max-w-[200px]" title="${deckNames}">
+                    ${deckNames}
+                </div>
+            </div>
+        `;
+    } else {
+        allocHtml = `
+            <span class="text-[10px] px-1.5 py-0.5 bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold uppercase">
+                Free in Binder
+            </span>
+        `;
+    }
+
+    const imgHtml = card.image_uri ? `
+        <div class="w-9 h-12 bg-black border border-[#263245] overflow-hidden flex-shrink-0 group relative">
+            <img src="${escapeHtml(card.image_uri)}" alt="${escapeHtml(card.name)}" class="w-full h-full object-cover" loading="lazy">
+        </div>
+    ` : '';
+
+    const binderMeta = card.binder_name ? `
+        <span>&bull;</span>
+        <span class="text-slate-400">📁 ${escapeHtml(card.binder_name)}</span>
+    ` : '';
+
+    return `
+        <tr class="hover:bg-[#222B3D] transition inventory-row">
+            <td class="py-3 px-4 text-center font-black text-white text-sm">
+                <span class="bg-[#10141D] border border-[#263245] px-2 py-0.5 text-xs font-bold text-[#10B981]">
+                    ${card.quantity}x
+                </span>
+            </td>
+            <td class="py-3 px-4">
+                <div class="flex items-center space-x-3">
+                    ${imgHtml}
+                    <div>
+                        <div class="font-bold text-white hover:text-[#00CED1] transition cursor-pointer">
+                            ${escapeHtml(card.name)}
+                        </div>
+                        <div class="text-[10px] text-[#64748B] flex items-center gap-2 mt-0.5">
+                            <span>#${escapeHtml(card.collector_number || '?')}</span>
+                            <span>&bull;</span>
+                            <span>${escapeHtml(card.condition || 'NM')}</span>
+                            ${binderMeta}
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td class="py-3 px-3">
+                <span class="px-1.5 py-0.5 bg-[#10141D] border border-[#263245] text-[#00CED1] font-bold text-[10px] uppercase">
+                    ${escapeHtml(card.set_code || '---')}
+                </span>
+            </td>
+            <td class="py-3 px-3">
+                ${finishHtml}
+            </td>
+            <td class="py-3 px-3 text-[#94A3B8] text-xs">
+                ${escapeHtml(card.type_line || 'Card')}
+            </td>
+            <td class="py-3 px-3">
+                ${allocHtml}
+            </td>
+            <td class="py-3 px-3 text-right text-slate-300">
+                ${effectivePrice}
+            </td>
+            <td class="py-3 px-3 text-right font-bold text-[#10B981]">
+                ${totalVal}
+            </td>
+            <td class="py-3 px-4 text-center">
+                <button onclick="deleteCard(${card.id}, '${escapeHtml(card.name)}')" 
+                        class="p-1 hover:bg-[#DC143C]/20 text-[#64748B] hover:text-[#FF3358] border border-transparent hover:border-[#DC143C]/50 transition" title="Delete card">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
+            </td>
+        </tr>
+    `;
 }
 
 function escapeHtml(str) {
@@ -788,5 +933,10 @@ function escapeHtml(str) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+
+// Initial load on page ready
+document.addEventListener('DOMContentLoaded', () => {
+    loadCardsPage(1);
+});
 </script>
 {% endblock %}
