@@ -4045,10 +4045,15 @@ async function executeParseAndSave(runAi = false) {
 
     try {
         if (runAi) {
+            const modelSelect = document.getElementById('savedDeckAiModel') || document.getElementById('modalGeminiModel');
+            const model = modelSelect ? modelSelect.value : undefined;
+            const reqBody = { source, source_type: sourceType, save: true };
+            if (model) reqBody.model = model;
+
             const resp = await fetch('/api/deck/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source, source_type: sourceType, save: true })
+                body: JSON.stringify(reqBody)
             });
             let data = null;
             try {
@@ -4059,7 +4064,7 @@ async function executeParseAndSave(runAi = false) {
 
             if (!resp.ok || !data || !data.success) {
                 // If initial request was severed or timed out, check if server completed in background
-                const recovered = await pollForNewestDeckAnalysis(source, btn);
+                const recovered = await pollForNewestDeckAnalysis(source, btn, 48);
                 if (recovered) return;
                 throw new Error((data && data.error) || (resp.status ? `Server returned HTTP ${resp.status}` : "Analysis timed out on gateway"));
             }
@@ -4086,9 +4091,13 @@ async function executeParseAndSave(runAi = false) {
         }
     } catch (e) {
         if (runAi) {
-            const recovered = await pollForNewestDeckAnalysis(source, btn, 6);
+            const recovered = await pollForNewestDeckAnalysis(source, btn, 48);
             if (recovered) return;
-            showAiErrorAlert(e.message);
+            const isFetchErr = e.message && e.message.toLowerCase().includes("fetch");
+            const alertMsg = isFetchErr
+                ? "The AI analysis is taking longer than usual on the server. The process may still be running in the background—please check your Vault in a moment or refresh the page."
+                : e.message;
+            showAiErrorAlert(alertMsg);
         }
         showToast(`Error: ${e.message}`, "error");
     } finally {
@@ -4177,16 +4186,17 @@ async function syncActiveDeckFromSource() {
 }
 
 // Polling recovery for saved deck analysis when network or gateway times out
-async function pollForCompletedAnalysis(deckId, btn, maxAttempts = 24) {
+async function pollForCompletedAnalysis(deckId, btn, maxAttempts = 48, initialUpdatedAt = null) {
     if (!deckId) return false;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         await new Promise(r => setTimeout(r, 2500));
         try {
-            if (btn) btn.innerText = `Finalizing on server (${Math.round(attempt * 2.5)}s)...`;
+            if (btn) btn.innerText = `Analyzing with Gemini (${Math.round(attempt * 2.5)}s)...`;
             const checkResp = await fetch(`/api/deck/history/${deckId}`);
             if (checkResp.ok) {
                 const freshDeck = await checkResp.json();
-                if (freshDeck && freshDeck.has_ai_analysis && freshDeck.analysis && Object.keys(freshDeck.analysis).length > 0) {
+                const isUpdated = initialUpdatedAt ? (freshDeck.updated_at !== initialUpdatedAt) : true;
+                if (freshDeck && freshDeck.has_ai_analysis && freshDeck.analysis && Object.keys(freshDeck.analysis).length > 0 && isUpdated) {
                     showToast("Gemini analysis complete!", "success");
                     dismissAiErrorAlert();
                     try {
@@ -4206,11 +4216,11 @@ async function pollForCompletedAnalysis(deckId, btn, maxAttempts = 24) {
 }
 
 // Polling recovery for newly parsed & analyzed deck imports
-async function pollForNewestDeckAnalysis(source, btn, maxAttempts = 24) {
+async function pollForNewestDeckAnalysis(source, btn, maxAttempts = 48) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         await new Promise(r => setTimeout(r, 2500));
         try {
-            if (btn) btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Finalizing (${Math.round(attempt * 2.5)}s)...</span>`;
+            if (btn) btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Analyzing with Gemini (${Math.round(attempt * 2.5)}s)...</span>`;
             const histResp = await fetch('/api/deck/history');
             if (histResp.ok) {
                 const list = await histResp.json();
@@ -4245,10 +4255,12 @@ async function runAiAnalysisOnSavedDeck() {
     if (!activeDeck || !activeDeck.id) return;
     dismissAiErrorAlert();
     const modelSelect = document.getElementById('savedDeckAiModel');
-    const model = modelSelect ? modelSelect.value : 'gemini-3.8-flash';
+    const model = modelSelect ? modelSelect.value : 'gemini-3.7-flash';
     const btn = document.getElementById('runSavedAiBtn');
     btn.disabled = true;
     btn.innerText = "Analyzing with Gemini...";
+
+    const initialUpdatedAt = activeDeck.updated_at || null;
 
     try {
         const resp = await fetch(`/api/deck/${activeDeck.id}/analyze`, {
@@ -4266,7 +4278,7 @@ async function runAiAnalysisOnSavedDeck() {
 
         if (!resp.ok || !data || !data.success) {
             // Check if backend completed or is completing in the background before reporting error
-            const recovered = await pollForCompletedAnalysis(activeDeck.id, btn);
+            const recovered = await pollForCompletedAnalysis(activeDeck.id, btn, 48, initialUpdatedAt);
             if (recovered) return;
             throw new Error((data && data.error) || (resp.status ? `Server returned HTTP ${resp.status}` : "Analysis request timed out on gateway"));
         }
@@ -4280,10 +4292,14 @@ async function runAiAnalysisOnSavedDeck() {
         }
         await refreshVaultList();
     } catch (e) {
-        // If an error occurred (e.g. network disconnect during long analysis), poll as fallback
-        const recovered = await pollForCompletedAnalysis(activeDeck.id, btn, 6);
+        // If a network disconnect or timeout occurred, poll server to check if analysis completes
+        const recovered = await pollForCompletedAnalysis(activeDeck.id, btn, 48, initialUpdatedAt);
         if (recovered) return;
-        showAiErrorAlert(e.message);
+        const isFetchErr = e.message && e.message.toLowerCase().includes("fetch");
+        const alertMsg = isFetchErr
+            ? "The AI analysis is taking longer than usual on the server. The process may still be running in the background—please check your Vault in a moment or refresh the page."
+            : e.message;
+        showAiErrorAlert(alertMsg);
         showToast(`AI error: ${e.message}`, "error");
     } finally {
         btn.disabled = false;

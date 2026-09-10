@@ -91,14 +91,18 @@ class GeminiAnalyzer:
         clean_key = str(api_key).strip()
         test_model = MODEL_FALLBACK_MAP.get(model, model)
         url = f"{GEMINI_API_BASE}/{test_model}:generateContent?key={clean_key}"
+        gen_config = {
+            "maxOutputTokens": 10,
+            "temperature": 0.1,
+        }
+        if "gemini-3" in test_model:
+            gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+
         payload = {
             "contents": [
                 {"parts": [{"text": "Reply with only the word: OK"}]}
             ],
-            "generationConfig": {
-                "maxOutputTokens": 10,
-                "temperature": 0.1,
-            }
+            "generationConfig": gen_config,
         }
 
         try:
@@ -115,7 +119,17 @@ class GeminiAnalyzer:
                 # If the specific model failed due to availability, try fallback to default flash model
                 if ("no longer available" in msg.lower() or "not found" in msg.lower()) and test_model != DEFAULT_MODEL:
                     fallback_url = f"{GEMINI_API_BASE}/{DEFAULT_MODEL}:generateContent?key={clean_key}"
-                    fallback_resp = requests.post(fallback_url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+                    fallback_gen_config = {
+                        "maxOutputTokens": 10,
+                        "temperature": 0.1,
+                    }
+                    if "gemini-3" in DEFAULT_MODEL:
+                        fallback_gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+                    fallback_payload = {
+                        "contents": payload["contents"],
+                        "generationConfig": fallback_gen_config,
+                    }
+                    fallback_resp = requests.post(fallback_url, json=fallback_payload, headers={"Content-Type": "application/json"}, timeout=10)
                     if fallback_resp.status_code == 200:
                         return True, f"API key is valid. Note: '{test_model}' was deprecated, so Chimaera will use '{DEFAULT_MODEL}'."
 
@@ -260,19 +274,11 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
 }}
 """
 
-        url = f"{GEMINI_API_BASE}/{self.model}:generateContent?key={self.api_key}"
-        payload = {
-            "contents": [
-                {"role": "user", "parts": [{"text": user_prompt}]}
-            ],
-            "systemInstruction": {
-                "parts": [{"text": system_instruction}]
-            },
-            "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 16384,
-                "responseMimeType": "application/json",
-            }
+        # Base generation config
+        base_gen_config = {
+            "temperature": 0.2,
+            "maxOutputTokens": 16384,
+            "responseMimeType": "application/json",
         }
 
         # Determine model fallback sequence starting with the chosen/mapped model
@@ -291,8 +297,26 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
                 url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={self.api_key}"
                 logger.info(f"Submitting deck '{deck_name}' to Gemini ({target_model}) at {attempt_ts}...")
 
+                # Apply low thinking level for Gemini 3 models to prevent high-latency timeouts
+                model_gen_config = dict(base_gen_config)
+                if "gemini-3" in target_model:
+                    model_gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+
+                model_payload = {
+                    "contents": [
+                        {"role": "user", "parts": [{"text": user_prompt}]}
+                    ],
+                    "systemInstruction": {
+                        "parts": [{"text": system_instruction}]
+                    },
+                    "generationConfig": model_gen_config,
+                }
+
+                # Adaptive timeout: 60s for 3.8, 45s for 3.7/3.6/3.5
+                model_timeout = 60 if "gemini-3.8" in target_model else 45
+
                 try:
-                    resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=120)
+                    resp = requests.post(url, json=model_payload, headers={"Content-Type": "application/json"}, timeout=model_timeout)
                     if resp.status_code == 200:
                         data = resp.json()
                         candidates = data.get("candidates", [])
