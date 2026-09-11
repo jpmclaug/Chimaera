@@ -202,6 +202,8 @@ def _migrate_db_schema(app):
                             total_value FLOAT,
                             avg_cmc FLOAT,
                             color_identity VARCHAR(50),
+                            is_pauper BOOLEAN DEFAULT 0 NOT NULL,
+                            deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL,
                             created_at DATETIME,
                             updated_at DATETIME,
                             FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
@@ -218,6 +220,10 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN avg_cmc FLOAT"))
                     if "color_identity" not in da_cols:
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN color_identity VARCHAR(50)"))
+                    if "is_pauper" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN is_pauper BOOLEAN DEFAULT 0 NOT NULL"))
+                    if "deck_format" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS user_inventory_card (
                             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -336,6 +342,8 @@ def _migrate_db_schema(app):
                             total_value FLOAT,
                             avg_cmc FLOAT,
                             color_identity VARCHAR(50),
+                            is_pauper BOOLEAN DEFAULT FALSE NOT NULL,
+                            deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
@@ -345,6 +353,8 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS total_value FLOAT"))
                     conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS avg_cmc FLOAT"))
                     conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
+                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS is_pauper BOOLEAN DEFAULT FALSE NOT NULL"))
+                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS user_inventory_card (
                             id SERIAL PRIMARY KEY,
@@ -2398,6 +2408,8 @@ def create_app(test_config=None):
                     break
 
         clean_deck_name = fix_mojibake(re.sub(r"<[^>]+>", "", parsed.get("deck_name", "Commander Deck"))).strip()
+        is_pauper_flag = bool(parsed.get("is_pauper") or parsed.get("deck_format") == "pauper_commander")
+        format_flag = "pauper_commander" if is_pauper_flag else (parsed.get("deck_format") or "commander")
 
         deck_payload = {
             "deck_name": clean_deck_name or "Commander Deck",
@@ -2406,6 +2418,8 @@ def create_app(test_config=None):
             "cards": enriched_cards,
             "source_type": parsed.get("source_type", "text"),
             "raw_text": parsed.get("raw_text", ""),
+            "is_pauper": is_pauper_flag,
+            "deck_format": format_flag,
         }
 
         analyzed = deck_analyzer.analyze(deck_payload)
@@ -2421,6 +2435,9 @@ def create_app(test_config=None):
             "unresolved_cards": unresolved,
             "stats": analyzed["stats"],
             "scryfall_map": scryfall_map,
+            "is_pauper": analyzed.get("is_pauper", is_pauper_flag),
+            "deck_format": analyzed.get("deck_format", format_flag),
+            "rule_evaluation": analyzed.get("rule_evaluation") or analyzed.get("stats", {}).get("rule_evaluation", {}),
         }
 
     @app.route("/api/deck/parse", methods=["POST"])
@@ -2430,12 +2447,13 @@ def create_app(test_config=None):
         data = request.get_json(silent=True) or {}
         source = data.get("source", "").strip()
         source_type = data.get("source_type", "auto").strip()
+        is_pauper_input = data.get("is_pauper")
 
         if not source:
             return jsonify({"error": "No deck source or card list provided."}), 400
 
         try:
-            parsed = DeckParser.parse(source, source_type=source_type)
+            parsed = DeckParser.parse(source, source_type=source_type, is_pauper=is_pauper_input)
             enriched = _enrich_and_compute_deck_metadata(parsed)
             return jsonify({"success": True, **enriched})
         except DeckParseError as e:
@@ -2460,12 +2478,21 @@ def create_app(test_config=None):
             else:
                 if not source:
                     return jsonify({"error": "No deck source provided."}), 400
-                parsed = DeckParser.parse(source, source_type=source_type)
+                is_pauper_in = data.get("is_pauper")
+                parsed = DeckParser.parse(source, source_type=source_type, is_pauper=is_pauper_in)
                 deck_data = _enrich_and_compute_deck_metadata(parsed)
 
             stats = deck_data.get("stats", {})
             cmdr_name = ", ".join(deck_data.get("commander", [])) or "Commander"
             color_id_str = ",".join(stats.get("color_identity", []))
+
+            is_pauper_flag = bool(
+                deck_data.get("is_pauper")
+                or data.get("is_pauper")
+                or deck_data.get("deck_format") == "pauper_commander"
+                or data.get("deck_format") == "pauper_commander"
+            )
+            format_flag = "pauper_commander" if is_pauper_flag else (deck_data.get("deck_format") or data.get("deck_format") or "commander")
 
             import json
             deck_entry = DeckAnalysis(
@@ -2483,6 +2510,8 @@ def create_app(test_config=None):
                 total_value=stats.get("total_value"),
                 avg_cmc=stats.get("avg_cmc"),
                 color_identity=color_id_str,
+                is_pauper=is_pauper_flag,
+                deck_format=format_flag,
             )
             db.session.add(deck_entry)
             db.session.commit()
@@ -2531,6 +2560,9 @@ def create_app(test_config=None):
                 cmdr_name = ", ".join(enriched.get("commander", [])) or "Unknown Commander"
                 color_id_str = ",".join(stats.get("color_identity", []))
 
+                is_pauper_flag = bool(enriched.get("is_pauper") or enriched.get("deck_format") == "pauper_commander")
+                format_flag = "pauper_commander" if is_pauper_flag else (enriched.get("deck_format") or "commander")
+
                 entry = DeckAnalysis(
                     user_id=user.id if user else None,
                     deck_name=enriched.get("deck_name", "Commander Deck"),
@@ -2545,6 +2577,8 @@ def create_app(test_config=None):
                     total_value=stats.get("total_value"),
                     avg_cmc=stats.get("avg_cmc"),
                     color_identity=color_id_str,
+                    is_pauper=is_pauper_flag,
+                    deck_format=format_flag,
                 )
                 db.session.add(entry)
                 imported.append(entry)
@@ -2578,9 +2612,9 @@ def create_app(test_config=None):
         try:
             import json
             if entry.source_url:
-                parsed = DeckParser.parse(entry.source_url, source_type=entry.source_type or "auto")
+                parsed = DeckParser.parse(entry.source_url, source_type=entry.source_type or "auto", is_pauper=entry.is_pauper_commander)
             elif entry.raw_decklist:
-                parsed = DeckParser.parse(entry.raw_decklist, source_type=entry.source_type or "text")
+                parsed = DeckParser.parse(entry.raw_decklist, source_type=entry.source_type or "text", is_pauper=entry.is_pauper_commander)
             elif entry.cards_data:
                 cards = entry.get_parsed_cards()
                 parsed = {
@@ -2590,6 +2624,8 @@ def create_app(test_config=None):
                     "cards": cards,
                     "source_type": entry.source_type or "text",
                     "raw_text": entry.raw_decklist or "",
+                    "is_pauper": entry.is_pauper_commander,
+                    "deck_format": entry.deck_format or ("pauper_commander" if entry.is_pauper_commander else "commander"),
                 }
             else:
                 return jsonify({"error": "No decklist or source link available to refresh."}), 400
@@ -2607,6 +2643,9 @@ def create_app(test_config=None):
             entry.total_value = stats.get("total_value")
             entry.avg_cmc = stats.get("avg_cmc")
             entry.color_identity = ",".join(stats.get("color_identity", []))
+            if enriched.get("is_pauper") is not None:
+                entry.is_pauper = enriched["is_pauper"]
+                entry.deck_format = enriched.get("deck_format", "pauper_commander" if entry.is_pauper else "commander")
             entry.updated_at = utc_now()
 
             db.session.commit()
@@ -2621,6 +2660,57 @@ def create_app(test_config=None):
         except Exception as e:
             logger.error(f"Error syncing deck {deck_id}: {e}", exc_info=True)
             return jsonify({"error": f"Failed to sync deck: {str(e)}"}), 500
+
+    @app.route("/api/deck/<int:deck_id>/format", methods=["POST"])
+    @login_required
+    def api_deck_set_format(deck_id: int):
+        """Sets or toggles deck format ('commander' vs 'pauper_commander' / is_pauper) and re-evaluates rules."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Saved deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Access denied."}), 403
+
+        data = request.get_json(silent=True) or {}
+        deck_format = data.get("deck_format")
+        is_pauper = data.get("is_pauper")
+
+        if is_pauper is None and deck_format:
+            is_pauper = (deck_format == "pauper_commander")
+        elif is_pauper is not None:
+            is_pauper = bool(is_pauper)
+            deck_format = "pauper_commander" if is_pauper else "commander"
+        else:
+            is_pauper = not entry.is_pauper_commander
+            deck_format = "pauper_commander" if is_pauper else "commander"
+
+        entry.is_pauper = is_pauper
+        entry.deck_format = deck_format
+
+        cards = entry.get_parsed_cards()
+        cmdrs = [c.strip() for c in entry.commander_name.split(",") if c.strip()] if entry.commander_name else []
+        analyzed_telemetry = deck_analyzer.analyze({
+            "deck_name": entry.deck_name,
+            "commander": cmdrs,
+            "cards": cards,
+            "is_pauper": is_pauper,
+            "deck_format": deck_format,
+        })
+        import json
+        entry.stats_json = json.dumps(analyzed_telemetry.get("stats", {}))
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        log_activity("DECK_FORMAT_CHANGE", details=f"Changed deck '{entry.deck_name}' format to {deck_format}", user=user)
+
+        return jsonify({
+            "success": True,
+            "is_pauper": entry.is_pauper_commander,
+            "deck_format": entry.deck_format,
+            "rule_evaluation": analyzed_telemetry.get("rule_evaluation", {}),
+            "deck": entry.to_dict(include_full=True),
+        })
 
     @app.route("/api/deck/<int:deck_id>/analyze", methods=["POST"])
     @login_required
@@ -2659,6 +2749,8 @@ def create_app(test_config=None):
                 "deck_name": entry.deck_name,
                 "commander": cmdrs,
                 "cards": cards,
+                "is_pauper": entry.is_pauper_commander,
+                "deck_format": entry.deck_format or ("pauper_commander" if entry.is_pauper_commander else "commander"),
             })
             stats = analyzed_telemetry.get("stats", {})
 
@@ -2669,6 +2761,8 @@ def create_app(test_config=None):
                 "total_cards": entry.total_cards,
                 "raw_text": entry.raw_decklist or "",
                 "stats": stats,
+                "is_pauper": entry.is_pauper_commander,
+                "deck_format": entry.deck_format or ("pauper_commander" if entry.is_pauper_commander else "commander"),
             }
 
             analyzer = GeminiAnalyzer(api_key=effective_key, model=model)
@@ -2775,8 +2869,19 @@ def create_app(test_config=None):
             else:
                 if not source:
                     return jsonify({"error": "No deck source provided for analysis."}), 400
-                parsed = DeckParser.parse(source, source_type=source_type)
+                is_pauper_in = data.get("is_pauper")
+                parsed = DeckParser.parse(source, source_type=source_type, is_pauper=is_pauper_in)
                 deck_data = _enrich_and_compute_deck_metadata(parsed)
+
+            is_pauper_flag = bool(
+                deck_data.get("is_pauper")
+                or data.get("is_pauper")
+                or deck_data.get("deck_format") == "pauper_commander"
+                or data.get("deck_format") == "pauper_commander"
+            )
+            format_flag = "pauper_commander" if is_pauper_flag else (deck_data.get("deck_format") or data.get("deck_format") or "commander")
+            deck_data["is_pauper"] = is_pauper_flag
+            deck_data["deck_format"] = format_flag
 
             card_names = [c["name"] for c in deck_data.get("cards", [])]
             scryfall_map, _ = scryfall_provider.get_cards_collection(card_names)
@@ -2858,6 +2963,8 @@ def create_app(test_config=None):
                     total_value=stats.get("total_value"),
                     avg_cmc=stats.get("avg_cmc"),
                     color_identity=color_id_str,
+                    is_pauper=is_pauper_flag,
+                    deck_format=format_flag,
                 )
                 db.session.add(deck_entry)
                 db.session.commit()
@@ -3501,6 +3608,10 @@ def create_app(test_config=None):
 
         theme = request.args.get("theme", "").strip() or None
         anti_salt = request.args.get("anti_salt", "0").strip().lower() in ("1", "true", "yes", "on")
+        is_pauper_arg = request.args.get("is_pauper")
+        is_pauper_override = None
+        if is_pauper_arg is not None:
+            is_pauper_override = is_pauper_arg.strip().lower() in ("1", "true", "yes", "on")
 
         user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
         allocations = inventory_manager.get_user_card_allocations(user.id, current_deck_id=deck_id)
@@ -3526,6 +3637,7 @@ def create_app(test_config=None):
             edhrec_data=edhrec_data,
             theme=theme,
             anti_salt=anti_salt,
+            is_pauper=is_pauper_override,
         )
 
         edhrec_summary = None

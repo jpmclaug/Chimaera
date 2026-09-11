@@ -12,8 +12,29 @@ Calculates advanced statistical metrics:
 import math
 import random
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set
 from card_classifier import MTGCardClassifier
+from card_utils import strip_accents
+
+# Official Commander (EDH) Banned Cards List
+COMMANDER_BANNED_CARDS: Set[str] = {
+    "ancestral recall", "balance", "biorhythm", "black lotus", "braids, cabal minion",
+    "channel", "chaos orb", "coalition victory", "dockside extortionist", "emrakul, the aeons torn",
+    "erayo, soratami ascendant", "falling star", "fastbond", "flash", "gifts ungiven",
+    "golos, tireless pilgrim", "griselbrand", "hullbreacher", "iona, shield of emeria",
+    "jeweled lotus", "karakas", "leovold, emissary of trest", "library of alexandria",
+    "limited resources", "lutri, the spellchaser", "mana crypt", "mox emerald",
+    "mox jet", "mox pearl", "mox ruby", "mox sapphire", "nadu, winged wisdom",
+    "panoptic mirror", "primeval titan", "prophet of kruphix", "recurring nightmare",
+    "rofeellos, llanowar emissary", "shahrazad", "sundering titan", "sway of the stars",
+    "sylvan primordial", "time vault", "time walk", "tinker", "tolarian academy",
+    "trade secrets", "upheaval", "yawgmoth's bargain",
+}
+
+# Official Pauper Commander (PDH) Banned Cards List (PDH Home Base)
+PAUPER_COMMANDER_BANNED_CARDS: Set[str] = {
+    "mystic remora", "rhystic study", "stone-throwing devils", "pradesh gypsies",
+}
 
 
 class DeckAnalyzer:
@@ -947,12 +968,233 @@ class DeckAnalyzer:
             "top_sinks": sinks[:10],
         }
 
+    def evaluate_deck_rules(
+        self,
+        cards: List[Dict[str, Any]],
+        commander_names: Optional[List[str]] = None,
+        is_pauper: bool = False,
+        total_cards: int = 100,
+        deck_color_identity: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Evaluates deck compliance against MTG format rules:
+        - Regular Commander (EDH): Legendary creature/planeswalker, color identity, banned list, singleton, 100 cards.
+        - Pauper Commander (PDH): Uncommon creature commander, all 99 cards printed at common, PDH banned list, color identity, singleton, 100 cards.
+        """
+        violations: List[Dict[str, Any]] = []
+        warnings: List[Dict[str, Any]] = []
+        illegal_card_names: List[str] = []
+
+        cmdr_names_clean = [strip_accents(c).strip().lower() for c in (commander_names or []) if c and str(c).strip()]
+        cmdr_cards: List[Dict[str, Any]] = []
+        library_cards: List[Dict[str, Any]] = []
+
+        rarity_counts = {"common": 0, "uncommon": 0, "rare": 0, "mythic": 0, "other": 0}
+
+        for c in cards:
+            c_name = c.get("name", "").strip()
+            clean = strip_accents(c_name).strip().lower()
+            clean_front = clean.split(" // ")[0].strip() if " // " in clean else clean
+
+            is_cmdr = (c.get("section") or "").lower() == "commander" or clean in cmdr_names_clean or clean_front in cmdr_names_clean
+            if is_cmdr:
+                cmdr_cards.append(c)
+            else:
+                library_cards.append(c)
+
+            rarity = (c.get("rarity") or "").lower()
+            qty = int(c.get("quantity", 1))
+            if rarity in rarity_counts:
+                rarity_counts[rarity] += qty
+            else:
+                rarity_counts["other"] += qty
+
+        # 1. Commander Evaluation
+        cmdr_eval_results = []
+        if not cmdr_cards and not cmdr_names_clean:
+            warnings.append({
+                "type": "missing_commander",
+                "severity": "warning",
+                "message": "No designated commander found for this deck."
+            })
+        else:
+            for cmdr in cmdr_cards:
+                c_name = cmdr.get("name", "Commander")
+                clean = strip_accents(c_name).strip().lower()
+                clean_front = clean.split(" // ")[0].strip() if " // " in clean else clean
+                type_line = (cmdr.get("type_line") or "").lower()
+                rarity = (cmdr.get("rarity") or "").lower()
+                oracle_text = (cmdr.get("oracle_text") or "").lower()
+                cmdr_is_legal = True
+                cmdr_errors = []
+
+                if is_pauper:
+                    # Pauper Commander: Must be an uncommon creature (or uncommon background/partner)
+                    if "creature" not in type_line and "background" not in type_line:
+                        cmdr_is_legal = False
+                        cmdr_errors.append(f"Commander '{c_name}' must be a creature (or Background enchantment).")
+
+                    if rarity in ("rare", "mythic"):
+                        cmdr_is_legal = False
+                        cmdr_errors.append(f"Commander '{c_name}' is {rarity.title()}. In Pauper Commander, the commander must be an Uncommon creature.")
+
+                    if clean in PAUPER_COMMANDER_BANNED_CARDS or clean_front in PAUPER_COMMANDER_BANNED_CARDS:
+                        cmdr_is_legal = False
+                        cmdr_errors.append(f"Commander '{c_name}' is banned in Pauper Commander.")
+                else:
+                    # Regular Commander: Must be Legendary Creature or have commander text
+                    is_legendary_creature = "legendary" in type_line and "creature" in type_line
+                    can_be_commander = "can be your commander" in oracle_text
+                    if not (is_legendary_creature or can_be_commander):
+                        cmdr_is_legal = False
+                        cmdr_errors.append(f"Commander '{c_name}' must be a Legendary Creature or specify 'can be your commander'.")
+
+                    if clean in COMMANDER_BANNED_CARDS or clean_front in COMMANDER_BANNED_CARDS:
+                        cmdr_is_legal = False
+                        cmdr_errors.append(f"Commander '{c_name}' is banned in Commander.")
+
+                for err in cmdr_errors:
+                    violations.append({
+                        "card": c_name,
+                        "type": "commander_violation",
+                        "severity": "error",
+                        "message": err,
+                    })
+                    illegal_card_names.append(c_name)
+
+                cmdr_eval_results.append({
+                    "name": c_name,
+                    "is_legal": cmdr_is_legal,
+                    "type_line": cmdr.get("type_line", ""),
+                    "rarity": rarity.title() if rarity else "Unknown",
+                    "messages": cmdr_errors,
+                })
+
+        # 2. 99-Card Library Evaluation
+        target_colors = set(col.upper() for col in (deck_color_identity or []))
+        exempt_singleton_cards = {
+            "relentless rats", "shadowborn apostle", "dragon's approach", "persistent petitioners",
+            "hare apparent", "slime against humanity", "rat colony", "seven dwarves", "templar knight",
+        }
+
+        for card in library_cards:
+            c_name = card.get("name", "Card")
+            clean = strip_accents(c_name).strip().lower()
+            clean_front = clean.split(" // ")[0].strip() if " // " in clean else clean
+            qty = int(card.get("quantity", 1))
+            type_line = (card.get("type_line") or "").lower()
+            legalities = card.get("legalities", {})
+            rarity = (card.get("rarity") or "").lower()
+
+            # Singleton check (basic lands exempt)
+            if qty > 1 and "basic" not in type_line and clean not in exempt_singleton_cards and clean_front not in exempt_singleton_cards:
+                violations.append({
+                    "card": c_name,
+                    "type": "singleton_violation",
+                    "severity": "error",
+                    "message": f"Contains {qty} copies of '{c_name}' (Commander is a singleton format; max 1 copy allowed).",
+                })
+                illegal_card_names.append(c_name)
+
+            # Color identity check
+            card_cid = set(col.upper() for col in card.get("color_identity", []))
+            if target_colors and not card_cid.issubset(target_colors):
+                diff = card_cid - target_colors
+                violations.append({
+                    "card": c_name,
+                    "type": "color_identity_violation",
+                    "severity": "error",
+                    "message": f"'{c_name}' has colored mana symbols {sorted(list(diff))} outside the deck's color identity {sorted(list(target_colors))}.",
+                })
+                illegal_card_names.append(c_name)
+
+            # Format-specific legality check
+            if is_pauper:
+                # Pauper Banned list
+                if clean in PAUPER_COMMANDER_BANNED_CARDS or clean_front in PAUPER_COMMANDER_BANNED_CARDS:
+                    violations.append({
+                        "card": c_name,
+                        "type": "banned_card",
+                        "severity": "error",
+                        "message": f"'{c_name}' is banned in Pauper Commander.",
+                    })
+                    illegal_card_names.append(c_name)
+                    continue
+
+                # Common rarity requirement
+                pdh_leg = legalities.get("paupercommander")
+                if pdh_leg == "not_legal":
+                    violations.append({
+                        "card": c_name,
+                        "type": "rarity_violation",
+                        "severity": "error",
+                        "message": f"'{c_name}' is not legal in Pauper Commander (only cards printed at common are permitted in the 99).",
+                    })
+                    illegal_card_names.append(c_name)
+                elif pdh_leg == "banned":
+                    violations.append({
+                        "card": c_name,
+                        "type": "banned_card",
+                        "severity": "error",
+                        "message": f"'{c_name}' is banned in Pauper Commander.",
+                    })
+                    illegal_card_names.append(c_name)
+                elif not pdh_leg and rarity in ("uncommon", "rare", "mythic"):
+                    violations.append({
+                        "card": c_name,
+                        "type": "rarity_violation",
+                        "severity": "error",
+                        "message": f"'{c_name}' ({rarity.title()}) is not legal in Pauper Commander (only cards printed at common are permitted in the 99).",
+                    })
+                    illegal_card_names.append(c_name)
+            else:
+                # Regular Commander banlist
+                if clean in COMMANDER_BANNED_CARDS or clean_front in COMMANDER_BANNED_CARDS:
+                    violations.append({
+                        "card": c_name,
+                        "type": "banned_card",
+                        "severity": "error",
+                        "message": f"'{c_name}' is on the official Commander banned list.",
+                    })
+                    illegal_card_names.append(c_name)
+
+        # 3. Deck Size Check
+        if total_cards != 100:
+            warnings.append({
+                "type": "deck_size",
+                "severity": "warning",
+                "message": f"Deck has {total_cards} cards (official Commander decks require exactly 100 cards).",
+            })
+
+        format_key = "pauper_commander" if is_pauper else "commander"
+        format_display = "Pauper Commander (PDH)" if is_pauper else "Commander (EDH)"
+
+        return {
+            "format": format_key,
+            "format_display": format_display,
+            "is_pauper": is_pauper,
+            "is_legal": len(violations) == 0,
+            "violations_count": len(violations),
+            "warnings_count": len(warnings),
+            "violations": violations,
+            "warnings": warnings,
+            "illegal_cards": list(dict.fromkeys(illegal_card_names)),
+            "rarity_counts": rarity_counts,
+            "commanders": cmdr_eval_results,
+        }
+
     def analyze(self, deck_data: Any) -> Dict[str, Any]:
         """
         Executes full statistical and analytical evaluation across deck payload.
         """
+        is_pauper = False
         if isinstance(deck_data, dict):
             raw_cards = deck_data.get("cards", []) or deck_data.get("cards_data", [])
+            is_pauper = bool(
+                deck_data.get("is_pauper") or
+                ("pauper" in str(deck_data.get("deck_format", "")).lower()) or
+                ("pedh" in str(deck_data.get("deck_format", "")).lower())
+            )
         elif isinstance(deck_data, list):
             raw_cards = deck_data
         else:
@@ -1230,6 +1472,13 @@ class DeckAnalyzer:
         )
         win_conditions = self.classify_win_conditions(enriched_cards, cmdr_names, archetype)
         mana_sinks = self.analyze_mana_sinks(enriched_cards)
+        rule_evaluation = self.evaluate_deck_rules(
+            cards=enriched_cards,
+            commander_names=cmdr_names,
+            is_pauper=is_pauper,
+            total_cards=total_cards_count,
+            deck_color_identity=sorted(list(color_identity_set)),
+        )
 
         stats = {
             "total_value": round(total_deck_value, 2),
@@ -1239,6 +1488,9 @@ class DeckAnalyzer:
             "total_cards": total_cards_count,
             "nonland_count": nonland_count,
             "land_count": total_lands_count,
+            "is_pauper": is_pauper,
+            "deck_format": "pauper_commander" if is_pauper else "commander",
+            "rule_evaluation": rule_evaluation,
             "type_counts": type_counts,
             "tag_counts": tag_counts,
             "cmc_curve": cmc_curve,
@@ -1323,6 +1575,9 @@ class DeckAnalyzer:
             "commander_art": deck_data.get("commander_art") if isinstance(deck_data, dict) else None,
             "total_cards": total_cards_count,
             "cards": enriched_cards,
+            "is_pauper": is_pauper,
+            "deck_format": "pauper_commander" if is_pauper else "commander",
+            "rule_evaluation": rule_evaluation,
             "stats": stats,
             "source_type": deck_data.get("source_type", "text") if isinstance(deck_data, dict) else "text",
             "raw_text": deck_data.get("raw_text", "") if isinstance(deck_data, dict) else "",

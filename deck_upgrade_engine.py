@@ -34,6 +34,11 @@ COMMANDER_BANNED_CARDS: Set[str] = {
     "trade secrets", "upheaval", "yawgmoth's bargain",
 }
 
+# Official Pauper Commander (PDH) Banned Cards List (PDH Home Base)
+PAUPER_COMMANDER_BANNED_CARDS: Set[str] = {
+    "mystic remora", "rhystic study", "stone-throwing devils", "pradesh gypsies",
+}
+
 # Curated tactical Commander upgrade staples catalog
 CURATED_UPGRADES: List[Dict[str, Any]] = [
     # Top-tier Universal Interaction / Removal
@@ -295,6 +300,80 @@ CURATED_UPGRADES: List[Dict[str, Any]] = [
     },
 ]
 
+# Curated tactical Pauper Commander (PDH) upgrade staples catalog (all printed at common)
+CURATED_PAUPER_UPGRADES: List[Dict[str, Any]] = [
+    # White Staples
+    {"name": "Ephemerate", "role": "Protection / Flicker", "cmc": 1, "colors": ["W"], "category": "Synergy", "rating": 9.7, "rationale": "Premier 1-CMC instant-speed blink with Rebound for double ETB value."},
+    {"name": "Thraben Inspector", "role": "Card Advantage", "cmc": 1, "colors": ["W"], "category": "Card Draw", "rating": 9.1, "rationale": "1-CMC creature generating an investigate Clue token for smooth early velocity."},
+    {"name": "Spirited Companion", "role": "Card Advantage", "cmc": 2, "colors": ["W"], "category": "Card Draw", "rating": 9.0, "rationale": "2-CMC cantripping creature providing immediate card replacement on ETB."},
+    {"name": "Journey to Nowhere", "role": "Spot Removal", "cmc": 2, "colors": ["W"], "category": "Targeted Removal", "rating": 9.2, "rationale": "Clean 2-CMC unconditional creature exile enchantment."},
+    {"name": "Oblivion Ring", "role": "Spot Removal", "cmc": 3, "colors": ["W"], "category": "Targeted Removal", "rating": 9.0, "rationale": "Catch-all 3-CMC exile answer hitting any nonland permanent."},
+    {"name": "Prismatic Strands", "role": "Protection / Counterspell", "cmc": 3, "colors": ["W"], "category": "Protection", "rating": 9.5, "rationale": "Damage prevention combat trick with free flashback tapping an untapped white creature."},
+    {"name": "Dawn Charm", "role": "Protection / Counterspell", "cmc": 2, "colors": ["W"], "category": "Protection", "rating": 9.1, "rationale": "Modal 2-CMC protection: prevent combat damage, regenerate, or counter spell targeting you."},
+    {"name": "Late to Dinner", "role": "Recursion", "cmc": 4, "colors": ["W"], "category": "Synergy", "rating": 8.9, "rationale": "Unconditional creature reanimation from graveyard that creates a Food token."},
+
+    # Blue Staples
+    {"name": "Counterspell", "role": "Protection / Counterspell", "cmc": 2, "colors": ["U"], "category": "Interaction", "rating": 9.9, "rationale": "Unconditional 2-CMC hard counter at instant speed."},
+    {"name": "Brainstorm", "role": "Card Advantage", "cmc": 1, "colors": ["U"], "category": "Card Draw", "rating": 9.5, "rationale": "Instant 1-CMC draw 3 cards with library sculpting."},
+    {"name": "Ponder", "role": "Card Advantage", "cmc": 1, "colors": ["U"], "category": "Card Draw", "rating": 9.6, "rationale": "Premier 1-CMC cantrip with shuffle option and scry 3 depth."},
+    {"name": "Preordain", "role": "Card Advantage", "cmc": 1, "colors": ["U"], "category": "Card Draw", "rating": 9.6, "rationale": "Top tier 1-CMC card selection with Scry 2."},
+    {"name": "Mulldrifter", "role": "Card Advantage", "cmc": 5, "colors": ["U"], "category": "Card Draw", "rating": 9.7, "rationale": "Iconic evoke/draw 2 engine easily looped with blink and graveyard recursion."},
+    {"name": "Snap", "role": "Spot Removal", "cmc": 2, "colors": ["U"], "category": "Targeted Removal", "rating": 9.3, "rationale": "Free instant-speed bounce that untaps 2 lands."},
+    {"name": "Frantic Search", "role": "Card Advantage", "cmc": 3, "colors": ["U"], "category": "Card Draw", "rating": 9.4, "rationale": "Free loot spell sculpting hand while untapping 3 lands."},
+    {"name": "Peregrine Drake", "role": "Ramp / Combo", "cmc": 5, "colors": ["U"], "category": "Finisher", "rating": 9.6, "rationale": "Untaps 5 lands on ETB, serving as a huge tempo play or infinite mana combo engine."},
+    {"name": "Murmuring Mystic", "role": "Finisher / Win-Con", "cmc": 4, "colors": ["U"], "category": "Synergy", "rating": 9.3, "rationale": "Spellslinger engine flooding the board with 1/1 flying Bird illusion tokens."},
+
+    # Black Staples
+    {"name": "Cast Down", "role": "Spot Removal", "cmc": 2, "colors": ["B"], "category": "Targeted Removal", "rating": 9.6, "rationale": "Premier 2-CMC unconditional instant removal hitting any nonlegendary creature."},
+    {"name": "Snuff Out", "role": "Spot Removal", "cmc": 4, "colors": ["B"], "category": "Targeted Removal", "rating": 9.8, "rationale": "Free instant-speed creature removal castable by paying 4 life."},
+    {"name": "Deadly Dispute", "role": "Card Advantage", "cmc": 2, "colors": ["B"], "category": "Card Draw", "rating": 9.7, "rationale": "Top tier 2-CMC instant drawing 2 cards and ramping with a Treasure token."},
+    {"name": "Village Rites", "role": "Card Advantage", "cmc": 1, "colors": ["B"], "category": "Card Draw", "rating": 9.3, "rationale": "Ultra-efficient 1-CMC instant turning tokens or chump blockers into 2 cards."},
+    {"name": "Night's Whisper", "role": "Card Advantage", "cmc": 2, "colors": ["B"], "category": "Card Draw", "rating": 9.4, "rationale": "Unconditional 2-CMC draw 2 cards at sorcery speed for 2 life."},
+    {"name": "Sign in Blood", "role": "Card Advantage", "cmc": 2, "colors": ["B"], "category": "Card Draw", "rating": 9.2, "rationale": "Consistent 2-CMC draw 2 with burn versatility against opponents."},
+    {"name": "Defile", "role": "Spot Removal", "cmc": 1, "colors": ["B"], "category": "Targeted Removal", "rating": 9.1, "rationale": "1-CMC instant removal scaling with Swamp count."},
+    {"name": "Crypt Rats", "role": "Board Wipe", "cmc": 3, "colors": ["B"], "category": "Board Wipe", "rating": 9.5, "rationale": "Repeatable Pestilence board sweeper on a creature body."},
+    {"name": "Gray Merchant of Asphodel", "role": "Finisher / Win-Con", "cmc": 5, "colors": ["B"], "category": "Finisher", "rating": 9.7, "rationale": "Massive life drain finisher scaling with black devotion."},
+
+    # Red Staples
+    {"name": "Lightning Bolt", "role": "Spot Removal", "cmc": 1, "colors": ["R"], "category": "Targeted Removal", "rating": 9.7, "rationale": "Gold standard 1-CMC 3 damage instant removal."},
+    {"name": "Abrade", "role": "Spot Removal", "cmc": 2, "colors": ["R"], "category": "Targeted Removal", "rating": 9.5, "rationale": "Modal flexibility dealing 3 damage to a creature or destroying an artifact."},
+    {"name": "Faithless Looting", "role": "Card Advantage", "cmc": 1, "colors": ["R"], "category": "Card Draw", "rating": 9.4, "rationale": "High-velocity hand sculpting and graveyard filling with flashback."},
+    {"name": "Thrill of Possibility", "role": "Card Advantage", "cmc": 2, "colors": ["R"], "category": "Card Draw", "rating": 8.9, "rationale": "Instant-speed card cycling and graveyard stocking."},
+    {"name": "Cast into the Fire", "role": "Spot Removal", "cmc": 2, "colors": ["R"], "category": "Targeted Removal", "rating": 9.3, "rationale": "Modal exile for 1-toughness creatures or problematic artifacts."},
+    {"name": "Pyroblast", "role": "Protection / Counterspell", "cmc": 1, "colors": ["R"], "category": "Interaction", "rating": 9.5, "rationale": "Premier 1-CMC red counterspell and removal against blue spells and permanents."},
+    {"name": "Red Elemental Blast", "role": "Protection / Counterspell", "cmc": 1, "colors": ["R"], "category": "Interaction", "rating": 9.5, "rationale": "Crucial 1-CMC interaction countering blue spells and destroying blue permanents."},
+    {"name": "Guttersnipe", "role": "Finisher / Win-Con", "cmc": 3, "colors": ["R"], "category": "Finisher", "rating": 9.3, "rationale": "Premier spellslinger win condition burning every opponent for 2 damage per instant/sorcery."},
+
+    # Green Staples
+    {"name": "Llanowar Elves", "role": "Ramp", "cmc": 1, "colors": ["G"], "category": "Ramp", "rating": 9.5, "rationale": "Essential 1-CMC mana dork powering out early turn 2 plays."},
+    {"name": "Elvish Mystic", "role": "Ramp", "cmc": 1, "colors": ["G"], "category": "Ramp", "rating": 9.4, "rationale": "Core 1-CMC mana acceleration for green mana curves."},
+    {"name": "Fyndhorn Elves", "role": "Ramp", "cmc": 1, "colors": ["G"], "category": "Ramp", "rating": 9.4, "rationale": "Redundant 1-CMC mana acceleration."},
+    {"name": "Sakura-Tribe Elder", "role": "Ramp", "cmc": 2, "colors": ["G"], "category": "Ramp", "rating": 9.6, "rationale": "Rampant Growth on a chump-blocking body."},
+    {"name": "Rampant Growth", "role": "Ramp", "cmc": 2, "colors": ["G"], "category": "Ramp", "rating": 9.3, "rationale": "2-CMC basic land ramp directly to the battlefield."},
+    {"name": "Cultivate", "role": "Ramp", "cmc": 3, "colors": ["G"], "category": "Ramp", "rating": 9.5, "rationale": "Premier 3-CMC land ramp fixing colors and smoothing curve."},
+    {"name": "Kodama's Reach", "role": "Ramp", "cmc": 3, "colors": ["G"], "category": "Ramp", "rating": 9.5, "rationale": "Essential 3-CMC double land search and color fixing."},
+    {"name": "Nature's Claim", "role": "Spot Removal", "cmc": 1, "colors": ["G"], "category": "Targeted Removal", "rating": 9.4, "rationale": "Ultra-efficient 1-CMC instant artifact/enchantment destruction."},
+    {"name": "Return to Nature", "role": "Spot Removal", "cmc": 2, "colors": ["G"], "category": "Targeted Removal", "rating": 9.1, "rationale": "Modal Disenchant with bonus instant graveyard exile."},
+
+    # Colorless / Artifacts
+    {"name": "Arcane Signet", "role": "Ramp", "cmc": 2, "colors": [], "category": "Ramp", "rating": 9.8, "rationale": "Untapped mana rock producing all commander colors."},
+    {"name": "Mind Stone", "role": "Ramp", "cmc": 2, "colors": [], "category": "Ramp", "rating": 9.3, "rationale": "2-CMC ramp rock that cycles into a fresh card in the late game."},
+    {"name": "Commander's Sphere", "role": "Ramp", "cmc": 3, "colors": [], "category": "Ramp", "rating": 9.0, "rationale": "3-CMC any-color mana rock with free emergency card draw."},
+    {"name": "Wayfarer's Bauble", "role": "Ramp", "cmc": 1, "colors": [], "category": "Ramp", "rating": 9.2, "rationale": "Land ramp for non-green decks directly to the battlefield."},
+    {"name": "Ashnod's Altar", "role": "Ramp / Sac Outlet", "cmc": 3, "colors": [], "category": "Ramp", "rating": 9.6, "rationale": "Sacrifice outlet producing 2 colorless mana per creature."},
+    {"name": "Bonder's Ornament", "role": "Ramp / Card Advantage", "cmc": 3, "colors": [], "category": "Ramp", "rating": 9.2, "rationale": "Mana rock offering repeatable multiplayer card advantage."},
+    {"name": "Pristine Talisman", "role": "Ramp", "cmc": 3, "colors": [], "category": "Ramp", "rating": 8.9, "rationale": "Taps for mana while gaining 1 life every turn."},
+    {"name": "Thought Vessel", "role": "Ramp", "cmc": 2, "colors": [], "category": "Ramp", "rating": 9.2, "rationale": "2-CMC mana rock granting unlimited hand size."},
+
+    # Lands
+    {"name": "Command Tower", "role": "Land", "cmc": 0, "colors": [], "category": "Mana Base", "rating": 9.9, "rationale": "Enters untapped and produces all commander identity colors."},
+    {"name": "Path of Ancestry", "role": "Land", "cmc": 0, "colors": [], "category": "Mana Base", "rating": 9.3, "rationale": "Any-color mana land offering scry on typal creature casts."},
+    {"name": "Ash Barrens", "role": "Land", "cmc": 0, "colors": [], "category": "Mana Base", "rating": 9.4, "rationale": "1-mana instant basic landcycling and fixing."},
+    {"name": "Evolving Wilds", "role": "Land", "cmc": 0, "colors": [], "category": "Mana Base", "rating": 9.1, "rationale": "Color-fixing land finding any basic needed."},
+    {"name": "Terramorphic Expanse", "role": "Land", "cmc": 0, "colors": [], "category": "Mana Base", "rating": 9.1, "rationale": "Essential color fixing for budget and pauper mana bases."},
+    {"name": "Guildless Commons", "role": "Land", "cmc": 0, "colors": [], "category": "Mana Base", "rating": 9.0, "rationale": "Colorless bounce land tapping for {C}{C}."},
+]
+
 
 class DualTierUpgradeEngine:
     """
@@ -317,6 +396,7 @@ class DualTierUpgradeEngine:
         theme: Optional[str] = None,
         anti_salt: bool = False,
         max_salt: float = 1.5,
+        is_pauper: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Executes dual-tier upgrade evaluation enriched with EDHREC synergy,
@@ -344,6 +424,8 @@ class DualTierUpgradeEngine:
             "shopping_count": int,
             "theme_applied": str | None,
             "anti_salt_applied": bool,
+            "is_pauper": bool,
+            "deck_format": str,
         }
         """
         # 1. Resolve deck attributes
@@ -352,10 +434,19 @@ class DualTierUpgradeEngine:
         deck_name = deck.deck_name if hasattr(deck, "deck_name") else deck.get("deck_name", "Commander Deck")
         color_identity = set(deck.get_color_identity_list() if hasattr(deck, "get_color_identity_list") else deck.get("color_identity", []))
 
+        # Resolve whether this deck is evaluated as Pauper Commander
+        if is_pauper is None:
+            is_pauper = bool(
+                getattr(deck, "is_pauper_commander", False)
+                or getattr(deck, "is_pauper", False)
+                or (isinstance(deck, dict) and (deck.get("is_pauper") or deck.get("deck_format") == "pauper_commander"))
+            )
+
         # Extract EDHREC metadata & synergy maps if present
         edhrec_synergies: Dict[str, Dict[str, Any]] = (edhrec_data or {}).get("card_synergies", {})
         top_salt_map: Dict[str, float] = (edhrec_data or {}).get("top_salt_map", {})
         edhrec_combos: List[Dict[str, Any]] = (edhrec_data or {}).get("combos", [])
+        edhrec_priority_pool = (edhrec_data or {}).get("high_synergy_cards", []) + (edhrec_data or {}).get("top_cards", [])
 
         # Build card lookup for current deck (all match keys: lowercase, unaccented, front-face)
         deck_cards_set: Set[str] = set()
@@ -366,6 +457,77 @@ class DualTierUpgradeEngine:
 
         # Extract cut candidates from current deck
         cut_candidates = self._identify_cut_candidates(cards, ai_analysis)
+
+        # Build Pauper Commander legality cache if pauper mode is active
+        pauper_legal_cache: Dict[str, bool] = {}
+        if is_pauper:
+            # 1. Curated pauper upgrades are guaranteed legal
+            for p_staple in CURATED_PAUPER_UPGRADES:
+                for k in get_card_match_keys(p_staple["name"]):
+                    pauper_legal_cache[k] = True
+
+            # 2. Basic lands are legal
+            for basic in [
+                "Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes",
+                "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp",
+                "Snow-Covered Mountain", "Snow-Covered Forest",
+            ]:
+                for k in get_card_match_keys(basic):
+                    pauper_legal_cache[k] = True
+
+            # 3. Known banned cards are False
+            for banned in PAUPER_COMMANDER_BANNED_CARDS.union(COMMANDER_BANNED_CARDS):
+                for k in get_card_match_keys(banned):
+                    pauper_legal_cache[k] = False
+
+            # 4. Check user inventory: any card marked common is legal unless banned
+            for ic in user_inventory:
+                ic_rarity = (getattr(ic, "rarity", "") or "").lower()
+                if ic_rarity == "common":
+                    clean = strip_accents(ic.name).strip().lower()
+                    if clean not in PAUPER_COMMANDER_BANNED_CARDS and clean not in COMMANDER_BANNED_CARDS:
+                        for k in get_card_match_keys(ic.name):
+                            if k not in pauper_legal_cache:
+                                pauper_legal_cache[k] = True
+
+            # 5. Candidate cards from AI, EDHREC, combos needing Scryfall verification
+            candidates_to_validate: Set[str] = set()
+            if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
+                for u in ai_analysis["upgrades"]:
+                    c_in = u.get("card_in", "").strip()
+                    if c_in and c_in.lower() not in pauper_legal_cache:
+                        candidates_to_validate.add(c_in)
+
+            for rec in edhrec_priority_pool:
+                r_name = rec.get("name", "").strip()
+                if r_name and r_name.lower() not in pauper_legal_cache:
+                    candidates_to_validate.add(r_name)
+
+            for combo in edhrec_combos:
+                for piece in combo.get("pieces", []):
+                    if piece and piece.lower() not in pauper_legal_cache:
+                        candidates_to_validate.add(piece)
+
+            if candidates_to_validate:
+                try:
+                    scryfall_meta, _ = self.scryfall_provider.get_cards_collection(list(candidates_to_validate))
+                    for name_query in candidates_to_validate:
+                        q_low = name_query.lower().strip()
+                        meta = scryfall_meta.get(q_low)
+                        if not meta:
+                            clean_q = strip_accents(name_query).strip().lower()
+                            meta = scryfall_meta.get(clean_q)
+                        if meta:
+                            is_leg = ScryfallProvider.is_pauper_legal(meta)
+                            for k in get_card_match_keys(meta.get("name", name_query)):
+                                pauper_legal_cache[k] = is_leg
+                        else:
+                            pauper_legal_cache[q_low] = False
+                except Exception as e:
+                    logger.error(f"Error validating pauper legality with Scryfall: {e}")
+
+        # Choose curated staples pool based on format
+        staples_pool = CURATED_PAUPER_UPGRADES if is_pauper else CURATED_UPGRADES
 
         # 2. Build Inventory Map & Owned Upgrades (indexed by all match keys)
         owned_by_name: Dict[str, List[UserInventoryCard]] = {}
@@ -398,7 +560,7 @@ class DualTierUpgradeEngine:
                 if not card_in or self._is_card_in_deck(card_in, deck_cards_set) or card_in.lower() in applied_card_in_names:
                     continue
 
-                if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in):
+                if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                     owned_copies = self._find_owned_inventory_copies(card_in, owned_by_name)
                     if owned_copies:
                         primary_copy = owned_copies[0]
@@ -448,14 +610,13 @@ class DualTierUpgradeEngine:
                         applied_card_in_names.add(card_in.lower())
 
         # B) Check EDHREC High Synergy & Top Cards against User Inventory
-        edhrec_priority_pool = (edhrec_data or {}).get("high_synergy_cards", []) + (edhrec_data or {}).get("top_cards", [])
         for rec in edhrec_priority_pool:
             rec_name = rec.get("name", "").strip()
             rec_lower = rec_name.lower()
             if not rec_name or self._is_card_in_deck(rec_name, deck_cards_set) or rec_lower in applied_card_in_names:
                 continue
 
-            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name):
+            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                 continue
 
             owned_copies = self._find_owned_inventory_copies(rec_name, owned_by_name)
@@ -502,7 +663,7 @@ class DualTierUpgradeEngine:
                 applied_card_in_names.add(rec_lower)
 
         # C) Check Curated Tactical Staples against Inventory
-        for staple in CURATED_UPGRADES:
+        for staple in staples_pool:
             s_name = staple["name"]
             s_name_lower = s_name.lower()
             if self._is_card_in_deck(s_name, deck_cards_set) or s_name_lower in applied_card_in_names:
@@ -511,7 +672,7 @@ class DualTierUpgradeEngine:
             # Color and legality check
             if not self._is_staple_color_legal(staple.get("colors", []), color_identity):
                 continue
-            if not self._is_format_legal(s_name):
+            if not self._is_format_legal(s_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                 continue
 
             owned_copies = self._find_owned_inventory_copies(s_name, owned_by_name)
@@ -578,7 +739,7 @@ class DualTierUpgradeEngine:
                 if not card_in or self._is_card_in_deck(card_in, deck_cards_set) or self._find_owned_inventory_copies(card_in, owned_by_name) or card_in.lower() in shopping_names_applied:
                     continue
 
-                if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in):
+                if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                     matched_cut = u.get("card_out") or self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
                     price_val = None
                     try:
@@ -621,7 +782,7 @@ class DualTierUpgradeEngine:
                 rec_lower in shopping_names_applied):
                 continue
 
-            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name):
+            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                 continue
 
             syn, syn_pct, inc_pct, salt = _get_edhrec_info(rec_name)
@@ -652,7 +813,7 @@ class DualTierUpgradeEngine:
             shopping_names_applied.add(rec_lower)
 
         # C) Add unowned Curated Staples
-        for staple in CURATED_UPGRADES:
+        for staple in staples_pool:
             s_name = staple["name"]
             s_name_lower = s_name.lower()
             if (self._is_card_in_deck(s_name, deck_cards_set) or 
@@ -662,7 +823,7 @@ class DualTierUpgradeEngine:
 
             if not self._is_staple_color_legal(staple.get("colors", []), color_identity):
                 continue
-            if not self._is_format_legal(s_name):
+            if not self._is_format_legal(s_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                 continue
 
             syn, syn_pct, inc_pct, salt = _get_edhrec_info(s_name)
@@ -741,6 +902,8 @@ class DualTierUpgradeEngine:
             combos=edhrec_combos,
             deck_cards=cards,
             user_inventory=user_inventory,
+            is_pauper=is_pauper,
+            pauper_legal_cache=pauper_legal_cache,
         )
 
         return {
@@ -762,6 +925,8 @@ class DualTierUpgradeEngine:
             "shopping_count": len(shopping_list_raw),
             "theme_applied": theme,
             "anti_salt_applied": anti_salt,
+            "is_pauper": is_pauper,
+            "deck_format": "pauper_commander" if is_pauper else "commander",
         }
 
     def evaluate_combos(
@@ -769,6 +934,8 @@ class DualTierUpgradeEngine:
         combos: List[Dict[str, Any]],
         deck_cards: List[Dict[str, Any]],
         user_inventory: List[UserInventoryCard],
+        is_pauper: bool = False,
+        pauper_legal_cache: Optional[Dict[str, bool]] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Evaluates EDHREC / Commander Spellbook combos against active deck cards and user inventory.
@@ -801,6 +968,11 @@ class DualTierUpgradeEngine:
             pieces = combo.get("pieces", [])
             if len(pieces) < 2:
                 continue
+
+            # In Pauper Commander, every combo piece must be pauper legal
+            if is_pauper:
+                if not all(self._is_format_legal(p, is_pauper=True, pauper_legal_cache=pauper_legal_cache) for p in pieces):
+                    continue
 
             in_deck: List[str] = []
             missing: List[Dict[str, Any]] = []
@@ -853,14 +1025,24 @@ class DualTierUpgradeEngine:
         return None
 
     @staticmethod
-    def _is_format_legal(card_name: str) -> bool:
-        """Checks if card is legal in Commander (not on banned list)."""
+    def _is_format_legal(card_name: str, is_pauper: bool = False, pauper_legal_cache: Optional[Dict[str, bool]] = None) -> bool:
+        """Checks if card is legal in Commander (or Pauper Commander if is_pauper is True)."""
         if not card_name:
             return True
         clean = strip_accents(card_name).strip().lower()
         if " // " in clean:
             clean = clean.split(" // ")[0].strip()
-        return clean not in COMMANDER_BANNED_CARDS
+        if clean in COMMANDER_BANNED_CARDS:
+            return False
+        if is_pauper:
+            if clean in PAUPER_COMMANDER_BANNED_CARDS:
+                return False
+            if pauper_legal_cache is not None:
+                for k in get_card_match_keys(card_name):
+                    if k in pauper_legal_cache:
+                        return pauper_legal_cache[k]
+                return False
+        return True
 
     @staticmethod
     def _is_color_legal(card_name: str, deck_colors: Set[str], card_cid: Optional[List[str]] = None) -> bool:

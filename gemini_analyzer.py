@@ -180,14 +180,36 @@ class GeminiAnalyzer:
 
         decklist_prompt_text = "\n".join(card_lines)
 
-        system_instruction = (
-            "You are an elite Magic: The Gathering Commander (EDH) tactical deck analyst, tournament judge, "
-            "and deck-building architect. You evaluate decks with clinical precision, strategic depth, and high authority. "
-            "You must output ONLY valid JSON matching the exact required schema."
+        is_pauper = bool(
+            deck_data.get("is_pauper")
+            or deck_data.get("deck_format") == "pauper_commander"
         )
 
-        user_prompt = f"""Analyze this Magic: The Gathering Commander (EDH) deck in full clinical detail.
+        if is_pauper:
+            system_instruction = (
+                "You are an elite Magic: The Gathering Pauper Commander (PDH / Pauper EDH) tactical deck analyst, tournament judge, "
+                "and deck-building architect. You evaluate decks with clinical precision, strategic depth, and high authority. "
+                "CRITICAL FORMAT RULES FOR PAUPER COMMANDER: "
+                "1. The Commander must be an UNCOMMON creature (it does NOT have to be legendary). "
+                "2. The 99 cards in the library must have ALL been printed at COMMON rarity in paper MTG or MTGO. "
+                "3. Mystic Remora and Rhystic Study are BANNED in Pauper Commander. "
+                "4. ALL upgrade suggestions ('card_in') MUST be 100% legal in Pauper Commander (strictly COMMON cards; no uncommons, rares, or mythics allowed in the 99). "
+                "You must output ONLY valid JSON matching the exact required schema."
+            )
+            format_header = "FORMAT: Pauper Commander (PDH / Pauper EDH) - Uncommon Commander, 99 Commons in Library"
+            upgrade_constraint = " (CRITICAL PAUPER COMMANDER CONSTRAINT: Every single 'card_in' MUST be printed at COMMON rarity. Do NOT recommend Rares, Mythics, or Uncommons for the 99-card deck, and do NOT recommend Rhystic Study or Mystic Remora.)"
+        else:
+            system_instruction = (
+                "You are an elite Magic: The Gathering Commander (EDH) tactical deck analyst, tournament judge, "
+                "and deck-building architect. You evaluate decks with clinical precision, strategic depth, and high authority. "
+                "You must output ONLY valid JSON matching the exact required schema."
+            )
+            format_header = "FORMAT: Regular Commander (EDH)"
+            upgrade_constraint = ""
 
+        user_prompt = f"""Analyze this Magic: The Gathering Commander deck in full clinical detail.
+
+{format_header}
 DECK NAME: {deck_name}
 DESIGNATED COMMANDER(S): {', '.join(commanders) if commanders else 'Not explicitly specified'}
 TOTAL CARD COUNT: {sum(c.get('quantity', 1) for c in cards)}
@@ -217,7 +239,7 @@ TASK REQUIREMENTS:
      * 'verdict': One of ['Core Staple', 'Strong Synergizer', 'Solid Role Player', 'Potential Cut']
 
 4. PROPOSED CARD UPGRADES & SWAPS:
-   - Suggest 4 to 8 high-impact card upgrades.
+   - Suggest 4 to 8 high-impact card upgrades.{upgrade_constraint}
    - For each upgrade, specify 'card_in' (the recommended addition), 'card_out' (the card to cut from the current list), 'category' ('Power', 'Synergy', 'Mana Base', 'Protection', 'Speed', 'Budget'), 'rationale' (clear explanation of why this swap improves speed, consistency, or power), and 'estimated_impact' ('High', 'Medium', 'Low').
 
 5. CUT RECOMMENDATIONS:

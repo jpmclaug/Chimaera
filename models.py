@@ -879,8 +879,15 @@ class DeckAnalysis(db.Model):
     total_value = db.Column(db.Float, nullable=True)
     avg_cmc = db.Column(db.Float, nullable=True)
     color_identity = db.Column(db.String(50), nullable=True)  # Comma-separated e.g. "W,U,B,R,G"
+    is_pauper = db.Column(db.Boolean, default=False, nullable=False)
+    deck_format = db.Column(db.String(50), default="commander", nullable=False)
     created_at = db.Column(db.DateTime, default=utc_now, index=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+    @property
+    def is_pauper_commander(self) -> bool:
+        """Returns True if this deck is designated as Pauper Commander."""
+        return bool(self.is_pauper or (self.deck_format and "pauper" in str(self.deck_format).lower()))
 
     @property
     def has_ai_analysis(self) -> bool:
@@ -1028,11 +1035,14 @@ class DeckAnalysis(db.Model):
             "total_value": self.total_value if self.total_value is not None else stats.get("total_value", 0.0),
             "avg_cmc": self.avg_cmc if self.avg_cmc is not None else stats.get("avg_cmc", 0.0),
             "color_identity": self.get_color_identity_list(),
+            "is_pauper": self.is_pauper_commander,
+            "deck_format": "pauper_commander" if self.is_pauper_commander else (self.deck_format or "commander"),
             "has_ai_analysis": self.has_ai_analysis,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "stats": stats,
+            "rule_evaluation": stats.get("rule_evaluation") or {},
         }
         if include_full:
             data["raw_decklist"] = self.raw_decklist

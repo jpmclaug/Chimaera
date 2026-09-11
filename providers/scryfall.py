@@ -143,7 +143,32 @@ class ScryfallProvider:
             "card_faces": card.get("card_faces", []),
             "produced_mana": card.get("produced_mana", []),
             "keywords": card.get("keywords", []),
+            "legalities": card.get("legalities", {}),
         }
+
+    @staticmethod
+    def is_pauper_legal(card_meta: dict) -> bool:
+        """
+        Determines if a card is legal in Pauper Commander 99-card deck.
+        Checks Scryfall's paupercommander legality ('legal') or common rarity.
+        Rhystic Study, Mystic Remora, and ante/conspiracy cards are banned.
+        """
+        if not card_meta:
+            return False
+        legalities = card_meta.get("legalities", {})
+        pdh_leg = legalities.get("paupercommander")
+        if pdh_leg == "legal":
+            return True
+        if pdh_leg in ("banned", "not_legal"):
+            return False
+        # Fallback if legalities map is absent: check rarity and banlist
+        rarity = (card_meta.get("rarity") or "").lower()
+        name = (card_meta.get("name") or "").strip().lower()
+        if " // " in name:
+            name = name.split(" // ")[0].strip()
+        if name in ("rhystic study", "mystic remora", "stone-throwing devils", "pradesh gypsies"):
+            return False
+        return rarity == "common"
 
     def _index_card_in_map(self, found_map: dict[str, dict], formatted: dict, extra_names: list[str] = None):
         """Indexes formatted card into found_map under multiple canonical and unaccented match keys."""

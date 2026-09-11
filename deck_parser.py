@@ -31,7 +31,7 @@ class DeckParser:
     """Parses MTG Commander decks from various URL sources and text/file formats."""
 
     @staticmethod
-    def parse(source: str, source_type: str = "auto") -> dict:
+    def parse(source: str, source_type: str = "auto", is_pauper: Optional[bool] = None) -> dict:
         """
         Parses a deck from a URL, pasted text, or CSV content.
         
@@ -42,7 +42,9 @@ class DeckParser:
             "cards": list[dict], # [{"name": str, "quantity": int, "section": str, "set_code": str, "collector_number": str}]
             "total_cards": int,
             "source_type": str,
-            "raw_text": str
+            "raw_text": str,
+            "is_pauper": bool,
+            "deck_format": str
         }
         """
         source = (source or "").strip()
@@ -52,19 +54,35 @@ class DeckParser:
         detected_type = DeckParser._detect_type(source) if source_type == "auto" else source_type
 
         if detected_type == "manabox_url":
-            return DeckParser.parse_manabox_url(source)
+            res = DeckParser.parse_manabox_url(source)
         elif detected_type == "moxfield_url":
-            return DeckParser.parse_moxfield_url(source)
+            res = DeckParser.parse_moxfield_url(source)
         elif detected_type == "archidekt_url":
-            return DeckParser.parse_archidekt_url(source)
+            res = DeckParser.parse_archidekt_url(source)
         elif detected_type == "scryfall_url":
-            return DeckParser.parse_scryfall_url(source)
+            res = DeckParser.parse_scryfall_url(source)
         elif detected_type == "mtggoldfish_url":
-            return DeckParser.parse_mtggoldfish_url(source)
+            res = DeckParser.parse_mtggoldfish_url(source)
         elif detected_type == "csv":
-            return DeckParser.parse_csv(source)
+            res = DeckParser.parse_csv(source)
         else:
-            return DeckParser.parse_text(source)
+            res = DeckParser.parse_text(source)
+
+        # Detect or assign Pauper Commander format
+        if is_pauper is None:
+            if res.get("is_pauper") is not None:
+                is_pauper = bool(res.get("is_pauper"))
+            else:
+                source_lower = source.lower()
+                deck_name_lower = (res.get("deck_name") or "").lower()
+                is_pauper = bool(
+                    re.search(r"\b(pauper|pedh|pdh)\b", source_lower) or
+                    re.search(r"\b(pauper|pedh|pdh)\b", deck_name_lower)
+                )
+
+        res["is_pauper"] = bool(is_pauper)
+        res["deck_format"] = "pauper_commander" if is_pauper else "commander"
+        return res
 
     @staticmethod
     def _detect_type(content: str) -> str:
@@ -428,11 +446,14 @@ class DeckParser:
                     })
 
             total_cards = sum(c["quantity"] for c in cards)
+            mox_format = str(data.get("format", "")).lower()
+            is_pauper = "pauper" in mox_format or "pedh" in mox_format
             return {
                 "deck_name": deck_name,
                 "commander": commanders or ([cards[0]["name"]] if cards else []),
                 "cards": cards,
                 "total_cards": total_cards,
+                "is_pauper": is_pauper,
                 "source_type": "moxfield_url",
                 "raw_text": f"Moxfield Deck: {deck_name}\nURL: {url}\nCards: {len(cards)}",
             }
@@ -485,11 +506,14 @@ class DeckParser:
                 })
 
             total_cards = sum(c["quantity"] for c in cards)
+            deck_format_val = str(data.get("deckFormat", "")).lower()
+            is_pauper = "pauper" in deck_format_val or "pedh" in deck_format_val or data.get("deckFormat") == 14
             return {
                 "deck_name": deck_name,
                 "commander": commanders or ([cards[0]["name"]] if cards else []),
                 "cards": cards,
                 "total_cards": total_cards,
+                "is_pauper": is_pauper,
                 "source_type": "archidekt_url",
                 "raw_text": f"Archidekt Deck: {deck_name}\nURL: {url}\nCards: {len(cards)}",
             }

@@ -1380,7 +1380,10 @@ function renderMatrixTable(decks) {
                     <div class="flex items-center space-x-3">
                         <img src="${art}" alt="${escapeHtml(d.commander_name || 'Commander')}" class="w-10 h-10 rounded-lg object-cover border border-slate-700 flex-shrink-0 bg-slate-900">
                         <div class="min-w-0">
-                            <div class="font-bold text-white uppercase truncate">${escapeHtml(d.deck_name)}</div>
+                            <div class="font-bold text-white uppercase truncate flex items-center gap-2">
+                                <span>${escapeHtml(d.deck_name)}</span>
+                                ${d.is_pauper ? `<span class="text-[9px] px-1.5 py-0.2 rounded bg-purple-900/80 border border-purple-500/60 text-purple-200 font-mono font-bold">PDH</span>` : `<span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">EDH</span>`}
+                            </div>
                             <div class="text-[11px] text-cyan-300 font-normal truncate">${escapeHtml(d.commander_name || 'Commander')}</div>
                         </div>
                     </div>

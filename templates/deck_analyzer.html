@@ -367,12 +367,32 @@
                     </div>
                 </div>
 
+                <!-- Deck Format Selector (Pauper vs Regular Commander) -->
+                <div class="pt-2 flex flex-wrap items-center gap-4 bg-[#10141D]/60 border border-slate-800/80 rounded-lg p-2.5">
+                    <span class="text-xs text-slate-400 font-mono uppercase font-bold flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        Format:
+                    </span>
+                    <label class="inline-flex items-center gap-2 cursor-pointer text-xs font-mono text-slate-200 hover:text-white">
+                        <input type="radio" name="deckFormatChoice" value="commander" checked class="text-cyan-500 focus:ring-cyan-500 bg-slate-900 border-slate-700">
+                        <span>Commander (EDH)</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 cursor-pointer text-xs font-mono text-purple-300 hover:text-purple-200">
+                        <input type="radio" name="deckFormatChoice" value="pauper_commander" class="text-purple-500 focus:ring-purple-500 bg-slate-900 border-slate-700">
+                        <span class="flex items-center gap-1.5 font-bold text-purple-400">
+                            <span>Pauper Commander (PDH)</span>
+                            <span class="px-1.5 py-0.5 rounded text-[9px] bg-purple-900/60 border border-purple-500/50 text-purple-300 uppercase font-mono">Commons Only</span>
+                        </span>
+                    </label>
+                </div>
+
                 <!-- Sample Deck Quick Buttons -->
                 <div class="pt-2 flex flex-wrap items-center gap-2">
                     <span class="text-[11px] text-slate-500 font-mono uppercase">Or Load Sample:</span>
                     <button type="button" onclick="loadSampleDeck('urdragon')" class="px-2.5 py-1 rounded bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">🐉 The Ur-Dragon</button>
                     <button type="button" onclick="loadSampleDeck('atraxa')" class="px-2.5 py-1 rounded bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">👁️ Atraxa Superfriends</button>
                     <button type="button" onclick="loadSampleDeck('edgar')" class="px-2.5 py-1 rounded bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">🩸 Edgar Markov Vampires</button>
+                    <button type="button" onclick="loadSampleDeck('murmuring')" class="px-2.5 py-1 rounded bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/40 text-purple-300 text-xs font-mono transition">🦅 Murmuring Mystic (PDH)</button>
                 </div>
 
                 <!-- Action Button Row -->
@@ -425,6 +445,10 @@
 
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                            <button type="button" id="inspectorFormatBadge" onclick="toggleActiveDeckFormat()" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase transition flex items-center gap-1 cursor-pointer bg-slate-800 border border-slate-700 text-slate-300 hover:border-purple-400 hover:text-white" title="Click to toggle between Regular Commander (EDH) and Pauper Commander (PDH)">
+                                <span id="inspectorFormatLabel">EDH</span>
+                                <span class="text-[8px] opacity-70">⇄</span>
+                            </button>
                             <span id="inspectorCardCount" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold cursor-help hover:border-cyan-400 transition" data-tooltip-key="deck_size">100 Cards <span class="text-cyan-400 text-[9px]">ⓘ</span></span>
                             <span id="inspectorPowerVal" class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">-- / 10 <span class="text-cyan-300 text-[9px]">ⓘ</span></span>
                             <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase truncate max-w-[120px] sm:max-w-none cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">Pre-AI Ready</span>
@@ -566,6 +590,9 @@
         <!-- ========================================================================= -->
         <div id="inspectorTabContentStats" class="space-y-6">
             
+            <!-- Format Legality & Rules Evaluation Banner -->
+            <div id="rulesEvaluationBanner" class="hidden"></div>
+
             <!-- Row 1: Mana Curve Histogram & Card Type Breakdown -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Mana Curve Bar Chart -->
@@ -1319,6 +1346,17 @@
         <!-- ========================================================================= -->
         <div id="inspectorTabContentUpgrades" class="hidden space-y-6">
             
+            <!-- Pauper Commander Mode Notice Banner -->
+            <div id="pauperUpgradeBanner" class="hidden bg-purple-950/40 border border-purple-500/50 rounded-xl p-4 text-purple-200">
+                <div class="flex items-center gap-2 font-mono font-bold text-xs uppercase tracking-wider text-purple-300">
+                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+                    <span>Pauper Commander (PDH) Upgrade Protocol Active</span>
+                </div>
+                <p class="text-xs text-purple-300/80 font-mono mt-1">
+                    All upgrade recommendations (Owned Swaps, Curated Staples, and Market Acquisitions) are strictly filtered to <strong>Common</strong> rarity MTG cards only. High-rarity staples and non-pauper combos are automatically omitted.
+                </p>
+            </div>
+
             <!-- Dual-Tier Header / Status Banner -->
             <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -2902,6 +2940,7 @@ function renderVaultGrid(decks) {
                         <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5">
                             <div class="flex items-center gap-1.5">
                                 <span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-[10px] font-mono text-slate-300 font-bold">${d.total_cards || 100} Cards</span>
+                                ${d.is_pauper ? `<span class="px-1.5 py-0.5 rounded bg-purple-900/90 border border-purple-500/80 text-[10px] font-mono font-black text-purple-200">PDH</span>` : `<span class="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 text-[10px] font-mono text-slate-400">EDH</span>`}
                                 ${hasAi ? `<span class="px-2 py-0.5 rounded bg-cyan-500/90 text-slate-950 text-[10px] font-mono font-black cursor-help" data-tooltip-key="power_level">AI: ${pwr || '7.5'} ⓘ</span>` : `<span class="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-mono">Stats Ready</span>`}
                             </div>
                             ${relDate ? `<span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-400 font-medium" title="Last Updated: ${escapeHtml(rawDate)}">📅 ${relDate}</span>` : ''}
@@ -3006,6 +3045,33 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     document.querySelectorAll('.tabCardCountMobile').forEach(el => el.innerText = deck.total_cards || cards.length);
     safeSetText('inspectorTotalValue', `$${(deck.total_value || stats.total_value || 0).toFixed(2)}`);
     
+    // Format Badge & Label
+    const isPauper = Boolean(deck.is_pauper || (deck.deck_format && deck.deck_format.toLowerCase().includes('pauper')));
+    const formatBadge = document.getElementById('inspectorFormatBadge');
+    const formatLabel = document.getElementById('inspectorFormatLabel');
+    if (formatLabel) {
+        formatLabel.innerText = isPauper ? 'PDH' : 'EDH';
+    }
+    if (formatBadge) {
+        if (isPauper) {
+            formatBadge.className = "text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase transition flex items-center gap-1 cursor-pointer bg-purple-950/90 border border-purple-500/70 text-purple-300 hover:bg-purple-900 shadow-sm";
+            formatBadge.title = "Format: Pauper Commander (PDH). Click to switch to Regular Commander (EDH)";
+        } else {
+            formatBadge.className = "text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase transition flex items-center gap-1 cursor-pointer bg-slate-800 border border-slate-700 text-slate-300 hover:border-cyan-400 hover:text-white";
+            formatBadge.title = "Format: Regular Commander (EDH). Click to switch to Pauper Commander (PDH)";
+        }
+    }
+
+    // Update Pauper Upgrade Notice Banner in Upgrades Tab
+    const pauperUpgradeBanner = document.getElementById('pauperUpgradeBanner');
+    if (pauperUpgradeBanner) {
+        if (isPauper) {
+            pauperUpgradeBanner.classList.remove('hidden');
+        } else {
+            pauperUpgradeBanner.classList.add('hidden');
+        }
+    }
+
     // Relative Date and Header Actions
     const rawDate = deck.updated_at || deck.created_at || (stats && stats.last_synced_at);
     const relDate = formatRelativeDate(rawDate);
@@ -3136,6 +3202,9 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
 
     // Render Full Card Table
     renderCardRegistryTable(cards);
+
+    // Render Format Rules Compliance Evaluation
+    renderRulesEvaluation(deck);
 
     // Load EDHREC Metadata, Primers & Combos
     loadEdhrecMetadataForDeck(deck);
@@ -3543,6 +3612,180 @@ function getCardClassificationBadges(c) {
         badges.push('<span class="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 font-mono uppercase">⏳ Tapland</span>');
     }
     return badges.join(' ');
+}
+
+// Render Format Legality & Rules Evaluation Banner
+function renderRulesEvaluation(deck) {
+    const banner = document.getElementById('rulesEvaluationBanner');
+    if (!banner) return;
+    if (!deck) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    const ruleEval = deck.rule_evaluation || (deck.stats && deck.stats.rule_evaluation) || null;
+    const isPauper = Boolean(deck.is_pauper || (deck.deck_format && deck.deck_format.toLowerCase().includes('pauper')));
+    const formatName = isPauper ? "Pauper Commander (PDH)" : "Commander (EDH)";
+
+    if (!ruleEval) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    banner.classList.remove('hidden');
+
+    const isLegal = ruleEval.is_legal !== false && (ruleEval.violations_count === 0 || !ruleEval.violations || ruleEval.violations.length === 0);
+    const violations = ruleEval.violations || [];
+    const warnings = ruleEval.warnings || [];
+    const rarityCounts = ruleEval.rarity_counts || {};
+
+    let html = '';
+    if (isLegal) {
+        html = `
+            <div class="bg-emerald-950/25 border border-emerald-500/30 rounded-xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div class="flex items-start sm:items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                        ✓
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">${escapeHtml(formatName)} Legal</span>
+                            <span class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono">100% Rules Compliant</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 font-mono mt-0.5">
+                            ${isPauper 
+                                ? "All 99 library cards are printed at Common rarity, commander is an eligible Uncommon creature, and no banned cards are present." 
+                                : "Deck satisfies official singleton, color identity, and banlist parameters."}
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap md:justify-end">
+                    <div class="flex items-center gap-1.5 font-mono text-[10px] text-slate-400 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+                        <span>C: <strong class="text-emerald-400">${rarityCounts.common || 0}</strong></span>
+                        <span class="text-slate-600">|</span>
+                        <span>U: <strong class="text-cyan-400">${rarityCounts.uncommon || 0}</strong></span>
+                        <span class="text-slate-600">|</span>
+                        <span>R: <strong class="text-amber-400">${rarityCounts.rare || 0}</strong></span>
+                        <span class="text-slate-600">|</span>
+                        <span>M: <strong class="text-rose-400">${rarityCounts.mythic || 0}</strong></span>
+                    </div>
+                    <button type="button" onclick="toggleActiveDeckFormat()" class="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 hover:border-cyan-400 transition cursor-pointer flex items-center gap-1">
+                        <span>Format: ${isPauper ? 'PDH' : 'EDH'}</span>
+                        <span class="text-[9px] text-cyan-400">⇄ Switch</span>
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        html = `
+            <div class="bg-rose-950/20 border border-rose-500/40 rounded-xl p-4 shadow-lg space-y-3">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-rose-500/20 pb-3">
+                    <div class="flex items-start sm:items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-400 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                            ⚠️
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="text-xs font-mono font-bold text-rose-300 uppercase tracking-wider">${escapeHtml(formatName)} Violations Detected</span>
+                                <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono font-bold">${violations.length} Illegal ${violations.length === 1 ? 'Card' : 'Cards'}</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 font-mono mt-0.5">
+                                ${isPauper 
+                                    ? "Pauper Commander requires an Uncommon creature commander and all 99 deck cards to have a Common printing." 
+                                    : "Deck does not meet standard Commander format criteria."}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap md:justify-end">
+                        <div class="flex items-center gap-1.5 font-mono text-[10px] text-slate-400 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+                            <span>C: <strong class="text-slate-200">${rarityCounts.common || 0}</strong></span>
+                            <span class="text-slate-600">|</span>
+                            <span>U: <strong class="${isPauper ? 'text-amber-400' : 'text-slate-200'}">${rarityCounts.uncommon || 0}</strong></span>
+                            <span class="text-slate-600">|</span>
+                            <span>R: <strong class="${isPauper ? 'text-rose-400' : 'text-slate-200'}">${rarityCounts.rare || 0}</strong></span>
+                            <span class="text-slate-600">|</span>
+                            <span>M: <strong class="${isPauper ? 'text-rose-400' : 'text-slate-200'}">${rarityCounts.mythic || 0}</strong></span>
+                        </div>
+                        <button type="button" onclick="toggleActiveDeckFormat()" class="text-[10px] font-mono px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 hover:border-cyan-400 transition cursor-pointer flex items-center gap-1">
+                            <span>${isPauper ? 'Switch to Regular EDH' : 'Switch to PDH'}</span>
+                            <span class="text-[9px] text-cyan-400">⇄</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Violations List -->
+                <div class="space-y-1.5 max-h-48 overflow-y-auto pr-1 font-mono text-xs">
+                    ${violations.map(v => `
+                        <div class="flex items-center justify-between gap-2 p-2 rounded bg-[#10141D]/90 border border-rose-500/20 text-slate-300">
+                            <div class="flex items-center gap-2 min-w-0">
+                                <span class="text-rose-400 font-bold flex-shrink-0">&times;</span>
+                                <span class="font-bold text-rose-200 truncate">${escapeHtml(v.card || 'Card')}</span>
+                                <span class="text-slate-400 text-[11px] truncate hidden sm:inline">&mdash; ${escapeHtml(v.message || '')}</span>
+                            </div>
+                            <span class="text-[9px] px-1.5 py-0.5 rounded bg-rose-950/60 border border-rose-500/30 text-rose-300 uppercase flex-shrink-0">${escapeHtml(v.type || 'error')}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    banner.innerHTML = html;
+}
+
+// Toggle active deck format between Commander and Pauper Commander
+async function toggleActiveDeckFormat() {
+    if (!activeDeck) return;
+    const currentIsPauper = Boolean(activeDeck.is_pauper || (activeDeck.deck_format && activeDeck.deck_format.toLowerCase().includes('pauper')));
+    const newIsPauper = !currentIsPauper;
+    const newFormat = newIsPauper ? 'pauper_commander' : 'commander';
+
+    if (!activeDeck.id) {
+        activeDeck.is_pauper = newIsPauper;
+        activeDeck.deck_format = newFormat;
+        displayDeckInInspector(activeDeck, true);
+        showToast(`Switched format to ${newIsPauper ? 'Pauper Commander (PDH)' : 'Regular Commander (EDH)'}`, "info");
+        return;
+    }
+
+    const badge = document.getElementById('inspectorFormatBadge');
+    if (badge) {
+        badge.classList.add('opacity-50', 'pointer-events-none');
+    }
+
+    try {
+        const resp = await fetch(`/api/deck/${activeDeck.id}/format`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_pauper: newIsPauper, deck_format: newFormat })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || "Failed to update deck format");
+        }
+
+        activeDeck = data.deck;
+        if (data.rule_evaluation) {
+            activeDeck.rule_evaluation = data.rule_evaluation;
+            if (!activeDeck.stats) activeDeck.stats = {};
+            activeDeck.stats.rule_evaluation = data.rule_evaluation;
+        }
+
+        showToast(`Deck format updated to ${newIsPauper ? 'Pauper Commander (PDH)' : 'Regular Commander (EDH)'}!`, "success");
+        displayDeckInInspector(activeDeck, true);
+        await refreshVaultList();
+
+        // If upgrades tab is active or loaded, reload to apply Pauper/Commander filters
+        if (currentInspectorTab === 'upgrades') {
+            loadDualTierUpgrades(activeDeck.id);
+        }
+    } catch (e) {
+        showToast(`Format toggle error: ${e.message}`, "error");
+    } finally {
+        if (badge) {
+            badge.classList.remove('opacity-50', 'pointer-events-none');
+        }
+    }
 }
 
 // Render Mana Curve Bar Chart
@@ -4043,11 +4286,20 @@ async function executeParseAndSave(runAi = false) {
 
     if (runAi) dismissAiErrorAlert();
 
+    const formatChoice = document.querySelector('input[name="deckFormatChoice"]:checked')?.value || 'commander';
+    const isPauper = formatChoice === 'pauper_commander';
+
     try {
         if (runAi) {
             const modelSelect = document.getElementById('savedDeckAiModel') || document.getElementById('modalGeminiModel');
             const model = modelSelect ? modelSelect.value : undefined;
-            const reqBody = { source, source_type: sourceType, save: true };
+            const reqBody = { 
+                source, 
+                source_type: sourceType, 
+                save: true,
+                is_pauper: isPauper,
+                deck_format: formatChoice
+            };
             if (model) reqBody.model = model;
 
             const resp = await fetch('/api/deck/analyze', {
@@ -4081,7 +4333,12 @@ async function executeParseAndSave(runAi = false) {
             const resp = await fetch('/api/deck/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source, source_type: sourceType })
+                body: JSON.stringify({ 
+                    source, 
+                    source_type: sourceType,
+                    is_pauper: isPauper,
+                    deck_format: formatChoice
+                })
             });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || "Failed to save deck");
@@ -4408,6 +4665,7 @@ function renderMatrixTable(decks) {
                         <div class="min-w-0">
                             <div class="font-bold text-white uppercase truncate flex items-center gap-2">
                                 <span>${escapeHtml(d.deck_name)}</span>
+                                ${d.is_pauper ? `<span class="text-[9px] px-1.5 py-0.2 rounded bg-purple-900/80 border border-purple-500/60 text-purple-200 font-mono font-bold">PDH</span>` : `<span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">EDH</span>`}
                                 ${relDate ? `<span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono font-normal">📅 ${relDate}</span>` : ''}
                             </div>
                             <div class="text-[11px] text-cyan-300 font-normal truncate">${escapeHtml(d.commander_name || 'Commander')}</div>
@@ -5264,12 +5522,21 @@ function hideCardHover() {
 // Utility: Sample Decks
 function loadSampleDeck(key) {
     switchIngestTab('text');
-    if (key === 'urdragon') {
-        document.getElementById('deckTextInput').value = `// Commander\n1 The Ur-Dragon\n\n// Creatures\n1 Utvara Hellkite\n1 Scion of the Ur-Dragon\n1 Miirym, Sentinel Wyrm\n1 Dragonlord Dromoka\n1 Goldspan Dragon\n1 Terror of the Peaks\n1 Old Gnawbone\n1 Klauth, Unrivaled Ancient\n1 Scourge of Valkas\n1 Balefire Dragon\n1 Lathliss, Dragon Queen\n1 Scalelord Reckoner\n1 Dragon Tempest\n\n// Artifacts\n1 Sol Ring\n1 Arcane Signet\n1 Chromatic Lantern\n1 Dragon's Hoard\n1 Orb of Dragonkind\n\n// Lands\n1 Command Tower\n1 Haven of the Spirit Dragon\n1 Crucible of the Spirit Dragon\n4 Forest\n4 Mountain\n3 Plains\n3 Island\n3 Swamp`;
-    } else if (key === 'atraxa') {
-        document.getElementById('deckTextInput').value = `// Commander\n1 Atraxa, Praetors' Voice\n\n// Planeswalkers\n1 Teferi, Master of Time\n1 Vraska, Betrayal's Sting\n1 Narset Transcendent\n1 Tamiyo, Field Researcher\n1 Ugin, the Spirit Dragon\n1 Oko, Thief of Crowns\n\n// Creatures\n1 Deepglow Skate\n1 Evolution Sage\n1 Flux Channeler\n1 Vorinclex, Monstrous Raider\n\n// Artifacts\n1 Sol Ring\n1 Arcane Signet\n1 Astral Cornucopia\n1 Everflowing Chalice\n1 Contagion Engine\n1 Doubling Season\n\n// Lands\n1 Command Tower\n1 Karn's Bastion\n5 Forest\n5 Island\n5 Plains\n5 Swamp`;
-    } else if (key === 'edgar') {
-        document.getElementById('deckTextInput').value = `// Commander\n1 Edgar Markov\n\n// Creatures\n1 Captivating Vampire\n1 Cordial Vampire\n1 Stromkirk Captain\n1 Vampire Nighthawk\n1 Bloodline Keeper\n1 Champion of Dusk\n1 Knight of the Ebon Legion\n1 Welcoming Vampire\n1 Falkenrath Noble\n1 Sanctum Seeker\n\n// Artifacts & Enchantments\n1 Sol Ring\n1 Arcane Signet\n1 Skullclamp\n1 Shared Animosity\n1 Phyrexian Arena\n1 Black Market Connections\n\n// Lands\n1 Command Tower\n1 Vault of the Archangel\n6 Swamp\n5 Plains\n5 Mountain`;
+    const cmdrRadio = document.querySelector('input[name="deckFormatChoice"][value="commander"]');
+    const pdhRadio = document.querySelector('input[name="deckFormatChoice"][value="pauper_commander"]');
+
+    if (key === 'murmuring') {
+        if (pdhRadio) pdhRadio.checked = true;
+        document.getElementById('deckTextInput').value = `// Commander\n1 Murmuring Mystic\n\n// Creatures\n1 Archaeomancer\n1 Peregrine Drake\n1 Cloud of Faeries\n1 Mnemonic Wall\n1 Mulldrifter\n1 Delver of Secrets\n1 Spellstutter Sprite\n\n// Instants & Sorceries\n1 Brainstorm\n1 Ponder\n1 Preordain\n1 Counterspell\n1 Snap\n1 Capsize\n1 Frantic Search\n1 Consider\n1 Opt\n\n// Artifacts\n1 Arcane Signet\n1 Mind Stone\n1 Thought Vessel\n1 Bonder's Ornament\n\n// Lands\n1 Command Tower\n1 Lonely Sandbar\n1 Remote Isle\n1 Mystic Sanctuary\n16 Island`;
+    } else {
+        if (cmdrRadio) cmdrRadio.checked = true;
+        if (key === 'urdragon') {
+            document.getElementById('deckTextInput').value = `// Commander\n1 The Ur-Dragon\n\n// Creatures\n1 Utvara Hellkite\n1 Scion of the Ur-Dragon\n1 Miirym, Sentinel Wyrm\n1 Dragonlord Dromoka\n1 Goldspan Dragon\n1 Terror of the Peaks\n1 Old Gnawbone\n1 Klauth, Unrivaled Ancient\n1 Scourge of Valkas\n1 Balefire Dragon\n1 Lathliss, Dragon Queen\n1 Scalelord Reckoner\n1 Dragon Tempest\n\n// Artifacts\n1 Sol Ring\n1 Arcane Signet\n1 Chromatic Lantern\n1 Dragon's Hoard\n1 Orb of Dragonkind\n\n// Lands\n1 Command Tower\n1 Haven of the Spirit Dragon\n1 Crucible of the Spirit Dragon\n4 Forest\n4 Mountain\n3 Plains\n3 Island\n3 Swamp`;
+        } else if (key === 'atraxa') {
+            document.getElementById('deckTextInput').value = `// Commander\n1 Atraxa, Praetors' Voice\n\n// Planeswalkers\n1 Teferi, Master of Time\n1 Vraska, Betrayal's Sting\n1 Narset Transcendent\n1 Tamiyo, Field Researcher\n1 Ugin, the Spirit Dragon\n1 Oko, Thief of Crowns\n\n// Creatures\n1 Deepglow Skate\n1 Evolution Sage\n1 Flux Channeler\n1 Vorinclex, Monstrous Raider\n\n// Artifacts\n1 Sol Ring\n1 Arcane Signet\n1 Astral Cornucopia\n1 Everflowing Chalice\n1 Contagion Engine\n1 Doubling Season\n\n// Lands\n1 Command Tower\n1 Karn's Bastion\n5 Forest\n5 Island\n5 Plains\n5 Swamp`;
+        } else if (key === 'edgar') {
+            document.getElementById('deckTextInput').value = `// Commander\n1 Edgar Markov\n\n// Creatures\n1 Captivating Vampire\n1 Cordial Vampire\n1 Stromkirk Captain\n1 Vampire Nighthawk\n1 Bloodline Keeper\n1 Champion of Dusk\n1 Knight of the Ebon Legion\n1 Welcoming Vampire\n1 Falkenrath Noble\n1 Sanctum Seeker\n\n// Artifacts & Enchantments\n1 Sol Ring\n1 Arcane Signet\n1 Skullclamp\n1 Shared Animosity\n1 Phyrexian Arena\n1 Black Market Connections\n\n// Lands\n1 Command Tower\n1 Vault of the Archangel\n6 Swamp\n5 Plains\n5 Mountain`;
+        }
     }
 }
 
