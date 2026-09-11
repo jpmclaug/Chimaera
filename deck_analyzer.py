@@ -42,8 +42,32 @@ class DeckAnalyzer:
 
     COLOR_KEYS = ["W", "U", "B", "R", "G", "C"]
 
-    def __init__(self):
+    # Class-level cache for Scryfall paupercommander legalities: clean card name -> legality string ("legal", "not_legal", "banned")
+    _pauper_legality_cache: Dict[str, str] = {
+        "plains": "legal", "island": "legal", "swamp": "legal", "mountain": "legal", "forest": "legal",
+        "wastes": "legal", "snow-covered plains": "legal", "snow-covered island": "legal",
+        "snow-covered swamp": "legal", "snow-covered mountain": "legal", "snow-covered forest": "legal",
+    }
+    for _banned in PAUPER_COMMANDER_BANNED_CARDS:
+        _pauper_legality_cache[_banned] = "banned"
+
+    _uncommon_commander_cache: Dict[str, bool] = {}
+
+    def __init__(self, scryfall_provider=None):
         self.classifier = MTGCardClassifier()
+        self._scryfall_provider = scryfall_provider
+
+    @property
+    def scryfall_provider(self):
+        if self._scryfall_provider is None:
+            try:
+                from providers.scryfall import ScryfallProvider
+                self._scryfall_provider = ScryfallProvider()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Could not instantiate ScryfallProvider in DeckAnalyzer: {e}")
+                self._scryfall_provider = None
+        return self._scryfall_provider
 
     def parse_mana_pips(self, mana_cost: str) -> Dict[str, float]:
         """
@@ -989,8 +1013,6 @@ class DeckAnalyzer:
         cmdr_cards: List[Dict[str, Any]] = []
         library_cards: List[Dict[str, Any]] = []
 
-        rarity_counts = {"common": 0, "uncommon": 0, "rare": 0, "mythic": 0, "other": 0}
-
         for c in cards:
             c_name = c.get("name", "").strip()
             clean = strip_accents(c_name).strip().lower()
@@ -1002,12 +1024,48 @@ class DeckAnalyzer:
             else:
                 library_cards.append(c)
 
-            rarity = (c.get("rarity") or "").lower()
-            qty = int(c.get("quantity", 1))
-            if rarity in rarity_counts:
-                rarity_counts[rarity] += qty
-            else:
-                rarity_counts["other"] += qty
+        # In Pauper Commander, dynamically resolve missing legalities and printings via Scryfall
+        if is_pauper:
+            missing_names = []
+            for card in library_cards:
+                c_name = card.get("name", "").strip()
+                if not c_name:
+                    continue
+                clean = strip_accents(c_name).strip().lower()
+                clean_front = clean.split(" // ")[0].strip() if " // " in clean else clean
+                leg = (card.get("legalities") or {}).get("paupercommander")
+                if not leg and clean not in self._pauper_legality_cache and clean_front not in self._pauper_legality_cache:
+                    missing_names.append(c_name)
+
+            if missing_names and self.scryfall_provider:
+                try:
+                    found_map, _ = self.scryfall_provider.get_cards_collection(list(set(missing_names)))
+                    for name_key, meta in found_map.items():
+                        c_leg = (meta.get("legalities") or {}).get("paupercommander")
+                        if c_leg:
+                            self._pauper_legality_cache[name_key] = c_leg
+                            clean_k = strip_accents(name_key).strip().lower()
+                            self._pauper_legality_cache[clean_k] = c_leg
+                except Exception as ex:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Error fetching Scryfall legalities in evaluate_deck_rules: {ex}")
+
+            for cmdr in cmdr_cards:
+                c_name = cmdr.get("name", "").strip()
+                clean = strip_accents(c_name).strip().lower()
+                clean_front = clean.split(" // ")[0].strip() if " // " in clean else clean
+                cmdr_rarity = (cmdr.get("rarity") or "").lower()
+                if cmdr_rarity != "uncommon" and clean not in self._uncommon_commander_cache and clean_front not in self._uncommon_commander_cache:
+                    if self.scryfall_provider:
+                        try:
+                            prints = self.scryfall_provider.search_card_prints(c_name)
+                            has_unc = any((p.get("rarity") or "").lower() == "uncommon" for p in prints)
+                            self._uncommon_commander_cache[clean] = has_unc
+                            if clean_front != clean:
+                                self._uncommon_commander_cache[clean_front] = has_unc
+                        except Exception as ex:
+                            import logging
+                            logging.getLogger(__name__).warning(f"Error checking commander printings for {c_name}: {ex}")
 
         # 1. Commander Evaluation
         cmdr_eval_results = []
@@ -1034,7 +1092,13 @@ class DeckAnalyzer:
                         cmdr_is_legal = False
                         cmdr_errors.append(f"Commander '{c_name}' must be a creature (or Background enchantment).")
 
-                    if rarity in ("rare", "mythic"):
+                    # Check if commander is or was ever printed at uncommon (specific printing rarity is not restrictive)
+                    has_uncommon_print = (
+                        rarity == "uncommon"
+                        or self._uncommon_commander_cache.get(clean, False)
+                        or self._uncommon_commander_cache.get(clean_front, False)
+                    )
+                    if not has_uncommon_print:
                         cmdr_is_legal = False
                         cmdr_errors.append(f"Commander '{c_name}' is {rarity.title()}. In Pauper Commander, the commander must be an Uncommon creature.")
 
@@ -1122,15 +1186,21 @@ class DeckAnalyzer:
                     continue
 
                 # Common rarity requirement
-                pdh_leg = legalities.get("paupercommander")
-                if pdh_leg == "not_legal":
-                    violations.append({
-                        "card": c_name,
-                        "type": "rarity_violation",
-                        "severity": "error",
-                        "message": f"'{c_name}' is not legal in Pauper Commander (only cards printed at common are permitted in the 99).",
-                    })
-                    illegal_card_names.append(c_name)
+                # Scryfall's paupercommander legality is the authoritative check for whether a card has had a common printing
+                pdh_leg = (
+                    legalities.get("paupercommander")
+                    or self._pauper_legality_cache.get(clean)
+                    or self._pauper_legality_cache.get(clean_front)
+                )
+
+                if pdh_leg and "legalities" not in card:
+                    card["legalities"] = {"paupercommander": pdh_leg}
+                elif pdh_leg and "paupercommander" not in legalities:
+                    card["legalities"]["paupercommander"] = pdh_leg
+
+                if pdh_leg == "legal":
+                    # Card has a common printing and is format-legal!
+                    pass
                 elif pdh_leg == "banned":
                     violations.append({
                         "card": c_name,
@@ -1139,7 +1209,15 @@ class DeckAnalyzer:
                         "message": f"'{c_name}' is banned in Pauper Commander.",
                     })
                     illegal_card_names.append(c_name)
-                elif not pdh_leg and rarity in ("uncommon", "rare", "mythic"):
+                elif pdh_leg == "not_legal":
+                    violations.append({
+                        "card": c_name,
+                        "type": "rarity_violation",
+                        "severity": "error",
+                        "message": f"'{c_name}' is not legal in Pauper Commander (only cards printed at common are permitted in the 99).",
+                    })
+                    illegal_card_names.append(c_name)
+                elif not pdh_leg and rarity in ("uncommon", "rare", "mythic") and "basic" not in type_line:
                     violations.append({
                         "card": c_name,
                         "type": "rarity_violation",
@@ -1165,6 +1243,44 @@ class DeckAnalyzer:
                 "severity": "warning",
                 "message": f"Deck has {total_cards} cards (official Commander decks require exactly 100 cards).",
             })
+
+        # 4. Rarity Distribution Breakdown
+        rarity_counts = {"common": 0, "uncommon": 0, "rare": 0, "mythic": 0, "other": 0}
+        for c in cards:
+            c_name = c.get("name", "").strip()
+            clean = strip_accents(c_name).strip().lower()
+            clean_front = clean.split(" // ")[0].strip() if " // " in clean else clean
+            rarity = (c.get("rarity") or "").lower()
+            qty = int(c.get("quantity", 1))
+
+            is_cmdr = (c.get("section") or "").lower() == "commander" or clean in cmdr_names_clean or clean_front in cmdr_names_clean
+
+            if is_pauper:
+                if is_cmdr:
+                    has_uncommon_print = (
+                        rarity == "uncommon"
+                        or self._uncommon_commander_cache.get(clean, False)
+                        or self._uncommon_commander_cache.get(clean_front, False)
+                    )
+                    eff_rarity = "uncommon" if has_uncommon_print else (rarity or "other")
+                else:
+                    pdh_leg = (
+                        (c.get("legalities") or {}).get("paupercommander")
+                        or self._pauper_legality_cache.get(clean)
+                        or self._pauper_legality_cache.get(clean_front)
+                    )
+                    type_line = (c.get("type_line") or "").lower()
+                    if pdh_leg == "legal" or rarity == "common" or "basic" in type_line:
+                        eff_rarity = "common"
+                    else:
+                        eff_rarity = rarity or "other"
+            else:
+                eff_rarity = rarity or "other"
+
+            if eff_rarity in rarity_counts:
+                rarity_counts[eff_rarity] += qty
+            else:
+                rarity_counts["other"] += qty
 
         format_key = "pauper_commander" if is_pauper else "commander"
         format_display = "Pauper Commander (PDH)" if is_pauper else "Commander (EDH)"

@@ -323,6 +323,168 @@ class TestPauperRulesEngine(unittest.TestCase):
         self.assertIn("Mystic Remora", result["illegal_cards"])
         self.assertTrue(any("banned in Pauper Commander" in v["message"] for v in result["violations"]))
 
+    def test_uncommon_printing_of_common_card_is_legal_in_pauper(self):
+        """A card printed at common (like Counterspell) must be legal in Pauper 99 even if the deck uses an uncommon printing."""
+        cards = [
+            {
+                "name": "Murmuring Mystic",
+                "section": "commander",
+                "type_line": "Creature — Human Wizard",
+                "rarity": "uncommon",
+                "color_identity": ["U"],
+                "quantity": 1,
+            },
+            {
+                "name": "Counterspell",
+                "section": "mainboard",
+                "type_line": "Instant",
+                "rarity": "uncommon",  # MH2 or 7ED uncommon printing
+                "legalities": {"paupercommander": "legal"},
+                "color_identity": ["U"],
+                "quantity": 1,
+            },
+            {
+                "name": "Island",
+                "section": "mainboard",
+                "type_line": "Basic Land — Island",
+                "rarity": "common",
+                "color_identity": ["U"],
+                "quantity": 98,
+            },
+        ]
+
+        result = self.analyzer.evaluate_deck_rules(
+            cards=cards,
+            commander_names=["Murmuring Mystic"],
+            is_pauper=True,
+            total_cards=100,
+            deck_color_identity=["U"],
+        )
+
+        self.assertTrue(result["is_legal"])
+        self.assertEqual(result["violations_count"], 0)
+        self.assertEqual(len(result["illegal_cards"]), 0)
+        # In Pauper Commander, format rarity reflects 99 commons and 1 uncommon commander
+        self.assertEqual(result["rarity_counts"]["common"], 99)
+        self.assertEqual(result["rarity_counts"]["uncommon"], 1)
+
+    def test_dynamic_scryfall_lookup_for_uncommon_printing_without_legalities(self):
+        """Cards imported without explicit legalities dict must dynamically query Scryfall and avoid false rarity violations."""
+        cards = [
+            {
+                "name": "Murmuring Mystic",
+                "section": "commander",
+                "type_line": "Creature — Human Wizard",
+                "rarity": "uncommon",
+                "color_identity": ["U"],
+                "quantity": 1,
+            },
+            {
+                "name": "Counterspell",
+                "section": "mainboard",
+                "type_line": "Instant",
+                "rarity": "uncommon",  # No legalities key provided!
+                "color_identity": ["U"],
+                "quantity": 1,
+            },
+            {
+                "name": "Island",
+                "section": "mainboard",
+                "type_line": "Basic Land — Island",
+                "rarity": "common",
+                "color_identity": ["U"],
+                "quantity": 98,
+            },
+        ]
+
+        result = self.analyzer.evaluate_deck_rules(
+            cards=cards,
+            commander_names=["Murmuring Mystic"],
+            is_pauper=True,
+            total_cards=100,
+            deck_color_identity=["U"],
+        )
+
+        self.assertTrue(result["is_legal"])
+        self.assertEqual(result["violations_count"], 0)
+        self.assertEqual(result["rarity_counts"]["common"], 99)
+        self.assertEqual(result["rarity_counts"]["uncommon"], 1)
+
+    def test_dynamic_scryfall_lookup_flags_true_rare(self):
+        """A true rare card (Cyclonic Rift) missing legalities dict must be dynamically queried and flagged as not legal."""
+        cards = [
+            {
+                "name": "Murmuring Mystic",
+                "section": "commander",
+                "type_line": "Creature — Human Wizard",
+                "rarity": "uncommon",
+                "color_identity": ["U"],
+                "quantity": 1,
+            },
+            {
+                "name": "Cyclonic Rift",
+                "section": "mainboard",
+                "type_line": "Instant",
+                "rarity": "rare",  # No legalities key provided!
+                "color_identity": ["U"],
+                "quantity": 1,
+            },
+            {
+                "name": "Island",
+                "section": "mainboard",
+                "type_line": "Basic Land — Island",
+                "rarity": "common",
+                "color_identity": ["U"],
+                "quantity": 98,
+            },
+        ]
+
+        result = self.analyzer.evaluate_deck_rules(
+            cards=cards,
+            commander_names=["Murmuring Mystic"],
+            is_pauper=True,
+            total_cards=100,
+            deck_color_identity=["U"],
+        )
+
+        self.assertFalse(result["is_legal"])
+        self.assertIn("Cyclonic Rift", result["illegal_cards"])
+        self.assertEqual(result["rarity_counts"]["rare"], 1)
+
+    def test_commander_with_rare_printing_allowed_if_ever_uncommon(self):
+        """A commander printed at rare in a promo or reprint (like Masters 25 Zada) is legal if it has an uncommon printing."""
+        cards = [
+            {
+                "name": "Zada, Hedron Grinder",
+                "section": "commander",
+                "type_line": "Legendary Creature — Goblin Ally",
+                "rarity": "rare",  # Masters 25 rare printing!
+                "color_identity": ["R"],
+                "quantity": 1,
+            },
+            {
+                "name": "Mountain",
+                "section": "mainboard",
+                "type_line": "Basic Land — Mountain",
+                "rarity": "common",
+                "color_identity": ["R"],
+                "quantity": 99,
+            },
+        ]
+
+        result = self.analyzer.evaluate_deck_rules(
+            cards=cards,
+            commander_names=["Zada, Hedron Grinder"],
+            is_pauper=True,
+            total_cards=100,
+            deck_color_identity=["R"],
+        )
+
+        self.assertTrue(result["is_legal"])
+        self.assertEqual(result["violations_count"], 0)
+        self.assertEqual(result["rarity_counts"]["uncommon"], 1)
+        self.assertEqual(result["rarity_counts"]["common"], 99)
+
 
 class TestPauperUpgradeEngine(unittest.TestCase):
     """Tests DualTierUpgradeEngine strictly recommending only common cards when is_pauper=True."""

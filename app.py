@@ -2378,7 +2378,7 @@ def create_app(test_config=None):
             initial_deck_id=initial_deck_id,
         )
 
-    deck_analyzer = DeckAnalyzer()
+    deck_analyzer = DeckAnalyzer(scryfall_provider=scryfall_provider)
     deck_comparator = DeckComparator()
 
     def _enrich_and_compute_deck_metadata(parsed: dict) -> dict:
@@ -2426,6 +2426,7 @@ def create_app(test_config=None):
                 "card_faces": meta.get("card_faces", []) or c.get("card_faces", []),
                 "produced_mana": meta.get("produced_mana", []) or c.get("produced_mana", []),
                 "keywords": meta.get("keywords", []) or c.get("keywords", []),
+                "legalities": meta.get("legalities", {}) or c.get("legalities", {}),
             }
             enriched_cards.append(card_obj)
 
@@ -2738,6 +2739,7 @@ def create_app(test_config=None):
             "deck_format": deck_format,
         })
         import json
+        entry.cards_data = json.dumps(cards)
         entry.stats_json = json.dumps(analyzed_telemetry.get("stats", {}))
         entry.updated_at = utc_now()
         db.session.commit()
@@ -4105,6 +4107,7 @@ def create_app(test_config=None):
                 "rarity": (inv_card.rarity if inv_card else None) or meta.get("rarity", ""),
                 "price_usd": inv_card.price_usd if (inv_card and inv_card.price_usd is not None) else meta.get("prices", {}).get("usd"),
                 "tcgplayer_url": meta.get("tcgplayer_url"),
+                "legalities": meta.get("legalities", {}),
             }
             current_cards.append(new_card_obj)
 
@@ -4113,6 +4116,8 @@ def create_app(test_config=None):
             "deck_name": entry.deck_name,
             "commander": cmdrs,
             "cards": current_cards,
+            "is_pauper": entry.is_pauper_commander,
+            "deck_format": entry.deck_format or ("pauper_commander" if entry.is_pauper_commander else "commander"),
         })
 
         import json
@@ -4201,6 +4206,7 @@ def create_app(test_config=None):
                 "rarity": (inv_card.rarity if inv_card else None) or meta.get("rarity", ""),
                 "price_usd": inv_card.price_usd if (inv_card and inv_card.price_usd is not None) else meta.get("prices", {}).get("usd"),
                 "tcgplayer_url": meta.get("tcgplayer_url"),
+                "legalities": meta.get("legalities", {}),
             }
             current_cards.append(new_card)
 
@@ -4209,6 +4215,8 @@ def create_app(test_config=None):
             "deck_name": entry.deck_name,
             "commander": cmdrs,
             "cards": current_cards,
+            "is_pauper": entry.is_pauper_commander,
+            "deck_format": entry.deck_format or ("pauper_commander" if entry.is_pauper_commander else "commander"),
         })
 
         import json
