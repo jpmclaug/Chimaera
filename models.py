@@ -49,6 +49,13 @@ class User(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+    secret_lair_analyses = db.relationship(
+        "SecretLairAnalysis",
+        backref=db.backref("user", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+    )
 
 
     DISCORD_WEBHOOK_REGEX = re.compile(
@@ -1197,3 +1204,60 @@ class EDHRECCache(db.Model):
         except Exception:
             db.session.rollback()
             return 0
+
+
+class SecretLairAnalysis(db.Model):
+    """Saved Secret Lair Superdrop analysis and commander deck recommendations."""
+
+    __tablename__ = "secret_lair_analysis"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    title = db.Column(db.String(255), nullable=False, default="Secret Lair Superdrop")
+    source_url = db.Column(db.Text, nullable=True)
+    banner_image = db.Column(db.Text, nullable=True)
+    drops_data = db.Column(db.Text, nullable=True)  # JSON string of parsed drops, cards, and Scryfall valuations
+    analysis_json = db.Column(db.Text, nullable=True)  # JSON string of Gemini tactical analysis and recommendations
+    model_used = db.Column(db.String(100), default="gemini-3.7-flash")
+    target_deck_ids = db.Column(db.String(255), nullable=True)  # Comma-separated deck IDs evaluated
+    created_at = db.Column(db.DateTime, default=utc_now, index=True)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+    def get_drops(self) -> list[dict]:
+        """Returns deserialized drops_data list."""
+        if not self.drops_data:
+            return []
+        try:
+            return json.loads(self.drops_data)
+        except Exception:
+            return []
+
+    def get_analysis(self) -> dict:
+        """Returns deserialized analysis_json dict."""
+        if not self.analysis_json:
+            return {}
+        try:
+            return json.loads(self.analysis_json)
+        except Exception:
+            return {}
+
+    def to_dict(self) -> dict:
+        """Serializes SecretLairAnalysis record into dict."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "title": self.title,
+            "source_url": self.source_url,
+            "banner_image": self.banner_image,
+            "drops": self.get_drops(),
+            "analysis": self.get_analysis(),
+            "model_used": self.model_used,
+            "target_deck_ids": self.target_deck_ids,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }

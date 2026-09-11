@@ -152,6 +152,13 @@
                                     </div>
                                     <span class="text-[#10B981]">&rarr;</span>
                                 </a>
+                                <a href="/secret-lair" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'secret_lair' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">08 // Secret Lair Advisor</span>
+                                        <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">AI INTEL</span>
+                                    </div>
+                                    <span class="text-[#C084FC]">&rarr;</span>
+                                </a>
                                 {% if current_user.is_admin %}
                                 <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
                                     <span class="font-bold">07 // Admin Console</span>
@@ -258,6 +265,10 @@
         <a href="/inventory" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'inventory' %}bg-[#10141D] text-[#10B981] border-[#10B981] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
             <span>06 // Binder</span>
             <span class="text-[9px] text-[#10B981] font-bold">OWNED</span>
+        </a>
+        <a href="/secret-lair" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'secret_lair' %}bg-[#10141D] text-[#C084FC] border-[#A855F7] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+            <span>08 // Secret Lair</span>
+            <span class="text-[9px] text-[#C084FC] font-bold">INTEL</span>
         </a>
         {% if current_user.is_admin %}
         <a href="/admin" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/80 border-transparent{% endif %} whitespace-nowrap">

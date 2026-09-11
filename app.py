@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -30,6 +31,7 @@ from models import (
     MicrocenterHistory,
     DeckAnalysis,
     UserInventoryCard,
+    SecretLairAnalysis,
     utc_now,
 )
 from deal_engine import DealEngine
@@ -47,6 +49,11 @@ from gemini_analyzer import (
     GeminiAnalysisError,
     SUPPORTED_MODELS as GEMINI_SUPPORTED_MODELS,
     DEFAULT_MODEL as GEMINI_DEFAULT_MODEL,
+)
+from secret_lair_advisor import (
+    SecretLairScraper,
+    SecretLairFinancialEvaluator,
+    SecretLairGeminiAdvisor,
 )
 
 # Configure logging
@@ -260,6 +267,23 @@ def _migrate_db_schema(app):
                     user_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(user)")).fetchall()]
                     if "inventory_gdrive_url" not in user_cols:
                         conn.execute(db.text("ALTER TABLE user ADD COLUMN inventory_gdrive_url TEXT"))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS secret_lair_analysis (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER,
+                            title VARCHAR(255) NOT NULL DEFAULT 'Secret Lair Superdrop',
+                            source_url TEXT,
+                            banner_image TEXT,
+                            drops_data TEXT,
+                            analysis_json TEXT,
+                            model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
+                            target_deck_ids VARCHAR(255),
+                            created_at DATETIME,
+                            updated_at DATETIME,
+                            FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_secret_lair_user_id ON secret_lair_analysis (user_id)"))
                     conn.commit()
 
             elif dialect in ("postgresql", "postgres"):
@@ -270,125 +294,141 @@ def _migrate_db_schema(app):
                         except Exception:
                             pass
                         logger.info("Verifying PostgreSQL watchlist_item and user constraints and columns...")
-                    conn.execute(db.text("ALTER TABLE watchlist_item ALTER COLUMN scryfall_id DROP NOT NULL"))
-                    conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
-                    conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
-                    conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
-                    conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
-                    conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
-                    conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
-                    conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS inventory_gdrive_url TEXT"))
-                    conn.execute(db.text("""
-                        CREATE TABLE IF NOT EXISTS microcenter_item (
-                            id SERIAL PRIMARY KEY,
-                            sku VARCHAR(50) NOT NULL UNIQUE,
-                            product_id VARCHAR(50),
-                            name VARCHAR(255) NOT NULL,
-                            product_url TEXT,
-                            image_url TEXT,
-                            current_price FLOAT NOT NULL DEFAULT 0.0,
-                            previous_price FLOAT,
-                            original_price FLOAT,
-                            in_stock BOOLEAN NOT NULL DEFAULT TRUE,
-                            stock_count INTEGER,
-                            stock_text VARCHAR(100),
-                            store_id VARCHAR(20) NOT NULL DEFAULT '175',
-                            store_name VARCHAR(100) NOT NULL DEFAULT 'Charlotte',
-                            category VARCHAR(100),
-                            target_price FLOAT,
-                            notify_on_price_change BOOLEAN NOT NULL DEFAULT TRUE,
-                            notify_on_restock BOOLEAN NOT NULL DEFAULT TRUE,
-                            notify_on_low_stock BOOLEAN NOT NULL DEFAULT TRUE,
-                            first_seen_at TIMESTAMP,
-                            last_scanned_at TIMESTAMP,
-                            last_price_change_at TIMESTAMP,
-                            last_stock_change_at TIMESTAMP,
-                            is_active BOOLEAN NOT NULL DEFAULT TRUE
-                        )
-                    """))
-                    conn.execute(db.text("ALTER TABLE microcenter_item ADD COLUMN IF NOT EXISTS notify_on_low_stock BOOLEAN DEFAULT TRUE NOT NULL"))
-                    conn.execute(db.text("""
-                        CREATE TABLE IF NOT EXISTS microcenter_history (
-                            id SERIAL PRIMARY KEY,
-                            item_id INTEGER NOT NULL REFERENCES microcenter_item(id) ON DELETE CASCADE,
-                            price FLOAT NOT NULL,
-                            original_price FLOAT,
-                            in_stock BOOLEAN NOT NULL DEFAULT TRUE,
-                            stock_count INTEGER,
-                            stock_text VARCHAR(100),
-                            price_change FLOAT NOT NULL DEFAULT 0.0,
-                            stock_change INTEGER NOT NULL DEFAULT 0,
-                            recorded_at TIMESTAMP
-                        )
-                    """))
-                    conn.execute(db.text("""
-                        CREATE TABLE IF NOT EXISTS deck_analysis (
-                            id SERIAL PRIMARY KEY,
-                            user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE,
-                            deck_name VARCHAR(255) NOT NULL DEFAULT 'Commander Deck',
-                            commander_name VARCHAR(255),
-                            commander_art TEXT,
-                            source_url TEXT,
-                            source_type VARCHAR(50) DEFAULT 'text',
-                            raw_decklist TEXT,
-                            cards_data TEXT,
-                            stats_json TEXT,
-                            analysis_json TEXT,
-                            model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
-                            power_level FLOAT,
-                            power_bracket VARCHAR(50),
-                            archetype VARCHAR(100),
-                            total_cards INTEGER DEFAULT 100,
-                            total_value FLOAT,
-                            avg_cmc FLOAT,
-                            color_identity VARCHAR(50),
-                            is_pauper BOOLEAN DEFAULT FALSE NOT NULL,
-                            deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """))
-                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS commander_art TEXT"))
-                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS stats_json TEXT"))
-                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS total_value FLOAT"))
-                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS avg_cmc FLOAT"))
-                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
-                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS is_pauper BOOLEAN DEFAULT FALSE NOT NULL"))
-                    conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
-                    conn.execute(db.text("""
-                        CREATE TABLE IF NOT EXISTS user_inventory_card (
-                            id SERIAL PRIMARY KEY,
-                            user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-                            name VARCHAR(255) NOT NULL,
-                            raw_name VARCHAR(255),
-                            set_code VARCHAR(20),
-                            set_name VARCHAR(255),
-                            collector_number VARCHAR(50),
-                            scryfall_id VARCHAR(64),
-                            quantity INTEGER NOT NULL DEFAULT 1,
-                            foil VARCHAR(30) NOT NULL DEFAULT 'normal',
-                            condition VARCHAR(50),
-                            language VARCHAR(20) DEFAULT 'en',
-                            purchase_price FLOAT,
-                            binder_name VARCHAR(255),
-                            rarity VARCHAR(50),
-                            mana_cost VARCHAR(100),
-                            cmc FLOAT,
-                            type_line VARCHAR(255),
-                            oracle_text TEXT,
-                            color_identity VARCHAR(50),
-                            image_uri TEXT,
-                            price_usd FLOAT,
-                            price_usd_foil FLOAT,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """))
-                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON user_inventory_card (user_id)"))
-                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_name ON user_inventory_card (name)"))
-                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
-                    conn.commit()
-                    logger.info("PostgreSQL migration check completed.")
+                        conn.execute(db.text("ALTER TABLE watchlist_item ALTER COLUMN scryfall_id DROP NOT NULL"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
+                        conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
+                        conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
+                        conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS inventory_gdrive_url TEXT"))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS microcenter_item (
+                                id SERIAL PRIMARY KEY,
+                                sku VARCHAR(50) NOT NULL UNIQUE,
+                                product_id VARCHAR(50),
+                                name VARCHAR(255) NOT NULL,
+                                product_url TEXT,
+                                image_url TEXT,
+                                current_price FLOAT NOT NULL DEFAULT 0.0,
+                                previous_price FLOAT,
+                                original_price FLOAT,
+                                in_stock BOOLEAN NOT NULL DEFAULT TRUE,
+                                stock_count INTEGER,
+                                stock_text VARCHAR(100),
+                                store_id VARCHAR(20) NOT NULL DEFAULT '175',
+                                store_name VARCHAR(100) NOT NULL DEFAULT 'Charlotte',
+                                category VARCHAR(100),
+                                target_price FLOAT,
+                                notify_on_price_change BOOLEAN NOT NULL DEFAULT TRUE,
+                                notify_on_restock BOOLEAN NOT NULL DEFAULT TRUE,
+                                notify_on_low_stock BOOLEAN NOT NULL DEFAULT TRUE,
+                                first_seen_at TIMESTAMP,
+                                last_scanned_at TIMESTAMP,
+                                last_price_change_at TIMESTAMP,
+                                last_stock_change_at TIMESTAMP,
+                                is_active BOOLEAN NOT NULL DEFAULT TRUE
+                            )
+                        """))
+                        conn.execute(db.text("ALTER TABLE microcenter_item ADD COLUMN IF NOT EXISTS notify_on_low_stock BOOLEAN DEFAULT TRUE NOT NULL"))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS microcenter_history (
+                                id SERIAL PRIMARY KEY,
+                                item_id INTEGER NOT NULL REFERENCES microcenter_item(id) ON DELETE CASCADE,
+                                price FLOAT NOT NULL,
+                                original_price FLOAT,
+                                in_stock BOOLEAN NOT NULL DEFAULT TRUE,
+                                stock_count INTEGER,
+                                stock_text VARCHAR(100),
+                                price_change FLOAT NOT NULL DEFAULT 0.0,
+                                stock_change INTEGER NOT NULL DEFAULT 0,
+                                recorded_at TIMESTAMP
+                            )
+                        """))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS deck_analysis (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE,
+                                deck_name VARCHAR(255) NOT NULL DEFAULT 'Commander Deck',
+                                commander_name VARCHAR(255),
+                                commander_art TEXT,
+                                source_url TEXT,
+                                source_type VARCHAR(50) DEFAULT 'text',
+                                raw_decklist TEXT,
+                                cards_data TEXT,
+                                stats_json TEXT,
+                                analysis_json TEXT,
+                                model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
+                                power_level FLOAT,
+                                power_bracket VARCHAR(50),
+                                archetype VARCHAR(100),
+                                total_cards INTEGER DEFAULT 100,
+                                total_value FLOAT,
+                                avg_cmc FLOAT,
+                                color_identity VARCHAR(50),
+                                is_pauper BOOLEAN DEFAULT FALSE NOT NULL,
+                                deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                        """))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS commander_art TEXT"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS stats_json TEXT"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS total_value FLOAT"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS avg_cmc FLOAT"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS is_pauper BOOLEAN DEFAULT FALSE NOT NULL"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS user_inventory_card (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                                name VARCHAR(255) NOT NULL,
+                                raw_name VARCHAR(255),
+                                set_code VARCHAR(20),
+                                set_name VARCHAR(255),
+                                collector_number VARCHAR(50),
+                                scryfall_id VARCHAR(64),
+                                quantity INTEGER NOT NULL DEFAULT 1,
+                                foil VARCHAR(30) NOT NULL DEFAULT 'normal',
+                                condition VARCHAR(50),
+                                language VARCHAR(20) DEFAULT 'en',
+                                purchase_price FLOAT,
+                                binder_name VARCHAR(255),
+                                rarity VARCHAR(50),
+                                mana_cost VARCHAR(100),
+                                cmc FLOAT,
+                                type_line VARCHAR(255),
+                                oracle_text TEXT,
+                                color_identity VARCHAR(50),
+                                image_uri TEXT,
+                                price_usd FLOAT,
+                                price_usd_foil FLOAT,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                        """))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON user_inventory_card (user_id)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_name ON user_inventory_card (name)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS secret_lair_analysis (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER REFERENCES "user"(id) ON DELETE CASCADE,
+                                title VARCHAR(255) NOT NULL DEFAULT 'Secret Lair Superdrop',
+                                source_url TEXT,
+                                banner_image TEXT,
+                                drops_data TEXT,
+                                analysis_json TEXT,
+                                model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
+                                target_deck_ids VARCHAR(255),
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                        """))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_secret_lair_user_id ON secret_lair_analysis (user_id)"))
+                        conn.commit()
+                        logger.info("PostgreSQL migration check completed.")
                 except Exception as pg_err:
                     logger.warning(f"PostgreSQL migration check skipped or timed out: {pg_err}")
 
@@ -3351,6 +3391,236 @@ def create_app(test_config=None):
             resp_payload["archetype_b"] = comp_diff.get("archetype_b")
 
         return jsonify(resp_payload)
+
+    # ----------------------------------------------------------------------
+    # Secret Lair Commander Fleet Intelligence & Drop Advisor Endpoints
+    # ----------------------------------------------------------------------
+
+    @app.route("/secret-lair")
+    @login_required
+    def secret_lair_page():
+        """Secret Lair Preview Intelligence & Commander Fleet Advisor Hub."""
+        user = get_current_user()
+        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
+        db_key = SystemSetting.get_val("gemini_api_key")
+        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        has_gemini_key = bool(effective_key)
+
+        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
+        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+
+        recent_decks = []
+        if user:
+            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
+            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+
+        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
+
+        history_records = []
+        if user:
+            h_query = SecretLairAnalysis.query if user.is_admin else SecretLairAnalysis.query.filter(db.or_(SecretLairAnalysis.user_id == user.id, SecretLairAnalysis.user_id == None))
+            history_records = [r.to_dict() for r in h_query.order_by(SecretLairAnalysis.created_at.desc()).limit(20).all()]
+
+        log_activity("PAGE_VIEW", details="Accessed Secret Lair Advisor Hub", user=user)
+
+        return render_template(
+            "secret_lair.html",
+            has_gemini_key=has_gemini_key,
+            supported_models=available_models,
+            default_model=default_model,
+            decks=deck_dicts,
+            history=history_records,
+            active_tab="secret_lair",
+        )
+
+    @app.route("/api/secret-lair/analyze", methods=["POST"])
+    @login_required
+    def api_secret_lair_analyze():
+        """Executes preview scraping, Scryfall market valuation, and Gemini fleet synergy analysis."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+
+        url_or_text = (data.get("url") or data.get("raw_text") or "").strip()
+        if not url_or_text:
+            return jsonify({"error": "Please provide a Secret Lair preview URL or announcement text."}), 400
+
+        db_key = SystemSetting.get_val("gemini_api_key")
+        effective_key = (data.get("api_key") or "").strip() or app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        if not effective_key:
+            return jsonify({"error": "Gemini API key is required. Configure your key in system settings."}), 400
+
+        selected_deck_ids = data.get("deck_ids")
+        model = data.get("model") or SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        custom_instructions = data.get("custom_instructions", "").strip()
+        save_to_history = data.get("save_to_history", True)
+
+        # 1. Fetch & Parse Announcement
+        scraper = SecretLairScraper()
+        try:
+            announcement = scraper.fetch_announcement(url_or_text)
+        except Exception as e:
+            return jsonify({"error": f"Failed to fetch announcement: {str(e)}"}), 400
+
+        drops, bundles = scraper.parse_drops(announcement["text"], api_key=effective_key)
+        if not drops:
+            return jsonify({"error": "No Secret Lair drops or cards could be parsed from the provided content."}), 400
+
+        # 2. Enrich with Scryfall Pricing and EV
+        evaluator = SecretLairFinancialEvaluator(scryfall_provider)
+        enriched_drops = evaluator.enrich_drops_with_scryfall(drops)
+
+        # 3. Resolve Target Commander Decks
+        query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
+        all_user_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+
+        target_decks = []
+        if selected_deck_ids and isinstance(selected_deck_ids, list):
+            target_ids_set = {int(did) for did in selected_deck_ids if str(did).isdigit()}
+            target_decks = [d for d in all_user_decks if d.id in target_ids_set]
+        if not target_decks:
+            target_decks = all_user_decks
+
+        if not target_decks:
+            return jsonify({"error": "No Commander decks found in your vault to analyze against. Please import a deck first."}), 400
+
+        deck_payloads = []
+        for d in target_decks:
+            deck_payloads.append({
+                "id": d.id,
+                "deck_name": d.deck_name,
+                "commander_name": d.commander_name,
+                "color_identity": d.color_identity,
+                "archetype": d.archetype or "Commander Synergy",
+                "cards": d.get_parsed_cards()[:60],
+            })
+
+        # 4. Dispatch to Gemini Fleet Synergy Advisor
+        advisor = SecretLairGeminiAdvisor(api_key=effective_key, model=model)
+        try:
+            fleet_analysis = advisor.analyze_fleet_synergy(
+                superdrop_title=announcement["title"],
+                drops=enriched_drops,
+                bundles=bundles,
+                commander_decks=deck_payloads,
+                custom_instructions=custom_instructions,
+            )
+        except GeminiAnalysisError as g_err:
+            return jsonify({"error": str(g_err)}), 502
+        except Exception as e:
+            return jsonify({"error": f"Tactical analysis failed: {str(e)}"}), 500
+
+        # 5. Save to database if requested
+        saved_id = None
+        if save_to_history:
+            try:
+                target_ids_str = ",".join(str(d["id"]) for d in deck_payloads)
+                rec = SecretLairAnalysis(
+                    user_id=user.id,
+                    title=announcement["title"] or "Secret Lair Superdrop",
+                    source_url=announcement["source_url"],
+                    banner_image=announcement["banner_image"],
+                    drops_data=json.dumps(enriched_drops),
+                    analysis_json=json.dumps(fleet_analysis),
+                    model_used=fleet_analysis.get("_model_used", model),
+                    target_deck_ids=target_ids_str,
+                )
+                db.session.add(rec)
+                db.session.commit()
+                saved_id = rec.id
+            except Exception as db_err:
+                logger.error(f"Failed to persist SecretLairAnalysis: {db_err}")
+                db.session.rollback()
+
+        log_activity("ANALYSIS", details=f"Analyzed Secret Lair: {announcement['title']}", user=user)
+
+        return jsonify({
+            "success": True,
+            "id": saved_id,
+            "title": announcement["title"],
+            "banner_image": announcement["banner_image"],
+            "source_url": announcement["source_url"],
+            "drops": enriched_drops,
+            "bundles": bundles,
+            "analysis": fleet_analysis,
+        })
+
+    @app.route("/api/secret-lair/history", methods=["GET"])
+    @login_required
+    def api_secret_lair_history():
+        """Returns list of past Secret Lair analyses."""
+        user = get_current_user()
+        query = SecretLairAnalysis.query if user.is_admin else SecretLairAnalysis.query.filter(db.or_(SecretLairAnalysis.user_id == user.id, SecretLairAnalysis.user_id == None))
+        records = query.order_by(SecretLairAnalysis.created_at.desc()).limit(30).all()
+        return jsonify([r.to_dict() for r in records])
+
+    @app.route("/api/secret-lair/history/<int:analysis_id>", methods=["GET", "DELETE"])
+    @login_required
+    def api_secret_lair_history_item(analysis_id):
+        """Retrieves or deletes a single saved Secret Lair analysis."""
+        user = get_current_user()
+        entry = db.session.get(SecretLairAnalysis, analysis_id)
+        if not entry:
+            return jsonify({"error": "Saved analysis not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Access denied."}), 403
+
+        if request.method == "DELETE":
+            try:
+                db.session.delete(entry)
+                db.session.commit()
+                return jsonify({"success": True, "message": "Analysis deleted."})
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({"error": str(e)}), 500
+
+        return jsonify(entry.to_dict())
+
+    @app.route("/api/secret-lair/quick-add-watchlist", methods=["POST"])
+    @login_required
+    def api_secret_lair_quick_add_watchlist():
+        """Quickly adds a card from Secret Lair analysis directly to the user's Watchlist."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        card_name = data.get("card_name", "").strip()
+        if not card_name:
+            return jsonify({"error": "Card name is required."}), 400
+
+        scryfall_id = data.get("scryfall_id")
+        tag = data.get("tag", "Secret Lair").strip()
+
+        existing = WatchlistItem.query.filter_by(user_id=user.id, name=card_name).first()
+        if existing:
+            return jsonify({"success": True, "already_exists": True, "message": f"'{card_name}' is already on your watchlist."})
+
+        try:
+            image_uri = data.get("image_uri")
+            target_price = data.get("target_price")
+            if not image_uri or not scryfall_id:
+                card_obj = scryfall_provider.get_card_named(card_name)
+                if card_obj:
+                    scryfall_id = card_obj.get("id")
+                    image_uri = card_obj.get("image_uri")
+                    if not target_price:
+                        p_tcg = scryfall_provider.get_tcgplayer_price(scryfall_id)
+                        if p_tcg and p_tcg.get("price"):
+                            target_price = round(p_tcg["price"] * 0.9, 2)
+
+            item = WatchlistItem(
+                user_id=user.id,
+                name=card_name,
+                scryfall_id=scryfall_id,
+                image_uri=image_uri,
+                finish="nonfoil",
+                target_price=target_price,
+                tag=tag,
+                notify_mm_stock=True,
+            )
+            db.session.add(item)
+            db.session.commit()
+            return jsonify({"success": True, "message": f"'{card_name}' successfully added to Watchlist."})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 500
 
     # ----------------------------------------------------------------------
     # Collection Inventory & Dual-Tier Upgrade Endpoints

@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import urllib.parse
 import requests
 from card_utils import fix_mojibake, strip_accents, get_card_match_keys, normalize_card_name
@@ -19,6 +20,30 @@ class ScryfallProvider:
             "User-Agent": DEFAULT_USER_AGENT,
             "Accept": "application/json;q=0.9,*/*;q=0.8",
         })
+
+    _last_request_time: float = 0.0
+
+    def _request(self, method: str, url: str, **kwargs):
+        """Dispatches HTTP requests to Scryfall with 100ms pacing and automatic 429 backoff."""
+        elapsed = time.time() - ScryfallProvider._last_request_time
+        if elapsed < 0.1:
+            time.sleep(0.1 - elapsed)
+
+        for attempt in range(3):
+            ScryfallProvider._last_request_time = time.time()
+            if method.lower() == "post":
+                resp = self.session.post(url, **kwargs)
+            else:
+                resp = self.session.get(url, **kwargs)
+
+            if resp.status_code == 429:
+                wait_time = 1.0 * (attempt + 1)
+                logger.warning(f"Scryfall 429 rate limit hit for {url}. Pausing {wait_time}s (attempt {attempt + 1}/3)...")
+                time.sleep(wait_time)
+                continue
+            return resp
+
+        return resp
 
     _sets_cache: dict[str, str] = {
         "ema": "Eternal Masters",
@@ -55,7 +80,7 @@ class ScryfallProvider:
 
         try:
             url = f"{SCRYFALL_BASE_URL}/sets"
-            resp = self.session.get(url, timeout=8)
+            resp = self._request("get", url, timeout=8)
             if resp.status_code == 200:
                 data = resp.json().get("data", [])
                 for s in data:
@@ -72,7 +97,7 @@ class ScryfallProvider:
 
         try:
             url = f"{SCRYFALL_BASE_URL}/cards/autocomplete"
-            response = self.session.get(url, params={"q": query.strip()}, timeout=8)
+            response = self._request("get", url, params={"q": query.strip()}, timeout=8)
             if response.status_code == 200:
                 data = response.json()
                 return data.get("data", [])
@@ -88,7 +113,7 @@ class ScryfallProvider:
 
         try:
             url = f"{SCRYFALL_BASE_URL}/cards/{scryfall_id}"
-            response = self.session.get(url, timeout=8)
+            response = self._request("get", url, timeout=8)
             if response.status_code == 200:
                 return response.json()
             logger.warning(f"Scryfall card lookup failed for ID {scryfall_id} (status: {response.status_code})")
@@ -198,7 +223,7 @@ class ScryfallProvider:
 
         # 1. Try exact match with clean name
         try:
-            response = self.session.get(url, params={"exact": clean_name}, timeout=8)
+            response = self._request("get", url, params={"exact": clean_name}, timeout=8)
             if response.status_code == 200:
                 return self._format_card_object(response.json())
         except Exception as e:
@@ -208,7 +233,7 @@ class ScryfallProvider:
         ascii_name = strip_accents(clean_name)
         if ascii_name != clean_name:
             try:
-                response = self.session.get(url, params={"exact": ascii_name}, timeout=8)
+                response = self._request("get", url, params={"exact": ascii_name}, timeout=8)
                 if response.status_code == 200:
                     return self._format_card_object(response.json())
             except Exception as e:
@@ -218,7 +243,7 @@ class ScryfallProvider:
         if " // " in clean_name:
             front = clean_name.split(" // ")[0].strip()
             try:
-                response = self.session.get(url, params={"exact": front}, timeout=8)
+                response = self._request("get", url, params={"exact": front}, timeout=8)
                 if response.status_code == 200:
                     return self._format_card_object(response.json())
             except Exception as e:
@@ -227,7 +252,7 @@ class ScryfallProvider:
             front_ascii = strip_accents(front)
             if front_ascii != front:
                 try:
-                    response = self.session.get(url, params={"exact": front_ascii}, timeout=8)
+                    response = self._request("get", url, params={"exact": front_ascii}, timeout=8)
                     if response.status_code == 200:
                         return self._format_card_object(response.json())
                 except Exception as e:
@@ -235,7 +260,7 @@ class ScryfallProvider:
 
         # 4. Try fuzzy match as fallback
         try:
-            response = self.session.get(url, params={"fuzzy": clean_name}, timeout=8)
+            response = self._request("get", url, params={"fuzzy": clean_name}, timeout=8)
             if response.status_code == 200:
                 return self._format_card_object(response.json())
         except Exception as e:
@@ -244,7 +269,7 @@ class ScryfallProvider:
         if " // " in clean_name:
             front = clean_name.split(" // ")[0].strip()
             try:
-                response = self.session.get(url, params={"fuzzy": front}, timeout=8)
+                response = self._request("get", url, params={"fuzzy": front}, timeout=8)
                 if response.status_code == 200:
                     return self._format_card_object(response.json())
             except Exception as e:
@@ -287,13 +312,15 @@ class ScryfallProvider:
 
             try:
                 url = f"{SCRYFALL_BASE_URL}/cards/collection"
-                response = self.session.post(
+                response = self._request(
+                    "post",
                     url,
                     json={"identifiers": identifiers},
                     headers={"Content-Type": "application/json"},
                     timeout=15,
                 )
-                if response.status_code == 200:
+
+                if response is not None and response.status_code == 200:
                     payload = response.json()
                     for card in payload.get("data", []):
                         formatted = self._format_card_object(card)
@@ -372,7 +399,8 @@ class ScryfallProvider:
             for cand in candidates:
                 query = f'!"{cand}"'
                 url = f"{SCRYFALL_BASE_URL}/cards/search"
-                response = self.session.get(
+                response = self._request(
+                    "get",
                     url,
                     params={"q": query, "unique": "prints", "order": "released", "dir": "desc"},
                     timeout=10,
@@ -386,13 +414,14 @@ class ScryfallProvider:
             # 2. If exact matches failed, attempt fuzzy named lookup
             if not cards:
                 named_url = f"{SCRYFALL_BASE_URL}/cards/named"
-                named_resp = self.session.get(named_url, params={"fuzzy": clean_name}, timeout=10)
+                named_resp = self._request("get", named_url, params={"fuzzy": clean_name}, timeout=10)
                 if named_resp.status_code == 200:
                     canonical_name = named_resp.json().get("name")
                     if canonical_name:
                         query = f'!"{canonical_name}"'
                         url = f"{SCRYFALL_BASE_URL}/cards/search"
-                        search_resp = self.session.get(
+                        search_resp = self._request(
+                            "get",
                             url,
                             params={"q": query, "unique": "prints", "order": "released", "dir": "desc"},
                             timeout=10,
