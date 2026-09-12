@@ -830,6 +830,285 @@ async function submitBulkAdd() {
 }
 
 // =========================================================================
+// TCGplayer Purchase Reconciliation Modal & Execution
+// =========================================================================
+let currentTcgReconciliationData = null;
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+function openTcgPurchaseModal() {
+    const modal = document.getElementById("modal-tcgplayer-purchase");
+    if (modal) {
+        modal.classList.remove("hidden");
+        const textarea = document.getElementById("tcg-purchase-input");
+        if (textarea) {
+            textarea.focus();
+            onTcgInputChange();
+        }
+    }
+}
+
+function closeTcgPurchaseModal() {
+    const modal = document.getElementById("modal-tcgplayer-purchase");
+    if (modal) {
+        modal.classList.add("hidden");
+        const progressBox = document.getElementById("tcg-progress-box");
+        if (progressBox) progressBox.classList.add("hidden");
+        const resultsContainer = document.getElementById("tcg-results-container");
+        if (resultsContainer) resultsContainer.classList.add("hidden");
+        const executeBtn = document.getElementById("btn-submit-tcg-execute");
+        if (executeBtn) executeBtn.classList.add("hidden");
+        currentTcgReconciliationData = null;
+    }
+}
+
+function onTcgInputChange() {
+    const textarea = document.getElementById("tcg-purchase-input");
+    const badge = document.getElementById("tcg-counter-badge");
+    if (!textarea || !badge) return;
+
+    const val = textarea.value.trim();
+    if (!val) {
+        badge.textContent = "[ Ready ]";
+        badge.className = "text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]";
+        return;
+    }
+    const lines = val.split(/\r?\n/).filter(l => l.trim() && !l.toLowerCase().startsWith("qty"));
+    const count = lines.length;
+    badge.textContent = `[ ${count} Line${count === 1 ? '' : 's'} ]`;
+    badge.className = "text-[11px] font-mono text-[#00CED1] font-bold bg-[#10141D] px-2 py-0.5 border border-[#00CED1]/40";
+}
+
+async function previewTcgPurchase() {
+    const textarea = document.getElementById("tcg-purchase-input");
+    const text = textarea ? textarea.value.trim() : "";
+    if (!text) {
+        showToast("Paste a TCGplayer purchase manifest first.", "error");
+        return;
+    }
+
+    const previewBtn = document.getElementById("btn-tcg-preview");
+    const progressBox = document.getElementById("tcg-progress-box");
+    const resultsContainer = document.getElementById("tcg-results-container");
+    const executeBtn = document.getElementById("btn-submit-tcg-execute");
+
+    if (previewBtn) previewBtn.disabled = true;
+    if (progressBox) progressBox.classList.remove("hidden");
+    if (resultsContainer) resultsContainer.classList.add("hidden");
+    if (executeBtn) executeBtn.classList.add("hidden");
+
+    try {
+        const res = await fetch("/api/watchlist/reconcile-purchase/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ raw_text: text }),
+        });
+        const data = await res.json();
+
+        if (progressBox) progressBox.classList.add("hidden");
+        if (previewBtn) previewBtn.disabled = false;
+
+        if (!res.ok) {
+            showToast(data.error || "Failed to parse purchase manifest.", "error");
+            return;
+        }
+
+        currentTcgReconciliationData = data;
+        renderTcgPreviewResults(data);
+    } catch (err) {
+        console.error("TCGplayer preview error:", err);
+        showToast("Communication failure during purchase preview.", "error");
+        if (progressBox) progressBox.classList.add("hidden");
+        if (previewBtn) previewBtn.disabled = false;
+    }
+}
+
+function renderTcgPreviewResults(data) {
+    const resultsContainer = document.getElementById("tcg-results-container");
+    const matchedList = document.getElementById("tcg-matched-list");
+    const matchedCountLabel = document.getElementById("tcg-matched-count-label");
+    const unmatchedSection = document.getElementById("tcg-unmatched-section");
+    const unmatchedList = document.getElementById("tcg-unmatched-list");
+    const unmatchedCountLabel = document.getElementById("tcg-unmatched-count-label");
+    const executeBtn = document.getElementById("btn-submit-tcg-execute");
+
+    if (!resultsContainer || !matchedList) return;
+
+    matchedList.innerHTML = "";
+    const matched = data.matched_targets || [];
+
+    matchedCountLabel.textContent = `${matched.length} Buy Target${matched.length === 1 ? '' : 's'} Matched On Watchlist`;
+
+    if (matched.length === 0) {
+        matchedList.innerHTML = `
+            <div class="p-3 text-center text-xs font-mono text-[#94A3B8] bg-[#10141D] border border-[#263245]">
+                No cards from this purchase matched any active buy targets in your registry.
+            </div>
+        `;
+        if (executeBtn) executeBtn.classList.add("hidden");
+    } else {
+        matched.forEach(t => {
+            const row = document.createElement("div");
+            row.className = "flex items-center justify-between p-2 bg-[#10141D] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono transition";
+            row.id = `tcg-match-row-${t.id}`;
+
+            const tagHtml = t.tag ? `<span class="text-[10px] text-[#C084FC] bg-[#9333EA]/10 border border-[#9333EA]/30 px-1.5 py-0.5 ml-2">🏷️ ${escapeHtml(t.tag)}</span>` : "";
+            const targetPriceHtml = t.target_price ? `<span class="text-[10px] text-[#94A3B8]">Target: <strong class="text-white">$${t.target_price.toFixed(2)}</strong></span>` : "";
+            const purchasedInfo = `Qty: ${t.purchased_qty}${t.purchased_condition ? ' • ' + t.purchased_condition : ''}${t.purchased_set ? ' • ' + t.purchased_set : ''}`;
+
+            row.innerHTML = `
+                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                    <input type="checkbox" id="tcg-target-check-${t.id}" value="${t.id}" class="tcg-target-checkbox w-4 h-4 text-[#DC143C] rounded-none bg-[#1B2230] border-[#263245] cursor-pointer" checked onchange="updateTcgExecuteButton()">
+                    <label for="tcg-target-check-${t.id}" class="cursor-pointer truncate">
+                        <span class="font-bold text-white text-xs">${escapeHtml(t.name)}</span>
+                        ${tagHtml}
+                        <span class="text-[10px] text-[#64748B] block mt-0.5">${escapeHtml(purchasedInfo)}</span>
+                    </label>
+                </div>
+                <div class="text-right flex-shrink-0 ml-2">
+                    ${targetPriceHtml}
+                </div>
+            `;
+            matchedList.appendChild(row);
+        });
+
+        if (executeBtn) {
+            executeBtn.classList.remove("hidden");
+            updateTcgExecuteButton();
+        }
+    }
+
+    // Render unmatched list
+    const unmatched = data.unmatched_purchases || [];
+    if (unmatched.length > 0 && unmatchedSection && unmatchedList) {
+        unmatchedSection.classList.remove("hidden");
+        unmatchedCountLabel.textContent = `${unmatched.length} Purchased Item${unmatched.length === 1 ? '' : 's'} Not on Watchlist`;
+        unmatchedList.innerHTML = unmatched.map(u => `
+            <div class="flex items-center justify-between py-0.5">
+                <span class="text-white">${escapeHtml(u.card_name || u.raw_name)}</span>
+                <span class="text-[#64748B] text-[10px]">${u.quantity}x • ${escapeHtml(u.set_name || 'N/A')}</span>
+            </div>
+        `).join("");
+    } else if (unmatchedSection) {
+        unmatchedSection.classList.add("hidden");
+    }
+
+    resultsContainer.classList.remove("hidden");
+}
+
+function toggleAllTcgMatches(checked) {
+    const checkboxes = document.querySelectorAll(".tcg-target-checkbox");
+    checkboxes.forEach(cb => cb.checked = checked);
+    updateTcgExecuteButton();
+}
+
+function updateTcgExecuteButton() {
+    const executeBtn = document.getElementById("btn-submit-tcg-execute");
+    if (!executeBtn) return;
+    const checkboxes = document.querySelectorAll(".tcg-target-checkbox:checked");
+    const count = checkboxes.length;
+    executeBtn.disabled = count === 0;
+    executeBtn.innerHTML = `<span>De-Register ${count} Selected Target${count === 1 ? '' : 's'}</span>`;
+}
+
+function toggleTcgUnmatchedDetails() {
+    const list = document.getElementById("tcg-unmatched-list");
+    const arrow = document.getElementById("tcg-unmatched-arrow");
+    if (!list) return;
+    const isHidden = list.classList.contains("hidden");
+    if (isHidden) {
+        list.classList.remove("hidden");
+        if (arrow) arrow.textContent = "▲";
+    } else {
+        list.classList.add("hidden");
+        if (arrow) arrow.textContent = "▼";
+    }
+}
+
+async function executeTcgPurchaseReconciliation() {
+    const checkboxes = document.querySelectorAll(".tcg-target-checkbox:checked");
+    const targetIds = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+
+    if (targetIds.length === 0) {
+        showToast("Select at least one target to de-register.", "error");
+        return;
+    }
+
+    const count = targetIds.length;
+    const addInventory = document.getElementById("tcg-add-inventory-check")?.checked ?? false;
+
+    const confirmMsg = `CONFIRM PURCHASE RECONCILIATION:\nPermanently de-register ${count} target(s) from your buy list?` +
+        (addInventory ? `\n\n(Also adding purchased cards to collection/inventory)` : "");
+
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    const executeBtn = document.getElementById("btn-submit-tcg-execute");
+    if (executeBtn) {
+        executeBtn.disabled = true;
+        executeBtn.innerHTML = `<span>Processing De-registration...</span>`;
+    }
+
+    try {
+        const payload = {
+            target_ids: targetIds,
+            add_to_inventory: addInventory,
+            purchased_items: currentTcgReconciliationData ? currentTcgReconciliationData.parsed_items : [],
+        };
+
+        const res = await fetch("/api/watchlist/reconcile-purchase/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || `Successfully de-registered ${count} targets.`, "success");
+            closeTcgPurchaseModal();
+
+            // Fade out cards in registry if on the watchlist page
+            targetIds.forEach(id => {
+                const elem = document.getElementById(`card-row-${id}`);
+                const compactElem = document.getElementById(`compact-card-${id}`);
+                [elem, compactElem].forEach(el => {
+                    if (el) {
+                        el.style.transition = "opacity 0.3s, transform 0.3s";
+                        el.style.opacity = "0";
+                        el.style.transform = "scale(0.95)";
+                    }
+                });
+            });
+
+            // Reload page smoothly to refresh all KPIs, tags, and lists
+            setTimeout(() => window.location.reload(), 400);
+        } else {
+            showToast(data.error || "Failed to reconcile purchase.", "error");
+            if (executeBtn) {
+                executeBtn.disabled = false;
+                updateTcgExecuteButton();
+            }
+        }
+    } catch (err) {
+        console.error("Execute reconciliation error:", err);
+        showToast("Network error executing purchase reconciliation.", "error");
+        if (executeBtn) {
+            executeBtn.disabled = false;
+            updateTcgExecuteButton();
+        }
+    }
+}
+
+// =========================================================================
 // Edit Target Price & Alert Settings Submit Action
 // =========================================================================
 async function submitEditTarget() {

@@ -179,6 +179,15 @@
                                 </div>
                                 <span class="text-[10px] text-[#64748B]">[BATCH]</span>
                             </button>
+                            <button onclick="toggleLogoMenu(); openTcgPurchaseModal();" class="w-full flex items-center justify-between p-2 text-left hover:bg-[#10141D] text-[#94A3B8] hover:text-[#FF3358] transition">
+                                <div class="flex items-center space-x-2">
+                                    <svg class="w-3.5 h-3.5 text-[#DC143C]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                    <span>TCGplayer Reconciliation</span>
+                                </div>
+                                <span class="text-[10px] text-[#DC143C]">[RECON]</span>
+                            </button>
                             <button onclick="toggleLogoMenu(); openCadenceModal();" class="w-full flex items-center justify-between p-2 text-left hover:bg-[#10141D] text-[#94A3B8] hover:text-white transition">
                                 <div class="flex items-center space-x-2">
                                     <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -539,6 +548,105 @@
                     <button type="button" onclick="closeBulkAddModal()" class="btn-bridge px-3.5 sm:px-4 py-2 text-xs">Cancel</button>
                     <button type="button" id="btn-submit-bulk-add" onclick="submitBulkAdd()" class="btn-crimson px-3.5 sm:px-4 py-2 text-xs flex items-center space-x-1.5">
                         <span>Register Targets</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TCGplayer Purchase Reconciliation Modal (De-register Purchased Targets) -->
+    <div id="modal-tcgplayer-purchase" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-2xl w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-mono text-[#DC143C] uppercase tracking-widest block font-bold">PROTOCOL // 0x4C</span>
+                        <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[10px] px-1.5 py-0.2 font-mono font-bold uppercase">PURCHASE RECONCILIATION</span>
+                    </div>
+                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-0.5">Reconcile TCGplayer Purchase Order</h3>
+                </div>
+                <button onclick="closeTcgPurchaseModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+            </div>
+
+            <!-- Scrollable Modal Body -->
+            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 modal-scrollable">
+                <!-- Textarea step -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Paste TCGplayer Purchase Manifest</label>
+                        <span id="tcg-counter-badge" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">[ Ready ]</span>
+                    </div>
+                    <textarea id="tcg-purchase-input" rows="5" placeholder="Qty	Description&#10;1	Magic - Aether Revolt - Metallic Rebuke - Near Mint&#10;1	Magic - Commander Legends: Battle for Baldur's Gate - Abdel Adrian, Gorion's Ward (Showcase) - Near Mint&#10;1	Magic - Commander Masters - Palace Jailer - Near Mint..."
+                        class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono leading-relaxed"
+                        oninput="onTcgInputChange()"></textarea>
+                    <div class="flex items-center justify-between mt-1.5">
+                        <p class="text-[11px] text-[#64748B] font-mono">
+                            Paste rows directly from your TCGplayer order history, invoice, or receipt email.
+                        </p>
+                        <button type="button" onclick="previewTcgPurchase()" id="btn-tcg-preview" class="btn-bridge px-3 py-1 text-xs text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/10 flex items-center space-x-1 uppercase font-mono font-bold">
+                            <span>🔍 Match Targets</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status & Progress Feedback Box -->
+                <div id="tcg-progress-box" class="hidden bg-[#10141D] border border-[#00CED1]/40 p-3 font-mono text-xs space-y-1.5">
+                    <div class="flex items-center space-x-2 text-[#00CED1]">
+                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span id="tcg-progress-text" class="font-bold uppercase tracking-wider">Analyzing purchase manifest...</span>
+                    </div>
+                </div>
+
+                <!-- Results container (hidden until preview) -->
+                <div id="tcg-results-container" class="hidden space-y-3">
+                    <!-- Matched targets summary bar -->
+                    <div class="bg-[#10141D] border border-[#263245] p-2.5 flex items-center justify-between font-mono text-xs">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-2 h-2 rounded-full bg-[#00CED1] inline-block"></span>
+                            <span id="tcg-matched-count-label" class="font-bold text-white">0 Targets Identified</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button type="button" onclick="toggleAllTcgMatches(true)" class="text-[11px] text-[#00CED1] hover:underline uppercase">All</button>
+                            <span class="text-[#64748B]">|</span>
+                            <button type="button" onclick="toggleAllTcgMatches(false)" class="text-[11px] text-[#94A3B8] hover:underline uppercase">None</button>
+                        </div>
+                    </div>
+
+                    <!-- Matched Targets Checklist -->
+                    <div id="tcg-matched-list" class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                        <!-- Populated dynamically -->
+                    </div>
+
+                    <!-- Unmatched / non-monitored purchases accordion -->
+                    <div id="tcg-unmatched-section" class="hidden border border-[#263245] bg-[#10141D]/50 p-2.5">
+                        <div class="flex items-center justify-between cursor-pointer" onclick="toggleTcgUnmatchedDetails()">
+                            <span id="tcg-unmatched-count-label" class="text-[11px] font-mono text-[#94A3B8] font-bold uppercase">0 Purchases Not on Watchlist</span>
+                            <span id="tcg-unmatched-arrow" class="text-xs text-[#94A3B8] font-mono">▼</span>
+                        </div>
+                        <div id="tcg-unmatched-list" class="hidden mt-2 pt-2 border-t border-[#263245] space-y-1 max-h-36 overflow-y-auto text-[11px] font-mono text-[#64748B]">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Optional Inventory Checkbox -->
+                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="tcg-add-inventory-check" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer">
+                        <label for="tcg-add-inventory-check" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Also add purchased cards to your Collection / Inventory
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sticky Pinned Action Footer -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#263245] flex-shrink-0 mt-3 sm:mt-4">
+                <button type="button" onclick="closeTcgPurchaseModal()" class="btn-bridge px-3.5 sm:px-4 py-2 text-xs font-mono">Cancel</button>
+                <div class="flex items-center space-x-2">
+                    <button type="button" id="btn-submit-tcg-execute" onclick="executeTcgPurchaseReconciliation()" class="btn-crimson px-3.5 sm:px-4 py-2 text-xs flex items-center space-x-1.5 hidden">
+                        <span>De-Register Selected Targets</span>
                     </button>
                 </div>
             </div>

@@ -119,6 +119,10 @@
                 <button onclick="openBulkAddModal()" class="btn-bridge px-2.5 py-1.5 sm:py-2 text-xs text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center space-x-1 uppercase font-mono font-bold" title="Bulk Register Targets">
                     <span>+ Bulk</span>
                 </button>
+                <button onclick="openTcgPurchaseModal()" class="btn-bridge px-2.5 py-1.5 sm:py-2 text-xs text-[#94A3B8] hover:text-[#FF3358] hover:border-[#DC143C] flex items-center space-x-1 uppercase font-mono font-bold" title="Reconcile TCGplayer Purchase & De-Register Targets">
+                    <span class="text-[#DC143C] font-black">-</span>
+                    <span>TCGplayer</span>
+                </button>
                 <span class="text-xs font-mono text-[#94A3B8] font-bold border-l border-[#263245] pl-2.5 hidden lg:inline" id="header-assets-counter">[ {{ items|length }} ASSETS ]</span>
             </div>
         </div>

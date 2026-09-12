@@ -55,6 +55,7 @@ from secret_lair_advisor import (
     SecretLairFinancialEvaluator,
     SecretLairGeminiAdvisor,
 )
+from tcgplayer_parser import TCGPlayerPurchaseParser
 
 # Configure logging
 logging.basicConfig(
@@ -2080,6 +2081,152 @@ def create_app(test_config=None):
             "updated_ids": [item.id for item in items],
             "tag": new_tag,
             "count": len(items),
+        })
+
+    @app.route("/api/watchlist/reconcile-purchase/preview", methods=["POST"])
+    @login_required
+    def reconcile_purchase_preview():
+        """
+        Parses TCGplayer purchase text and identifies matching targets currently on user's watchlist.
+        Returns matched targets and unmatched purchased cards.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_text = data.get("raw_text") or data.get("text") or ""
+        if not raw_text or not str(raw_text).strip():
+            return jsonify({"error": "No purchase text provided to reconcile."}), 400
+
+        parsed_items = TCGPlayerPurchaseParser.parse(str(raw_text))
+        if not parsed_items:
+            return jsonify({
+                "error": "No valid TCGplayer card purchases could be parsed from the provided input.",
+                "suggestion": "Ensure the pasted text contains rows in format: 'Qty Description' (e.g. '1 Magic - Set Name - Card Name - Near Mint')"
+            }), 400
+
+        user_targets = WatchlistItem.query.filter_by(user_id=user.id).all()
+        matched_targets = {}
+        unmatched_purchases = []
+
+        for p in parsed_items:
+            p_matched = False
+            for target in user_targets:
+                if card_names_match(p.card_name, target.name):
+                    p_matched = True
+                    if target.id not in matched_targets:
+                        matched_targets[target.id] = {
+                            "id": target.id,
+                            "name": target.name,
+                            "set_code": target.set_code or "",
+                            "collector_number": target.collector_number or "",
+                            "tag": target.tag,
+                            "finish": target.finish or "nonfoil",
+                            "target_price": target.target_price,
+                            "lowest_in_stock_price": target.lowest_in_stock_price,
+                            "is_deal": target.is_deal,
+                            "purchased_qty": p.quantity,
+                            "purchased_raw_name": p.raw_name,
+                            "purchased_set": p.set_name,
+                            "purchased_condition": p.condition,
+                            "purchased_finish": p.finish,
+                        }
+                    else:
+                        matched_targets[target.id]["purchased_qty"] += p.quantity
+
+            if not p_matched:
+                unmatched_purchases.append(p.to_dict())
+
+        return jsonify({
+            "total_purchased_lines": len(parsed_items),
+            "total_purchased_qty": sum(p.quantity for p in parsed_items),
+            "matched_targets_count": len(matched_targets),
+            "matched_targets": list(matched_targets.values()),
+            "unmatched_purchases_count": len(unmatched_purchases),
+            "unmatched_purchases": unmatched_purchases,
+            "parsed_items": [p.to_dict() for p in parsed_items],
+        })
+
+    @app.route("/api/watchlist/reconcile-purchase/execute", methods=["POST"])
+    @login_required
+    def reconcile_purchase_execute():
+        """
+        De-registers selected target IDs from user's watchlist that were purchased.
+        Optionally logs purchased items to user's collection/inventory.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        target_ids = data.get("target_ids", [])
+        add_to_inventory = bool(data.get("add_to_inventory", False))
+        purchased_items = data.get("purchased_items", [])
+
+        if not target_ids or not isinstance(target_ids, list):
+            return jsonify({"error": "No target card IDs provided for de-registration."}), 400
+
+        try:
+            valid_ids = [int(tid) for tid in target_ids]
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid target ID format."}), 400
+
+        items = WatchlistItem.query.filter(
+            WatchlistItem.id.in_(valid_ids),
+            WatchlistItem.user_id == user.id,
+        ).all()
+
+        if not items:
+            return jsonify({"error": "No matching targets found in your registry."}), 404
+
+        deleted_ids = []
+        deleted_names = []
+        for item in items:
+            deleted_ids.append(item.id)
+            deleted_names.append(item.name)
+
+        # Delete targets (cascade automatically deletes associated vendor_price records)
+        for item in items:
+            db.session.delete(item)
+
+        # Optionally add purchased items into UserInventoryCard
+        inventory_added = 0
+        if add_to_inventory and purchased_items:
+            for p in purchased_items:
+                c_name = (p.get("card_name") or p.get("name") or "").strip()
+                if not c_name:
+                    continue
+                inv_card = UserInventoryCard(
+                    user_id=user.id,
+                    name=c_name,
+                    raw_name=p.get("raw_name") or c_name,
+                    set_name=p.get("set_name") or "",
+                    collector_number=p.get("collector_number") or "",
+                    quantity=max(1, int(p.get("quantity") or 1)),
+                    foil=p.get("finish") or "normal",
+                    condition=p.get("condition") or "Near Mint",
+                    language="en",
+                )
+                db.session.add(inv_card)
+                inventory_added += 1
+
+        db.session.commit()
+
+        names_summary = ", ".join(deleted_names[:5])
+        if len(deleted_names) > 5:
+            names_summary += f" and {len(deleted_names) - 5} more"
+
+        details_msg = f"Reconciled TCGplayer purchase: removed {len(deleted_ids)} target(s) [{names_summary}]"
+        if add_to_inventory:
+            details_msg += f" and added {inventory_added} item(s) to collection"
+
+        log_activity(
+            "PURCHASE_RECONCILIATION",
+            details=details_msg,
+            user=user,
+        )
+
+        return jsonify({
+            "message": f"Successfully de-registered {len(deleted_ids)} target(s) from your surveillance buy list.",
+            "deleted_ids": deleted_ids,
+            "deleted_names": deleted_names,
+            "deleted_count": len(deleted_ids),
+            "inventory_added_count": inventory_added,
         })
 
     @app.route("/api/card/price-intel")
