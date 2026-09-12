@@ -2247,6 +2247,81 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn("recent_poll_times", refresh_json)
             self.assertGreaterEqual(len(refresh_json["recent_poll_times"]), 1)
 
+    def test_46_edit_target_response_and_registry_dom_ids(self):
+        """Tests that update-target API returns complete payload for in-place UI updates and registry HTML includes expected DOM IDs."""
+        user = self.login_as("reg_speed_test@example.com")
+        with self.app.app_context():
+            card = WatchlistItem(
+                user_id=user.id,
+                name="Rhystic Study",
+                finish="nonfoil",
+                target_price=35.00,
+                notify_mm_stock=True,
+                tag="Commander Staples",
+            )
+            db.session.add(card)
+            db.session.commit()
+
+            vp = VendorPrice(
+                watchlist_id=card.id,
+                vendor_name="TCGplayer",
+                price=30.00,
+                in_stock=True,
+            )
+            db.session.add(vp)
+            db.session.commit()
+            card_id = card.id
+
+            # 1. Test Registry GET / renders all required in-place update DOM IDs
+            resp_index = self.client.get("/")
+            self.assertEqual(resp_index.status_code, 200)
+            html = resp_index.data.decode("utf-8")
+            self.assertIn(f'id="card-row-{card_id}"', html)
+            self.assertIn(f'id="card-target-val-{card_id}"', html)
+            self.assertIn(f'id="card-lowest-val-{card_id}"', html)
+            self.assertIn(f'id="card-deal-banner-container-{card_id}"', html)
+            self.assertIn(f'id="card-tag-wrapper-{card_id}"', html)
+            self.assertIn(f'id="card-edit-btn-{card_id}"', html)
+            self.assertIn(f'id="compact-card-{card_id}"', html)
+            self.assertIn(f'id="compact-deal-badge-{card_id}"', html)
+            self.assertIn(f'id="compact-target-val-{card_id}"', html)
+            self.assertIn(f'id="compact-lowest-val-{card_id}"', html)
+            self.assertIn(f'id="compact-edit-btn-{card_id}"', html)
+            self.assertIn(f'id="swipe-card-slide-{card_id}"', html)
+            self.assertIn(f'id="swipe-card-box-{card_id}"', html)
+            self.assertIn(f'id="swipe-target-val-{card_id}"', html)
+            self.assertIn(f'id="swipe-lowest-val-{card_id}"', html)
+            self.assertIn(f'id="swipe-deal-banner-container-{card_id}"', html)
+            self.assertIn(f'id="swipe-edit-btn-{card_id}"', html)
+            self.assertIn('id="kpi-deals-box"', html)
+            self.assertIn('id="kpi-deals-count"', html)
+            self.assertIn('id="kpi-target-portfolio"', html)
+            self.assertIn('id="watchlist-tag-pills-bar"', html)
+            self.assertIn('id="btn-edit-target-submit"', html)
+
+            # 2. Test update-target POST returns full updated card object
+            resp_update = self.client.post(
+                f"/api/watchlist/update-target/{card_id}",
+                data=json.dumps({
+                    "target_price": 40.00,
+                    "notify_mm_stock": False,
+                    "tag": "Blue Staples",
+                }),
+                content_type="application/json",
+            )
+            self.assertEqual(resp_update.status_code, 200)
+            update_json = resp_update.get_json()
+            self.assertEqual(update_json["message"], "Target configuration committed.")
+            self.assertIn("card", update_json)
+            updated_card = update_json["card"]
+            self.assertEqual(updated_card["id"], card_id)
+            self.assertEqual(updated_card["target_price"], 40.00)
+            self.assertFalse(updated_card["notify_mm_stock"])
+            self.assertEqual(updated_card["tag"], "Blue Staples")
+            self.assertTrue(updated_card["is_deal"])  # 30.00 <= 40.00
+            self.assertEqual(updated_card["lowest_price"], 30.00)
+            self.assertEqual(updated_card["savings_amount"], 10.00)
+
 
 if __name__ == "__main__":
     unittest.main()

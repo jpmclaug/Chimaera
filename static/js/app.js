@@ -839,6 +839,12 @@ async function submitEditTarget() {
     const tagInput = document.getElementById("edit-target-tag-input");
     const tagVal = (tagInput ? tagInput.value : "").trim();
 
+    const submitBtn = document.getElementById("btn-edit-target-submit");
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<span>Saving...</span>`;
+    }
+
     try {
         const res = await fetch(`/api/watchlist/update-target/${itemId}`, {
             method: "POST",
@@ -854,13 +860,376 @@ async function submitEditTarget() {
         if (res.ok) {
             showToast("Target configuration committed.", "success");
             closeEditTargetModal();
-            setTimeout(() => window.location.reload(), 450);
+            if (data.card) {
+                updateCardInRegistryDom(data.card);
+            }
         } else {
             showToast(data.error || "Failed to reconfigure threshold", "error");
         }
     } catch (err) {
         console.error("Update target error:", err);
         showToast("Communication error updating target", "error");
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<span>Commit</span>`;
+        }
+    }
+}
+
+/**
+ * Updates a card's DOM representations across Grid, Compact, and Swipe views,
+ * updates telemetry KPIs, and synchronizes tags in real-time without page reload.
+ */
+function updateCardInRegistryDom(card) {
+    if (!card || !card.id) return;
+    const cid = card.id;
+
+    const safeName = (card.name || "").replace(/'/g, "\\'");
+    const targetArg = card.target_price !== null && card.target_price !== undefined ? card.target_price : "null";
+    const safeTag = (card.tag || "").replace(/'/g, "\\'");
+    const editOnclickStr = `openEditTargetModal(${cid}, '${safeName}', ${targetArg}, ${card.notify_mm_stock ? 'true' : 'false'}, ${card.is_any_version ? 'true' : 'false'}, '${safeTag}')`;
+
+    // 1. GRID VIEW UPDATES
+    const gridRow = document.getElementById(`card-row-${cid}`);
+    if (gridRow) {
+        gridRow.dataset.tag = (card.tag || "").toLowerCase().trim();
+        gridRow.dataset.isDeal = card.is_deal ? "true" : "false";
+        gridRow.dataset.mmStock = card.mm_in_stock ? "true" : "false";
+
+        if (card.is_deal) {
+            gridRow.classList.remove("border-[#263245]", "hover:border-[#3D4F6B]");
+            gridRow.classList.add("border-[#DC143C]", "bg-[#DC143C]/5");
+        } else {
+            gridRow.classList.remove("border-[#DC143C]", "bg-[#DC143C]/5");
+            gridRow.classList.add("border-[#263245]", "hover:border-[#3D4F6B]");
+        }
+
+        // Tag wrapper
+        const gridTagWrapper = document.getElementById(`card-tag-wrapper-${cid}`);
+        if (gridTagWrapper) {
+            if (card.tag) {
+                gridTagWrapper.innerHTML = `<button onclick="filterByTag('${safeTag}')" 
+                    class="bg-[#9333EA]/20 hover:bg-[#9333EA]/35 text-[#C084FC] hover:text-white border border-[#9333EA]/50 text-[10px] px-2 py-0.5 font-mono uppercase font-bold tracking-wider transition flex items-center space-x-1"
+                    title="Filter by tag: ${card.tag}">
+                    <span>🏷️ ${card.tag}</span>
+                </button>`;
+            } else {
+                gridTagWrapper.innerHTML = `<button onclick="${editOnclickStr}"
+                    class="bg-[#10141D] hover:bg-[#222B3D] text-[#64748B] hover:text-[#C084FC] border border-[#263245] hover:border-[#9333EA]/50 text-[10px] px-1.5 py-0.5 font-mono uppercase transition"
+                    title="Assign Tag / Deck">
+                    + Tag
+                </button>`;
+            }
+        }
+
+        // Target value
+        const gridTargetVal = document.getElementById(`card-target-val-${cid}`);
+        if (gridTargetVal) {
+            gridTargetVal.innerHTML = card.target_price !== null && card.target_price !== undefined
+                ? `$${card.target_price.toFixed(2)}`
+                : `<span class="text-[#64748B] italic text-xs font-normal">None</span>`;
+        }
+
+        // Lowest live price color
+        const gridLowestVal = document.getElementById(`card-lowest-val-${cid}`);
+        if (gridLowestVal) {
+            if (card.is_deal) {
+                gridLowestVal.classList.add("text-[#FF3358]");
+                gridLowestVal.classList.remove("text-[#00CED1]");
+            } else {
+                gridLowestVal.classList.add("text-[#00CED1]");
+                gridLowestVal.classList.remove("text-[#FF3358]");
+            }
+        }
+
+        // Deal banner
+        const gridDealBanner = document.getElementById(`card-deal-banner-container-${cid}`);
+        if (gridDealBanner) {
+            if (card.is_deal) {
+                const savingsTxt = card.savings_amount ? card.savings_amount.toFixed(2) : "0.00";
+                const percentTxt = card.savings_percent !== undefined ? card.savings_percent : 0;
+                gridDealBanner.innerHTML = `<div class="bg-[#DC143C]/20 border border-[#DC143C] text-[#FF3358] text-xs px-3 py-1.5 flex items-center justify-between font-mono font-bold">
+                    <span>[!] TARGET ACQUIRED</span>
+                    <span>-$${savingsTxt} (${percentTxt}% OFF)</span>
+                </div>`;
+            } else if (card.target_price && card.lowest_price) {
+                const diff = (card.lowest_price - card.target_price).toFixed(2);
+                gridDealBanner.innerHTML = `<div class="bg-[#10141D] text-[#94A3B8] text-xs px-2.5 py-1 border border-[#263245] text-right font-mono">
+                    +$${diff} above threshold
+                </div>`;
+            } else {
+                gridDealBanner.innerHTML = "";
+            }
+        }
+
+        // Edit button onclick
+        const gridEditBtn = document.getElementById(`card-edit-btn-${cid}`);
+        if (gridEditBtn) gridEditBtn.setAttribute("onclick", editOnclickStr);
+    }
+
+    // 2. COMPACT / LIST VIEW UPDATES
+    const compactCard = document.getElementById(`compact-card-${cid}`);
+    if (compactCard) {
+        compactCard.dataset.tag = (card.tag || "").toLowerCase().trim();
+        compactCard.dataset.isDeal = card.is_deal ? "true" : "false";
+
+        if (card.is_deal) {
+            compactCard.classList.add("is-deal");
+        } else {
+            compactCard.classList.remove("is-deal");
+        }
+
+        // Deal badge
+        const compactDealBadge = document.getElementById(`compact-deal-badge-${cid}`);
+        if (compactDealBadge) {
+            if (card.is_deal) {
+                compactDealBadge.classList.remove("hidden");
+            } else {
+                compactDealBadge.classList.add("hidden");
+            }
+        }
+
+        // Tag wrapper
+        const compactTagWrapper = document.getElementById(`compact-tag-wrapper-${cid}`);
+        if (compactTagWrapper) {
+            if (card.tag) {
+                compactTagWrapper.innerHTML = `<span class="text-[#C084FC] bg-[#9333EA]/20 border border-[#9333EA]/40 px-1.5 py-0.2 uppercase text-[10px]">🏷️ ${card.tag}</span>`;
+            } else {
+                compactTagWrapper.innerHTML = "";
+            }
+        }
+
+        // Target value
+        const compactTargetVal = document.getElementById(`compact-target-val-${cid}`);
+        if (compactTargetVal) {
+            compactTargetVal.textContent = card.target_price !== null && card.target_price !== undefined
+                ? `$${card.target_price.toFixed(2)}`
+                : "--";
+        }
+
+        // Lowest price color
+        const compactLowestVal = document.getElementById(`compact-lowest-val-${cid}`);
+        if (compactLowestVal) {
+            if (card.is_deal) {
+                compactLowestVal.classList.add("text-[#FF3358]");
+                compactLowestVal.classList.remove("text-[#00CED1]");
+            } else {
+                compactLowestVal.classList.add("text-[#00CED1]");
+                compactLowestVal.classList.remove("text-[#FF3358]");
+            }
+        }
+
+        // Edit button
+        const compactEditBtn = document.getElementById(`compact-edit-btn-${cid}`);
+        if (compactEditBtn) compactEditBtn.setAttribute("onclick", editOnclickStr);
+    }
+
+    // 3. SWIPE VIEW UPDATES
+    const swipeSlide = document.getElementById(`swipe-card-slide-${cid}`);
+    if (swipeSlide) {
+        swipeSlide.dataset.tag = (card.tag || "").toLowerCase().trim();
+        swipeSlide.dataset.isDeal = card.is_deal ? "true" : "false";
+
+        const swipeBox = document.getElementById(`swipe-card-box-${cid}`);
+        if (swipeBox) {
+            if (card.is_deal) {
+                swipeBox.classList.remove("border-[#263245]");
+                swipeBox.classList.add("border-[#DC143C]", "bg-[#DC143C]/5");
+            } else {
+                swipeBox.classList.remove("border-[#DC143C]", "bg-[#DC143C]/5");
+                swipeBox.classList.add("border-[#263245]");
+            }
+        }
+
+        const swipeTagWrapper = document.getElementById(`swipe-tag-wrapper-${cid}`);
+        if (swipeTagWrapper) {
+            if (card.tag) {
+                swipeTagWrapper.innerHTML = `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold">🏷️ ${card.tag}</span>`;
+            } else {
+                swipeTagWrapper.innerHTML = "";
+            }
+        }
+
+        const swipeTargetVal = document.getElementById(`swipe-target-val-${cid}`);
+        if (swipeTargetVal) {
+            swipeTargetVal.textContent = card.target_price !== null && card.target_price !== undefined
+                ? `$${card.target_price.toFixed(2)}`
+                : "None";
+        }
+
+        const swipeLowestVal = document.getElementById(`swipe-lowest-val-${cid}`);
+        if (swipeLowestVal) {
+            if (card.is_deal) {
+                swipeLowestVal.classList.add("text-[#FF3358]");
+                swipeLowestVal.classList.remove("text-[#00CED1]");
+            } else {
+                swipeLowestVal.classList.add("text-[#00CED1]");
+                swipeLowestVal.classList.remove("text-[#FF3358]");
+            }
+        }
+
+        const swipeDealBanner = document.getElementById(`swipe-deal-banner-container-${cid}`);
+        if (swipeDealBanner) {
+            if (card.is_deal) {
+                const savingsTxt = card.savings_amount ? card.savings_amount.toFixed(2) : "0.00";
+                const percentTxt = card.savings_percent !== undefined ? card.savings_percent : 0;
+                swipeDealBanner.innerHTML = `<div class="mt-3 bg-[#DC143C]/20 border border-[#DC143C] text-[#FF3358] text-xs px-3 py-2 flex items-center justify-between font-mono font-bold">
+                    <span>[!] TARGET ACQUIRED</span>
+                    <span>-$${savingsTxt} (${percentTxt}% OFF)</span>
+                </div>`;
+            } else {
+                swipeDealBanner.innerHTML = "";
+            }
+        }
+
+        const swipeEditBtn = document.getElementById(`swipe-edit-btn-${cid}`);
+        if (swipeEditBtn) swipeEditBtn.setAttribute("onclick", editOnclickStr);
+    }
+
+    // 4. MM ALERT BUTTON & STATUS
+    const mmStatus = document.getElementById(`mm-alert-status-${cid}`);
+    if (mmStatus) {
+        mmStatus.textContent = card.notify_mm_stock ? "ON" : "OFF";
+    }
+    const mmBtn = document.getElementById(`mm-alert-btn-${cid}`);
+    if (mmBtn) {
+        if (card.notify_mm_stock) {
+            mmBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25";
+        } else {
+            mmBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+        }
+    }
+
+    // 5. UPDATE TELEMETRY KPIS
+    updateRegistryKpis();
+
+    // 6. UPDATE TAG PILLS & DROPDOWN
+    refreshRegistryTagsDom();
+
+    // 7. RE-APPLY ACTIVE CLIENT-SIDE FILTERS
+    if (typeof filterWatchlist === "function") {
+        filterWatchlist();
+    }
+}
+
+/**
+ * Dynamically recalculates telemetry KPIs (Active Deals and Target Portfolio)
+ * from live cards currently present in the DOM.
+ */
+function updateRegistryKpis() {
+    const allGridCards = document.querySelectorAll("#watchlist-grid .watchlist-card");
+    let dealsCount = 0;
+    let targetSum = 0;
+    allGridCards.forEach(c => {
+        if (c.dataset.isDeal === "true") dealsCount++;
+        const cardId = c.id.replace("card-row-", "");
+        const targetValSpan = document.getElementById(`card-target-val-${cardId}`);
+        if (targetValSpan) {
+            const txt = targetValSpan.textContent.replace("$", "").trim();
+            const val = parseFloat(txt);
+            if (!isNaN(val)) targetSum += val;
+        }
+    });
+
+    const dealsCountElem = document.getElementById("kpi-deals-count");
+    const dealsBoxElem = document.getElementById("kpi-deals-box");
+    const dealsTitleElem = document.getElementById("kpi-deals-title");
+    const dealsBadgeElem = document.getElementById("kpi-deals-badge");
+    if (dealsCountElem) {
+        dealsCountElem.textContent = dealsCount;
+        if (dealsCount > 0) {
+            dealsCountElem.classList.add("text-[#FF3358]");
+            dealsCountElem.classList.remove("text-white");
+            if (dealsBoxElem) {
+                dealsBoxElem.classList.add("border-[#DC143C]", "bg-[#DC143C]/10");
+                dealsBoxElem.classList.remove("border-[#263245]");
+            }
+            if (dealsTitleElem) {
+                dealsTitleElem.classList.add("text-[#FF3358]");
+                dealsTitleElem.classList.remove("text-[#94A3B8]");
+            }
+            if (dealsBadgeElem) {
+                dealsBadgeElem.classList.add("text-[#FF3358]", "font-bold", "animate-tactical-pulse");
+                dealsBadgeElem.classList.remove("text-[#94A3B8]");
+            }
+        } else {
+            dealsCountElem.classList.remove("text-[#FF3358]");
+            dealsCountElem.classList.add("text-white");
+            if (dealsBoxElem) {
+                dealsBoxElem.classList.remove("border-[#DC143C]", "bg-[#DC143C]/10");
+                dealsBoxElem.classList.add("border-[#263245]");
+            }
+            if (dealsTitleElem) {
+                dealsTitleElem.classList.remove("text-[#FF3358]");
+                dealsTitleElem.classList.add("text-[#94A3B8]");
+            }
+            if (dealsBadgeElem) {
+                dealsBadgeElem.classList.remove("text-[#FF3358]", "font-bold", "animate-tactical-pulse");
+                dealsBadgeElem.classList.add("text-[#94A3B8]");
+            }
+        }
+    }
+
+    const targetPortfolioElem = document.getElementById("kpi-target-portfolio");
+    if (targetPortfolioElem) {
+        targetPortfolioElem.textContent = `$${targetSum.toFixed(2)}`;
+    }
+}
+
+/**
+ * Synchronizes tag filter dropdown, quick filter pills bar, and autocomplete datalist
+ * based on all active tags present across loaded cards.
+ */
+function refreshRegistryTagsDom() {
+    const tagDropdown = document.getElementById("watchlist-filter-tag");
+    const pillsBar = document.getElementById("watchlist-tag-pills-bar");
+    if (!tagDropdown && !pillsBar) return;
+
+    const cards = document.querySelectorAll("#watchlist-grid .watchlist-card");
+    const tagMap = new Map();
+    const tagCounts = {};
+    cards.forEach(c => {
+        const rawTag = (c.dataset.tag || "").trim();
+        if (rawTag) {
+            const lower = rawTag.toLowerCase();
+            tagCounts[lower] = (tagCounts[lower] || 0) + 1;
+            if (!tagMap.has(lower)) {
+                const badge = c.querySelector(`[id^="card-tag-wrapper-"] button span`);
+                const badgeText = badge ? badge.textContent.replace("🏷️", "").trim() : rawTag;
+                tagMap.set(lower, badgeText || rawTag);
+            }
+        }
+    });
+
+    const sortedTagKeys = Array.from(tagMap.keys()).sort();
+    const currentDropdownVal = (tagDropdown ? tagDropdown.value : "all").toLowerCase();
+
+    if (tagDropdown) {
+        let opts = `<option value="all">ALL TAGS</option>`;
+        sortedTagKeys.forEach(k => {
+            const disp = tagMap.get(k);
+            opts += `<option value="${k}" ${currentDropdownVal === k ? 'selected' : ''}>🏷️ ${disp}</option>`;
+        });
+        opts += `<option value="__untagged__" ${currentDropdownVal === '__untagged__' ? 'selected' : ''}>[ UNTAGGED ]</option>`;
+        tagDropdown.innerHTML = opts;
+    }
+
+    if (pillsBar) {
+        let pillsHtml = `<span class="text-[10px] font-mono text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">TAGS:</span>`;
+        pillsHtml += `<button onclick="filterByTag('all')" class="tag-pill tag-pill-btn ${(!currentDropdownVal || currentDropdownVal === 'all') ? 'active' : ''} flex-shrink-0" data-tag="all">ALL (${cards.length})</button>`;
+        sortedTagKeys.forEach(k => {
+            const disp = tagMap.get(k);
+            const isActive = currentDropdownVal === k;
+            pillsHtml += `<button onclick="filterByTag('${disp.replace(/'/g, "\\'")}')" class="tag-pill tag-pill-btn ${isActive ? 'active' : ''} flex-shrink-0" data-tag="${k}">🏷️ ${disp} (${tagCounts[k]})</button>`;
+        });
+        pillsHtml += `<button onclick="filterByTag('__untagged__')" class="tag-pill tag-pill-btn ${currentDropdownVal === '__untagged__' ? 'active' : ''} flex-shrink-0" data-tag="__untagged__">UNTAGGED</button>`;
+        pillsBar.innerHTML = pillsHtml;
+    }
+
+    const datalist = document.getElementById("user-tags-datalist");
+    if (datalist && sortedTagKeys.length > 0) {
+        datalist.innerHTML = sortedTagKeys.map(k => `<option value="${tagMap.get(k)}">`).join("");
     }
 }
 

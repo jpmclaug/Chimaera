@@ -225,7 +225,7 @@ class WatchlistItem(db.Model):
         "VendorPrice",
         backref=db.backref("watchlist_item", lazy=True),
         cascade="all, delete-orphan",
-        lazy=True,
+        lazy="selectin",
         passive_deletes=True,
     )
 

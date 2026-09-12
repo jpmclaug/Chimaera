@@ -18,12 +18,12 @@
         </div>
 
         <!-- Telemetry Module 2 -->
-        <div class="bg-[#1B2230] border {% if deals_count > 0 %}border-[#DC143C] bg-[#DC143C]/10{% else %}border-[#263245]{% endif %} p-3 sm:p-4 relative overflow-hidden">
+        <div id="kpi-deals-box" class="bg-[#1B2230] border {% if deals_count > 0 %}border-[#DC143C] bg-[#DC143C]/10{% else %}border-[#263245]{% endif %} p-3 sm:p-4 relative overflow-hidden">
             <div class="flex items-center justify-between">
-                <span class="text-[10px] sm:text-xs font-mono font-bold {% if deals_count > 0 %}text-[#FF3358]{% else %}text-[#94A3B8]{% endif %} uppercase tracking-wider">Active Deals</span>
-                <span class="text-[10px] sm:text-xs font-mono {% if deals_count > 0 %}text-[#FF3358] font-bold animate-tactical-pulse{% else %}text-[#94A3B8]{% endif %}">[ ALERT ]</span>
+                <span id="kpi-deals-title" class="text-[10px] sm:text-xs font-mono font-bold {% if deals_count > 0 %}text-[#FF3358]{% else %}text-[#94A3B8]{% endif %} uppercase tracking-wider">Active Deals</span>
+                <span id="kpi-deals-badge" class="text-[10px] sm:text-xs font-mono {% if deals_count > 0 %}text-[#FF3358] font-bold animate-tactical-pulse{% else %}text-[#94A3B8]{% endif %}">[ ALERT ]</span>
             </div>
-            <div class="text-xl sm:text-2xl lg:text-3xl font-mono font-bold {% if deals_count > 0 %}text-[#FF3358]{% else %}text-white{% endif %} mt-1 tracking-tight">
+            <div id="kpi-deals-count" class="text-xl sm:text-2xl lg:text-3xl font-mono font-bold {% if deals_count > 0 %}text-[#FF3358]{% else %}text-white{% endif %} mt-1 tracking-tight">
                 {{ deals_count }}
             </div>
             <div class="text-[10px] sm:text-xs text-[#94A3B8] mt-0.5 sm:mt-1 font-sans">Below target threshold</div>
@@ -35,7 +35,7 @@
                 <span class="text-[10px] sm:text-xs font-mono font-bold text-[#94A3B8] uppercase tracking-wider">Target Portfolio</span>
                 <span class="text-[10px] sm:text-xs font-mono text-[#00CED1] font-bold">[ VAL:TGT ]</span>
             </div>
-            <div class="text-xl sm:text-2xl lg:text-3xl font-mono font-bold text-white mt-1 tracking-tight">
+            <div id="kpi-target-portfolio" class="text-xl sm:text-2xl lg:text-3xl font-mono font-bold text-white mt-1 tracking-tight">
                 ${{ "%.2f"|format(total_target_value) }}
             </div>
             <div class="text-[10px] sm:text-xs text-[#94A3B8] mt-0.5 sm:mt-1 font-sans">Cumulative target value</div>
@@ -124,7 +124,7 @@
         </div>
 
         <!-- Tag Quick-Filter Pills Bar -->
-        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#263245]/60">
+        <div id="watchlist-tag-pills-bar" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#263245]/60">
             <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">TAGS:</span>
             <button onclick="filterByTag('all')" class="tag-pill tag-pill-btn active flex-shrink-0" data-tag="all">
                 ALL ({{ items|length }})
@@ -243,6 +243,7 @@
                             <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
                             
                             <!-- Tag / Deck Badge -->
+                            <div id="card-tag-wrapper-{{ item.id }}" class="inline-flex items-center">
                             {% if item.tag %}
                             <button onclick="filterByTag('{{ item.tag|replace("'", "\\'") }}')" 
                                 class="bg-[#9333EA]/20 hover:bg-[#9333EA]/35 text-[#C084FC] hover:text-white border border-[#9333EA]/50 text-[10px] px-2 py-0.5 font-mono uppercase font-bold tracking-wider transition flex items-center space-x-1"
@@ -256,6 +257,7 @@
                                 + Tag
                             </button>
                             {% endif %}
+                            </div>
 
                             <!-- Mighty Meeple Stock Alert Toggle -->
                             <button onclick="toggleMightyMeepleAlert({{ item.id }})" id="mm-alert-btn-{{ item.id }}"
@@ -270,13 +272,13 @@
                         <div class="mt-2.5 text-xs font-mono space-y-1 bg-[#10141D]/60 p-2 border border-[#263245]">
                             <div class="flex items-center justify-between">
                                 <span class="text-[#94A3B8]">Target:</span>
-                                <span class="font-bold text-white text-sm">
+                                <span id="card-target-val-{{ item.id }}" class="font-bold text-white text-sm">
                                     {% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}<span class="text-[#64748B] italic text-xs font-normal">None</span>{% endif %}
                                 </span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-[#94A3B8]">Lowest Live:</span>
-                                <span class="font-bold text-sm {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}">
+                                <span id="card-lowest-val-{{ item.id }}" class="font-bold text-sm {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}" data-lowest="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}">
                                     {% if item.lowest_in_stock_price is not none %}
                                     ${{ "%.2f"|format(item.lowest_in_stock_price) }}
                                     {% else %}
@@ -304,7 +306,7 @@
                 </div>
 
                 <!-- Deal Status Banner -->
-                <div class="mt-3">
+                <div id="card-deal-banner-container-{{ item.id }}" class="mt-3">
                     {% if item.is_deal %}
                     <div class="bg-[#DC143C]/20 border border-[#DC143C] text-[#FF3358] text-xs px-3 py-1.5 flex items-center justify-between font-mono font-bold">
                         <span>[!] TARGET ACQUIRED</span>
@@ -401,7 +403,7 @@
                     <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-grid-{{ item.id }}" class="text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold flex items-center space-x-1" title="Toggle Target Selection">
                         <span class="btn-select-label-{{ item.id }}">Select</span>
                     </button>
-                    <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" class="text-[#00CED1] hover:text-white uppercase font-bold">
+                    <button id="card-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" class="text-[#00CED1] hover:text-white uppercase font-bold">
                         Edit Target
                     </button>
                     <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">
@@ -447,9 +449,7 @@
                 <div class="min-w-0 flex-1">
                     <div class="flex items-center space-x-2">
                         <h4 class="font-heading font-bold text-sm text-white truncate">{{ item.name }}</h4>
-                        {% if item.is_deal %}
-                        <span class="bg-[#DC143C] text-white text-[9px] px-1 py-0.2 uppercase font-bold flex-shrink-0 animate-tactical-pulse">DEAL</span>
-                        {% endif %}
+                        <span id="compact-deal-badge-{{ item.id }}" class="{% if not item.is_deal %}hidden {% endif %}bg-[#DC143C] text-white text-[9px] px-1 py-0.2 uppercase font-bold flex-shrink-0 animate-tactical-pulse">DEAL</span>
                     </div>
                     
                     <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
@@ -459,9 +459,11 @@
                         <span class="text-[#94A3B8] bg-[#3D4F6B]/30 px-1.5 py-0.2 border border-[#3D4F6B] uppercase text-[10px]">ANY</span>
                         {% endif %}
                         <span class="text-[#00CED1] uppercase text-[10px]">{{ item.finish }}</span>
+                        <span id="compact-tag-wrapper-{{ item.id }}" class="inline-flex items-center">
                         {% if item.tag %}
                         <span class="text-[#C084FC] bg-[#9333EA]/20 border border-[#9333EA]/40 px-1.5 py-0.2 uppercase text-[10px]">🏷️ {{ item.tag }}</span>
                         {% endif %}
+                        </span>
                         {% if item.mm_in_stock %}
                         <span class="text-[#00CED1] border border-[#00CED1]/50 bg-[#00CED1]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">MM In-Stock</span>
                         {% endif %}
@@ -475,12 +477,12 @@
                 <div class="text-right">
                     <div class="text-[10px] text-[#94A3B8] uppercase">Target / Lowest</div>
                     <div class="text-xs font-bold">
-                        <span class="text-[#94A3B8]">{% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}--{% endif %}</span>
+                        <span id="compact-target-val-{{ item.id }}" class="text-[#94A3B8]">{% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}--{% endif %}</span>
                         <span class="text-[#64748B]"> / </span>
                         {% if item.lowest_in_stock_price is not none %}
-                        <span class="{% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}">${{ "%.2f"|format(item.lowest_in_stock_price) }}</span>
+                        <span id="compact-lowest-val-{{ item.id }}" class="{% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}" data-lowest="{{ item.lowest_in_stock_price }}">${{ "%.2f"|format(item.lowest_in_stock_price) }}</span>
                         {% else %}
-                        <span class="text-[#FF3358] text-[11px] uppercase">OOS</span>
+                        <span id="compact-lowest-val-{{ item.id }}" class="text-[#FF3358] text-[11px] uppercase" data-lowest="">OOS</span>
                         {% endif %}
                     </div>
                 </div>
@@ -497,7 +499,7 @@
                     </a>
                     {% endif %}
 
-                    <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" 
+                    <button id="compact-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" 
                         class="btn-bridge px-2 py-1 text-[11px] text-[#00CED1] hover:text-white" title="Edit Target & Tag">
                         Edit
                     </button>
@@ -537,6 +539,7 @@
             <div class="swipe-track" id="registry-swipe-track">
                 {% for item in items %}
                 <div class="swipe-card-slide watchlist-card"
+                    id="swipe-card-slide-{{ item.id }}"
                     data-name="{{ item.name|lower }}"
                     data-set="{{ (item.set_code or '')|lower }}"
                     data-tag="{{ (item.tag or '')|lower }}"
@@ -546,7 +549,7 @@
                     data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
                     data-index="{{ loop.index0 }}">
                     
-                    <div class="bg-[#1B2230] border {% if item.is_deal %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245]{% endif %} p-4 sm:p-6 max-w-xl mx-auto flex flex-col justify-between">
+                    <div id="swipe-card-box-{{ item.id }}" class="bg-[#1B2230] border {% if item.is_deal %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245]{% endif %} p-4 sm:p-6 max-w-xl mx-auto flex flex-col justify-between">
                         <div>
                             <!-- Header -->
                             <div class="flex items-start space-x-4">
@@ -566,20 +569,22 @@
                                         <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold">ANY VERSION</span>
                                         {% endif %}
                                         <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase">{{ item.finish }}</span>
+                                        <span id="swipe-tag-wrapper-{{ item.id }}" class="inline-flex items-center">
                                         {% if item.tag %}
                                         <span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold">🏷️ {{ item.tag }}</span>
                                         {% endif %}
+                                        </span>
                                     </div>
 
                                     <!-- Price Readout -->
                                     <div class="mt-3 grid grid-cols-2 gap-2 text-xs font-mono bg-[#10141D] p-2.5 border border-[#263245]">
                                         <div>
                                             <div class="text-[#94A3B8] text-[10px] uppercase">Target</div>
-                                            <div class="text-sm font-bold text-white mt-0.5">{% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}None{% endif %}</div>
+                                            <div id="swipe-target-val-{{ item.id }}" class="text-sm font-bold text-white mt-0.5">{% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}None{% endif %}</div>
                                         </div>
                                         <div>
                                             <div class="text-[#94A3B8] text-[10px] uppercase">Lowest Live</div>
-                                            <div class="text-sm font-bold {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %} mt-0.5">
+                                            <div id="swipe-lowest-val-{{ item.id }}" class="text-sm font-bold {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %} mt-0.5" data-lowest="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}">
                                                 {% if item.lowest_in_stock_price is not none %}${{ "%.2f"|format(item.lowest_in_stock_price) }}{% else %}Out of Stock{% endif %}
                                             </div>
                                         </div>
@@ -588,12 +593,14 @@
                             </div>
 
                             <!-- Deal Alert Banner -->
+                            <div id="swipe-deal-banner-container-{{ item.id }}">
                             {% if item.is_deal %}
                             <div class="mt-3 bg-[#DC143C]/20 border border-[#DC143C] text-[#FF3358] text-xs px-3 py-2 flex items-center justify-between font-mono font-bold">
                                 <span>[!] TARGET ACQUIRED</span>
                                 <span>-${{ "%.2f"|format(item.savings_amount) }} ({{ item.savings_percent }}% OFF)</span>
                             </div>
                             {% endif %}
+                            </div>
 
                             <!-- Full Vendor Breakdown -->
                             <div class="mt-3.5 pt-3 border-t border-[#263245] space-y-2 font-mono">
@@ -663,7 +670,7 @@
                                 <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-swipe-{{ item.id }}" class="btn-bridge px-2.5 py-1.5 text-xs text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold" title="Toggle Target Selection">
                                     <span class="btn-select-label-{{ item.id }}">Select</span>
                                 </button>
-                                <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" class="btn-bridge px-3 py-1.5 text-[#00CED1] hover:text-white uppercase font-bold">
+                                <button id="swipe-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}')" class="btn-bridge px-3 py-1.5 text-[#00CED1] hover:text-white uppercase font-bold">
                                     Edit Target
                                 </button>
                                 <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="btn-bridge px-2.5 py-1.5 text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">
