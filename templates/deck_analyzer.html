@@ -536,6 +536,12 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                         </button>
+
+                        <button id="inspectorRerunAiBtn" onclick="runAiAnalysisOnSavedDeck(this)" title="Rerun Gemini AI Strategic Intel on this deck" 
+                                class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1.5 flex-shrink-0">
+                            <span>⚡</span>
+                            <span class="hidden md:inline">Rerun Intel</span>
+                        </button>
                         
                         <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault">
                             <span>&larr;</span>
@@ -1147,60 +1153,139 @@
                 </div>
             </div>
 
-            <!-- Filter & Action Controls -->
-            <div class="bg-[#10141D] border border-slate-800 p-4 rounded-xl flex flex-col lg:flex-row items-center justify-between gap-4">
+            <!-- Filter, Sort & Action Controls -->
+            <div class="bg-[#10141D] border border-slate-800 p-3.5 sm:p-4 rounded-xl space-y-3 shadow-lg">
                 
-                <!-- Left: Search & Filter Pills -->
-                <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
-                    <div class="relative w-full sm:w-64">
-                        <input type="text" id="cardTableSearchInput" oninput="filterCardRegistryTable()" placeholder="Search cards or types..."
-                               class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
-                        <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <!-- Row 1: Search Bar & View Mode Toggle -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <div class="relative flex-1 max-w-md">
+                        <input type="text" id="cardTableSearchInput" oninput="sortAndFilterCardRegistry()" placeholder="Search cards, types, AI roles, or rationale..."
+                               class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
+                        <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
+                        <button type="button" onclick="clearCardSearchInput()" id="btnClearCardSearch" class="hidden absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono font-bold" title="Clear search">✕</button>
                     </div>
 
-                    <!-- Type Filter Pills -->
-                    <div class="flex flex-wrap items-center gap-1 w-full sm:w-auto">
-                        <button type="button" onclick="setCardTypeFilter('all')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950" data-filter="all">All</button>
-                        <button type="button" onclick="setCardTypeFilter('creature')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="creature">Creatures</button>
-                        <button type="button" onclick="setCardTypeFilter('instant')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="instant">Instants</button>
-                        <button type="button" onclick="setCardTypeFilter('sorcery')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="sorcery">Sorceries</button>
-                        <button type="button" onclick="setCardTypeFilter('artifact')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="artifact">Artifacts</button>
-                        <button type="button" onclick="setCardTypeFilter('enchantment')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="enchantment">Enchantments</button>
-                        <button type="button" onclick="setCardTypeFilter('land')" class="card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white" data-filter="land">Lands</button>
+                    <div class="flex items-center justify-between sm:justify-end gap-2">
+                        <!-- View Switcher (Tiles vs Table) -->
+                        <div class="inline-flex rounded-lg border border-slate-700 bg-[#1B2230] p-0.5 font-mono text-xs">
+                            <button type="button" onclick="setCardViewMode('tiles')" id="cardViewBtnTiles" 
+                                    class="px-2.5 py-1 rounded text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1" title="Mobile-friendly Card Tiles">
+                                <span>📱</span>
+                                <span class="hidden xs:inline">Tiles</span>
+                            </button>
+                            <button type="button" onclick="setCardViewMode('table')" id="cardViewBtnTable" 
+                                    class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition flex items-center gap-1" title="Dense Telemetry Table">
+                                <span>📋</span>
+                                <span class="hidden xs:inline">Table</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Right: Bulk Watchlist Actions -->
-                <div class="flex items-center gap-2 w-full lg:w-auto justify-end">
-                    <button type="button" onclick="addAllCardsToWatchlist(true)" id="addNonLandsWatchlistBtn" 
-                            class="px-3 py-1.5 bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-mono font-semibold transition flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                        <span>+ Watch All Spells</span>
-                    </button>
+                <!-- Row 2: Type Filter Pills (Horizontally Scrollable on Mobile) -->
+                <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                    <button type="button" onclick="setCardTypeFilter('all')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950 flex-shrink-0 transition" data-filter="all">All</button>
+                    <button type="button" onclick="setCardTypeFilter('creature')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="creature">Creatures</button>
+                    <button type="button" onclick="setCardTypeFilter('instant')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="instant">Instants</button>
+                    <button type="button" onclick="setCardTypeFilter('sorcery')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="sorcery">Sorceries</button>
+                    <button type="button" onclick="setCardTypeFilter('artifact')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="artifact">Artifacts</button>
+                    <button type="button" onclick="setCardTypeFilter('enchantment')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="enchantment">Enchantments</button>
+                    <button type="button" onclick="setCardTypeFilter('planeswalker')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="planeswalker">Planeswalkers</button>
+                    <button type="button" onclick="setCardTypeFilter('land')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="land">Lands</button>
+                </div>
 
-                    <button type="button" onclick="addAllCardsToWatchlist(false)" id="addAllWatchlistBtn" 
-                            class="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 shadow-sm">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                        <span>+ Watch Entire Deck</span>
-                    </button>
+                <!-- Row 3: Rating Tier Filter, Sort Selector & Status Counter -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- AI Rating Filter -->
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
+                                <span class="text-amber-400 font-bold">⚡</span> Rating:
+                            </span>
+                            <select id="cardRatingFilterSelect" onchange="setCardRatingFilter(this.value)" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                                <option value="all">All Ratings</option>
+                                <option value="9">★ Staples (9.0 - 10.0)</option>
+                                <option value="7">⚡ Synergizers (7.0 - 8.9)</option>
+                                <option value="5">🛡️ Role Players (5.0 - 6.9)</option>
+                                <option value="cuts">✂️ Cut Candidates (&lt; 5.0)</option>
+                                <option value="unrated">Unrated / No Intel</option>
+                            </select>
+                        </div>
+
+                        <!-- Sort Selector -->
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[10px] font-mono uppercase text-slate-400">Sort:</span>
+                            <select id="cardSortSelect" onchange="setCardSort(this.value)" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                                <option value="rating_desc">AI Rating: High → Low</option>
+                                <option value="rating_asc">AI Rating: Low → High (Cuts)</option>
+                                <option value="cmc_asc">CMC: Low → High</option>
+                                <option value="cmc_desc">CMC: High → Low</option>
+                                <option value="price_desc">Price: High → Low</option>
+                                <option value="price_asc">Price: Low → High</option>
+                                <option value="name_asc">Card Name: A → Z</option>
+                                <option value="name_desc">Card Name: Z → A</option>
+                                <option value="type_asc">Card Type</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Telemetry Counter & Reset -->
+                    <div class="flex items-center justify-between sm:justify-end gap-2 text-xs font-mono text-slate-400">
+                        <span>Showing <strong id="cardRegistryFilteredCount" class="text-cyan-400">--</strong> of <span id="cardRegistryTotalCount">--</span></span>
+                        <button type="button" id="btnResetCardFilters" onclick="resetCardFilters()" class="hidden px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono border border-slate-700 transition">
+                            Reset
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- Table Container -->
-            <div class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+            <!-- Mobile-Friendly Card Tiles View Container -->
+            <div id="mobileCardRegistryList" class="space-y-3">
+                <!-- Injected by renderCardRegistryTiles() -->
+            </div>
+
+            <!-- Desktop Table Container -->
+            <div id="desktopCardRegistryTableContainer" class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse font-mono text-xs">
                         <thead>
-                            <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
-                                <th class="py-3 px-4 w-12">Qty</th>
-                                <th class="py-3 px-4">Card Name</th>
-                                <th class="py-3 px-4">Type Line</th>
-                                <th class="py-3 px-4">Mana Cost</th>
-                                <th class="py-3 px-4 text-center">CMC</th>
-                                <th class="py-3 px-4 text-right">TCG Market</th>
-                                <th class="py-3 px-4 text-center">Watchlist</th>
+                            <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider select-none">
+                                <th class="py-3 px-3 w-12 text-center">Qty</th>
+                                <th class="py-3 px-3 cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('name')">
+                                    <div class="flex items-center gap-1">
+                                        <span>Card Name</span>
+                                        <span id="sortCol-name" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('type')">
+                                    <div class="flex items-center gap-1">
+                                        <span>Type Line</span>
+                                        <span id="sortCol-type" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3">Mana Cost</th>
+                                <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('cmc')">
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span>CMC</span>
+                                        <span id="sortCol-cmc" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('rating')">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-amber-400">⚡</span>
+                                        <span>AI Rating & Role</span>
+                                        <span id="sortCol-rating" class="text-[10px] text-cyan-400">▼</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 text-right cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('price')">
+                                    <div class="flex items-center justify-end gap-1">
+                                        <span>TCG Market</span>
+                                        <span id="sortCol-price" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 text-center">Watch</th>
                             </tr>
                         </thead>
                         <tbody id="cardRegistryTableBody" class="divide-y divide-slate-800/60 text-slate-300">
@@ -1257,6 +1342,38 @@
 
             <!-- If Deck IS Analyzed: Strategic Report -->
             <div id="aiAnalyzedContent" class="space-y-6">
+
+                <!-- AI Intel Telemetry & Rerun Controls Bar -->
+                <div class="bg-[#10141D] border border-cyan-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center font-black text-lg flex-shrink-0 shadow-sm">
+                            ⚡
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">Gemini Strategic Intel Active</span>
+                                <span id="aiActiveModelBadge" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">gemini-3.7-flash</span>
+                                <span class="text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">Analyzed</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 font-mono mt-0.5">Card rankings, tactical roles, and archetype synergy evaluation synced.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto justify-end">
+                        <div class="w-full sm:w-auto">
+                            <select id="rerunDeckAiModel" class="w-full sm:w-auto bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                                {% for m in supported_models %}
+                                <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button onclick="runAiAnalysisOnSavedDeck(this)" id="btnRerunAiIntel" 
+                                class="w-full sm:w-auto px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span>⚡ Rerun AI Intel</span>
+                        </button>
+                    </div>
+                </div>
                 
                 <!-- Overall Strategy & Win-Cons Grid -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2098,6 +2215,10 @@ let currentComparison = null;
 let activeDeck = null;
 let currentIngestTab = 'url';
 let currentCardTypeFilter = 'all';
+let currentDeckCards = [];
+let currentCardSortKey = 'rating_desc';
+let currentCardRatingFilter = 'all';
+let currentCardViewMode = 'auto'; // 'auto', 'tiles', or 'table'
 
 // Relative Date Formatter
 function formatRelativeDate(isoStr) {
@@ -2715,6 +2836,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Background fetch to ensure latest syncs are loaded
     await refreshVaultList();
+
+    // Auto-update responsive card view on window resize
+    window.addEventListener('resize', () => {
+        if (currentCardViewMode === 'auto') {
+            applyCardViewMode();
+        }
+    });
 });
 
 // Update Deck Selector Dropdowns
@@ -2876,6 +3004,10 @@ function switchInspectorTab(tab, options = {}) {
             }
         }
     });
+
+    if (currentInspectorTab === 'cards') {
+        applyCardViewMode();
+    }
 
     // Smoothly dock sticky tab bar below the top navigation bar so the user immediately sees the tab content
     if (!skipScroll) {
@@ -3174,7 +3306,14 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
         }
         if (aiUnanalyzedBanner) aiUnanalyzedBanner.classList.add('hidden');
         if (aiAnalyzedContent) aiAnalyzedContent.classList.remove('hidden');
+
+        const rerunSelect = document.getElementById('rerunDeckAiModel');
+        if (rerunSelect && (deck.model_used || analysis._model_used)) {
+            rerunSelect.value = deck.model_used || analysis._model_used;
+        }
+
         renderAiAnalysis(analysis);
+        currentCardSortKey = 'rating_desc';
     } else {
         safeSetText('inspectorPowerVal', `-- / 10`);
         safeSetText('inspectorPowerBracket', "Telemetry Ready");
@@ -3184,7 +3323,11 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
         }
         if (aiUnanalyzedBanner) aiUnanalyzedBanner.classList.remove('hidden');
         if (aiAnalyzedContent) aiAnalyzedContent.classList.add('hidden');
+        currentCardSortKey = 'cmc_asc';
     }
+
+    const sortSelect = document.getElementById('cardSortSelect');
+    if (sortSelect) sortSelect.value = currentCardSortKey;
 
     // Render Mana Curve & Type Breakdowns
     renderManaCurve(stats.cmc_curve || {});
@@ -3200,7 +3343,7 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     renderEngineAndSynergyTelemetry(stats);
     renderEndgameAndWinconTelemetry(stats);
 
-    // Render Full Card Table
+    // Render Full Card Table & Mobile Tiles
     renderCardRegistryTable(cards);
 
     // Render Format Rules Compliance Evaluation
@@ -3828,11 +3971,214 @@ function renderTypeBreakdown(types, totalCards) {
     }).join('');
 }
 
-// Render Full Card Registry Table
+// Build normalized lookup map from AI card ratings
+function getCardRatingsMap() {
+    const map = new Map();
+    if (!activeDeck || !activeDeck.analysis || !Array.isArray(activeDeck.analysis.card_ratings)) {
+        return map;
+    }
+    for (const r of activeDeck.analysis.card_ratings) {
+        if (!r || !r.card_name) continue;
+        const norm = stripDiacritics(r.card_name).trim();
+        map.set(norm, r);
+        if (norm.includes(' // ')) {
+            map.set(norm.split(' // ')[0].trim(), r);
+        }
+    }
+    return map;
+}
+
+// Get AI rating record for a card
+function getRatingForCard(c, ratingsMap) {
+    if (!c || !c.name) return null;
+    const norm = stripDiacritics(c.name).trim();
+    if (ratingsMap.has(norm)) return ratingsMap.get(norm);
+    if (norm.includes(' // ')) {
+        const front = norm.split(' // ')[0].trim();
+        if (ratingsMap.has(front)) return ratingsMap.get(front);
+    }
+    return null;
+}
+
+// Format tier styling for AI rating scores
+function getRatingTierMeta(score) {
+    if (score === null || score === undefined || isNaN(score)) {
+        return {
+            badgeClass: "bg-slate-800/90 text-slate-400 border border-slate-700",
+            tierLabel: "Unrated",
+            tierTextClass: "text-slate-400",
+            borderClass: "border-slate-700"
+        };
+    }
+    if (score >= 9.0) {
+        return {
+            badgeClass: "bg-cyan-500/15 text-cyan-300 border border-cyan-500/40 shadow-sm",
+            tierLabel: "Core Staple",
+            tierTextClass: "text-cyan-400 font-bold",
+            borderClass: "border-cyan-400"
+        };
+    }
+    if (score >= 7.0) {
+        return {
+            badgeClass: "bg-blue-500/15 text-blue-300 border border-blue-500/40 shadow-sm",
+            tierLabel: "Synergizer",
+            tierTextClass: "text-blue-400 font-bold",
+            borderClass: "border-blue-400"
+        };
+    }
+    if (score >= 5.0) {
+        return {
+            badgeClass: "bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-sm",
+            tierLabel: "Role Player",
+            tierTextClass: "text-amber-400 font-bold",
+            borderClass: "border-amber-400"
+        };
+    }
+    return {
+        badgeClass: "bg-rose-500/15 text-rose-300 border border-rose-500/40 shadow-sm",
+        tierLabel: "Cut Candidate",
+        tierTextClass: "text-rose-400 font-bold",
+        borderClass: "border-rose-400"
+    };
+}
+
+// Render Full Card Registry (Desktop Table & Mobile Tiles)
 function renderCardRegistryTable(cards) {
+    if (cards) {
+        currentDeckCards = cards;
+    }
+    sortAndFilterCardRegistry();
+}
+
+function sortAndFilterCardRegistry() {
+    const cards = currentDeckCards || [];
+    const searchInput = document.getElementById('cardTableSearchInput');
+    const query = stripDiacritics(searchInput ? searchInput.value : '').trim();
+    const btnClearSearch = document.getElementById('btnClearCardSearch');
+    if (btnClearSearch) {
+        if (query) btnClearSearch.classList.remove('hidden');
+        else btnClearSearch.classList.add('hidden');
+    }
+
+    const ratingsMap = getCardRatingsMap();
+    const hasAi = Boolean(activeDeck && activeDeck.has_ai_analysis && ratingsMap.size > 0);
+
+    // Filter cards
+    const filtered = cards.filter(c => {
+        const name = stripDiacritics(c.name || '');
+        const type = stripDiacritics(c.type_line || '');
+        const oracle = stripDiacritics(c.oracle_text || '');
+        const r = getRatingForCard(c, ratingsMap);
+        const role = r ? stripDiacritics(r.role || '') : '';
+        const purpose = r ? stripDiacritics(r.purpose || '') : '';
+
+        // Search text check
+        const matchesQuery = !query || name.includes(query) || type.includes(query) || oracle.includes(query) || role.includes(query) || purpose.includes(query);
+        if (!matchesQuery) return false;
+
+        // Type filter check
+        if (currentCardTypeFilter !== 'all') {
+            if (!type.includes(currentCardTypeFilter)) return false;
+        }
+
+        // Rating tier filter check
+        if (currentCardRatingFilter !== 'all') {
+            const score = r ? (parseFloat(r.rating) || 7.0) : null;
+            if (currentCardRatingFilter === 'unrated') {
+                if (score !== null) return false;
+            } else if (currentCardRatingFilter === '9') {
+                if (score === null || score < 9.0) return false;
+            } else if (currentCardRatingFilter === '7') {
+                if (score === null || score < 7.0 || score >= 9.0) return false;
+            } else if (currentCardRatingFilter === '5') {
+                if (score === null || score < 5.0 || score >= 7.0) return false;
+            } else if (currentCardRatingFilter === 'cuts') {
+                if (score === null || score >= 5.0) return false;
+            }
+        }
+
+        return true;
+    });
+
+    // Update Counter & Reset Button
+    const countEl = document.getElementById('cardRegistryFilteredCount');
+    const totalEl = document.getElementById('cardRegistryTotalCount');
+    const resetBtn = document.getElementById('btnResetCardFilters');
+    if (countEl) countEl.innerText = filtered.length;
+    if (totalEl) totalEl.innerText = cards.length;
+    if (resetBtn) {
+        const isFiltered = Boolean(query || currentCardTypeFilter !== 'all' || currentCardRatingFilter !== 'all');
+        if (isFiltered) resetBtn.classList.remove('hidden');
+        else resetBtn.classList.add('hidden');
+    }
+
+    // Sort cards
+    filtered.sort((a, b) => {
+        const rA = getRatingForCard(a, ratingsMap);
+        const rB = getRatingForCard(b, ratingsMap);
+        const sA = rA ? (parseFloat(rA.rating) || 7.0) : (hasAi ? -1 : 0);
+        const sB = rB ? (parseFloat(rB.rating) || 7.0) : (hasAi ? -1 : 0);
+        const cmcA = a.cmc !== undefined ? parseFloat(a.cmc) : 0;
+        const cmcB = b.cmc !== undefined ? parseFloat(b.cmc) : 0;
+        const pA = a.price_usd ? parseFloat(a.price_usd) : 0;
+        const pB = b.price_usd ? parseFloat(b.price_usd) : 0;
+        const nA = (a.name || '').toLowerCase();
+        const nB = (b.name || '').toLowerCase();
+        const tA = (a.type_line || '').toLowerCase();
+        const tB = (b.type_line || '').toLowerCase();
+
+        switch (currentCardSortKey) {
+            case 'rating_desc':
+                if (sB !== sA) return sB - sA;
+                return cmcA - cmcB;
+            case 'rating_asc':
+                if (sA >= 0 && sB >= 0 && sA !== sB) return sA - sB;
+                if (sA >= 0 && sB < 0) return -1;
+                if (sB >= 0 && sA < 0) return 1;
+                return cmcA - cmcB;
+            case 'cmc_asc':
+                if (cmcA !== cmcB) return cmcA - cmcB;
+                return nA.localeCompare(nB);
+            case 'cmc_desc':
+                if (cmcB !== cmcA) return cmcB - cmcA;
+                return nA.localeCompare(nB);
+            case 'price_desc':
+                if (pB !== pA) return pB - pA;
+                return nA.localeCompare(nB);
+            case 'price_asc':
+                if (pA !== pB) return pA - pB;
+                return nA.localeCompare(nB);
+            case 'name_asc':
+                return nA.localeCompare(nB);
+            case 'name_desc':
+                return nB.localeCompare(nA);
+            case 'type_asc':
+                if (tA !== tB) return tA.localeCompare(tB);
+                return cmcA - cmcB;
+            default:
+                return 0;
+        }
+    });
+
+    // Update column sort indicators
+    updateTableSortIndicators();
+
+    // Render Table Rows (Desktop)
+    renderDesktopTable(filtered, ratingsMap);
+
+    // Render Mobile Tiles
+    renderMobileTiles(filtered, ratingsMap);
+
+    // Ensure correct view mode is displayed
+    applyCardViewMode();
+}
+
+function renderDesktopTable(cards, ratingsMap) {
     const tbody = document.getElementById('cardRegistryTableBody');
+    if (!tbody) return;
+
     if (!cards || cards.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-500 font-mono">No card telemetry available.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-slate-500 font-mono">No matching cards found. Try adjusting filters or search.</td></tr>`;
         return;
     }
 
@@ -3842,11 +4188,35 @@ function renderCardRegistryTable(cards) {
         const setCode = c.set_code || '';
         const name = c.name || '';
         const roleBadges = getCardClassificationBadges(c);
-        
+        const r = getRatingForCard(c, ratingsMap);
+        const score = r ? (parseFloat(r.rating) || 7.0) : null;
+        const tier = getRatingTierMeta(score);
+
+        let ratingCellHtml = '';
+        if (score !== null) {
+            ratingCellHtml = `
+                <div class="flex flex-col gap-1 min-w-[130px] max-w-[240px]">
+                    <div class="flex items-center gap-1.5">
+                        <span class="px-1.5 py-0.5 rounded text-[11px] font-mono font-black ${tier.badgeClass}">
+                            ★ ${score.toFixed(1)}
+                        </span>
+                        ${r.role ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-slate-800 text-slate-300 border border-slate-700 truncate max-w-[110px]" title="${escapeHtml(r.role)}">${escapeHtml(r.role)}</span>` : ''}
+                    </div>
+                    ${r.purpose ? `
+                        <p class="text-[11px] text-slate-400 font-sans italic truncate hover:whitespace-normal transition cursor-help leading-snug" title="${escapeHtml(r.purpose)}">
+                            "${escapeHtml(r.purpose)}"
+                        </p>
+                    ` : ''}
+                </div>
+            `;
+        } else {
+            ratingCellHtml = `<span class="text-slate-600 font-mono text-xs" title="Not rated yet - rerun AI Intel to evaluate">--</span>`;
+        }
+
         return `
             <tr class="hover:bg-[#1B2230]/50 transition group card-row" data-name="${escapeHtml(name.toLowerCase())}" data-type="${escapeHtml((c.type_line || '').toLowerCase())}">
-                <td class="py-2.5 px-4 font-bold text-cyan-400">${c.quantity || 1}x</td>
-                <td class="py-2.5 px-4 font-semibold text-white">
+                <td class="py-2.5 px-3 text-center font-bold text-cyan-400">${c.quantity || 1}x</td>
+                <td class="py-2.5 px-3 font-semibold text-white">
                     <div class="flex flex-col gap-0.5">
                         <span class="cursor-pointer hover:text-cyan-300 hover:underline inline-flex items-center gap-1.5"
                               data-img="${escapeHtml(img)}"
@@ -3858,16 +4228,17 @@ function renderCardRegistryTable(cards) {
                         ${roleBadges ? `<div class="flex flex-wrap items-center gap-1 mt-0.5">${roleBadges}</div>` : ''}
                     </div>
                 </td>
-                <td class="py-2.5 px-4 text-slate-400 text-[11px] truncate max-w-[200px]">${escapeHtml(c.type_line || 'Card')}</td>
-                <td class="py-2.5 px-4 text-slate-300 font-sans text-xs">${escapeHtml(c.mana_cost || '')}</td>
-                <td class="py-2.5 px-4 text-center text-amber-400 font-bold">${c.cmc !== undefined ? c.cmc : 0}</td>
-                <td class="py-2.5 px-4 text-right font-bold text-emerald-400">${price}</td>
-                <td class="py-2.5 px-4 text-center">
+                <td class="py-2.5 px-3 text-slate-400 text-[11px] truncate max-w-[170px]">${escapeHtml(c.type_line || 'Card')}</td>
+                <td class="py-2.5 px-3 text-slate-300 font-sans text-xs whitespace-nowrap">${escapeHtml(c.mana_cost || '')}</td>
+                <td class="py-2.5 px-3 text-center text-amber-400 font-bold">${c.cmc !== undefined ? c.cmc : 0}</td>
+                <td class="py-2.5 px-3">${ratingCellHtml}</td>
+                <td class="py-2.5 px-3 text-right font-bold text-emerald-400 whitespace-nowrap">${price}</td>
+                <td class="py-2.5 px-3 text-center">
                     <button onclick="handleWatchClick(this)" 
                             data-name="${escapeHtml(name)}" 
                             data-set="${escapeHtml(setCode)}" 
                             title="Track in Watchlist"
-                            class="watch-card-btn px-2.5 py-1 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition flex items-center gap-1 mx-auto">
+                            class="watch-card-btn px-2 py-1 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition flex items-center gap-1 mx-auto">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         <span>+ Watch</span>
                     </button>
@@ -3875,6 +4246,210 @@ function renderCardRegistryTable(cards) {
             </tr>
         `;
     }).join('');
+}
+
+function renderMobileTiles(cards, ratingsMap) {
+    const list = document.getElementById('mobileCardRegistryList');
+    if (!list) return;
+
+    if (!cards || cards.length === 0) {
+        list.innerHTML = `<div class="p-8 text-center bg-[#10141D] border border-slate-800 rounded-xl text-slate-500 font-mono text-xs">No matching cards found. Try adjusting filters or search.</div>`;
+        return;
+    }
+
+    list.innerHTML = cards.map((c, idx) => {
+        const price = c.price_usd ? `$${parseFloat(c.price_usd).toFixed(2)}` : '--';
+        const img = c.image_uri || c.small_image_uri || '';
+        const setCode = c.set_code || '';
+        const name = c.name || '';
+        const roleBadges = getCardClassificationBadges(c);
+        const r = getRatingForCard(c, ratingsMap);
+        const score = r ? (parseFloat(r.rating) || 7.0) : null;
+        const tier = getRatingTierMeta(score);
+
+        let ratingHtml = '';
+        if (score !== null) {
+            ratingHtml = `
+                <div class="flex items-center gap-1 flex-shrink-0">
+                    <span class="px-2 py-0.5 rounded text-xs font-mono font-black ${tier.badgeClass}">
+                        ★ ${score.toFixed(1)}
+                    </span>
+                </div>
+            `;
+        } else {
+            ratingHtml = `<span class="text-[10px] font-mono text-slate-500 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700">Unrated</span>`;
+        }
+
+        let rationaleHtml = '';
+        if (r && r.purpose) {
+            rationaleHtml = `
+                <div class="bg-[#1B2230]/70 border-l-2 ${tier.borderClass} rounded-r-lg p-2 text-xs space-y-1">
+                    <div class="flex items-center justify-between text-[10px] font-mono uppercase">
+                        <span class="${tier.tierTextClass}">${tier.tierLabel}</span>
+                        ${r.role ? `<span class="text-cyan-400 font-bold bg-cyan-500/10 px-1.5 py-0.2 rounded border border-cyan-500/20">${escapeHtml(r.role)}</span>` : ''}
+                    </div>
+                    <p class="text-slate-300 font-sans text-xs italic leading-relaxed">
+                        "${escapeHtml(r.purpose)}"
+                    </p>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="bg-[#10141D] border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 space-y-2.5 shadow-md transition">
+                <!-- Top Row: Qty, Name, Mana Cost, Rating Badge -->
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-start gap-2 min-w-0 flex-1">
+                        <span class="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-mono font-bold flex-shrink-0 mt-0.5">
+                            ${c.quantity || 1}x
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <span class="cursor-pointer font-bold text-sm text-white hover:text-cyan-300 leading-snug break-words block"
+                                  data-img="${escapeHtml(img)}"
+                                  onclick="showCardHover(event, this)">
+                                ${escapeHtml(name)}
+                            </span>
+                            ${c.section === 'commander' ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase inline-block mt-0.5">Commander</span>' : ''}
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col items-end gap-1 flex-shrink-0">
+                        ${ratingHtml}
+                        ${c.mana_cost ? `<span class="text-xs text-slate-300 font-sans">${escapeHtml(c.mana_cost)}</span>` : ''}
+                    </div>
+                </div>
+
+                <!-- Middle Row: Type Line, CMC, Price -->
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs font-mono border-t border-slate-800/60 pt-2 text-slate-400">
+                    <div class="flex flex-wrap items-center gap-2 min-w-0">
+                        <span class="text-slate-300 truncate max-w-[180px]">${escapeHtml(c.type_line || 'Card')}</span>
+                        <span class="text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">CMC ${c.cmc !== undefined ? c.cmc : 0}</span>
+                    </div>
+                    <span class="font-bold text-emerald-400 text-sm">${price}</span>
+                </div>
+
+                <!-- AI Tactical Rationale -->
+                ${rationaleHtml}
+
+                <!-- Footer: Classification Badges & Watch Button -->
+                <div class="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/40">
+                    <div class="flex flex-wrap items-center gap-1">
+                        ${roleBadges}
+                    </div>
+                    <button onclick="handleWatchClick(this)" 
+                            data-name="${escapeHtml(name)}" 
+                            data-set="${escapeHtml(setCode)}" 
+                            title="Track in Watchlist"
+                            class="watch-card-btn px-2.5 py-1 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-mono uppercase font-bold border border-slate-700 transition flex items-center gap-1 flex-shrink-0">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>+ Watch</span>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function setCardViewMode(mode) {
+    currentCardViewMode = mode;
+    applyCardViewMode();
+}
+
+function applyCardViewMode() {
+    const tilesBtn = document.getElementById('cardViewBtnTiles');
+    const tableBtn = document.getElementById('cardViewBtnTable');
+    const mobileList = document.getElementById('mobileCardRegistryList');
+    const desktopTable = document.getElementById('desktopCardRegistryTableContainer');
+
+    const useTiles = (currentCardViewMode === 'tiles') || (currentCardViewMode === 'auto' && window.innerWidth < 768);
+
+    if (useTiles) {
+        if (mobileList) mobileList.classList.remove('hidden');
+        if (desktopTable) desktopTable.classList.add('hidden');
+        if (tilesBtn) {
+            tilesBtn.className = "px-2.5 py-1 rounded text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1";
+        }
+        if (tableBtn) {
+            tableBtn.className = "px-2.5 py-1 rounded text-slate-400 hover:text-white transition flex items-center gap-1";
+        }
+    } else {
+        if (mobileList) mobileList.classList.add('hidden');
+        if (desktopTable) desktopTable.classList.remove('hidden');
+        if (tilesBtn) {
+            tilesBtn.className = "px-2.5 py-1 rounded text-slate-400 hover:text-white transition flex items-center gap-1";
+        }
+        if (tableBtn) {
+            tableBtn.className = "px-2.5 py-1 rounded text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1";
+        }
+    }
+}
+
+function setCardSort(sortKey) {
+    currentCardSortKey = sortKey;
+    const sortSelect = document.getElementById('cardSortSelect');
+    if (sortSelect) sortSelect.value = sortKey;
+    sortAndFilterCardRegistry();
+}
+
+function toggleCardSort(field) {
+    let newSort = 'rating_desc';
+    if (field === 'rating') {
+        newSort = currentCardSortKey === 'rating_desc' ? 'rating_asc' : 'rating_desc';
+    } else if (field === 'cmc') {
+        newSort = currentCardSortKey === 'cmc_asc' ? 'cmc_desc' : 'cmc_asc';
+    } else if (field === 'price') {
+        newSort = currentCardSortKey === 'price_desc' ? 'price_asc' : 'price_desc';
+    } else if (field === 'name') {
+        newSort = currentCardSortKey === 'name_asc' ? 'name_desc' : 'name_asc';
+    } else if (field === 'type') {
+        newSort = currentCardSortKey === 'type_asc' ? 'name_asc' : 'type_asc';
+    }
+    setCardSort(newSort);
+}
+
+function updateTableSortIndicators() {
+    const fields = ['rating', 'cmc', 'price', 'name', 'type'];
+    fields.forEach(f => {
+        const el = document.getElementById(`sortCol-${f}`);
+        if (!el) return;
+        if (currentCardSortKey.startsWith(f)) {
+            el.innerText = currentCardSortKey.endsWith('desc') ? '▼' : '▲';
+            el.className = 'text-[10px] text-cyan-400 font-bold';
+        } else {
+            el.innerText = '↕';
+            el.className = 'text-[10px] text-slate-500';
+        }
+    });
+}
+
+function setCardRatingFilter(val) {
+    currentCardRatingFilter = val;
+    sortAndFilterCardRegistry();
+}
+
+function clearCardSearchInput() {
+    const searchInput = document.getElementById('cardTableSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    sortAndFilterCardRegistry();
+}
+
+function resetCardFilters() {
+    const searchInput = document.getElementById('cardTableSearchInput');
+    if (searchInput) searchInput.value = '';
+    const ratingSelect = document.getElementById('cardRatingFilterSelect');
+    if (ratingSelect) ratingSelect.value = 'all';
+    currentCardRatingFilter = 'all';
+    currentCardTypeFilter = 'all';
+    document.querySelectorAll('.card-type-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-filter') === 'all') {
+            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950 flex-shrink-0 transition";
+        } else {
+            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition";
+        }
+    });
+    sortAndFilterCardRegistry();
 }
 
 // Watchlist Button Handler for single cards
@@ -4014,86 +4589,8 @@ async function handleUpgradeWatchClick(btn) {
     }
 }
 
-// Add multiple cards from active deck to watchlist
-async function addAllCardsToWatchlist(excludeLands = true) {
-    if (!activeDeck) return;
-    const cards = activeDeck.cards_data || activeDeck.cards || [];
-    if (!cards.length) return;
-
-    let filtered = cards;
-    if (excludeLands) {
-        filtered = cards.filter(c => !(c.type_line || '').toLowerCase().includes('land'));
-    }
-
-    const cardNames = filtered.map(c => c.name);
-    if (!cardNames.length) {
-        showToast("No eligible cards found to add.", "error");
-        return;
-    }
-
-    const btn = document.getElementById(excludeLands ? 'addNonLandsWatchlistBtn' : 'addAllWatchlistBtn');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerText = "Adding to Watchlist...";
-    }
-
-    try {
-        const resp = await fetch('/api/watchlist/bulk-add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                card_names: cardNames,
-                tag: activeDeck.deck_name || 'Commander Deck'
-            })
-        });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || "Bulk add failed");
-
-        const count = data.added_count || data.added || cardNames.length;
-        showToast(`Successfully tracked ${count} cards in your Watchlist!`, 'success');
-        
-        // Update table buttons visually
-        document.querySelectorAll('.watch-card-btn').forEach(b => {
-            b.className = "watch-card-btn px-2.5 py-1 bg-emerald-500/20 text-emerald-300 rounded text-[10px] font-mono uppercase font-bold border border-emerald-500/40 transition flex items-center gap-1 mx-auto";
-            b.innerHTML = `<span>✓ Watched</span>`;
-        });
-    } catch (e) {
-        showToast(`Error: ${e.message}`, 'error');
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerText = excludeLands ? "+ Watch All Spells" : "+ Watch Entire Deck";
-        }
-    }
-}
-
 function stripDiacritics(str) {
     return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-// Filter Card Registry Table
-function filterCardRegistryTable() {
-    const query = stripDiacritics(document.getElementById('cardTableSearchInput').value || '').trim();
-    const rows = document.querySelectorAll('.card-row');
-    rows.forEach(row => {
-        const name = stripDiacritics(row.getAttribute('data-name') || '');
-        const type = stripDiacritics(row.getAttribute('data-type') || '');
-        const matchesQuery = !query || name.includes(query) || type.includes(query);
-        const matchesType = currentCardTypeFilter === 'all' || type.includes(currentCardTypeFilter);
-        row.style.display = (matchesQuery && matchesType) ? '' : 'none';
-    });
-}
-
-function setCardTypeFilter(type) {
-    currentCardTypeFilter = type;
-    document.querySelectorAll('.card-type-filter-btn').forEach(btn => {
-        if (btn.getAttribute('data-filter') === type) {
-            btn.className = "card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950";
-        } else {
-            btn.className = "card-type-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white";
-        }
-    });
-    filterCardRegistryTable();
 }
 
 // Render AI Strategic Analysis
@@ -4101,6 +4598,11 @@ function renderAiAnalysis(analysis) {
     if (!analysis) return;
     document.getElementById('aiSummaryText').innerText = analysis.overall_summary || "Strategic analysis complete.";
     document.getElementById('aiManaBaseText').innerText = analysis.mana_base_analysis || "Balanced land and ramp acceleration profile.";
+
+    const modelBadge = document.getElementById('aiActiveModelBadge');
+    if (modelBadge && activeDeck) {
+        modelBadge.innerText = activeDeck.model_used || (analysis && analysis._model_used) || 'gemini-3.7-flash';
+    }
 
     // Win conditions
     const winConsContainer = document.getElementById('aiWinConsList');
@@ -4507,17 +5009,30 @@ async function pollForNewestDeckAnalysis(source, btn, maxAttempts = 48) {
     return false;
 }
 
-// Run AI on pre-saved deck
-async function runAiAnalysisOnSavedDeck() {
+// Run AI on pre-saved deck (Initial or Rerun)
+async function runAiAnalysisOnSavedDeck(callingBtn = null) {
     if (!activeDeck || !activeDeck.id) return;
     dismissAiErrorAlert();
-    const modelSelect = document.getElementById('savedDeckAiModel');
-    const model = modelSelect ? modelSelect.value : 'gemini-3.7-flash';
-    const btn = document.getElementById('runSavedAiBtn');
-    btn.disabled = true;
-    btn.innerText = "Analyzing with Gemini...";
+
+    // Determine model from rerun selector if available, or savedDeckAiModel
+    const rerunSelect = document.getElementById('rerunDeckAiModel');
+    const initSelect = document.getElementById('savedDeckAiModel');
+    const model = (rerunSelect && rerunSelect.value) || (initSelect && initSelect.value) || 'gemini-3.7-flash';
+
+    const triggerButtons = [
+        document.getElementById('runSavedAiBtn'),
+        document.getElementById('btnRerunAiIntel'),
+        document.getElementById('inspectorRerunAiBtn')
+    ].filter(Boolean);
+
+    triggerButtons.forEach(b => {
+        b.disabled = true;
+        b.dataset.origHtml = b.innerHTML;
+        b.innerHTML = `<svg class="animate-spin h-3.5 w-3.5 text-current inline mr-1" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Analyzing...</span>`;
+    });
 
     const initialUpdatedAt = activeDeck.updated_at || null;
+    const pollingBtn = callingBtn || document.getElementById('btnRerunAiIntel') || document.getElementById('runSavedAiBtn');
 
     try {
         const resp = await fetch(`/api/deck/${activeDeck.id}/analyze`, {
@@ -4535,7 +5050,7 @@ async function runAiAnalysisOnSavedDeck() {
 
         if (!resp.ok || !data || !data.success) {
             // Check if backend completed or is completing in the background before reporting error
-            const recovered = await pollForCompletedAnalysis(activeDeck.id, btn, 48, initialUpdatedAt);
+            const recovered = await pollForCompletedAnalysis(activeDeck.id, pollingBtn, 48, initialUpdatedAt);
             if (recovered) return;
             throw new Error((data && data.error) || (resp.status ? `Server returned HTTP ${resp.status}` : "Analysis request timed out on gateway"));
         }
@@ -4550,7 +5065,7 @@ async function runAiAnalysisOnSavedDeck() {
         await refreshVaultList();
     } catch (e) {
         // If a network disconnect or timeout occurred, poll server to check if analysis completes
-        const recovered = await pollForCompletedAnalysis(activeDeck.id, btn, 48, initialUpdatedAt);
+        const recovered = await pollForCompletedAnalysis(activeDeck.id, pollingBtn, 48, initialUpdatedAt);
         if (recovered) return;
         const isFetchErr = e.message && e.message.toLowerCase().includes("fetch");
         const alertMsg = isFetchErr
@@ -4559,8 +5074,18 @@ async function runAiAnalysisOnSavedDeck() {
         showAiErrorAlert(alertMsg);
         showToast(`AI error: ${e.message}`, "error");
     } finally {
-        btn.disabled = false;
-        btn.innerText = "⚡ Analyze Now";
+        triggerButtons.forEach(b => {
+            b.disabled = false;
+            if (b.id === 'runSavedAiBtn') {
+                b.innerHTML = '⚡ Analyze Now';
+            } else if (b.id === 'btnRerunAiIntel') {
+                b.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg><span>⚡ Rerun AI Intel</span>';
+            } else if (b.id === 'inspectorRerunAiBtn') {
+                b.innerHTML = '<span>⚡</span><span class="hidden md:inline">Rerun Intel</span>';
+            } else if (b.dataset.origHtml) {
+                b.innerHTML = b.dataset.origHtml;
+            }
+        });
     }
 }
 

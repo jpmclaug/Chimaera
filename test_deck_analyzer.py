@@ -268,6 +268,26 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self.assertIn(b"Gemini AI Strategic Intel", resp.data)
         self.assertIn(b"pointer-events-none", resp.data)
 
+        # Verify bulk watch buttons to add spells or deck are removed
+        self.assertNotIn(b"+ Watch All Spells", resp.data)
+        self.assertNotIn(b"+ Watch Entire Deck", resp.data)
+        self.assertNotIn(b'id="addNonLandsWatchlistBtn"', resp.data)
+        self.assertNotIn(b'id="addAllWatchlistBtn"', resp.data)
+
+        # Verify Rerun AI Intel controls are present
+        self.assertIn(b"inspectorRerunAiBtn", resp.data)
+        self.assertIn(b"btnRerunAiIntel", resp.data)
+        self.assertIn(b"Rerun AI Intel", resp.data)
+
+        # Verify Mobile-friendly Card List and Sorting & Filtering controls are present
+        self.assertIn(b"mobileCardRegistryList", resp.data)
+        self.assertIn(b"desktopCardRegistryTableContainer", resp.data)
+        self.assertIn(b"cardSortSelect", resp.data)
+        self.assertIn(b"cardRatingFilterSelect", resp.data)
+        self.assertIn(b"cardViewBtnTiles", resp.data)
+        self.assertIn(b"cardViewBtnTable", resp.data)
+        self.assertIn(b"AI Rating & Role", resp.data)
+
     def test_api_deck_parse_text(self):
         self._login()
         payload = {
