@@ -534,14 +534,23 @@ class DualTierUpgradeEngine:
                     if needs_pauper or needs_cid:
                         candidates_to_validate.add(p_name)
 
+        # Only add inventory cards to ad-hoc Scryfall validation if they match EDHREC synergies
+        # for this commander, preventing synchronous collection-wide API hammering.
         for ic in user_inventory:
-            if not any(k in cid_cache for k in get_card_match_keys(ic.name)):
-                candidates_to_validate.add(ic.name)
+            clean = strip_accents(ic.name).strip().lower()
+            clean_front = clean.split(" // ")[0].strip() if " // " in clean else clean
+            if clean in edhrec_synergies or clean_front in edhrec_synergies:
+                needs_pauper = is_pauper and not any(k in pauper_legal_cache for k in get_card_match_keys(ic.name))
+                needs_cid = not any(k in cid_cache for k in get_card_match_keys(ic.name))
+                if needs_pauper or needs_cid:
+                    candidates_to_validate.add(ic.name)
 
         if candidates_to_validate:
+            # Strictly cap at 75 cards (exactly 1 Scryfall batch) to guarantee <300ms execution
+            candidates_list = list(candidates_to_validate)[:75]
             try:
-                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(list(candidates_to_validate))
-                for name_query in candidates_to_validate:
+                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(candidates_list)
+                for name_query in candidates_list:
                     q_low = name_query.lower().strip()
                     meta = scryfall_meta.get(q_low)
                     if not meta:
@@ -553,6 +562,20 @@ class DualTierUpgradeEngine:
                             cid_cache[k] = scry_cid
                             if is_pauper:
                                 pauper_legal_cache[k] = ScryfallProvider.is_pauper_legal(meta)
+
+                        # In-memory enrichment for matched inventory cards
+                        for ic in user_inventory:
+                            if ic.name.lower() == q_low or strip_accents(ic.name).lower() == q_low:
+                                if not getattr(ic, "color_identity", None) and scry_cid:
+                                    ic.color_identity = ",".join(scry_cid)
+                                if not getattr(ic, "type_line", None) and meta.get("type_line"):
+                                    ic.type_line = meta.get("type_line")
+                                if not getattr(ic, "mana_cost", None) and meta.get("mana_cost"):
+                                    ic.mana_cost = meta.get("mana_cost")
+                                if (getattr(ic, "cmc", None) is None or ic.cmc == 0) and meta.get("cmc") is not None:
+                                    ic.cmc = float(meta["cmc"])
+                                if not getattr(ic, "image_uri", None) and (meta.get("image_uri") or meta.get("small_image_uri")):
+                                    ic.image_uri = meta.get("image_uri") or meta.get("small_image_uri")
                     else:
                         if is_pauper:
                             pauper_legal_cache[q_low] = False
@@ -916,11 +939,11 @@ class DualTierUpgradeEngine:
             })
             shopping_names_applied.add(s_name_lower)
 
-        # Batch resolve prices and Scryfall metadata for unowned cards if missing
+        # Batch resolve prices and Scryfall metadata for unowned cards if missing (capped at 1 batch of 75)
         missing_meta_names = [s["name"] for s in shopping_list_raw if s.get("price_usd") is None or not s.get("image_uri")]
         if missing_meta_names:
             try:
-                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names)
+                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names[:75])
                 for s in shopping_list_raw:
                     meta = scryfall_meta.get(s["name"].lower(), {})
                     if not meta:

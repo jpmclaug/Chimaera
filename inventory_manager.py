@@ -5,13 +5,19 @@ Handles persistence, enrichment, batch merging/replacement, and physical cross-d
 
 import json
 import logging
+import time
+import threading
 from typing import Dict, Any, List, Optional
-from sqlalchemy import func, case, or_, and_
+from sqlalchemy import func, case, or_, and_, distinct
 from models import db, UserInventoryCard, DeckAnalysis, utc_now
 from providers.scryfall import ScryfallProvider
 from card_utils import fix_mojibake, strip_accents, get_card_match_keys, normalize_card_name
 
 logger = logging.getLogger(__name__)
+
+# Module-level thread-safe progress status for collection enrichment
+_enrichment_status: Dict[int, Dict[str, Any]] = {}
+_enrichment_lock = threading.Lock()
 
 
 class InventoryManager:
@@ -345,10 +351,67 @@ class InventoryManager:
 
         return allocations
 
-    @staticmethod
-    def _trigger_background_enrichment(user_id: int, card_names: List[str]):
-        """Spawns daemon thread to enrich missing card metadata in batches without blocking response."""
-        import threading
+    @classmethod
+    def get_enrichment_status(cls, user_id: int) -> Dict[str, Any]:
+        """Returns live telemetry on collection enrichment progress and unresolved counts."""
+        if not user_id:
+            return {"is_running": False, "total_inventory": 0, "unresolved_count": 0, "enriched_count": 0, "percent": 100.0}
+
+        total_cards = db.session.query(func.count(UserInventoryCard.id)).filter(UserInventoryCard.user_id == user_id).scalar() or 0
+        unresolved_count = db.session.query(func.count(UserInventoryCard.id)).filter(
+            UserInventoryCard.user_id == user_id,
+            or_(
+                UserInventoryCard.color_identity.is_(None),
+                UserInventoryCard.image_uri.is_(None),
+                UserInventoryCard.type_line.is_(None),
+            ),
+        ).scalar() or 0
+        enriched_count = max(0, total_cards - unresolved_count)
+
+        with _enrichment_lock:
+            active = _enrichment_status.get(user_id, {})
+            is_running = bool(active.get("is_running", False))
+            processed = active.get("processed", 0)
+            total_job = active.get("total", unresolved_count)
+            updated = active.get("updated", 0)
+            started_at = active.get("started_at")
+            finished_at = active.get("finished_at")
+            error = active.get("error")
+
+        percent = 100.0 if total_cards > 0 and unresolved_count == 0 else (
+            round((processed / total_job) * 100.0, 1) if (is_running and total_job > 0) else (
+                round((enriched_count / total_cards) * 100.0, 1) if total_cards > 0 else 100.0
+            )
+        )
+
+        return {
+            "is_running": is_running,
+            "total_inventory": total_cards,
+            "unresolved_count": unresolved_count,
+            "enriched_count": enriched_count,
+            "job_total": total_job,
+            "job_processed": processed,
+            "job_updated": updated,
+            "percent": percent,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "error": error,
+        }
+
+    @classmethod
+    def start_background_enrichment(
+        cls,
+        user_id: int,
+        card_names: Optional[List[str]] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Launches throttled background worker to enrich cards lacking metadata/images in batches of 75.
+        Guarantees non-blocking execution, throttled Scryfall requests (100ms pause), and incremental DB commits.
+        """
+        if not user_id:
+            return {"error": "user_id is required", "is_running": False}
+
         try:
             from flask import current_app
             app = current_app._get_current_object()
@@ -356,55 +419,156 @@ class InventoryManager:
             app = None
 
         if not app:
-            return
+            logger.warning(f"Cannot start background enrichment for user {user_id}: no Flask app context.")
+            return {"error": "No Flask app context available", "is_running": False}
 
-        def _enrich_worker():
+        with _enrichment_lock:
+            current = _enrichment_status.get(user_id)
+            if current and current.get("is_running"):
+                return cls.get_enrichment_status(user_id)
+
+        # Collect unique names needing enrichment
+        names_to_enrich: List[str] = []
+        if card_names:
+            names_to_enrich = list(dict.fromkeys([c.strip() for c in card_names if c and str(c).strip()]))
+        else:
+            try:
+                unresolved = db.session.query(distinct(UserInventoryCard.name)).filter(
+                    UserInventoryCard.user_id == user_id,
+                    or_(
+                        UserInventoryCard.color_identity.is_(None),
+                        UserInventoryCard.image_uri.is_(None),
+                        UserInventoryCard.type_line.is_(None),
+                    ),
+                ).all()
+                names_to_enrich = [r[0] for r in unresolved if r and r[0]]
+            except Exception as e:
+                logger.error(f"Error querying unresolved cards for user {user_id}: {e}")
+                return {"error": str(e), "is_running": False}
+
+        if not names_to_enrich:
+            with _enrichment_lock:
+                _enrichment_status[user_id] = {
+                    "is_running": False,
+                    "total": 0,
+                    "processed": 0,
+                    "updated": 0,
+                    "percent": 100.0,
+                    "started_at": utc_now().isoformat(),
+                    "finished_at": utc_now().isoformat(),
+                    "error": None,
+                }
+            return cls.get_enrichment_status(user_id)
+
+        with _enrichment_lock:
+            _enrichment_status[user_id] = {
+                "is_running": True,
+                "total": len(names_to_enrich),
+                "processed": 0,
+                "updated": 0,
+                "percent": 0.0,
+                "started_at": utc_now().isoformat(),
+                "finished_at": None,
+                "error": None,
+            }
+
+        def _worker():
             with app.app_context():
                 try:
-                    logger.info(f"Starting background Scryfall enrichment for user {user_id} ({len(card_names)} cards)...")
+                    logger.info(f"Background Scryfall enrichment started for user {user_id}: {len(names_to_enrich)} cards to enrich.")
                     scryfall = ScryfallProvider()
-                    found_map, _ = scryfall.get_cards_collection(card_names, fallback_named=False)
-                    if not found_map:
-                        return
+                    batch_size = 75
+                    total_count = len(names_to_enrich)
+                    total_updated = 0
 
-                    updated = 0
-                    for name_key, meta in found_map.items():
-                        if not meta:
-                            continue
-                        cards = UserInventoryCard.query.filter(
-                            UserInventoryCard.user_id == user_id,
-                            func.lower(UserInventoryCard.name) == name_key.lower(),
-                        ).all()
-                        for c in cards:
-                            if not c.image_uri and (meta.get("image_uri") or meta.get("small_image_uri")):
-                                c.image_uri = meta.get("image_uri") or meta.get("small_image_uri")
-                            if not c.type_line and meta.get("type_line"):
-                                c.type_line = meta.get("type_line")
-                            if not c.mana_cost and meta.get("mana_cost"):
-                                c.mana_cost = meta.get("mana_cost")
-                            if (c.cmc is None or c.cmc == 0) and meta.get("cmc") is not None:
-                                c.cmc = float(meta["cmc"])
-                            if not c.color_identity and meta.get("color_identity"):
-                                cid = meta["color_identity"]
-                                c.color_identity = ",".join(cid) if isinstance(cid, list) else str(cid)
-                            if not c.price_usd and meta.get("prices", {}).get("usd"):
-                                try:
-                                    c.price_usd = float(meta["prices"]["usd"])
-                                except Exception:
-                                    pass
-                            if not c.price_usd_foil and meta.get("prices", {}).get("usd_foil"):
-                                try:
-                                    c.price_usd_foil = float(meta["prices"]["usd_foil"])
-                                except Exception:
-                                    pass
-                            updated += 1
-                    db.session.commit()
-                    logger.info(f"Background Scryfall enrichment completed for user {user_id}: {updated} card records updated.")
+                    for i in range(0, total_count, batch_size):
+                        chunk = names_to_enrich[i:i + batch_size]
+                        try:
+                            found_map, _ = scryfall.get_cards_collection(chunk, fallback_named=False)
+                            if found_map:
+                                chunk_updated = 0
+                                for name_key, meta in found_map.items():
+                                    if not meta or not isinstance(meta, dict):
+                                        continue
+                                    matched_cards = UserInventoryCard.query.filter(
+                                        UserInventoryCard.user_id == user_id,
+                                        func.lower(UserInventoryCard.name) == name_key.lower(),
+                                    ).all()
+                                    for c in matched_cards:
+                                        changed = False
+                                        if not c.image_uri and (meta.get("image_uri") or meta.get("small_image_uri")):
+                                            c.image_uri = meta.get("image_uri") or meta.get("small_image_uri")
+                                            changed = True
+                                        if not c.type_line and meta.get("type_line"):
+                                            c.type_line = meta.get("type_line")
+                                            changed = True
+                                        if not c.mana_cost and meta.get("mana_cost"):
+                                            c.mana_cost = meta.get("mana_cost")
+                                            changed = True
+                                        if (c.cmc is None or c.cmc == 0) and meta.get("cmc") is not None:
+                                            c.cmc = float(meta["cmc"])
+                                            changed = True
+                                        if not c.color_identity and meta.get("color_identity"):
+                                            cid = meta["color_identity"]
+                                            c.color_identity = ",".join(cid) if isinstance(cid, list) else str(cid)
+                                            changed = True
+                                        if not c.oracle_text and meta.get("oracle_text"):
+                                            c.oracle_text = meta.get("oracle_text")
+                                            changed = True
+                                        if not c.price_usd and meta.get("prices", {}).get("usd"):
+                                            try:
+                                                c.price_usd = float(meta["prices"]["usd"])
+                                                changed = True
+                                            except Exception:
+                                                pass
+                                        if not c.price_usd_foil and meta.get("prices", {}).get("usd_foil"):
+                                            try:
+                                                c.price_usd_foil = float(meta["prices"]["usd_foil"])
+                                                changed = True
+                                            except Exception:
+                                                pass
+                                        if changed:
+                                            chunk_updated += 1
+                                db.session.commit()
+                                total_updated += chunk_updated
+                        except Exception as batch_err:
+                            logger.warning(f"Error enriching batch {i // batch_size + 1} for user {user_id}: {batch_err}")
+                            try:
+                                db.session.rollback()
+                            except Exception:
+                                pass
+
+                        processed_so_far = min(i + batch_size, total_count)
+                        with _enrichment_lock:
+                            if user_id in _enrichment_status:
+                                _enrichment_status[user_id]["processed"] = processed_so_far
+                                _enrichment_status[user_id]["updated"] = total_updated
+                                _enrichment_status[user_id]["percent"] = round((processed_so_far / total_count) * 100.0, 1)
+
+                        # Respect Scryfall 10 req/s guidelines with a 100ms pause
+                        time.sleep(0.1)
+
+                    with _enrichment_lock:
+                        if user_id in _enrichment_status:
+                            _enrichment_status[user_id]["is_running"] = False
+                            _enrichment_status[user_id]["finished_at"] = utc_now().isoformat()
+                            _enrichment_status[user_id]["percent"] = 100.0
+                    logger.info(f"Background Scryfall enrichment completed for user {user_id}: {total_updated} cards updated.")
                 except Exception as ex:
-                    logger.error(f"Error in background Scryfall enrichment for user {user_id}: {ex}", exc_info=True)
+                    logger.error(f"Error in background Scryfall enrichment worker for user {user_id}: {ex}", exc_info=True)
+                    with _enrichment_lock:
+                        if user_id in _enrichment_status:
+                            _enrichment_status[user_id]["is_running"] = False
+                            _enrichment_status[user_id]["error"] = str(ex)
 
-        t = threading.Thread(target=_enrich_worker, daemon=True)
+        t = threading.Thread(target=_worker, daemon=True)
         t.start()
+        return cls.get_enrichment_status(user_id)
+
+    @classmethod
+    def _trigger_background_enrichment(cls, user_id: int, card_names: List[str]):
+        """Legacy helper pointing to start_background_enrichment."""
+        return cls.start_background_enrichment(user_id=user_id, card_names=card_names)
 
     def get_collection_telemetry(self, user_id: int) -> Dict[str, Any]:
         """Fast SQL aggregation for collection metrics: total copies, unique cards, total value, foils."""

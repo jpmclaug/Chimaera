@@ -1507,11 +1507,21 @@
                         <span>Open Binder Vault</span>
                         <span>&rarr;</span>
                     </a>
-                    <button onclick="refreshDualTierUpgrades()" class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+                    <!-- Background Collection Enrichment Pill -->
+                    <div id="collectionEnrichPill" class="hidden items-center gap-1.5 px-2.5 py-1.5 bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 text-xs font-mono">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                        </span>
+                        <span id="collectionEnrichText">Enriching Binder...</span>
+                    </div>
+
+                    <button id="refreshUpgradesBtn" onclick="refreshDualTierUpgrades()" class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg id="refreshUpgradesIcon" class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
-                        <span>Re-evaluate</span>
+                        <span id="refreshUpgradesText">Re-evaluate</span>
                     </button>
                 </div>
             </div>
@@ -6239,9 +6249,60 @@ function toggleAntiSaltFilter() {
     }
 }
 
+let enrichmentPollTimer = null;
+function trackCollectionEnrichment(status) {
+    const pill = document.getElementById('collectionEnrichPill');
+    const txt = document.getElementById('collectionEnrichText');
+    if (!pill || !txt) return;
+
+    if (!status || (!status.is_running && (status.unresolved_count === 0 || status.unresolved_count === undefined))) {
+        pill.classList.add('hidden');
+        pill.classList.remove('flex');
+        if (enrichmentPollTimer) {
+            clearInterval(enrichmentPollTimer);
+            enrichmentPollTimer = null;
+        }
+        return;
+    }
+
+    pill.classList.remove('hidden');
+    pill.classList.add('flex');
+    const pct = status.percent !== undefined ? status.percent : 0;
+    txt.textContent = status.is_running ? `Enriching Binder: ${pct}%` : `Binder: ${pct}% Enriched`;
+
+    if (!enrichmentPollTimer && status.is_running) {
+        enrichmentPollTimer = setInterval(async () => {
+            try {
+                const res = await fetch('/api/inventory/enrich/status');
+                const pollData = await res.json();
+                if (pollData && pollData.success) {
+                    if (pollData.is_running) {
+                        txt.textContent = `Enriching Binder: ${pollData.percent || 0}%`;
+                    } else {
+                        pill.classList.add('hidden');
+                        pill.classList.remove('flex');
+                        clearInterval(enrichmentPollTimer);
+                        enrichmentPollTimer = null;
+                        showToast("Binder collection enrichment completed!", "success");
+                    }
+                }
+            } catch (e) {
+                console.warn("Enrichment poll error:", e);
+            }
+        }, 4000);
+    }
+}
+
 async function loadDualTierUpgrades(deckId) {
     const targetId = deckId || (activeDeck ? activeDeck.id : null);
     if (!targetId) return;
+
+    const btn = document.getElementById('refreshUpgradesBtn');
+    const icon = document.getElementById('refreshUpgradesIcon');
+    const text = document.getElementById('refreshUpgradesText');
+    if (btn) btn.disabled = true;
+    if (icon) icon.classList.add('animate-spin');
+    if (text) text.textContent = 'Evaluating...';
 
     const loadingElem = document.getElementById('ownedSwapsLoading');
     const emptyElem = document.getElementById('ownedSwapsEmpty');
@@ -6275,16 +6336,26 @@ async function loadDualTierUpgrades(deckId) {
         if (data.edhrec) {
             updateEdhrecBadgesAndArticles(data.edhrec);
         }
+        if (data.enrichment) {
+            trackCollectionEnrichment(data.enrichment);
+        }
+
+        const ownedCount = data.owned_count || 0;
+        const shopCount = data.shopping_count || 0;
+        showToast(`Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards`, "success");
 
     } catch (err) {
         if (loadingElem) loadingElem.classList.add('hidden');
         showToast(`Upgrade evaluation failed: ${err.message}`, "error");
+    } finally {
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove('animate-spin');
+        if (text) text.textContent = 'Re-evaluate';
     }
 }
 
 function refreshDualTierUpgrades() {
     if (activeDeck && activeDeck.id) {
-        showToast("Re-evaluating upgrades against collection...", "info");
         loadDualTierUpgrades(activeDeck.id);
     }
 }

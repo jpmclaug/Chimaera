@@ -4027,6 +4027,22 @@ def create_app(test_config=None):
         log_activity("INVENTORY_CLEAR", details=f"Cleared {count} items from collection", user=user)
         return jsonify({"success": True, "message": f"Successfully cleared {count} collection entries."})
 
+    @app.route("/api/inventory/enrich/status", methods=["GET"])
+    @login_required
+    def api_inventory_enrich_status():
+        """Returns background enrichment status and progress for user's collection."""
+        user = get_current_user()
+        status = inventory_manager.get_enrichment_status(user.id)
+        return jsonify({"success": True, **status})
+
+    @app.route("/api/inventory/enrich/start", methods=["POST"])
+    @login_required
+    def api_inventory_enrich_start():
+        """Triggers asynchronous background collection enrichment for user's collection."""
+        user = get_current_user()
+        status = inventory_manager.start_background_enrichment(user.id)
+        return jsonify({"success": True, **status})
+
     @app.route("/api/deck/<int:deck_id>/upgrades", methods=["GET"])
     @login_required
     def api_deck_upgrades(deck_id: int):
@@ -4049,6 +4065,11 @@ def create_app(test_config=None):
         user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
         allocations = inventory_manager.get_user_card_allocations(user.id, current_deck_id=deck_id)
         ai_analysis = entry.get_analysis()
+
+        # Asynchronously trigger background collection enrichment if any cards lack metadata
+        enrich_status = inventory_manager.get_enrichment_status(user.id)
+        if enrich_status.get("unresolved_count", 0) > 0 and not enrich_status.get("is_running"):
+            enrich_status = inventory_manager.start_background_enrichment(user.id)
 
         # Ingest EDHREC commander metadata & synergy scores
         edhrec_data = None
@@ -4092,6 +4113,7 @@ def create_app(test_config=None):
             "deck_id": deck_id,
             "deck_name": entry.deck_name,
             "edhrec": edhrec_summary,
+            "enrichment": enrich_status,
             **results,
         })
 
