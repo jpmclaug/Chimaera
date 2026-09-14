@@ -47,10 +47,8 @@ def refresh_all_decks(force_ai: bool = False, model_override: str | None = None)
         default_model = (
             model_override
             or SystemSetting.get_val("gemini_default_model")
-            or app.config.get("GEMINI_DEFAULT_MODEL", "gemini-3.6-flash")
+            or app.config.get("GEMINI_DEFAULT_MODEL", "gemini-3.8-flash")
         )
-        if default_model == "gemini-3.5-flash-lite":
-            default_model = "gemini-3.6-flash"
 
         logger.info(f"Gemini API Key present: {bool(effective_key)} | Effective Model: {default_model}")
 

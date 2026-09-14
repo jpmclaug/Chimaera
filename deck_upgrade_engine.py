@@ -397,42 +397,21 @@ class DualTierUpgradeEngine:
         anti_salt: bool = False,
         max_salt: float = 1.5,
         is_pauper: Optional[bool] = None,
+        deck_stats: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Executes dual-tier upgrade evaluation enriched with EDHREC synergy,
-        theme alignment, anti-salt filtering, and combo analysis.
-        Returns:
-        {
-            "owned_swaps": list[dict],
-            "shopping_list": {
-                "budget": list[dict],      # < $3.00
-                "moderate": list[dict],    # $3.00 - $15.00
-                "high_impact": list[dict]  # > $15.00
-            },
-            "synergy_brackets": {
-                "signature": list[dict],    # > 50% synergy
-                "high_synergy": list[dict], # 25% - 50% synergy
-                "standard": list[dict]      # < 25% synergy / staples
-            },
-            "combos": {
-                "active": list[dict],
-                "near": list[dict]
-            },
-            "all_shopping_cards": list[dict],
-            "deck_color_identity": list[str],
-            "owned_count": int,
-            "shopping_count": int,
-            "theme_applied": str | None,
-            "anti_salt_applied": bool,
-            "is_pauper": bool,
-            "deck_format": str,
-        }
+        theme alignment, anti-salt filtering, strategic deck deficit alignment,
+        inventory binder deep scan, and combo analysis.
         """
         # 1. Resolve deck attributes
         cards = deck.get_parsed_cards() if hasattr(deck, "get_parsed_cards") else (deck.get("cards") or [])
         deck_id = deck.id if hasattr(deck, "id") else deck.get("id")
         deck_name = deck.deck_name if hasattr(deck, "deck_name") else deck.get("deck_name", "Commander Deck")
-        color_identity = set(deck.get_color_identity_list() if hasattr(deck, "get_color_identity_list") else deck.get("color_identity", []))
+        color_identity = self._resolve_deck_color_identity(deck, cards)
+
+        # Resolve deck strategic engine and deficits
+        deck_strategy = self._extract_deck_strategy_and_deficits(cards, ai_analysis=ai_analysis, deck_stats=deck_stats)
 
         # Resolve whether this deck is evaluated as Pauper Commander
         if is_pauper is None:
@@ -458,30 +437,63 @@ class DualTierUpgradeEngine:
         # Extract cut candidates from current deck
         cut_candidates = self._identify_cut_candidates(cards, ai_analysis)
 
-        # Build Pauper Commander legality cache if pauper mode is active
+        # Build Color Identity cache (cid_cache) & Pauper Commander legality cache
+        cid_cache: Dict[str, List[str]] = {}
         pauper_legal_cache: Dict[str, bool] = {}
+
+        # 1. Curated staples
+        for staple in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES:
+            s_colors = staple.get("colors", [])
+            for k in get_card_match_keys(staple["name"]):
+                cid_cache[k] = s_colors
+                if is_pauper and staple in CURATED_PAUPER_UPGRADES:
+                    pauper_legal_cache[k] = True
+
+        # 2. Basic lands
+        basic_land_cids = {
+            "plains": ["W"], "snow-covered plains": ["W"],
+            "island": ["U"], "snow-covered island": ["U"],
+            "swamp": ["B"], "snow-covered swamp": ["B"],
+            "mountain": ["R"], "snow-covered mountain": ["R"],
+            "forest": ["G"], "snow-covered forest": ["G"],
+            "wastes": [],
+        }
+        for b_name, b_cid in basic_land_cids.items():
+            for k in get_card_match_keys(b_name):
+                cid_cache[k] = b_cid
+                if is_pauper:
+                    pauper_legal_cache[k] = True
+
+        # 3. Known Commander / Pauper banned cards
         if is_pauper:
-            # 1. Curated pauper upgrades are guaranteed legal
-            for p_staple in CURATED_PAUPER_UPGRADES:
-                for k in get_card_match_keys(p_staple["name"]):
-                    pauper_legal_cache[k] = True
-
-            # 2. Basic lands are legal
-            for basic in [
-                "Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes",
-                "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp",
-                "Snow-Covered Mountain", "Snow-Covered Forest",
-            ]:
-                for k in get_card_match_keys(basic):
-                    pauper_legal_cache[k] = True
-
-            # 3. Known banned cards are False
             for banned in PAUPER_COMMANDER_BANNED_CARDS.union(COMMANDER_BANNED_CARDS):
                 for k in get_card_match_keys(banned):
                     pauper_legal_cache[k] = False
 
-            # 4. Check user inventory: any card marked common is legal unless banned
-            for ic in user_inventory:
+        # 4. Cards in current deck
+        for c in cards:
+            c_name = c.get("name", "").strip()
+            c_cid = c.get("color_identity")
+            if c_name and c_cid is not None:
+                for k in get_card_match_keys(c_name):
+                    cid_cache[k] = c_cid
+
+        # 5. User inventory cards
+        for ic in user_inventory:
+            cid_list = None
+            if hasattr(ic, "color_identity") and ic.color_identity is not None:
+                if isinstance(ic.color_identity, list):
+                    cid_list = ic.color_identity
+                elif isinstance(ic.color_identity, str):
+                    cid_list = [c.strip() for c in ic.color_identity.split(",") if c.strip()]
+            elif hasattr(ic, "get_color_identity_list") and getattr(ic, "color_identity", None) is not None:
+                cid_list = ic.get_color_identity_list()
+
+            if cid_list is not None:
+                for k in get_card_match_keys(ic.name):
+                    cid_cache[k] = cid_list
+
+            if is_pauper:
                 ic_rarity = (getattr(ic, "rarity", "") or "").lower()
                 if ic_rarity == "common":
                     clean = strip_accents(ic.name).strip().lower()
@@ -490,41 +502,62 @@ class DualTierUpgradeEngine:
                             if k not in pauper_legal_cache:
                                 pauper_legal_cache[k] = True
 
-            # 5. Candidate cards from AI, EDHREC, combos needing Scryfall verification
-            candidates_to_validate: Set[str] = set()
-            if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
-                for u in ai_analysis["upgrades"]:
-                    c_in = u.get("card_in", "").strip()
-                    if c_in and c_in.lower() not in pauper_legal_cache:
+        # 6. Collect candidates needing Scryfall resolution
+        candidates_to_validate: Set[str] = set()
+        if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
+            for u in ai_analysis["upgrades"]:
+                c_in = u.get("card_in", "").strip()
+                if c_in:
+                    ai_cid = u.get("color_identity")
+                    if ai_cid is not None:
+                        for k in get_card_match_keys(c_in):
+                            cid_cache[k] = ai_cid
+                    needs_pauper = is_pauper and not any(k in pauper_legal_cache for k in get_card_match_keys(c_in))
+                    needs_cid = not any(k in cid_cache for k in get_card_match_keys(c_in))
+                    if needs_pauper or needs_cid:
                         candidates_to_validate.add(c_in)
 
-            for rec in edhrec_priority_pool:
-                r_name = rec.get("name", "").strip()
-                if r_name and r_name.lower() not in pauper_legal_cache:
+        for rec in edhrec_priority_pool:
+            r_name = rec.get("name", "").strip()
+            if r_name:
+                needs_pauper = is_pauper and not any(k in pauper_legal_cache for k in get_card_match_keys(r_name))
+                needs_cid = not any(k in cid_cache for k in get_card_match_keys(r_name))
+                if needs_pauper or needs_cid:
                     candidates_to_validate.add(r_name)
 
-            for combo in edhrec_combos:
-                for piece in combo.get("pieces", []):
-                    if piece and piece.lower() not in pauper_legal_cache:
-                        candidates_to_validate.add(piece)
+        for combo in edhrec_combos:
+            for piece in combo.get("pieces", []):
+                p_name = piece.strip() if isinstance(piece, str) else ""
+                if p_name:
+                    needs_pauper = is_pauper and not any(k in pauper_legal_cache for k in get_card_match_keys(p_name))
+                    needs_cid = not any(k in cid_cache for k in get_card_match_keys(p_name))
+                    if needs_pauper or needs_cid:
+                        candidates_to_validate.add(p_name)
 
-            if candidates_to_validate:
-                try:
-                    scryfall_meta, _ = self.scryfall_provider.get_cards_collection(list(candidates_to_validate))
-                    for name_query in candidates_to_validate:
-                        q_low = name_query.lower().strip()
-                        meta = scryfall_meta.get(q_low)
-                        if not meta:
-                            clean_q = strip_accents(name_query).strip().lower()
-                            meta = scryfall_meta.get(clean_q)
-                        if meta:
-                            is_leg = ScryfallProvider.is_pauper_legal(meta)
-                            for k in get_card_match_keys(meta.get("name", name_query)):
-                                pauper_legal_cache[k] = is_leg
-                        else:
+        for ic in user_inventory:
+            if not any(k in cid_cache for k in get_card_match_keys(ic.name)):
+                candidates_to_validate.add(ic.name)
+
+        if candidates_to_validate:
+            try:
+                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(list(candidates_to_validate))
+                for name_query in candidates_to_validate:
+                    q_low = name_query.lower().strip()
+                    meta = scryfall_meta.get(q_low)
+                    if not meta:
+                        clean_q = strip_accents(name_query).strip().lower()
+                        meta = scryfall_meta.get(clean_q)
+                    if meta:
+                        scry_cid = meta.get("color_identity", [])
+                        for k in get_card_match_keys(meta.get("name", name_query)):
+                            cid_cache[k] = scry_cid
+                            if is_pauper:
+                                pauper_legal_cache[k] = ScryfallProvider.is_pauper_legal(meta)
+                    else:
+                        if is_pauper:
                             pauper_legal_cache[q_low] = False
-                except Exception as e:
-                    logger.error(f"Error validating pauper legality with Scryfall: {e}")
+            except Exception as e:
+                logger.error(f"Error validating card metadata with Scryfall: {e}")
 
         # Choose curated staples pool based on format
         staples_pool = CURATED_PAUPER_UPGRADES if is_pauper else CURATED_UPGRADES
@@ -560,7 +593,7 @@ class DualTierUpgradeEngine:
                 if not card_in or self._is_card_in_deck(card_in, deck_cards_set) or card_in.lower() in applied_card_in_names:
                     continue
 
-                if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
+                if self._is_color_legal(card_in, color_identity, u.get("color_identity"), cid_cache=cid_cache, mana_cost=u.get("card_in_mana")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                     owned_copies = self._find_owned_inventory_copies(card_in, owned_by_name)
                     if owned_copies:
                         primary_copy = owned_copies[0]
@@ -600,6 +633,7 @@ class DualTierUpgradeEngine:
                             "synergy_percent": syn_pct,
                             "inclusion_percent": inc_pct,
                             "salt_score": salt,
+                            "strategic_score": round(45.0 + (syn * 50.0), 1),
                             "rationale": u.get("rationale") or f"Upgrade into {primary_copy.name} from your binder for enhanced synergy and curve efficiency.",
                             "is_owned": True,
                             "total_owned": total_owned,
@@ -616,7 +650,7 @@ class DualTierUpgradeEngine:
             if not rec_name or self._is_card_in_deck(rec_name, deck_cards_set) or rec_lower in applied_card_in_names:
                 continue
 
-            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
+            if not self._is_color_legal(rec_name, color_identity, cid_cache=cid_cache) or not self._is_format_legal(rec_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                 continue
 
             owned_copies = self._find_owned_inventory_copies(rec_name, owned_by_name)
@@ -653,6 +687,7 @@ class DualTierUpgradeEngine:
                     "synergy_percent": syn_pct,
                     "inclusion_percent": inc_pct,
                     "salt_score": salt,
+                    "strategic_score": round(40.0 + (syn * 60.0), 1),
                     "rationale": f"High EDHREC synergy (+{syn_pct}% in this commander) owned in your binder. Replace {matched_cut['name'] if isinstance(matched_cut, dict) else matched_cut}.",
                     "is_owned": True,
                     "total_owned": total_owned,
@@ -709,6 +744,7 @@ class DualTierUpgradeEngine:
                     "synergy_percent": syn_pct,
                     "inclusion_percent": inc_pct,
                     "salt_score": salt,
+                    "strategic_score": round(35.0 + float(staple.get("rating", 9.0)) * 2.0, 1),
                     "rationale": f"Replace {matched_cut['name'] if isinstance(matched_cut, dict) else matched_cut} with {primary_copy.name} from your binder: {staple.get('rationale')}",
                     "is_owned": True,
                     "total_owned": total_owned,
@@ -718,11 +754,39 @@ class DualTierUpgradeEngine:
                 })
                 applied_card_in_names.add(s_name_lower)
 
-        # D) Prioritize Owned Swaps by EDHREC Synergy % descending, then availability
+        # D) Deep Scan User's Entire Binder for High-Buff and Strategy Upgrades
+        binder_recommendations = self._scan_binder_for_upgrades(
+            user_inventory=user_inventory,
+            deck_cards_set=deck_cards_set,
+            color_identity=color_identity,
+            cut_candidates=cut_candidates,
+            assigned_cuts=assigned_cuts,
+            allocations=allocations,
+            applied_card_in_names=applied_card_in_names,
+            edhrec_synergies=edhrec_synergies,
+            top_salt_map=top_salt_map,
+            deck_strategy=deck_strategy,
+            is_pauper=is_pauper,
+            pauper_legal_cache=pauper_legal_cache,
+            cid_cache=cid_cache,
+        )
+        owned_swaps.extend(binder_recommendations)
+
+        # Final pass: enforce strict color legality on owned swaps
+        owned_swaps = [
+            s for s in owned_swaps
+            if self._is_color_legal(s["card_in"], color_identity, cid_cache=cid_cache, mana_cost=s.get("card_in_mana"))
+        ]
+
+        # E) Prioritize Owned Swaps:
+        # 1. Available copies first (not allocated to other active decks)
+        # 2. Highest strategic score descending
+        # 3. Synergy descending, total owned descending
         owned_swaps.sort(
             key=lambda x: (
+                0 if x.get("already_allocated") else 1,
+                x.get("strategic_score", (x.get("synergy") or 0.0) * 100.0),
                 x.get("synergy") or 0.0,
-                1 if not x.get("already_allocated") else 0,
                 x.get("total_owned") or 0,
             ),
             reverse=True,
@@ -739,7 +803,7 @@ class DualTierUpgradeEngine:
                 if not card_in or self._is_card_in_deck(card_in, deck_cards_set) or self._find_owned_inventory_copies(card_in, owned_by_name) or card_in.lower() in shopping_names_applied:
                     continue
 
-                if self._is_color_legal(card_in, color_identity, u.get("color_identity")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
+                if self._is_color_legal(card_in, color_identity, u.get("color_identity"), cid_cache=cid_cache, mana_cost=u.get("card_in_mana")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                     matched_cut = u.get("card_out") or self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
                     price_val = None
                     try:
@@ -782,7 +846,7 @@ class DualTierUpgradeEngine:
                 rec_lower in shopping_names_applied):
                 continue
 
-            if not self._is_color_legal(rec_name, color_identity) or not self._is_format_legal(rec_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
+            if not self._is_color_legal(rec_name, color_identity, cid_cache=cid_cache) or not self._is_format_legal(rec_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                 continue
 
             syn, syn_pct, inc_pct, salt = _get_edhrec_info(rec_name)
@@ -859,6 +923,9 @@ class DualTierUpgradeEngine:
                 scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names)
                 for s in shopping_list_raw:
                     meta = scryfall_meta.get(s["name"].lower(), {})
+                    if not meta:
+                        clean_n = strip_accents(s["name"]).strip().lower()
+                        meta = scryfall_meta.get(clean_n, {})
                     if meta:
                         if s.get("price_usd") is None and meta.get("prices", {}).get("usd"):
                             try:
@@ -873,8 +940,17 @@ class DualTierUpgradeEngine:
                             s["mana_cost"] = meta["mana_cost"]
                         if (not s.get("type_line") or s.get("type_line") == "Card") and meta.get("type_line"):
                             s["type_line"] = meta["type_line"]
+                        if meta.get("color_identity") is not None:
+                            for k in get_card_match_keys(meta.get("name", s["name"])):
+                                cid_cache[k] = meta["color_identity"]
             except Exception as e:
                 logger.error(f"Error resolving prices for shopping list: {e}")
+
+        # Final pass: enforce strict color legality on shopping list
+        shopping_list_raw = [
+            s for s in shopping_list_raw
+            if self._is_color_legal(s["name"], color_identity, cid_cache=cid_cache, mana_cost=s.get("mana_cost"))
+        ]
 
         # Segregate Shopping List into Budget Brackets (sorted by synergy descending, then price)
         budget_bracket: List[Dict[str, Any]] = []      # < $3.00
@@ -927,6 +1003,7 @@ class DualTierUpgradeEngine:
             "anti_salt_applied": anti_salt,
             "is_pauper": is_pauper,
             "deck_format": "pauper_commander" if is_pauper else "commander",
+            "deck_strategy": deck_strategy,
         }
 
     def evaluate_combos(
@@ -1045,17 +1122,127 @@ class DualTierUpgradeEngine:
         return True
 
     @staticmethod
-    def _is_color_legal(card_name: str, deck_colors: Set[str], card_cid: Optional[List[str]] = None) -> bool:
-        """Ensures a card's color identity is completely contained within deck's color identity."""
-        if not deck_colors:
-            # Colorless commander: card must have 0 colors
-            if card_cid:
-                return len([c for c in card_cid if c in ("W", "U", "B", "R", "G")]) == 0
+    def _resolve_deck_color_identity(deck: Any, cards: List[Dict[str, Any]]) -> Set[str]:
+        """
+        Authoritatively resolves the commander's color identity for this deck:
+        1. Checks designated commander cards in cards list (section=='commander' or name matching commander_name)
+        2. Unions partner commander color identities if present
+        3. Falls back to deck.get_color_identity_list() or deck.color_identity
+        """
+        cmdr_names = []
+        if hasattr(deck, "commander_name") and deck.commander_name:
+            cmdr_names = [c.strip().lower() for c in deck.commander_name.split(",") if c.strip()]
+        elif isinstance(deck, dict):
+            c_val = deck.get("commander") or deck.get("commander_name")
+            if isinstance(c_val, list):
+                cmdr_names = [str(c).strip().lower() for c in c_val if str(c).strip()]
+            elif isinstance(c_val, str) and c_val.strip():
+                cmdr_names = [c.strip().lower() for c in c_val.split(",") if c.strip()]
+
+        cmdr_colors: Set[str] = set()
+        for c in cards:
+            c_name = c.get("name", "").strip().lower()
+            clean_front = c_name.split(" // ")[0].strip() if " // " in c_name else c_name
+            is_cmdr_sec = (c.get("section") or "").lower() in ("commander", "command zone")
+            is_cmdr_match = any(cn == c_name or cn == clean_front for cn in cmdr_names)
+            if is_cmdr_sec or is_cmdr_match:
+                c_cid = c.get("color_identity") or []
+                for col in c_cid:
+                    if col and str(col).upper() in ("W", "U", "B", "R", "G"):
+                        cmdr_colors.add(str(col).upper())
+                if c.get("mana_cost"):
+                    for col in re.findall(r"[WUBRG]", re.sub(r"[^WUBRG/]", "", str(c["mana_cost"]).upper())):
+                        cmdr_colors.add(col)
+
+        if cmdr_colors:
+            return cmdr_colors
+
+        # Fallback 1: deck model or dict
+        if hasattr(deck, "get_color_identity_list"):
+            cid_list = deck.get_color_identity_list()
+            if cid_list:
+                return {c.upper() for c in cid_list if c and c.upper() in ("W", "U", "B", "R", "G")}
+        if isinstance(deck, dict) and "color_identity" in deck:
+            cid_val = deck["color_identity"]
+            if isinstance(cid_val, str) and cid_val.strip():
+                return {c.strip().upper() for c in cid_val.split(",") if c.strip().upper() in ("W", "U", "B", "R", "G")}
+            if isinstance(cid_val, (list, set)) and len(cid_val) > 0:
+                return {str(c).upper() for c in cid_val if str(c).upper() in ("W", "U", "B", "R", "G")}
+
+        # Fallback 2: infer from basic lands or known colored cards in deck
+        inferred_colors: Set[str] = set()
+        basic_map = {
+            "plains": "W", "snow-covered plains": "W",
+            "island": "U", "snow-covered island": "U",
+            "swamp": "B", "snow-covered swamp": "B",
+            "mountain": "R", "snow-covered mountain": "R",
+            "forest": "G", "snow-covered forest": "G",
+        }
+        for c in cards:
+            c_name = c.get("name", "").strip().lower()
+            if c_name in basic_map:
+                inferred_colors.add(basic_map[c_name])
+            for col in (c.get("color_identity") or []):
+                if col and str(col).upper() in ("W", "U", "B", "R", "G"):
+                    inferred_colors.add(str(col).upper())
+
+        if inferred_colors:
+            return inferred_colors
+
+        return set()
+
+    @classmethod
+    def _is_color_legal(
+        cls,
+        card_name: str,
+        deck_colors: Set[str],
+        card_cid: Optional[List[str]] = None,
+        cid_cache: Optional[Dict[str, List[str]]] = None,
+        mana_cost: Optional[str] = None,
+    ) -> bool:
+        """
+        Strictly ensures a card's color identity is completely contained within the deck's color identity.
+        If card_cid is not provided, looks up in cid_cache, curated catalog, or mana_cost.
+        If color identity cannot be confirmed, rejects for safety.
+        """
+        if not card_name:
+            return False
+
+        clean_deck_colors = {c.upper() for c in deck_colors if c and c.upper() in ("W", "U", "B", "R", "G")}
+
+        # 5-color deck: every card in Magic is legal in Commander
+        if clean_deck_colors == {"W", "U", "B", "R", "G"}:
             return True
 
-        if card_cid is not None:
-            return all(c in deck_colors for c in card_cid if c in ("W", "U", "B", "R", "G"))
-        return True
+        if card_cid is None and cid_cache:
+            for k in get_card_match_keys(card_name):
+                if k in cid_cache:
+                    card_cid = cid_cache[k]
+                    break
+
+        if card_cid is None:
+            clean_name = strip_accents(card_name).strip().lower()
+            for s in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES:
+                if strip_accents(s["name"]).lower() == clean_name:
+                    card_cid = s.get("colors", [])
+                    break
+
+        if card_cid is None and mana_cost:
+            extracted = set(re.findall(r"[WUBRG]", re.sub(r"[^WUBRG/]", "", str(mana_cost).upper())))
+            if extracted:
+                card_cid = list(extracted)
+
+        # If still None, reject for safety - never let unverified colors bypass
+        if card_cid is None:
+            return False
+
+        pips = {c.upper() for c in card_cid if c and c.upper() in ("W", "U", "B", "R", "G")}
+
+        if not deck_colors:
+            # Colorless deck: card must have 0 colored mana symbols
+            return len(pips) == 0
+
+        return pips.issubset(clean_deck_colors)
 
     @staticmethod
     def _is_staple_color_legal(staple_colors: List[str], deck_colors: Set[str]) -> bool:
@@ -1063,7 +1250,345 @@ class DualTierUpgradeEngine:
         if not staple_colors:
             # Colorless card is legal in any deck
             return True
-        return all(c in deck_colors for c in staple_colors)
+        if not deck_colors:
+            # Colorless deck: cards with colored mana symbols are illegal
+            return False
+        clean_deck_colors = {c.upper() for c in deck_colors if c and c.upper() in ("W", "U", "B", "R", "G")}
+        return all(c.upper() in clean_deck_colors for c in staple_colors)
+
+    def _extract_deck_strategy_and_deficits(
+        self,
+        cards: List[Dict[str, Any]],
+        ai_analysis: Optional[Dict[str, Any]] = None,
+        deck_stats: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Analyzes deck composition and telemetry to identify what the deck is doing
+        (dominant engines, creature typal types, core synergies) and where its deficits lie.
+        """
+        engine_counts: Dict[str, int] = {
+            "tokens": 0,
+            "counters": 0,
+            "sacrifice": 0,
+            "graveyard": 0,
+            "spellslinger": 0,
+            "blink": 0,
+        }
+        subtype_counts: Dict[str, int] = {}
+        total_draw = 0
+        total_ramp = 0
+        total_removal = 0
+        total_wipes = 0
+        has_poison = False
+        nonland_count = 0
+        nonland_cmc_sum = 0.0
+
+        for c in cards:
+            qty = int(c.get("quantity", 1))
+            tl = (c.get("type_line") or "").lower()
+            oracle = (c.get("oracle_text") or "").lower()
+            cmc = float(c.get("cmc", 0.0))
+
+            if "land" not in tl:
+                nonland_count += qty
+                nonland_cmc_sum += cmc * qty
+
+            if any(k in oracle for k in ["poison counter", "toxic ", "infect", "deathtouch"]):
+                has_poison = True
+
+            classification = c.get("classification")
+            if not classification:
+                classification = self.classifier.classify(c)
+
+            for en in classification.get("engine_enabler", []):
+                if en in engine_counts:
+                    engine_counts[en] += qty
+            for po in classification.get("engine_payoff", []):
+                if po in engine_counts:
+                    engine_counts[po] += qty
+
+            if "creature" in tl:
+                for st in classification.get("creature_subtypes", []):
+                    st_cap = st.capitalize()
+                    subtype_counts[st_cap] = subtype_counts.get(st_cap, 0) + qty
+
+            if classification.get("is_draw"):
+                total_draw += qty
+            if classification.get("is_ramp"):
+                total_ramp += qty
+            if classification.get("is_targeted_removal"):
+                total_removal += qty
+            if classification.get("is_board_wipe"):
+                total_wipes += qty
+
+        if deck_stats:
+            total_draw = max(total_draw, deck_stats.get("total_draw_count", total_draw))
+            total_ramp = max(total_ramp, deck_stats.get("total_ramp_count", total_ramp))
+            total_removal = max(total_removal, deck_stats.get("targeted_removal_count", total_removal))
+            total_wipes = max(total_wipes, deck_stats.get("board_wipe_count", total_wipes))
+
+        dominant_engine = None
+        max_engine_count = 0
+        for eng, count in engine_counts.items():
+            if count > max_engine_count and count >= 3:
+                max_engine_count = count
+                dominant_engine = eng
+
+        primary_type = None
+        is_typal = False
+        for st, count in sorted(subtype_counts.items(), key=lambda x: x[1], reverse=True):
+            if count >= 6 and st not in ["Human", "Warrior", "Soldier"]:
+                primary_type = st
+                is_typal = True
+                break
+            elif count >= 8:
+                primary_type = st
+                is_typal = True
+                break
+
+        amv = round(nonland_cmc_sum / nonland_count, 2) if nonland_count > 0 else 3.0
+        if deck_stats and deck_stats.get("nonland_amv"):
+            amv = float(deck_stats["nonland_amv"])
+
+        engine_labels = {
+            "tokens": "Token Swarm",
+            "counters": "+1/+1 Counters",
+            "sacrifice": "Aristocrats / Sacrifice",
+            "graveyard": "Graveyard Recursion",
+            "spellslinger": "Spellslinger",
+            "blink": "Blink / Flicker",
+        }
+
+        return {
+            "dominant_engine": dominant_engine,
+            "engine_label": engine_labels.get(dominant_engine, ""),
+            "primary_type": primary_type,
+            "is_typal": is_typal,
+            "draw_deficit": total_draw < 8,
+            "ramp_deficit": total_ramp < 8 or amv > 3.4,
+            "removal_deficit": total_removal < 7,
+            "wipe_deficit": total_wipes < 2,
+            "has_poison": has_poison,
+            "amv": amv,
+            "archetype": (ai_analysis or {}).get("archetype") or (deck_stats or {}).get("archetype") or "Midrange",
+        }
+
+    def _scan_binder_for_upgrades(
+        self,
+        user_inventory: List[UserInventoryCard],
+        deck_cards_set: Set[str],
+        color_identity: Set[str],
+        cut_candidates: List[Dict[str, Any]],
+        assigned_cuts: Set[str],
+        allocations: Dict[str, Dict[str, Any]],
+        applied_card_in_names: Set[str],
+        edhrec_synergies: Dict[str, Dict[str, Any]],
+        top_salt_map: Dict[str, float],
+        deck_strategy: Dict[str, Any],
+        is_pauper: bool = False,
+        pauper_legal_cache: Optional[Dict[str, bool]] = None,
+        cid_cache: Optional[Dict[str, List[str]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Scans the user's entire inventory to discover the strongest buff candidates matching
+        the deck's color identity, strategy/engines, and deficit needs.
+        """
+        binder_swaps = []
+        curated_names_set = {strip_accents(s["name"]).lower() for s in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES}
+
+        inventory_by_name: Dict[str, List[UserInventoryCard]] = {}
+        for ic in user_inventory:
+            clean = strip_accents(ic.name).strip().lower()
+            inventory_by_name.setdefault(clean, []).append(ic)
+
+        for clean_name, copies in inventory_by_name.items():
+            if not clean_name or clean_name in applied_card_in_names:
+                continue
+            primary_copy = copies[0]
+            card_name = primary_copy.name
+
+            if self._is_card_in_deck(card_name, deck_cards_set):
+                continue
+
+            if not self._is_format_legal(card_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
+                continue
+
+            ic_cid = None
+            if hasattr(primary_copy, "color_identity") and primary_copy.color_identity is not None:
+                if isinstance(primary_copy.color_identity, list):
+                    ic_cid = primary_copy.color_identity
+                elif isinstance(primary_copy.color_identity, str):
+                    ic_cid = [c.strip() for c in primary_copy.color_identity.split(",") if c.strip()]
+            elif hasattr(primary_copy, "get_color_identity_list") and getattr(primary_copy, "color_identity", None) is not None:
+                ic_cid = primary_copy.get_color_identity_list()
+
+            if not self._is_color_legal(card_name, color_identity, card_cid=ic_cid, cid_cache=cid_cache, mana_cost=primary_copy.mana_cost):
+                continue
+
+            type_line_lower = (primary_copy.type_line or "").lower()
+            if "basic" in type_line_lower and "land" in type_line_lower:
+                continue
+
+            card_dict = {
+                "name": card_name,
+                "type_line": primary_copy.type_line or "",
+                "oracle_text": primary_copy.oracle_text or "",
+                "cmc": primary_copy.cmc or 0,
+                "mana_cost": primary_copy.mana_cost or "",
+            }
+            classification = self.classifier.classify(card_dict)
+
+            score = 0.0
+            reasons = []
+            category = "Binder Upgrade"
+
+            # 1. EDHREC synergy and inclusion
+            syn_info = edhrec_synergies.get(clean_name)
+            if not syn_info and " // " in clean_name:
+                syn_info = edhrec_synergies.get(clean_name.split(" // ")[0].strip())
+            syn = syn_info.get("synergy", 0.0) if syn_info else 0.0
+            syn_pct = syn_info.get("synergy_percent", 0.0) if syn_info else round(syn * 100.0, 1)
+            inc_pct = syn_info.get("inclusion_percent", 0.0) if syn_info else 0.0
+            salt = top_salt_map.get(clean_name)
+
+            if syn_pct > 0:
+                score += (syn_pct * 0.7)
+                reasons.append(f"+{syn_pct}% EDHREC synergy")
+            if inc_pct > 0:
+                score += min(inc_pct * 0.3, 15.0)
+                if inc_pct >= 20:
+                    reasons.append(f"played in {inc_pct}% of decks")
+
+            if syn >= 0.50:
+                category = "Signature Synergy"
+            elif syn >= 0.25:
+                category = "High Synergy"
+
+            # 2. Engine & Archetype alignment
+            dominant_engine = deck_strategy.get("dominant_engine")
+            if dominant_engine:
+                card_enablers = classification.get("engine_enabler", [])
+                card_payoffs = classification.get("engine_payoff", [])
+                if dominant_engine in card_enablers or dominant_engine in card_payoffs:
+                    score += 35.0
+                    engine_label = deck_strategy.get("engine_label", dominant_engine.title())
+                    reasons.append(f"synergizes with deck's {engine_label} engine")
+                    if category == "Binder Upgrade":
+                        category = f"Engine Synergy ({engine_label})"
+
+            primary_type = deck_strategy.get("primary_type")
+            if primary_type and deck_strategy.get("is_typal"):
+                card_subtypes = classification.get("creature_subtypes", [])
+                oracle_lower = (primary_copy.oracle_text or "").lower()
+                if primary_type.lower() in [s.lower() for s in card_subtypes]:
+                    score += 30.0
+                    reasons.append(f"creature type {primary_type}")
+                    if category == "Binder Upgrade":
+                        category = f"Typal Buff ({primary_type})"
+                elif re.search(rf"\b{re.escape(primary_type.lower())}\b", oracle_lower):
+                    score += 25.0
+                    reasons.append(f"kindred support for {primary_type}")
+                    if category == "Binder Upgrade":
+                        category = f"Typal Support ({primary_type})"
+
+            if deck_strategy.get("has_poison") and any(k in (primary_copy.oracle_text or "").lower() for k in ["deathtouch", "toxic", "poison", "proliferate"]):
+                score += 30.0
+                reasons.append("triggers commander poison / counter win conditions")
+                if category == "Binder Upgrade":
+                    category = "Commander Synergy"
+
+            # 3. Deficit filling
+            if deck_strategy.get("draw_deficit") and (classification.get("is_draw") or classification.get("draw_type") == "engine"):
+                score += 25.0
+                reasons.append("fills deck's card draw deficit")
+                if category == "Binder Upgrade":
+                    category = "Card Advantage Engine"
+
+            if deck_strategy.get("ramp_deficit") and classification.get("is_ramp") and (primary_copy.cmc or 0) <= 2:
+                score += 22.0
+                reasons.append("efficient low-cost ramp acceleration")
+                if category == "Binder Upgrade":
+                    category = "Fast Ramp"
+
+            if deck_strategy.get("removal_deficit") and classification.get("is_targeted_removal"):
+                score += 20.0
+                reasons.append("efficient interaction to answer threats")
+                if category == "Binder Upgrade":
+                    category = "Targeted Removal"
+
+            if deck_strategy.get("wipe_deficit") and classification.get("is_board_wipe"):
+                score += 22.0
+                reasons.append("board sweeper protection")
+                if category == "Binder Upgrade":
+                    category = "Board Wipe"
+
+            if classification.get("wincon_tags"):
+                score += 28.0
+                reasons.append("high-impact game-ending finisher")
+                if category == "Binder Upgrade":
+                    category = "Finisher / Win-Con"
+
+            if clean_name in curated_names_set:
+                score += 20.0
+                reasons.append("top-tier Commander staple")
+                if category == "Binder Upgrade":
+                    category = "Power Staple"
+
+            price = primary_copy.price_usd or 0.0
+            if price >= 15.0:
+                score += 15.0
+                reasons.append("high-impact card in collection")
+            elif price >= 5.0:
+                score += 8.0
+
+            if score < 18.0 and syn < 0.20:
+                continue
+
+            alloc_key = clean_name
+            if alloc_key not in allocations and " // " in alloc_key:
+                alloc_key = alloc_key.split(" // ")[0].strip()
+            alloc_info = allocations.get(alloc_key, {"total_allocated": 0, "other_allocated": 0, "decks": []})
+            total_owned = sum(c.quantity for c in copies)
+            other_allocated = alloc_info.get("other_allocated", 0)
+            avail = max(0, total_owned - other_allocated)
+
+            matched_cut = self._find_best_cut(cut_candidates, category, used_cuts=assigned_cuts)
+            cut_name = matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut
+
+            rationale_text = f"Upgrade into {card_name} from your binder: {', '.join(reasons[:2])}. Replaces {cut_name}." if reasons else f"Recommended upgrade from your binder into {card_name}, replacing {cut_name}."
+
+            impact = "High" if (score >= 35 or syn >= 0.25) else "Medium"
+
+            binder_swaps.append({
+                "card_in": card_name,
+                "card_in_image": primary_copy.image_uri,
+                "card_in_mana": primary_copy.mana_cost or "",
+                "card_in_cmc": primary_copy.cmc or 0,
+                "card_in_type": primary_copy.type_line or "Card",
+                "card_in_set": primary_copy.set_code or "",
+                "card_in_foil": primary_copy.foil or "normal",
+                "card_in_condition": primary_copy.condition or "Near Mint",
+                "card_in_price": primary_copy.price_usd,
+                "card_out": cut_name,
+                "card_out_cmc": matched_cut.get("cmc") if isinstance(matched_cut, dict) else None,
+                "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
+                "category": category,
+                "estimated_impact": impact,
+                "synergy": syn,
+                "synergy_percent": syn_pct,
+                "inclusion_percent": inc_pct,
+                "salt_score": salt,
+                "strategic_score": round(score, 1),
+                "rationale": rationale_text,
+                "is_owned": True,
+                "total_owned": total_owned,
+                "available_copies": avail,
+                "already_allocated": (avail <= 0 and total_owned > 0),
+                "allocated_in": [d["deck_name"] for d in alloc_info.get("decks", []) if not d.get("is_current")],
+            })
+            applied_card_in_names.add(clean_name)
+
+        return binder_swaps
 
     def _identify_cut_candidates(self, cards: List[Dict[str, Any]], ai_analysis: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Identifies the weakest slotted cards in the deck to suggest as cuts."""
@@ -1097,9 +1622,7 @@ class DualTierUpgradeEngine:
             type_line = (c.get("type_line") or "").lower()
             cmc = float(c.get("cmc", 0))
 
-            # Basic lands shouldn't be primary nonland cut candidates unless mana base swap
             is_basic = "basic" in type_line and "land" in type_line
-
             rating = ai_ratings_map.get(name_lower, 7.0)
             is_ai_cut = (name_lower in ai_cuts)
 
@@ -1112,8 +1635,8 @@ class DualTierUpgradeEngine:
                 "is_ai_cut": is_ai_cut,
             })
 
-        # Sort so weakest / lowest rated / highest CMC cards are first
-        candidates.sort(key=lambda x: (not x["is_ai_cut"], x["rating"], -x["cmc"]))
+        # Sort so weakest / lowest rated non-basic cards are prioritized as cuts
+        candidates.sort(key=lambda x: (not x["is_ai_cut"], x["is_basic"], x["rating"], -x["cmc"]))
         return candidates
 
     def _find_best_cut(
@@ -1133,23 +1656,56 @@ class DualTierUpgradeEngine:
             return cand.get("name", "").strip().lower() not in used_cuts
 
         target_lower = (target_role_or_category or "").lower()
+
+        # 1. Lands
         if "land" in target_lower or "mana base" in target_lower:
             for c in cut_candidates:
                 if _available(c) and "land" in (c.get("type_line") or "").lower():
                     used_cuts.add(c.get("name", "").strip().lower())
                     return c
-        elif "ramp" in target_lower or "rock" in target_lower:
+
+        # 2. Ramp / Rocks
+        elif any(k in target_lower for k in ["ramp", "rock", "velocity"]):
             for c in cut_candidates:
-                if _available(c) and c.get("cmc", 0) >= 3 and ("artifact" in (c.get("type_line") or "").lower() or c["rating"] <= 6.0):
-                    used_cuts.add(c.get("name", "").strip().lower())
-                    return c
-        elif "removal" in target_lower or "interaction" in target_lower:
-            for c in cut_candidates:
-                if _available(c) and c.get("cmc", 0) >= 3 and c["rating"] <= 6.5:
+                if _available(c) and not c.get("is_basic") and (
+                    (c.get("cmc", 0) >= 3 and "artifact" in (c.get("type_line") or "").lower())
+                    or c.get("rating", 7.0) <= 6.0
+                ):
                     used_cuts.add(c.get("name", "").strip().lower())
                     return c
 
-        # Next check any candidate not yet assigned
+        # 3. Card Draw / Advantage
+        elif any(k in target_lower for k in ["draw", "card advantage", "cantrip"]):
+            for c in cut_candidates:
+                if _available(c) and not c.get("is_basic") and (
+                    c.get("rating", 7.0) <= 6.0 or (c.get("cmc", 0) >= 4 and "creature" in (c.get("type_line") or "").lower())
+                ):
+                    used_cuts.add(c.get("name", "").strip().lower())
+                    return c
+
+        # 4. Removal / Interaction
+        elif any(k in target_lower for k in ["removal", "interaction", "counterspell", "protection"]):
+            for c in cut_candidates:
+                if _available(c) and not c.get("is_basic") and (
+                    (c.get("cmc", 0) >= 3 and c.get("rating", 7.0) <= 6.5) or c.get("rating", 7.0) <= 5.5
+                ):
+                    used_cuts.add(c.get("name", "").strip().lower())
+                    return c
+
+        # 5. Finishers / High Impact
+        elif any(k in target_lower for k in ["finisher", "win-con", "overrun"]):
+            for c in cut_candidates:
+                if _available(c) and not c.get("is_basic") and c.get("cmc", 0) >= 4 and c.get("rating", 7.0) <= 6.5:
+                    used_cuts.add(c.get("name", "").strip().lower())
+                    return c
+
+        # Next check any non-basic candidate not yet assigned
+        for c in cut_candidates:
+            if _available(c) and not c.get("is_basic"):
+                used_cuts.add(c.get("name", "").strip().lower())
+                return c
+
+        # If only basics left, check any candidate
         for c in cut_candidates:
             if _available(c):
                 used_cuts.add(c.get("name", "").strip().lower())

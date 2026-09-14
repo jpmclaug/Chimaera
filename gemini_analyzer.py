@@ -31,10 +31,10 @@ def get_est_timestamp_str(dt_val: datetime | None = None) -> str:
 logger = logging.getLogger(__name__)
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-DEFAULT_MODEL = "gemini-3.7-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
 SUPPORTED_MODELS = [
-    {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Latest)", "description": "Next-generation ultra-high accuracy and speed tactical MTG evaluations."},
-    {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash (Default)", "description": "High speed, high accuracy tactical MTG evaluations."},
+    {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Default)", "description": "Next-generation ultra-high accuracy and speed tactical MTG evaluations."},
+    {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash", "description": "High speed, high accuracy tactical MTG evaluations."},
     {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "description": "High performance low latency MTG analysis."},
     {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "description": "Fast tactical Commander evaluations."},
     {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "description": "Ultra lightweight, low latency model."},
@@ -185,6 +185,11 @@ class GeminiAnalyzer:
             or deck_data.get("deck_format") == "pauper_commander"
         )
 
+        cid_list = deck_data.get("color_identity") or []
+        if not cid_list and "stats" in deck_data and isinstance(deck_data["stats"], dict):
+            cid_list = deck_data["stats"].get("color_identity", [])
+        cid_str = ", ".join(cid_list) if cid_list else "Colorless"
+
         if is_pauper:
             system_instruction = (
                 "You are an elite Magic: The Gathering Pauper Commander (PDH / Pauper EDH) tactical deck analyst, tournament judge, "
@@ -194,17 +199,19 @@ class GeminiAnalyzer:
                 "2. The 99 cards in the library must have ALL been printed at COMMON rarity in paper MTG or MTGO. "
                 "3. Mystic Remora and Rhystic Study are BANNED in Pauper Commander. "
                 "4. ALL upgrade suggestions ('card_in') MUST be 100% legal in Pauper Commander (strictly COMMON cards; no uncommons, rares, or mythics allowed in the 99). "
+                f"5. ALL upgrade suggestions ('card_in') MUST strictly conform to the Commander's color identity [{cid_str}]. "
                 "You must output ONLY valid JSON matching the exact required schema."
             )
-            format_header = "FORMAT: Pauper Commander (PDH / Pauper EDH) - Uncommon Commander, 99 Commons in Library"
+            format_header = f"FORMAT: Pauper Commander (PDH / Pauper EDH) | COMMANDER COLOR IDENTITY: [{cid_str}]"
             upgrade_constraint = " (CRITICAL PAUPER COMMANDER CONSTRAINT: Every single 'card_in' MUST be printed at COMMON rarity. Do NOT recommend Rares, Mythics, or Uncommons for the 99-card deck, and do NOT recommend Rhystic Study or Mystic Remora.)"
         else:
             system_instruction = (
                 "You are an elite Magic: The Gathering Commander (EDH) tactical deck analyst, tournament judge, "
                 "and deck-building architect. You evaluate decks with clinical precision, strategic depth, and high authority. "
+                f"CRITICAL COMMANDER RULE: Every card upgrade ('card_in') MUST strictly match the designated Commander's color identity [{cid_str}]. Never recommend cards containing mana symbols or hybrid mana outside [{cid_str}]. "
                 "You must output ONLY valid JSON matching the exact required schema."
             )
-            format_header = "FORMAT: Regular Commander (EDH)"
+            format_header = f"FORMAT: Regular Commander (EDH) | COMMANDER COLOR IDENTITY: [{cid_str}]"
             upgrade_constraint = ""
 
         user_prompt = f"""Analyze this Magic: The Gathering Commander deck in full clinical detail.
@@ -212,6 +219,7 @@ class GeminiAnalyzer:
 {format_header}
 DECK NAME: {deck_name}
 DESIGNATED COMMANDER(S): {', '.join(commanders) if commanders else 'Not explicitly specified'}
+COMMANDER COLOR IDENTITY: [{cid_str}]
 TOTAL CARD COUNT: {sum(c.get('quantity', 1) for c in cards)}
 
 DECK LIST:
@@ -240,7 +248,9 @@ TASK REQUIREMENTS:
 
 4. PROPOSED CARD UPGRADES & SWAPS:
    - Suggest 4 to 8 high-impact card upgrades.{upgrade_constraint}
-   - For each upgrade, specify 'card_in' (the recommended addition), 'card_out' (the card to cut from the current list), 'category' ('Power', 'Synergy', 'Mana Base', 'Protection', 'Speed', 'Budget'), 'rationale' (clear explanation of why this swap improves speed, consistency, or power), and 'estimated_impact' ('High', 'Medium', 'Low').
+   - CRITICAL COMMANDER COLOR IDENTITY RULE: Every suggested 'card_in' MUST strictly match the Commander's color identity [{cid_str}]. For example, in a Mono-Green deck, ALL suggestions MUST be Green or Colorless. Never recommend cards containing mana symbols or hybrid mana outside [{cid_str}] (e.g., no Blue, Black, Red, or White cards for a Mono-Green deck).
+   - STRATEGY ALIGNMENT: Recommend upgrades that offer the STRONGEST BUFFS to what this deck is actually doing (amplifying core engines, enablers, payoffs, or finishers) or solving critical curve, draw, and interaction deficits.
+   - For each upgrade, specify 'card_in' (the recommended addition), 'card_out' (the card to cut from the current list), 'category' ('Power', 'Synergy', 'Mana Base', 'Protection', 'Speed', 'Budget'), 'rationale' (clear explanation of why this swap improves speed, consistency, or power), 'estimated_impact' ('High', 'Medium', 'Low'), and 'color_identity' (array of color letters e.g. ["G"] or []).
 
 5. CUT RECOMMENDATIONS:
    - List the 3 to 6 weakest cards in the deck with reasons why they should be replaced.
@@ -250,7 +260,7 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
   "deck_name": "{deck_name}",
   "commander": ["{commanders[0] if commanders else ''}"],
   "partner_or_companion": null,
-  "color_identity": ["W", "U", "B", "R", "G"],
+  "color_identity": {json.dumps(cid_list)},
   "archetype": "string",
   "estimated_power_level": 7.5,
   "power_bracket": "Optimized (7-8)",
@@ -284,7 +294,8 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
       "card_out": "string",
       "category": "string",
       "rationale": "string",
-      "estimated_impact": "High"
+      "estimated_impact": "High",
+      "color_identity": ["G"]
     }}
   ],
   "cut_recommendations": [
@@ -371,7 +382,26 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
                         parsed_json.setdefault("commander", commanders)
                         parsed_json.setdefault("card_ratings", [])
                         parsed_json.setdefault("win_conditions", [])
-                        parsed_json.setdefault("upgrades", [])
+                        # Filter off-color hallucinated upgrades if color identity is specified
+                        raw_upgrades = parsed_json.get("upgrades", [])
+                        if cid_list and isinstance(raw_upgrades, list):
+                            allowed_set = {c.upper() for c in cid_list if c}
+                            filtered_upgrades = []
+                            for u in raw_upgrades:
+                                u_cid = u.get("color_identity")
+                                if isinstance(u_cid, (list, set)):
+                                    u_pips = {c.upper() for c in u_cid if c and c.upper() in ("W", "U", "B", "R", "G")}
+                                    if not u_pips.issubset(allowed_set):
+                                        logger.warning(
+                                            f"Dropping off-color Gemini upgrade recommendation: '{u.get('card_in')}' "
+                                            f"(colors: {sorted(list(u_pips))} not in deck colors {sorted(list(allowed_set))})"
+                                        )
+                                        continue
+                                filtered_upgrades.append(u)
+                            parsed_json["upgrades"] = filtered_upgrades
+                        else:
+                            parsed_json.setdefault("upgrades", [])
+
                         parsed_json.setdefault("cut_recommendations", [])
                         parsed_json.setdefault("overall_summary", "Deck analysis complete.")
                         parsed_json["_model_used"] = target_model

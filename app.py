@@ -202,7 +202,7 @@ def _migrate_db_schema(app):
                             cards_data TEXT,
                             stats_json TEXT,
                             analysis_json TEXT,
-                            model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
+                            model_used VARCHAR(100) DEFAULT 'gemini-3.8-flash',
                             power_level FLOAT,
                             power_bracket VARCHAR(50),
                             archetype VARCHAR(100),
@@ -277,7 +277,7 @@ def _migrate_db_schema(app):
                             banner_image TEXT,
                             drops_data TEXT,
                             analysis_json TEXT,
-                            model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
+                            model_used VARCHAR(100) DEFAULT 'gemini-3.8-flash',
                             target_deck_ids VARCHAR(255),
                             created_at DATETIME,
                             updated_at DATETIME,
@@ -359,7 +359,7 @@ def _migrate_db_schema(app):
                                 cards_data TEXT,
                                 stats_json TEXT,
                                 analysis_json TEXT,
-                                model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
+                                model_used VARCHAR(100) DEFAULT 'gemini-3.8-flash',
                                 power_level FLOAT,
                                 power_bracket VARCHAR(50),
                                 archetype VARCHAR(100),
@@ -421,7 +421,7 @@ def _migrate_db_schema(app):
                                 banner_image TEXT,
                                 drops_data TEXT,
                                 analysis_json TEXT,
-                                model_used VARCHAR(100) DEFAULT 'gemini-3.7-flash',
+                                model_used VARCHAR(100) DEFAULT 'gemini-3.8-flash',
                                 target_deck_ids VARCHAR(255),
                                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -475,6 +475,20 @@ def _migrate_db_schema(app):
                             card.user_id = admin_user.id
                         db.session.commit()
                         logger.info(f"Assigned {len(orphans)} legacy watchlist items to admin ({admin_email}).")
+
+                # Ensure default AI model is migrated to Gemini 3.8 Flash if unset or legacy default
+                try:
+                    current_model = SystemSetting.get_val("gemini_default_model")
+                    if not current_model or current_model in (
+                        "gemini-3.7-flash",
+                        "gemini-3.6-flash",
+                        "gemini-3.5-flash-lite",
+                        "gemini-3.5-flash",
+                    ):
+                        SystemSetting.set_val("gemini_default_model", "gemini-3.8-flash")
+                        logger.info("Migrated default AI model in SystemSetting to gemini-3.8-flash.")
+                except Exception as model_mig_err:
+                    logger.debug(f"Gemini default model migration check skipped: {model_mig_err}")
 
         except Exception as e:
             logger.warning(f"Database schema migration check skipped or completed with message: {e}")
@@ -2516,7 +2530,7 @@ def create_app(test_config=None):
             "deck_analyzer.html",
             has_gemini_key=has_gemini_key,
             supported_models=available_models,
-            default_model=app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
+            default_model=SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
             recent_decks=deck_dicts,
             decks=deck_dicts,
             fleet_stats=fleet_stats,
@@ -3286,7 +3300,7 @@ def create_app(test_config=None):
             "deck_analyzer.html",
             has_gemini_key=has_gemini_key,
             supported_models=available_models,
-            default_model=app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
+            default_model=SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
             recent_decks=deck_dicts,
             decks=deck_dicts,
             fleet_stats=fleet_stats,
@@ -4057,6 +4071,7 @@ def create_app(test_config=None):
             theme=theme,
             anti_salt=anti_salt,
             is_pauper=is_pauper_override,
+            deck_stats=entry.get_stats(),
         )
 
         edhrec_summary = None

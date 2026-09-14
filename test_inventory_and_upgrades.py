@@ -824,6 +824,291 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
             self.assertEqual(d2.status, "stats_only")
             self.assertEqual(d3.status, "ready")
 
+    # ----------------------------------------------------------------------
+    # 5. Strict Color Identity Enforcement & Strategic Binder Buff Tests
+    # ----------------------------------------------------------------------
+
+    def test_mono_green_color_identity_enforcement(self):
+        """
+        Verifies that a Mono-Green Commander deck (e.g. Fynn, the Fangbearer):
+        1. Completely rejects multi-color cards (e.g. Assassin's Trophy B/G, Growth Spiral G/U)
+        2. Completely rejects off-color cards (e.g. Swords to Plowshares, Cyclonic Rift, Demonic Tutor)
+        3. Surfaces high-buff green and colorless binder cards (e.g. The Great Henge, Beast Within, Sol Ring)
+        4. Completely excludes off-color cards from the shopping list / wishlist
+        """
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({
+            "assassin's trophy": {"name": "Assassin's Trophy", "color_identity": ["B", "G"], "colors": ["B", "G"], "cmc": 2, "type_line": "Instant"},
+            "growth spiral": {"name": "Growth Spiral", "color_identity": ["G", "U"], "colors": ["G", "U"], "cmc": 2, "type_line": "Instant"},
+            "the great henge": {"name": "The Great Henge", "color_identity": ["G"], "colors": ["G"], "cmc": 9, "type_line": "Legendary Artifact"},
+            "rhystic study": {"name": "Rhystic Study", "color_identity": ["U"], "colors": ["U"], "cmc": 3, "type_line": "Enchantment"},
+        }, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            inv_cards = [
+                # Multi-color cards (Contain Green, but ALSO Black or Blue - ILLEGAL in mono-green)
+                UserInventoryCard(user_id=user.id, name="Assassin's Trophy", color_identity="B,G", quantity=1, price_usd=4.50),
+                UserInventoryCard(user_id=user.id, name="Growth Spiral", color_identity="G,U", quantity=1, price_usd=0.50),
+
+                # Pure off-color cards (ILLEGAL in mono-green)
+                UserInventoryCard(user_id=user.id, name="Swords to Plowshares", color_identity="W", quantity=1, price_usd=2.00),
+                UserInventoryCard(user_id=user.id, name="Cyclonic Rift", color_identity="U", quantity=1, price_usd=35.00),
+                UserInventoryCard(user_id=user.id, name="Demonic Tutor", color_identity="B", quantity=1, price_usd=40.00),
+                UserInventoryCard(user_id=user.id, name="Lightning Bolt", color_identity="R", quantity=1, price_usd=1.00),
+
+                # Legal high-buff green and colorless cards (LEGAL in mono-green)
+                UserInventoryCard(
+                    user_id=user.id,
+                    name="The Great Henge",
+                    color_identity="G",
+                    quantity=1,
+                    price_usd=60.00,
+                    mana_cost="{7}{G}{G}",
+                    cmc=9.0,
+                    type_line="Legendary Artifact",
+                    oracle_text="{T}: Add {G}{G}. Whenever a non-token creature enters the battlefield under your control, put a +1/+1 counter on it and draw a card."
+                ),
+                UserInventoryCard(
+                    user_id=user.id,
+                    name="Beast Within",
+                    color_identity="G",
+                    quantity=1,
+                    price_usd=2.50,
+                    mana_cost="{2}{G}",
+                    cmc=3.0,
+                    type_line="Instant",
+                    oracle_text="Destroy target permanent. Its controller creates a 3/3 green Beast creature token."
+                ),
+                UserInventoryCard(
+                    user_id=user.id,
+                    name="Sol Ring",
+                    color_identity="",
+                    quantity=1,
+                    price_usd=1.50,
+                    mana_cost="{1}",
+                    cmc=1.0,
+                    type_line="Artifact",
+                    oracle_text="{T}: Add {C}{C}."
+                ),
+            ]
+            db.session.add_all(inv_cards)
+            db.session.commit()
+
+            # Mono-Green Fynn, the Fangbearer Deck
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Fynn Poison",
+                commander_name="Fynn, the Fangbearer",
+                color_identity="G",
+                cards_data=json.dumps([
+                    {"name": "Fynn, the Fangbearer", "section": "commander", "color_identity": ["G"], "type_line": "Legendary Creature — Human Warrior"},
+                    {"name": "Moss Diamond", "quantity": 1, "cmc": 2, "type_line": "Artifact", "color_identity": ["G"]},
+                    {"name": "Naturalize", "quantity": 1, "cmc": 2, "type_line": "Instant", "color_identity": ["G"]},
+                    {"name": "Forest", "quantity": 97, "cmc": 0, "type_line": "Basic Land — Forest", "color_identity": ["G"]},
+                ]),
+                total_cards=100
+            )
+            db.session.add(deck)
+            db.session.commit()
+
+            # Pass AI analysis that attempted to suggest off-color cards (e.g. Assassin's Trophy, Rhystic Study)
+            ai_analysis = {
+                "upgrades": [
+                    {"card_in": "Assassin's Trophy", "card_out": "Naturalize", "color_identity": ["B", "G"], "category": "Removal"},
+                    {"card_in": "Rhystic Study", "card_out": "Moss Diamond", "color_identity": ["U"], "category": "Card Advantage"},
+                    {"card_in": "The Great Henge", "card_out": "Moss Diamond", "color_identity": ["G"], "category": "Engine"},
+                ]
+            }
+
+            # Pass EDHREC priority pool that might include off-color or multi-color suggestions
+            edhrec_data = {
+                "card_synergies": {
+                    "beast within": {"name": "Beast Within", "synergy": 0.45, "synergy_percent": 45.0, "inclusion_percent": 80.0},
+                    "growth spiral": {"name": "Growth Spiral", "synergy": 0.35, "synergy_percent": 35.0, "inclusion_percent": 60.0},
+                },
+                "high_synergy_cards": [
+                    {"name": "Beast Within", "synergy": 0.45},
+                    {"name": "Growth Spiral", "synergy": 0.35},
+                ],
+                "top_cards": [],
+                "top_salt_map": {},
+                "combos": [],
+            }
+
+            results = engine.generate_upgrades(
+                deck=deck,
+                user_inventory=inv_cards,
+                allocations={},
+                ai_analysis=ai_analysis,
+                edhrec_data=edhrec_data,
+            )
+
+            owned_names = [u["card_in"] for u in results["owned_swaps"]]
+            shopping_names = [s["name"] for s in results["all_shopping_cards"]]
+
+            # 1. Verify Green and Colorless cards are recommended from inventory
+            self.assertIn("The Great Henge", owned_names)
+            self.assertIn("Beast Within", owned_names)
+            self.assertIn("Sol Ring", owned_names)
+
+            # 2. Verify Multi-color cards (B/G Assassin's Trophy, G/U Growth Spiral) are NEVER in owned_swaps
+            self.assertNotIn("Assassin's Trophy", owned_names)
+            self.assertNotIn("Growth Spiral", owned_names)
+
+            # 3. Verify Off-color cards are NEVER in owned_swaps
+            self.assertNotIn("Swords to Plowshares", owned_names)
+            self.assertNotIn("Cyclonic Rift", owned_names)
+            self.assertNotIn("Demonic Tutor", owned_names)
+            self.assertNotIn("Lightning Bolt", owned_names)
+
+            # 4. Verify Shopping List strictly excludes off-color and multi-color cards
+            self.assertNotIn("Assassin's Trophy", shopping_names)
+            self.assertNotIn("Growth Spiral", shopping_names)
+            self.assertNotIn("Rhystic Study", shopping_names)
+            for item in results["all_shopping_cards"]:
+                self.assertNotIn(item["name"], ["Swords to Plowshares", "Cyclonic Rift", "Demonic Tutor"])
+
+            # 5. Verify resolved deck color identity
+            self.assertEqual(results["deck_color_identity"], ["G"])
+
+    def test_binder_scanning_for_strategic_buffs_and_deficits(self):
+        """
+        Tests that the upgrade engine deeply analyzes deck deficits (e.g. low card draw)
+        and scans the entire binder to recommend high-buff synergistic cards.
+        """
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({}, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            # Deck has 0 card draw cards (severe draw deficit), 10 creature cards
+            cards = [
+                {"name": "Fynn, the Fangbearer", "section": "commander", "color_identity": ["G"], "type_line": "Legendary Creature — Human Warrior", "oracle_text": "Whenever a creature you control with deathtouch deals combat damage to a player, that player gets two poison counters."},
+            ]
+            for i in range(15):
+                cards.append({
+                    "name": f"Deathtouch Creature {i}",
+                    "quantity": 1,
+                    "cmc": 1.0,
+                    "type_line": "Creature — Snake",
+                    "color_identity": ["G"],
+                    "oracle_text": "Deathtouch",
+                })
+            for i in range(84):
+                cards.append({
+                    "name": f"Forest",
+                    "quantity": 1,
+                    "cmc": 0.0,
+                    "type_line": "Basic Land — Forest",
+                    "color_identity": ["G"],
+                })
+
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Fynn Deathtouch",
+                commander_name="Fynn, the Fangbearer",
+                color_identity="G",
+                cards_data=json.dumps(cards),
+                total_cards=100
+            )
+            db.session.add(deck)
+
+            # User's binder has Toski (combat damage card draw engine) and Bow of Nylea (deathtouch synergy)
+            toski = UserInventoryCard(
+                user_id=user.id,
+                name="Toski, Bearer of Secrets",
+                color_identity="G",
+                quantity=1,
+                price_usd=12.00,
+                mana_cost="{3}{G}",
+                cmc=4.0,
+                type_line="Legendary Creature — Squirrel",
+                oracle_text="Toski, Bearer of Secrets can't be countered. Indestructible. Toski attacks each combat if able. Whenever a creature you control deals combat damage to a player, draw a card."
+            )
+            db.session.add(toski)
+            db.session.commit()
+
+            results = engine.generate_upgrades(
+                deck=deck,
+                user_inventory=[toski],
+                allocations={},
+            )
+
+            owned_names = [u["card_in"] for u in results["owned_swaps"]]
+            self.assertIn("Toski, Bearer of Secrets", owned_names)
+
+            toski_swap = next(u for u in results["owned_swaps"] if u["card_in"] == "Toski, Bearer of Secrets")
+            # Strategic score should be high due to filling the card draw deficit
+            self.assertGreater(toski_swap.get("strategic_score", 0), 20.0)
+            self.assertIn("Card Advantage Engine", toski_swap.get("category", ""))
+
+    def test_allocated_binder_cards_sort_after_available_copies(self):
+        """Verifies that cards already allocated to other decks are deprioritized below unallocated binder cards."""
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({}, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            card_avail = UserInventoryCard(
+                user_id=user.id,
+                name="Beast Within",
+                color_identity="G",
+                quantity=1,
+                price_usd=2.50,
+                mana_cost="{2}{G}",
+                cmc=3.0,
+                type_line="Instant"
+            )
+            card_alloc = UserInventoryCard(
+                user_id=user.id,
+                name="Heroic Intervention",
+                color_identity="G",
+                quantity=1,
+                price_usd=10.00,
+                mana_cost="{1}{G}",
+                cmc=2.0,
+                type_line="Instant"
+            )
+
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Green Stompy",
+                commander_name="Ghalta, Primal Hunger",
+                color_identity="G",
+                cards_data=json.dumps([
+                    {"name": "Forest", "quantity": 99, "type_line": "Basic Land — Forest", "color_identity": ["G"]},
+                    {"name": "Ghalta, Primal Hunger", "section": "commander", "color_identity": ["G"], "type_line": "Legendary Creature"},
+                ]),
+                total_cards=100
+            )
+
+            # Heroic Intervention is allocated to another deck
+            allocations = {
+                "heroic intervention": {
+                    "total_allocated": 1,
+                    "other_allocated": 1,
+                    "decks": [{"deck_id": 999, "deck_name": "Other Deck", "is_current": False}],
+                }
+            }
+
+            results = engine.generate_upgrades(
+                deck=deck,
+                user_inventory=[card_avail, card_alloc],
+                allocations=allocations,
+            )
+
+            swaps = results["owned_swaps"]
+            self.assertEqual(len(swaps), 2)
+            # Available card (Beast Within) must come before allocated card (Heroic Intervention)
+            self.assertEqual(swaps[0]["card_in"], "Beast Within")
+            self.assertFalse(swaps[0]["already_allocated"])
+            self.assertEqual(swaps[1]["card_in"], "Heroic Intervention")
+            self.assertTrue(swaps[1]["already_allocated"])
+
 
 if __name__ == "__main__":
     unittest.main()

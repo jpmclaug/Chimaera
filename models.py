@@ -878,7 +878,7 @@ class DeckAnalysis(db.Model):
     cards_data = db.Column(db.Text, nullable=True)  # JSON string of parsed cards + scryfall metadata
     stats_json = db.Column(db.Text, nullable=True)  # JSON string of pre-computed stats (curve, types, value)
     analysis_json = db.Column(db.Text, nullable=True)  # JSON string of Gemini analysis (nullable if pre-AI)
-    model_used = db.Column(db.String(100), default="gemini-3.7-flash")
+    model_used = db.Column(db.String(100), default="gemini-3.8-flash")
     power_level = db.Column(db.Float, nullable=True)
     power_bracket = db.Column(db.String(50), nullable=True)
     archetype = db.Column(db.String(100), nullable=True)
@@ -1223,7 +1223,7 @@ class SecretLairAnalysis(db.Model):
     banner_image = db.Column(db.Text, nullable=True)
     drops_data = db.Column(db.Text, nullable=True)  # JSON string of parsed drops, cards, and Scryfall valuations
     analysis_json = db.Column(db.Text, nullable=True)  # JSON string of Gemini tactical analysis and recommendations
-    model_used = db.Column(db.String(100), default="gemini-3.7-flash")
+    model_used = db.Column(db.String(100), default="gemini-3.8-flash")
     target_deck_ids = db.Column(db.String(255), nullable=True)  # Comma-separated deck IDs evaluated
     created_at = db.Column(db.DateTime, default=utc_now, index=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)

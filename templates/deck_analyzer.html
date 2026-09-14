@@ -1352,7 +1352,7 @@
                         <div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">Gemini Strategic Intel Active</span>
-                                <span id="aiActiveModelBadge" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">gemini-3.7-flash</span>
+                                <span id="aiActiveModelBadge" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">gemini-3.8-flash</span>
                                 <span class="text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">Analyzed</span>
                             </div>
                             <p class="text-[11px] text-slate-400 font-mono mt-0.5">Card rankings, tactical roles, and archetype synergy evaluation synced.</p>
@@ -4601,7 +4601,7 @@ function renderAiAnalysis(analysis) {
 
     const modelBadge = document.getElementById('aiActiveModelBadge');
     if (modelBadge && activeDeck) {
-        modelBadge.innerText = activeDeck.model_used || (analysis && analysis._model_used) || 'gemini-3.7-flash';
+        modelBadge.innerText = activeDeck.model_used || (analysis && analysis._model_used) || 'gemini-3.8-flash';
     }
 
     // Win conditions
@@ -5017,7 +5017,7 @@ async function runAiAnalysisOnSavedDeck(callingBtn = null) {
     // Determine model from rerun selector if available, or savedDeckAiModel
     const rerunSelect = document.getElementById('rerunDeckAiModel');
     const initSelect = document.getElementById('savedDeckAiModel');
-    const model = (rerunSelect && rerunSelect.value) || (initSelect && initSelect.value) || 'gemini-3.7-flash';
+    const model = (rerunSelect && rerunSelect.value) || (initSelect && initSelect.value) || 'gemini-3.8-flash';
 
     const triggerButtons = [
         document.getElementById('runSavedAiBtn'),
@@ -6094,7 +6094,7 @@ function closeApiKeyModal() { document.getElementById('geminiApiKeyModal').class
 async function saveApiKeyFromModal() {
     const key = document.getElementById('modalGeminiApiKey').value.trim();
     const modelSelect = document.getElementById('modalGeminiModel');
-    const model = modelSelect ? modelSelect.value : 'gemini-3.7-flash';
+    const model = modelSelect ? modelSelect.value : 'gemini-3.8-flash';
     const btn = document.getElementById('modalSaveKeyBtn');
     btn.disabled = true;
     btn.innerText = "Verifying...";

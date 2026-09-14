@@ -524,13 +524,16 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
     def test_gemini_models_and_selection(self):
         """Verifies GeminiAnalyzer and endpoints support Gemini 3.8 Flash, 3.7 Flash, 3.6 Flash, 3.5 Flash, and 3.5 Flash-Lite."""
         analyzer_default = GeminiAnalyzer(api_key="test_key")
-        self.assertEqual(analyzer_default.model, "gemini-3.7-flash")
+        self.assertEqual(analyzer_default.model, "gemini-3.8-flash")
 
         analyzer_38 = GeminiAnalyzer(api_key="test_key", model="gemini-3.8-flash")
         self.assertEqual(analyzer_38.model, "gemini-3.8-flash")
 
         analyzer_38_alias = GeminiAnalyzer(api_key="test_key", model="3.8")
         self.assertEqual(analyzer_38_alias.model, "gemini-3.8-flash")
+
+        analyzer_37 = GeminiAnalyzer(api_key="test_key", model="gemini-3.7-flash")
+        self.assertEqual(analyzer_37.model, "gemini-3.7-flash")
 
         analyzer_36 = GeminiAnalyzer(api_key="test_key", model="gemini-3.6-flash")
         self.assertEqual(analyzer_36.model, "gemini-3.6-flash")
@@ -550,7 +553,7 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         resp = self.client.get("/api/deck/gemini-status")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
-        self.assertEqual(data["default_model"], "gemini-3.7-flash")
+        self.assertEqual(data["default_model"], "gemini-3.8-flash")
         resp_model_ids = [m["id"] for m in data["supported_models"]]
         self.assertEqual(resp_model_ids, ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"])
 
