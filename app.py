@@ -15,6 +15,7 @@ from flask import (
     flash,
     session,
     g,
+    send_from_directory,
 )
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -32,6 +33,7 @@ from models import (
     DeckAnalysis,
     UserInventoryCard,
     SecretLairAnalysis,
+    CardAddAnalysis,
     utc_now,
 )
 from deal_engine import DealEngine
@@ -55,6 +57,7 @@ from secret_lair_advisor import (
     SecretLairFinancialEvaluator,
     SecretLairGeminiAdvisor,
 )
+from card_add_evaluator import CardAddEvaluator
 from tcgplayer_parser import TCGPlayerPurchaseParser
 
 # Configure logging
@@ -285,6 +288,23 @@ def _migrate_db_schema(app):
                         )
                     """))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_secret_lair_user_id ON secret_lair_analysis (user_id)"))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS card_add_analysis (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER,
+                            title VARCHAR(255) NOT NULL DEFAULT 'Card Add Analysis',
+                            source_type VARCHAR(50) DEFAULT 'card_list',
+                            input_text TEXT,
+                            cards_data TEXT,
+                            analysis_json TEXT,
+                            model_used VARCHAR(100) DEFAULT 'gemini-3.8-flash',
+                            target_deck_ids VARCHAR(255),
+                            created_at DATETIME,
+                            updated_at DATETIME,
+                            FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_card_add_user_id ON card_add_analysis (user_id)"))
                     conn.commit()
 
             elif dialect in ("postgresql", "postgres"):
@@ -428,6 +448,22 @@ def _migrate_db_schema(app):
                             )
                         """))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_secret_lair_user_id ON secret_lair_analysis (user_id)"))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS card_add_analysis (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER REFERENCES "user"(id) ON DELETE CASCADE,
+                                title VARCHAR(255) NOT NULL DEFAULT 'Card Add Analysis',
+                                source_type VARCHAR(50) DEFAULT 'card_list',
+                                input_text TEXT,
+                                cards_data TEXT,
+                                analysis_json TEXT,
+                                model_used VARCHAR(100) DEFAULT 'gemini-3.8-flash',
+                                target_deck_ids VARCHAR(255),
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                            )
+                        """))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_card_add_user_id ON card_add_analysis (user_id)"))
                         conn.commit()
                         logger.info("PostgreSQL migration check completed.")
                 except Exception as pg_err:
@@ -544,9 +580,11 @@ def create_app(test_config=None):
     inventory_manager = InventoryManager(scryfall_provider=scryfall_provider)
     upgrade_engine = DualTierUpgradeEngine(scryfall_provider=scryfall_provider)
     edhrec_provider = EDHRECProvider()
+    card_add_evaluator = CardAddEvaluator(scryfall_provider=scryfall_provider, edhrec_provider=edhrec_provider)
     app.edhrec_provider = edhrec_provider
     app.upgrade_engine = upgrade_engine
     app.inventory_manager = inventory_manager
+    app.card_add_evaluator = card_add_evaluator
 
     with app.app_context():
         db.create_all()
@@ -1199,6 +1237,37 @@ def create_app(test_config=None):
         return render_template(
             "system_overview.html",
             active_tab="system_overview",
+        )
+
+    # ---------------------------------------------------------
+    # PWA & Mobile Web App Asset Routes
+    # ---------------------------------------------------------
+    @app.route("/manifest.json")
+    def manifest():
+        """Serves the Web App Manifest for mobile installation."""
+        return send_from_directory(
+            os.path.join(app.root_path, "static"),
+            "manifest.json",
+            mimetype="application/manifest+json",
+        )
+
+    @app.route("/favicon.ico")
+    def favicon():
+        """Serves favicon.ico from static/img."""
+        return send_from_directory(
+            os.path.join(app.root_path, "static", "img"),
+            "favicon.ico",
+            mimetype="image/vnd.microsoft.icon",
+        )
+
+    @app.route("/apple-touch-icon.png")
+    @app.route("/apple-touch-icon-precomposed.png")
+    def apple_touch_icon():
+        """Serves Apple Touch Icon for iOS home screen installation."""
+        return send_from_directory(
+            os.path.join(app.root_path, "static", "img"),
+            "apple-touch-icon.png",
+            mimetype="image/png",
         )
 
     @app.route("/")
@@ -3559,10 +3628,11 @@ def create_app(test_config=None):
     # Secret Lair Commander Fleet Intelligence & Drop Advisor Endpoints
     # ----------------------------------------------------------------------
 
+    @app.route("/add-evaluator")
     @app.route("/secret-lair")
     @login_required
-    def secret_lair_page():
-        """Secret Lair Preview Intelligence & Commander Fleet Advisor Hub."""
+    def add_evaluator_page():
+        """Card Add Evaluator & Secret Lair Add Analysis Suite Hub."""
         user = get_current_user()
         has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
@@ -3579,22 +3649,208 @@ def create_app(test_config=None):
 
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
 
-        history_records = []
+        card_history = []
+        sl_history = []
         if user:
-            h_query = SecretLairAnalysis.query if user.is_admin else SecretLairAnalysis.query.filter(db.or_(SecretLairAnalysis.user_id == user.id, SecretLairAnalysis.user_id == None))
-            history_records = [r.to_dict() for r in h_query.order_by(SecretLairAnalysis.created_at.desc()).limit(20).all()]
+            c_query = CardAddAnalysis.query if user.is_admin else CardAddAnalysis.query.filter(db.or_(CardAddAnalysis.user_id == user.id, CardAddAnalysis.user_id == None))
+            card_history = [r.to_dict() for r in c_query.order_by(CardAddAnalysis.created_at.desc()).limit(20).all()]
 
-        log_activity("PAGE_VIEW", details="Accessed Secret Lair Advisor Hub", user=user)
+            sl_query = SecretLairAnalysis.query if user.is_admin else SecretLairAnalysis.query.filter(db.or_(SecretLairAnalysis.user_id == user.id, SecretLairAnalysis.user_id == None))
+            sl_history = [r.to_dict() for r in sl_query.order_by(SecretLairAnalysis.created_at.desc()).limit(20).all()]
+
+        requested_mode = request.args.get("mode")
+        if not requested_mode:
+            requested_mode = "secret_lair" if request.path == "/secret-lair" else "cards"
+
+        log_activity("PAGE_VIEW", details=f"Accessed Add Analysis Suite (mode: {requested_mode})", user=user)
 
         return render_template(
-            "secret_lair.html",
+            "add_evaluator.html",
             has_gemini_key=has_gemini_key,
             supported_models=available_models,
             default_model=default_model,
             decks=deck_dicts,
-            history=history_records,
-            active_tab="secret_lair",
+            card_history=card_history,
+            sl_history=sl_history,
+            history=sl_history,
+            initial_mode=requested_mode,
+            active_tab="add_evaluator" if requested_mode != "secret_lair" else "secret_lair",
         )
+
+    @app.route("/api/add-evaluator/evaluate", methods=["POST"])
+    @login_required
+    def api_add_evaluator_evaluate():
+        """Evaluates candidate cards or Secret Lair drops against user's Commander fleet."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+
+        mode = (data.get("mode") or "cards").lower().strip()
+        db_key = SystemSetting.get_val("gemini_api_key")
+        effective_key = (data.get("api_key") or "").strip() or app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        selected_deck_ids = data.get("deck_ids")
+        model = data.get("model") or SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        custom_instructions = data.get("custom_instructions", "").strip()
+        save_to_history = data.get("save_to_history", True)
+        use_gemini = data.get("use_gemini", True) and bool(effective_key)
+
+        # Resolve target Commander decks
+        query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
+        all_user_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+
+        target_decks = []
+        if selected_deck_ids and isinstance(selected_deck_ids, list):
+            target_ids_set = {int(did) for did in selected_deck_ids if str(did).isdigit()}
+            target_decks = [d for d in all_user_decks if d.id in target_ids_set]
+        if not target_decks:
+            target_decks = all_user_decks
+
+        if not target_decks:
+            return jsonify({"error": "No Commander decks found in your vault to evaluate against. Please import a deck first."}), 400
+
+        deck_payloads = []
+        for d in target_decks:
+            deck_payloads.append({
+                "id": d.id,
+                "deck_name": d.deck_name,
+                "commander_name": d.commander_name,
+                "commander_art": d.commander_art,
+                "color_identity": d.color_identity,
+                "archetype": d.archetype or "Commander Synergy",
+                "cards": d.get_parsed_cards()[:80],
+                "stats": d.get_stats(),
+                "analysis": d.get_analysis(),
+                "is_pauper": d.is_pauper_commander,
+                "deck_format": d.deck_format,
+            })
+
+        if mode == "secret_lair":
+            url_or_text = (data.get("url") or data.get("raw_text") or "").strip()
+            if not url_or_text:
+                return jsonify({"error": "Please provide a Secret Lair preview URL or announcement text."}), 400
+            try:
+                suite_result = card_add_evaluator.evaluate_secret_lair_suite(
+                    url_or_text=url_or_text,
+                    decks=deck_payloads,
+                    custom_instructions=custom_instructions,
+                    model=model,
+                    api_key=effective_key,
+                )
+            except Exception as e:
+                logger.error(f"Secret Lair evaluation failed: {e}", exc_info=True)
+                return jsonify({"error": f"Secret Lair evaluation failed: {str(e)}"}), 400
+
+            saved_id = None
+            if save_to_history:
+                try:
+                    target_ids_str = ",".join(str(d["id"]) for d in deck_payloads)
+                    rec = SecretLairAnalysis(
+                        user_id=user.id,
+                        title=suite_result.get("title") or "Secret Lair Superdrop",
+                        source_url=suite_result.get("source_url"),
+                        banner_image=suite_result.get("banner_image"),
+                        drops_data=json.dumps(suite_result.get("drops", [])),
+                        analysis_json=json.dumps(suite_result.get("fleet_analysis", {})),
+                        model_used=suite_result.get("_model_used", model),
+                        target_deck_ids=target_ids_str,
+                    )
+                    db.session.add(rec)
+                    db.session.commit()
+                    saved_id = rec.id
+                except Exception as db_err:
+                    logger.error(f"Failed to persist SecretLairAnalysis: {db_err}")
+                    db.session.rollback()
+
+            log_activity("ANALYSIS", details=f"Evaluated Secret Lair: {suite_result.get('title')}", user=user)
+            suite_result["success"] = True
+            suite_result["id"] = saved_id
+            return jsonify(suite_result)
+
+        else:
+            # Mode == 'cards' (single or list)
+            raw_cards = data.get("cards") or data.get("raw_text") or ""
+            parsed_cards = card_add_evaluator.parse_card_input(raw_cards)
+            if not parsed_cards:
+                return jsonify({"error": "Please enter at least one valid Magic: The Gathering card name."}), 400
+
+            enriched_cards = card_add_evaluator.enrich_cards(parsed_cards)
+            suite_result = card_add_evaluator.evaluate_cards_suite(
+                cards=enriched_cards,
+                decks=deck_payloads,
+                use_gemini=use_gemini,
+                custom_instructions=custom_instructions,
+                model=model,
+                api_key=effective_key,
+            )
+
+            if "error" in suite_result:
+                return jsonify(suite_result), 400
+
+            if len(enriched_cards) == 1:
+                title_text = f"Card Evaluation: {enriched_cards[0].get('canonical_name', 'Card')}"
+                source_type = "single_card"
+            else:
+                title_text = f"Batch Add Analysis: {len(enriched_cards)} Cards ({enriched_cards[0].get('canonical_name')}, ...)"
+                source_type = "card_list"
+
+            saved_id = None
+            if save_to_history:
+                try:
+                    target_ids_str = ",".join(str(d["id"]) for d in deck_payloads)
+                    rec = CardAddAnalysis(
+                        user_id=user.id,
+                        title=title_text,
+                        source_type=source_type,
+                        input_text=str(raw_cards)[:2000],
+                        cards_data=json.dumps(enriched_cards),
+                        analysis_json=json.dumps(suite_result),
+                        model_used=suite_result.get("_model_used", model),
+                        target_deck_ids=target_ids_str,
+                    )
+                    db.session.add(rec)
+                    db.session.commit()
+                    saved_id = rec.id
+                except Exception as db_err:
+                    logger.error(f"Failed to persist CardAddAnalysis: {db_err}")
+                    db.session.rollback()
+
+            log_activity("ANALYSIS", details=f"Evaluated {len(enriched_cards)} card adds against {len(deck_payloads)} decks", user=user)
+
+            suite_result["success"] = True
+            suite_result["id"] = saved_id
+            suite_result["title"] = title_text
+            suite_result["cards"] = enriched_cards
+            return jsonify(suite_result)
+
+    @app.route("/api/add-evaluator/history", methods=["GET"])
+    @login_required
+    def api_add_evaluator_history():
+        """Returns history of card add analyses."""
+        user = get_current_user()
+        query = CardAddAnalysis.query if user.is_admin else CardAddAnalysis.query.filter(db.or_(CardAddAnalysis.user_id == user.id, CardAddAnalysis.user_id == None))
+        records = query.order_by(CardAddAnalysis.created_at.desc()).limit(30).all()
+        return jsonify([r.to_dict() for r in records])
+
+    @app.route("/api/add-evaluator/history/<int:analysis_id>", methods=["GET", "DELETE"])
+    @login_required
+    def api_add_evaluator_history_item(analysis_id: int):
+        """Retrieves or deletes a single saved CardAddAnalysis record."""
+        user = get_current_user()
+        entry = db.session.get(CardAddAnalysis, analysis_id)
+        if not entry:
+            return jsonify({"error": "Saved analysis not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Access denied."}), 403
+
+        if request.method == "DELETE":
+            try:
+                db.session.delete(entry)
+                db.session.commit()
+                return jsonify({"success": True, "message": "Analysis deleted."})
+            except Exception as e:
+                db.session.rollback()
+                return jsonify({"error": str(e)}), 500
+
+        return jsonify(entry.to_dict())
 
     @app.route("/api/secret-lair/analyze", methods=["POST"])
     @login_required

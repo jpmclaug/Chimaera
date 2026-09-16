@@ -1,0 +1,1188 @@
+{% extends "base.html" %}
+
+{% block title %}Tactical Add Analysis Suite // Chimaera MTG{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Top Tactical Banner -->
+    <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-6 shadow-xl relative overflow-hidden">
+        <div class="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-[#A855F7]/10 via-[#00CED1]/5 to-transparent pointer-events-none"></div>
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="bg-[#A855F7]/20 border border-[#A855F7]/60 text-[#C084FC] text-[10px] font-mono font-bold px-2 py-0.5 uppercase tracking-wider">SECTOR 08 // AI INTEL</span>
+                    <span class="bg-[#00CED1]/20 border border-[#00CED1]/50 text-[#00CED1] text-[10px] font-mono px-2 py-0.5 uppercase font-bold">ADD EVALUATOR</span>
+                    <span class="bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981] text-[10px] font-mono px-2 py-0.5 uppercase font-bold">SECRET LAIR SUITE</span>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-black font-heading tracking-wide uppercase text-white mt-1.5 flex items-center gap-2">
+                    Tactical Card Add & Secret Lair Suite
+                </h1>
+                <p class="text-xs text-[#94A3B8] max-w-3xl mt-1 leading-relaxed">
+                    Evaluate any single card, batch list, or Secret Lair Superdrop against your Commander fleet. Chimaera enforces color identity legality, identifies deck deficits and EDHREC synergies, scores tactical fit, and proposes exact cuts from your 99.
+                </p>
+            </div>
+            <div class="flex items-center space-x-3 flex-shrink-0">
+                <button onclick="openHistoryModal()" class="btn-bridge px-3.5 py-2 text-xs flex items-center space-x-2" title="View Saved Card & Secret Lair Analyses">
+                    <svg class="w-4 h-4 text-[#C084FC]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="font-bold">Past Intel (<span id="history-total-count">{{ (card_history|length if card_history else 0) + (sl_history|length if sl_history else 0) }}</span>)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ingestion Console: Mode Selector & Input -->
+    <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-6 shadow-xl">
+        <div class="border-b border-[#263245] pb-3 mb-4 flex items-center justify-between flex-wrap gap-2">
+            <div class="flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-[#00CED1] animate-pulse"></span>
+                <h2 class="text-sm font-bold font-mono tracking-wider text-white uppercase">// INGESTION PROTOCOL & SOURCE SELECTOR</h2>
+            </div>
+            <!-- Ingestion Mode Selector -->
+            <div class="flex items-center space-x-1 bg-[#10141D] p-1 border border-[#263245] text-xs font-mono">
+                <button onclick="switchInputMode('single')" id="tab-input-single" class="px-3 py-1 text-[#94A3B8] hover:text-white transition">SINGLE CARD</button>
+                <button onclick="switchInputMode('batch')" id="tab-input-batch" class="px-3 py-1 bg-[#00CED1] text-slate-950 font-bold transition">BATCH CARD LIST</button>
+                <button onclick="switchInputMode('secret_lair')" id="tab-input-secret_lair" class="px-3 py-1 text-[#94A3B8] hover:text-white transition">SECRET LAIR DROP</button>
+            </div>
+        </div>
+
+        <!-- 1. Single Card Input Mode -->
+        <div id="section-input-single" class="hidden space-y-4">
+            <div>
+                <label class="block text-xs font-mono font-bold text-[#94A3B8] uppercase mb-1.5 flex items-center justify-between">
+                    <span>Search Magic: The Gathering Card:</span>
+                    <span class="text-[11px] text-[#64748B] font-mono">Type 2+ letters for autocomplete</span>
+                </label>
+                <div class="relative">
+                    <input type="text" id="input-single-card" placeholder="e.g. Rhystic Study, Smothering Tithe, Roaming Throne..." class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#00CED1] focus:outline-none transition" autocomplete="off">
+                    <div id="single-card-autocomplete" class="hidden absolute left-0 top-full mt-1 w-full bg-[#1B2230] border-2 border-[#263245] shadow-2xl z-50 max-h-56 overflow-y-auto font-mono text-xs divide-y divide-[#263245]"></div>
+                </div>
+            </div>
+            <!-- Single Card Quick Preview Badge -->
+            <div id="single-card-preview-badge" class="hidden p-3 bg-[#10141D] border border-[#263245] flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-9 h-9 rounded bg-[#263245] overflow-hidden flex-shrink-0 flex items-center justify-center border border-[#3D4F6B]">
+                        <img id="single-card-img" src="" alt="Card Art" class="w-full h-full object-cover">
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-white flex items-center gap-2">
+                            <span id="single-card-name">Card Name</span>
+                            <span id="single-card-mana" class="text-[10px] text-[#94A3B8] font-mono"></span>
+                        </div>
+                        <div class="text-[10px] text-[#94A3B8]" id="single-card-type">Type Line</div>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs font-mono font-bold text-[#00CED1]" id="single-card-price">--</div>
+                    <div class="text-[9px] text-[#64748B] font-mono uppercase">TCG Market</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Batch Card List Input Mode -->
+        <div id="section-input-batch" class="space-y-4">
+            <div>
+                <div class="flex items-center justify-between mb-1.5">
+                    <label class="block text-xs font-mono font-bold text-[#94A3B8] uppercase">
+                        Paste Card List (Plain Names, Quantities, or ManaBox / Arena Export):
+                    </label>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="fillExampleStaples()" type="button" class="text-[#00CED1] hover:text-white underline text-[11px] font-bold flex items-center space-x-1">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                            <span>Load Example Staples</span>
+                        </button>
+                        <span class="text-[#64748B]">&bull;</span>
+                        <button onclick="clearBatchInput()" type="button" class="text-[#94A3B8] hover:text-white text-[11px] font-mono">Clear</button>
+                    </div>
+                </div>
+                <textarea id="input-batch-cards" rows="6" placeholder="1 Cyclonic Rift
+1 Esper Sentinel
+1 Smothering Tithe
+1 Deflecting Swat
+1 Heroic Intervention
+1 Roaming Throne
+1 Trouble in Pairs
+1 Toxic Deluge" class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white font-mono focus:border-[#00CED1] focus:outline-none transition leading-relaxed"></textarea>
+            </div>
+        </div>
+
+        <!-- 3. Secret Lair Superdrop Input Mode -->
+        <div id="section-input-secret_lair" class="hidden space-y-4">
+            <div>
+                <label class="block text-xs font-mono font-bold text-[#94A3B8] uppercase mb-1.5 flex items-center justify-between">
+                    <span>Secret Lair Preview Announcement URL:</span>
+                    <button onclick="fillExampleSecretLairUrl()" type="button" class="text-[#C084FC] hover:text-white underline text-[11px] font-bold flex items-center space-x-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <span>Paste Example Drop (Masters of the Universe)</span>
+                    </button>
+                </label>
+                <input type="url" id="input-sl-url" placeholder="https://magic.wizards.com/en/news/announcements/secret-lair-..." class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-xs text-white font-mono focus:border-[#A855F7] focus:outline-none transition">
+            </div>
+            <div>
+                <label class="block text-xs font-mono font-bold text-[#94A3B8] uppercase mb-1.5">
+                    Or Paste Raw Announcement / Leaked Text:
+                </label>
+                <textarea id="input-sl-text" rows="4" placeholder="Optional fallback: paste drop text or Reddit leaks here..." class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white font-mono focus:border-[#A855F7] focus:outline-none transition"></textarea>
+            </div>
+        </div>
+
+        <!-- Target Commander Fleet Selection -->
+        <div class="mt-5 pt-4 border-t border-[#263245]">
+            <div class="flex items-center justify-between mb-2.5 flex-wrap gap-2">
+                <label class="text-xs font-mono font-bold text-[#94A3B8] uppercase flex items-center space-x-2">
+                    <span>Evaluate Against Commander Fleet:</span>
+                    <span class="text-[#00CED1] text-[11px]" id="selected-decks-counter">({{ decks|length }} Selected)</span>
+                </label>
+                <div class="flex items-center space-x-2 text-xs font-mono">
+                    <button onclick="toggleAllDecks(true)" type="button" class="text-[#00CED1] hover:underline">Select All</button>
+                    <span class="text-[#64748B]">&bull;</span>
+                    <button onclick="toggleAllDecks(false)" type="button" class="text-[#94A3B8] hover:underline">Clear All</button>
+                </div>
+            </div>
+
+            {% if decks %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                {% for deck in decks %}
+                <label class="deck-checkbox-card flex items-center space-x-3 p-2.5 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] cursor-pointer transition select-none">
+                    <input type="checkbox" name="target_deck_ids" value="{{ deck.id }}" checked onchange="updateDeckCounter()" class="w-4 h-4 text-[#00CED1] bg-[#1B2230] border-[#263245] rounded focus:ring-0">
+                    <div class="w-7 h-7 rounded bg-[#263245] flex-shrink-0 overflow-hidden flex items-center justify-center border border-[#3D4F6B]">
+                        {% if deck.commander_art %}
+                        <img src="{{ deck.commander_art }}" alt="{{ deck.commander_name }}" class="w-full h-full object-cover">
+                        {% else %}
+                        <span class="text-[10px] font-mono text-[#00CED1] font-bold">EDH</span>
+                        {% endif %}
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="text-xs font-bold text-white truncate">{{ deck.deck_name }}</div>
+                        <div class="text-[10px] text-[#94A3B8] truncate">
+                            {{ deck.commander_name or 'Unspecified Commander' }}
+                            {% if deck.color_identity %}
+                            <span class="ml-1 text-[#00CED1] font-mono">[{{ deck.color_identity }}]</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <span class="text-[10px] font-mono text-[#64748B] flex-shrink-0">{{ deck.total_cards }}c</span>
+                </label>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="bg-[#10141D] p-4 border border-[#263245] text-xs text-[#94A3B8] text-center">
+                No Commander decks found in your vault. <a href="/deck-analyzer" class="text-[#00CED1] underline font-bold">Import a deck</a> to unlock tactical fleet synergy evaluations.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Tactical Parameters & Launch Button -->
+        <div class="mt-5 pt-4 border-t border-[#263245] flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3 w-full sm:w-auto flex-wrap gap-2">
+                <div class="min-w-[170px]">
+                    <label class="block text-[10px] font-mono uppercase text-[#64748B] mb-1">AI Reasoning Engine:</label>
+                    <select id="select-gemini-model" class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#00CED1] focus:outline-none">
+                        {% for m in supported_models %}
+                        <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="flex items-center space-x-2 pt-4">
+                    <label class="flex items-center space-x-1.5 text-xs font-mono text-[#94A3B8] cursor-pointer select-none">
+                        <input type="checkbox" id="chk-use-gemini" {% if has_gemini_key %}checked{% endif %} class="w-3.5 h-3.5 text-[#00CED1] bg-[#10141D] border-[#263245] rounded focus:ring-0">
+                        <span>Gemini Deep-Dive</span>
+                    </label>
+                </div>
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-[10px] font-mono uppercase text-[#64748B] mb-1">Custom Directives (Optional):</label>
+                    <input type="text" id="input-custom-notes" placeholder="e.g. Prioritize low curve, budget alternatives..." class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#00CED1] focus:outline-none">
+                </div>
+            </div>
+
+            <button onclick="runAddEvaluation()" id="btn-run-evaluation" class="btn-crimson w-full sm:w-auto px-6 py-2.5 text-xs uppercase font-bold tracking-wider flex items-center justify-center space-x-2 shadow-lg hover:shadow-[#DC143C]/30 flex-shrink-0">
+                <svg id="icon-deploy" class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+                <span id="btn-deploy-text">Deploy Add Evaluation</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Live Telemetry State Indicator -->
+    <div id="telemetry-banner" class="hidden bg-[#1B2230] border border-[#00CED1]/60 p-4 shadow-xl space-y-3">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2 text-xs font-mono font-bold text-[#00CED1]">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#00CED1] animate-ping"></span>
+                <span id="telemetry-status-text">SURVEILLANCE IN PROGRESS: RESOLVING CARDS...</span>
+            </div>
+            <span class="text-[10px] font-mono text-[#94A3B8]" id="telemetry-timer">0s elapsed</span>
+        </div>
+        <!-- Progress Steps -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] font-mono">
+            <div id="step-1" class="p-2 bg-[#10141D] border border-[#263245] text-[#94A3B8] flex items-center space-x-2">
+                <span class="step-num font-bold">01</span>
+                <span class="truncate">Normalize Input</span>
+            </div>
+            <div id="step-2" class="p-2 bg-[#10141D] border border-[#263245] text-[#94A3B8] flex items-center space-x-2">
+                <span class="step-num font-bold">02</span>
+                <span class="truncate">Scryfall Intel</span>
+            </div>
+            <div id="step-3" class="p-2 bg-[#10141D] border border-[#263245] text-[#94A3B8] flex items-center space-x-2">
+                <span class="step-num font-bold">03</span>
+                <span class="truncate">Legality & Synergy</span>
+            </div>
+            <div id="step-4" class="p-2 bg-[#10141D] border border-[#263245] text-[#94A3B8] flex items-center space-x-2">
+                <span class="step-num font-bold">04</span>
+                <span class="truncate">Tactical Cuts</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Display Container -->
+    <div id="results-container" class="hidden space-y-6">
+
+        <!-- Executive Briefing Header Card -->
+        <div class="bg-[#1B2230] border border-[#263245] p-5 shadow-2xl relative overflow-hidden">
+            <div class="flex flex-col md:flex-row gap-5 items-start">
+                <div id="result-banner-wrapper" class="w-full md:w-64 h-32 bg-[#10141D] border border-[#263245] rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    <img id="result-banner-img" src="" alt="Banner Art" class="w-full h-full object-cover hidden">
+                    <div id="result-banner-fallback" class="text-center p-3 text-xs font-mono text-[#64748B]">
+                        [TACTICAL SUITE INTEL]
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0 space-y-2">
+                    <div class="flex items-center space-x-2 flex-wrap gap-1">
+                        <span class="bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-model-used">ALGORITHMIC + AI</span>
+                        <span class="bg-[#10B981]/20 border border-[#10B981] text-[#10B981] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-cards-count">0 CARDS EVALUATED</span>
+                        <span class="bg-[#A855F7]/20 border border-[#A855F7] text-[#C084FC] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-mode">MODE: CARDS</span>
+                    </div>
+                    <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wide" id="result-title">
+                        Evaluation Results
+                    </h2>
+                    <div class="bg-[#10141D] border border-[#263245] p-3.5 text-xs text-[#F1F5F9] font-sans leading-relaxed border-l-4 border-l-[#00CED1]" id="result-exec-summary">
+                        Executive briefing loading...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Secret Lair Bundle Card (Only in Secret Lair mode) -->
+            <div id="result-bundle-card" class="hidden mt-4 p-3.5 bg-[#10141D] border border-[#263245] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 rounded bg-[#A855F7]/20 border border-[#A855F7]/60 flex items-center justify-center text-[#C084FC] flex-shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-mono uppercase text-[#94A3B8] font-bold tracking-wider">// BUNDLE EVALUATION VERDICT</div>
+                        <div class="text-xs font-bold text-white" id="bundle-verdict-title">Evaluating Bundles...</div>
+                    </div>
+                </div>
+                <div class="text-xs text-[#94A3B8] max-w-xl text-left sm:text-right" id="bundle-verdict-rationale"></div>
+            </div>
+        </div>
+
+        <!-- Tactical View Switcher Tabs -->
+        <div class="bg-[#1B2230] border-b border-[#263245] p-1 flex space-x-1 overflow-x-auto text-xs font-mono font-bold">
+            <button onclick="switchResultTab('card-matrix')" id="tab-btn-card-matrix" class="px-4 py-2 bg-[#00CED1] text-slate-950 transition flex items-center space-x-1.5 whitespace-nowrap">
+                <span>01 // CARD-TO-DECKS MATRIX</span>
+                <span class="bg-black/30 text-white px-1.5 py-0.2 text-[10px] rounded" id="tab-matrix-card-count">0</span>
+            </button>
+            <button onclick="switchResultTab('deck-breakdown')" id="tab-btn-deck-breakdown" class="px-4 py-2 text-[#94A3B8] hover:text-white transition flex items-center space-x-1.5 whitespace-nowrap">
+                <span>02 // DECK-BY-DECK UPGRADES</span>
+                <span class="bg-[#263245] px-1.5 py-0.2 text-[10px] rounded" id="tab-deck-count">0</span>
+            </button>
+            <button onclick="switchResultTab('sl-ranked')" id="tab-btn-sl-ranked" class="hidden px-4 py-2 text-[#94A3B8] hover:text-white transition flex items-center space-x-1.5 whitespace-nowrap">
+                <span>03 // SECRET LAIR DROPS & EV</span>
+                <span class="bg-[#263245] px-1.5 py-0.2 text-[10px] rounded" id="tab-sl-drop-count">0</span>
+            </button>
+            <button onclick="switchResultTab('new-commanders')" id="tab-btn-new-commanders" class="px-4 py-2 text-[#94A3B8] hover:text-white transition flex items-center space-x-1.5 whitespace-nowrap">
+                <span>04 // NEW COMMANDER OPTIONS</span>
+                <span class="bg-[#263245] px-1.5 py-0.2 text-[10px] rounded" id="tab-cmdr-count">0</span>
+            </button>
+        </div>
+
+        <!-- TAB 1: Card-to-Decks Matrix View ("Where can I put each card?") -->
+        <div id="view-tab-card-matrix" class="space-y-4">
+            <div id="card-matrix-list" class="space-y-4">
+                <!-- Injected via JavaScript -->
+            </div>
+        </div>
+
+        <!-- TAB 2: Deck-by-Deck Breakdown View ("What upgrades each deck?") -->
+        <div id="view-tab-deck-breakdown" class="hidden space-y-4">
+            <!-- Deck Selector Pills -->
+            <div class="bg-[#1B2230] border border-[#263245] p-2 flex space-x-2 overflow-x-auto no-scrollbar" id="deck-breakdown-pills">
+                <!-- Injected via JavaScript -->
+            </div>
+            <!-- Active Deck Detail Panel -->
+            <div id="deck-breakdown-content" class="space-y-4">
+                <!-- Injected via JavaScript -->
+            </div>
+        </div>
+
+        <!-- TAB 3: Secret Lair Drops & EV (when in Secret Lair mode) -->
+        <div id="view-tab-sl-ranked" class="hidden space-y-4">
+            <div class="grid grid-cols-1 gap-4" id="sl-ranked-drops-list">
+                <!-- Injected via JavaScript -->
+            </div>
+        </div>
+
+        <!-- TAB 4: New Commander Opportunities -->
+        <div id="view-tab-new-commanders" class="hidden space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="new-commanders-grid">
+                <!-- Injected via JavaScript -->
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Past Intel History Modal -->
+<div id="modal-history" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#1B2230] border-2 border-[#263245] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="p-4 border-b border-[#263245] flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-[#00CED1]"></span>
+                <h3 class="font-heading font-black text-sm text-white uppercase tracking-wider">// PAST INTEL & SAVED ANALYSES</h3>
+            </div>
+            <button onclick="closeHistoryModal()" class="text-[#94A3B8] hover:text-white">&times;</button>
+        </div>
+        <div class="p-4 overflow-y-auto flex-1 space-y-4">
+            <!-- History Tabs -->
+            <div class="flex space-x-2 border-b border-[#263245] pb-2 text-xs font-mono">
+                <button onclick="switchHistoryTab('cards')" id="htab-cards" class="px-3 py-1 bg-[#00CED1] text-slate-950 font-bold">CARD ANALYSES (<span id="hcount-cards">{{ card_history|length if card_history else 0 }}</span>)</button>
+                <button onclick="switchHistoryTab('sl')" id="htab-sl" class="px-3 py-1 text-[#94A3B8] hover:text-white">SECRET LAIRS (<span id="hcount-sl">{{ sl_history|length if sl_history else 0 }}</span>)</button>
+            </div>
+            <!-- Cards History List -->
+            <div id="hlist-cards" class="space-y-2">
+                {% if card_history %}
+                    {% for h in card_history %}
+                    <div class="p-3 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] flex items-center justify-between transition">
+                        <div>
+                            <div class="text-xs font-bold text-white">{{ h.title }}</div>
+                            <div class="text-[10px] font-mono text-[#94A3B8]">{{ h.created_at|eastern }} &bull; {{ h.cards|length }} cards evaluated</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="loadSavedAnalysis('cards', {{ h.id }})" class="btn-bridge px-2.5 py-1 text-xs font-mono text-[#00CED1]">Reload</button>
+                            <button onclick="deleteSavedAnalysis('cards', {{ h.id }})" class="text-[#DC143C] hover:text-white px-2 py-1 text-xs font-mono">&times;</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="p-4 text-center text-xs text-[#64748B] font-mono">No past card evaluations recorded.</div>
+                {% endif %}
+            </div>
+            <!-- Secret Lair History List -->
+            <div id="hlist-sl" class="hidden space-y-2">
+                {% if sl_history %}
+                    {% for h in sl_history %}
+                    <div class="p-3 bg-[#10141D] border border-[#263245] hover:border-[#A855F7] flex items-center justify-between transition">
+                        <div>
+                            <div class="text-xs font-bold text-white">{{ h.title }}</div>
+                            <div class="text-[10px] font-mono text-[#94A3B8]">{{ h.created_at|eastern }} &bull; {{ h.drops|length }} drops</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="loadSavedAnalysis('sl', {{ h.id }})" class="btn-bridge px-2.5 py-1 text-xs font-mono text-[#C084FC]">Reload</button>
+                            <button onclick="deleteSavedAnalysis('sl', {{ h.id }})" class="text-[#DC143C] hover:text-white px-2 py-1 text-xs font-mono">&times;</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="p-4 text-center text-xs text-[#64748B] font-mono">No past Secret Lair analyses recorded.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// State
+let currentInputMode = '{{ initial_mode or "batch" }}';
+let currentResultTab = 'card-matrix';
+let activeSuiteData = null;
+let activeBreakdownDeckId = null;
+let autocompleteDebounce = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    switchInputMode(currentInputMode === 'secret_lair' ? 'secret_lair' : (currentInputMode === 'single' ? 'single' : 'batch'));
+    initSingleCardAutocomplete();
+});
+
+function switchInputMode(mode) {
+    currentInputMode = mode;
+    ['single', 'batch', 'secret_lair'].forEach(m => {
+        const tab = document.getElementById(`tab-input-${m}`);
+        const sec = document.getElementById(`section-input-${m}`);
+        if (m === mode) {
+            tab.className = mode === 'secret_lair' 
+                ? 'px-3 py-1 bg-[#A855F7] text-white font-bold transition'
+                : 'px-3 py-1 bg-[#00CED1] text-slate-950 font-bold transition';
+            sec.classList.remove('hidden');
+        } else {
+            tab.className = 'px-3 py-1 text-[#94A3B8] hover:text-white transition';
+            sec.classList.add('hidden');
+        }
+    });
+
+    const deployText = document.getElementById('btn-deploy-text');
+    if (deployText) {
+        if (mode === 'secret_lair') {
+            deployText.innerText = 'Deploy Secret Lair Intel';
+        } else if (mode === 'single') {
+            deployText.innerText = 'Evaluate Single Card';
+        } else {
+            deployText.innerText = 'Deploy Batch Evaluation';
+        }
+    }
+}
+
+function updateDeckCounter() {
+    const checked = document.querySelectorAll('input[name="target_deck_ids"]:checked');
+    const counter = document.getElementById('selected-decks-counter');
+    if (counter) counter.innerText = `(${checked.length} Selected)`;
+}
+
+function toggleAllDecks(select) {
+    document.querySelectorAll('input[name="target_deck_ids"]').forEach(cb => cb.checked = select);
+    updateDeckCounter();
+}
+
+function clearBatchInput() {
+    const el = document.getElementById('input-batch-cards');
+    if (el) el.value = '';
+}
+
+function fillExampleStaples() {
+    const el = document.getElementById('input-batch-cards');
+    if (el) {
+        el.value = [
+            '1 Cyclonic Rift',
+            '1 Esper Sentinel',
+            '1 Smothering Tithe',
+            '1 Deflecting Swat',
+            '1 Heroic Intervention',
+            '1 Roaming Throne',
+            '1 Trouble in Pairs',
+            '1 Toxic Deluge',
+            '1 Jeska\'s Will',
+            '1 Demonic Tutor'
+        ].join('\n');
+    }
+}
+
+function fillExampleSecretLairUrl() {
+    const el = document.getElementById('input-sl-url');
+    if (el) {
+        el.value = 'https://magic.wizards.com/en/news/announcements/secret-lair-masters-of-the-universe-superdrop';
+    }
+}
+
+// Single Card Autocomplete
+function initSingleCardAutocomplete() {
+    const input = document.getElementById('input-single-card');
+    const dropdown = document.getElementById('single-card-autocomplete');
+    if (!input || !dropdown) return;
+
+    input.addEventListener('input', (e) => {
+        const q = e.target.value.trim();
+        clearTimeout(autocompleteDebounce);
+        if (q.length < 2) {
+            dropdown.classList.add('hidden');
+            dropdown.innerHTML = '';
+            return;
+        }
+
+        autocompleteDebounce = setTimeout(async () => {
+            try {
+                const res = await fetch(`/api/scryfall/autocomplete?q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    dropdown.innerHTML = data.slice(0, 8).map(name => `
+                        <div onclick="selectSingleCard('${name.replace(/'/g, "\\'")}')" class="p-2 hover:bg-[#10141D] cursor-pointer text-white flex items-center justify-between">
+                            <span>${name}</span>
+                            <span class="text-[10px] text-[#00CED1] font-bold">&rarr; Select</span>
+                        </div>
+                    `).join('');
+                    dropdown.classList.remove('hidden');
+                } else {
+                    dropdown.classList.add('hidden');
+                }
+            } catch (err) {
+                dropdown.classList.add('hidden');
+            }
+        }, 220);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+}
+
+async function selectSingleCard(cardName) {
+    const input = document.getElementById('input-single-card');
+    const dropdown = document.getElementById('single-card-autocomplete');
+    if (input) input.value = cardName;
+    if (dropdown) dropdown.classList.add('hidden');
+
+    // Fetch brief metadata for preview badge
+    try {
+        const res = await fetch(`/api/scryfall/prints?name=${encodeURIComponent(cardName)}`);
+        const data = await res.json();
+        if (data && data.prints && data.prints.length > 0) {
+            const p = data.prints[0];
+            const badge = document.getElementById('single-card-preview-badge');
+            document.getElementById('single-card-name').innerText = p.name || cardName;
+            document.getElementById('single-card-mana').innerText = p.mana_cost || '';
+            document.getElementById('single-card-type').innerText = p.type_line || '';
+            document.getElementById('single-card-price').innerText = p.prices && p.prices.usd ? `$${p.prices.usd}` : 'N/A';
+            const img = document.getElementById('single-card-img');
+            if (img && (p.small_image_uri || p.image_uri)) {
+                img.src = p.small_image_uri || p.image_uri;
+            }
+            if (badge) badge.classList.remove('hidden');
+        }
+    } catch (e) {}
+}
+
+// Execution Controller
+async function runAddEvaluation() {
+    const btn = document.getElementById('btn-run-evaluation');
+    const btnText = document.getElementById('btn-deploy-text');
+    const telemetry = document.getElementById('telemetry-banner');
+    const resultsContainer = document.getElementById('results-container');
+
+    const selectedDeckIds = Array.from(document.querySelectorAll('input[name="target_deck_ids"]:checked')).map(cb => cb.value);
+    if (selectedDeckIds.length === 0) {
+        alert('Please select at least one Commander deck to evaluate against.');
+        return;
+    }
+
+    const model = document.getElementById('select-gemini-model').value;
+    const useGemini = document.getElementById('chk-use-gemini').checked;
+    const customNotes = document.getElementById('input-custom-notes').value.trim();
+
+    let payload = {
+        deck_ids: selectedDeckIds,
+        model: model,
+        use_gemini: useGemini,
+        custom_instructions: customNotes,
+    };
+
+    if (currentInputMode === 'secret_lair') {
+        payload.mode = 'secret_lair';
+        payload.url = document.getElementById('input-sl-url').value.trim();
+        payload.raw_text = document.getElementById('input-sl-text').value.trim();
+        if (!payload.url && !payload.raw_text) {
+            alert('Please enter a Secret Lair announcement URL or paste text.');
+            return;
+        }
+    } else if (currentInputMode === 'single') {
+        payload.mode = 'cards';
+        const singleCard = document.getElementById('input-single-card').value.trim();
+        if (!singleCard) {
+            alert('Please enter a Magic card name to evaluate.');
+            return;
+        }
+        payload.cards = [singleCard];
+    } else {
+        payload.mode = 'cards';
+        const batchText = document.getElementById('input-batch-cards').value.trim();
+        if (!batchText) {
+            alert('Please paste at least one card name.');
+            return;
+        }
+        payload.raw_text = batchText;
+    }
+
+    // Telemetry UI activation
+    btn.disabled = true;
+    btnText.innerText = 'Evaluating Fleet...';
+    telemetry.classList.remove('hidden');
+    resultsContainer.classList.add('hidden');
+
+    let seconds = 0;
+    const timerInterval = setInterval(() => {
+        seconds++;
+        const t = document.getElementById('telemetry-timer');
+        if (t) t.innerText = `${seconds}s elapsed`;
+    }, 1000);
+
+    const updateStep = (num, text) => {
+        const st = document.getElementById('telemetry-status-text');
+        if (st) st.innerText = `SURVEILLANCE: ${text.toUpperCase()}`;
+        for (let i = 1; i <= 4; i++) {
+            const el = document.getElementById(`step-${i}`);
+            if (i < num) {
+                el.className = 'p-2 bg-[#10141D] border border-[#10B981] text-[#10B981] flex items-center space-x-2';
+            } else if (i === num) {
+                el.className = 'p-2 bg-[#10141D] border border-[#00CED1] text-white flex items-center space-x-2 animate-pulse';
+            } else {
+                el.className = 'p-2 bg-[#10141D] border border-[#263245] text-[#64748B] flex items-center space-x-2';
+            }
+        }
+    };
+
+    updateStep(1, 'Normalizing card targets...');
+    setTimeout(() => updateStep(2, 'Querying Scryfall market & color telemetry...'), 800);
+    setTimeout(() => updateStep(3, 'Cross-referencing color legality & EDHREC synergies...'), 1800);
+    setTimeout(() => updateStep(4, 'Synthesizing tactical cuts & Gemini reasoning...'), 3000);
+
+    try {
+        const resp = await fetch('/api/add-evaluator/evaluate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        const data = await resp.json();
+        clearInterval(timerInterval);
+        telemetry.classList.add('hidden');
+        btn.disabled = false;
+        btnText.innerText = currentInputMode === 'secret_lair' ? 'Deploy Secret Lair Intel' : 'Deploy Add Evaluation';
+
+        if (!resp.ok || data.error) {
+            alert(`Evaluation Error: ${data.error || 'Failed to analyze additions.'}`);
+            return;
+        }
+
+        activeSuiteData = data;
+        renderResults(data);
+
+    } catch (err) {
+        clearInterval(timerInterval);
+        telemetry.classList.add('hidden');
+        btn.disabled = false;
+        btnText.innerText = 'Deploy Add Evaluation';
+        alert(`Communication error: ${err.message}`);
+    }
+}
+
+// Results Renderer
+function renderResults(data) {
+    const container = document.getElementById('results-container');
+    container.classList.remove('hidden');
+
+    document.getElementById('result-title').innerText = data.title || (data.mode === 'secret_lair' ? 'Secret Lair Superdrop Intelligence' : 'Card Add Fleet Evaluation');
+    document.getElementById('result-exec-summary').innerText = data.executive_summary || 'Tactical analysis completed.';
+    document.getElementById('badge-model-used').innerText = (data._model_used || 'Gemini 3.8 Flash').toUpperCase();
+    document.getElementById('badge-mode').innerText = `MODE: ${(data.mode || 'CARDS').toUpperCase()}`;
+
+    const evaluatedCount = data.evaluated_cards_count || (data.cards ? data.cards.length : (data.drops ? data.drops.length : 0));
+    document.getElementById('badge-cards-count').innerText = `${evaluatedCount} ${data.mode === 'secret_lair' ? 'DROPS' : 'CARDS'} EVALUATED`;
+
+    // Banner image
+    const bImg = document.getElementById('result-banner-img');
+    const bFall = document.getElementById('result-banner-fallback');
+    if (data.banner_image) {
+        bImg.src = data.banner_image;
+        bImg.classList.remove('hidden');
+        bFall.classList.add('hidden');
+    } else {
+        bImg.classList.add('hidden');
+        bFall.classList.remove('hidden');
+    }
+
+    // Secret Lair Bundle Card
+    const bundleCard = document.getElementById('result-bundle-card');
+    const slTabBtn = document.getElementById('tab-btn-sl-ranked');
+    if (data.mode === 'secret_lair' && data.bundle_analysis) {
+        bundleCard.classList.remove('hidden');
+        document.getElementById('bundle-verdict-title').innerText = data.bundle_analysis.verdict || 'Bundle Analyzed';
+        document.getElementById('bundle-verdict-rationale').innerText = data.bundle_analysis.rationale || '';
+        slTabBtn.classList.remove('hidden');
+        document.getElementById('tab-sl-drop-count').innerText = (data.drops ? data.drops.length : 0);
+        renderSecretLairDrops(data.best_drops_to_buy || [], data.drops || []);
+    } else {
+        bundleCard.classList.add('hidden');
+        slTabBtn.classList.add('hidden');
+    }
+
+    // Render TAB 1: Card-to-Decks Matrix
+    const cardMatrix = data.card_matrix || [];
+    document.getElementById('tab-matrix-card-count').innerText = cardMatrix.length;
+    renderCardMatrix(cardMatrix);
+
+    // Render TAB 2: Deck-by-Deck Breakdown
+    const deckBreakdowns = data.deck_breakdowns || [];
+    document.getElementById('tab-deck-count').innerText = deckBreakdowns.length;
+    renderDeckBreakdowns(deckBreakdowns);
+
+    // Render TAB 4: New Commander Opportunities
+    const cmdrList = data.new_commander_opportunities || [];
+    document.getElementById('tab-cmdr-count').innerText = cmdrList.length;
+    renderNewCommanders(cmdrList);
+
+    // Default view tab
+    if (data.mode === 'secret_lair') {
+        switchResultTab('sl-ranked');
+    } else {
+        switchResultTab('card-matrix');
+    }
+
+    // Scroll smoothly to results
+    container.scrollIntoView({behavior: 'smooth'});
+}
+
+function switchResultTab(tabName) {
+    currentResultTab = tabName;
+    const tabs = ['card-matrix', 'deck-breakdown', 'sl-ranked', 'new-commanders'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const view = document.getElementById(`view-tab-${t}`);
+        if (!btn || !view) return;
+
+        if (t === tabName) {
+            btn.className = 'px-4 py-2 bg-[#00CED1] text-slate-950 font-bold transition flex items-center space-x-1.5 whitespace-nowrap';
+            view.classList.remove('hidden');
+        } else {
+            btn.className = 'px-4 py-2 text-[#94A3B8] hover:text-white transition flex items-center space-x-1.5 whitespace-nowrap';
+            view.classList.add('hidden');
+        }
+    });
+}
+
+// -----------------------------------------------------------------------------
+// TAB 1: Card-to-Decks Matrix View
+// -----------------------------------------------------------------------------
+function renderCardMatrix(cardMatrix) {
+    const list = document.getElementById('card-matrix-list');
+    if (!list) return;
+
+    if (!cardMatrix || cardMatrix.length === 0) {
+        list.innerHTML = '<div class="p-6 bg-[#1B2230] border border-[#263245] text-center text-xs text-[#64748B] font-mono">No card matrix records to display.</div>';
+        return;
+    }
+
+    list.innerHTML = cardMatrix.map((item, idx) => {
+        const cardName = item.card_name;
+        const price = item.price_usd ? `$${item.price_usd.toFixed(2)}` : 'Market Price N/A';
+        const typeLine = item.type_line || 'Card';
+        const manaCost = item.mana_cost || '';
+        const img = item.image_uri || item.art_crop_uri || '';
+        const recs = item.deck_recommendations || [];
+        const incomp = item.incompatible_decks || [];
+
+        return `
+            <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 shadow-xl space-y-4">
+                <!-- Card Header -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#263245] pb-3">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded bg-[#10141D] border border-[#263245] overflow-hidden flex-shrink-0 flex items-center justify-center">
+                            ${img ? `<img src="${img}" alt="${cardName}" class="w-full h-full object-cover">` : `<span class="text-[10px] font-mono font-bold text-[#00CED1]">MTG</span>`}
+                        </div>
+                        <div>
+                            <div class="text-sm font-bold text-white flex items-center gap-2 flex-wrap">
+                                <span>${cardName}</span>
+                                ${manaCost ? `<span class="text-xs font-mono text-[#94A3B8]">${manaCost}</span>` : ''}
+                                ${item.from_drop ? `<span class="text-[10px] font-mono text-[#C084FC] px-1.5 py-0.2 bg-[#A855F7]/20 border border-[#A855F7]/50">[From: ${item.from_drop}]</span>` : ''}
+                            </div>
+                            <div class="text-[11px] text-[#94A3B8]">${typeLine} &bull; <span class="text-[#00CED1] font-mono font-bold">${price}</span></div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="quickAddToWatchlist('${cardName.replace(/'/g, "\\'")}')" class="btn-bridge px-3 py-1.5 text-xs font-mono text-[#00CED1] flex items-center space-x-1" title="Track price on Watchlist">
+                            <span>+ Watchlist</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Compatible Decks Leaderboard -->
+                <div>
+                    <div class="text-[10px] font-mono uppercase text-[#64748B] font-bold tracking-wider mb-2 flex items-center justify-between">
+                        <span>FLEET FIT RANKING (${recs.length} COMPATIBLE DECKS):</span>
+                        <span class="text-[#00CED1]">Ranked by Tactical Synergy</span>
+                    </div>
+
+                    ${recs.length > 0 ? `
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            ${recs.map((rec, rIdx) => {
+                                const verdictClass = rec.fit_verdict.includes('Essential') ? 'bg-[#10B981]/20 border-[#10B981] text-[#10B981]' :
+                                                     rec.fit_verdict.includes('High') ? 'bg-[#00CED1]/20 border-[#00CED1] text-[#00CED1]' :
+                                                     rec.fit_verdict.includes('Win-Con') ? 'bg-[#F59E0B]/20 border-[#F59E0B] text-[#F59E0B]' :
+                                                     'bg-[#64748B]/20 border-[#64748B] text-[#94A3B8]';
+                                return `
+                                    <div class="p-3 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] transition space-y-2 flex flex-col justify-between">
+                                        <div>
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="text-xs font-bold text-white truncate flex items-center space-x-1.5">
+                                                    <span class="text-[10px] font-mono text-[#64748B]">#${rIdx + 1}</span>
+                                                    <span>${rec.deck_name}</span>
+                                                </div>
+                                                <div class="flex items-center space-x-1 flex-shrink-0">
+                                                    <span class="px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase border ${verdictClass}">${rec.fit_verdict}</span>
+                                                    <span class="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-[#263245] text-white">${rec.synergy_rating.toFixed(1)}/10</span>
+                                                </div>
+                                            </div>
+                                            <div class="text-[10px] text-[#94A3B8] mt-1">${rec.commander_name ? `Commander: ${rec.commander_name}` : ''}</div>
+                                            <p class="text-xs text-[#94A3B8] mt-1 leading-relaxed">${rec.rationale || 'Synergy fit for deck game plan.'}</p>
+                                        </div>
+
+                                        <div class="pt-2 border-t border-[#263245] flex items-center justify-between text-xs font-mono">
+                                            <div class="text-[11px] text-[#FF3358] truncate max-w-[170px]" title="Recommended Cut: ${rec.suggested_cut}">
+                                                Cut: <strong>${rec.suggested_cut}</strong>
+                                            </div>
+                                            <div class="flex items-center space-x-1.5 flex-shrink-0">
+                                                <button onclick="applyEvaluatorSwap(${rec.deck_id}, '${rec.suggested_cut.replace(/'/g, "\\'")}', '${cardName.replace(/'/g, "\\'")}')" class="px-2 py-1 bg-[#00CED1]/20 hover:bg-[#00CED1] text-[#00CED1] hover:text-slate-950 font-bold border border-[#00CED1]/40 text-[10px] transition uppercase">
+                                                    Apply Swap
+                                                </button>
+                                                <button onclick="directAddCardToDeck(${rec.deck_id}, '${cardName.replace(/'/g, "\\'")}')" class="px-2 py-1 bg-[#10141D] hover:bg-[#263245] text-[#94A3B8] hover:text-white border border-[#263245] text-[10px] transition uppercase" title="Add directly to deck">
+                                                    + Add
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    ` : `
+                        <div class="p-3 bg-[#10141D] border border-[#263245] text-xs text-[#64748B] font-mono">
+                            No active decks in your fleet are compatible with this card's color identity or format legality.
+                        </div>
+                    `}
+                </div>
+
+                <!-- Incompatible Decks Drawer (Collapsible) -->
+                ${incomp.length > 0 ? `
+                    <details class="text-xs font-mono text-[#64748B] cursor-pointer pt-1">
+                        <summary class="hover:text-white">${incomp.length} Ineligible Decks (Off-Color / Banned / Already Slotted)</summary>
+                        <div class="mt-2 pl-3 space-y-1 text-[11px] border-l border-[#263245]">
+                            ${incomp.map(inc => `
+                                <div class="flex items-center justify-between text-[#94A3B8]">
+                                    <span>${inc.deck_name}</span>
+                                    <span class="text-[#DC143C]">${inc.reason}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// -----------------------------------------------------------------------------
+// TAB 2: Deck-by-Deck Breakdown View
+// -----------------------------------------------------------------------------
+function renderDeckBreakdowns(deckBreakdowns) {
+    const pills = document.getElementById('deck-breakdown-pills');
+    if (!pills) return;
+
+    if (!deckBreakdowns || deckBreakdowns.length === 0) {
+        pills.innerHTML = '';
+        document.getElementById('deck-breakdown-content').innerHTML = '<div class="p-6 bg-[#1B2230] border border-[#263245] text-center text-xs text-[#64748B] font-mono">No deck records found.</div>';
+        return;
+    }
+
+    if (!activeBreakdownDeckId && deckBreakdowns.length > 0) {
+        activeBreakdownDeckId = deckBreakdowns[0].deck_id;
+    }
+
+    pills.innerHTML = deckBreakdowns.map(d => {
+        const isActive = d.deck_id === activeBreakdownDeckId;
+        const count = d.applicable_cards ? d.applicable_cards.length : 0;
+        return `
+            <button onclick="selectBreakdownDeck(${d.deck_id})" class="px-3 py-1.5 text-xs font-mono font-bold whitespace-nowrap border flex items-center space-x-2 transition ${
+                isActive ? 'bg-[#00CED1] text-slate-950 border-[#00CED1]' : 'bg-[#10141D] text-[#94A3B8] border-[#263245] hover:border-white'
+            }">
+                <span>${d.deck_name}</span>
+                <span class="px-1 py-0.2 text-[9px] rounded ${isActive ? 'bg-black/30 text-white' : 'bg-[#263245] text-[#00CED1]'}">${count}</span>
+            </button>
+        `;
+    }).join('');
+
+    renderActiveBreakdownContent();
+}
+
+function selectBreakdownDeck(deckId) {
+    activeBreakdownDeckId = deckId;
+    renderDeckBreakdowns(activeSuiteData.deck_breakdowns || []);
+}
+
+function renderActiveBreakdownContent() {
+    const container = document.getElementById('deck-breakdown-content');
+    if (!container || !activeSuiteData || !activeSuiteData.deck_breakdowns) return;
+
+    const deck = activeSuiteData.deck_breakdowns.find(d => d.deck_id === activeBreakdownDeckId);
+    if (!deck) {
+        container.innerHTML = '<div class="p-4 bg-[#10141D] border border-[#263245] text-xs text-[#64748B]">Select a deck above to inspect tactical additions.</div>';
+        return;
+    }
+
+    const cards = deck.applicable_cards || [];
+    container.innerHTML = `
+        <div class="bg-[#1B2230] border border-[#263245] p-5 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3">
+                <div>
+                    <h3 class="text-sm font-heading font-black text-white uppercase">${deck.deck_name}</h3>
+                    <div class="text-xs font-mono text-[#94A3B8]">
+                        Commander: <span class="text-white">${deck.commander_name || 'Unspecified'}</span> &bull; 
+                        CI: <span class="text-[#00CED1]">[${deck.color_identity.join('')}]</span> &bull; 
+                        ${cards.length} Beneficial Additions Found
+                    </div>
+                </div>
+            </div>
+
+            ${cards.length > 0 ? `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    ${cards.map(c => {
+                        const verdictClass = c.fit_verdict.includes('Essential') ? 'bg-[#10B981]/20 border-[#10B981] text-[#10B981]' :
+                                             c.fit_verdict.includes('High') ? 'bg-[#00CED1]/20 border-[#00CED1] text-[#00CED1]' :
+                                             c.fit_verdict.includes('Win-Con') ? 'bg-[#F59E0B]/20 border-[#F59E0B] text-[#F59E0B]' :
+                                             'bg-[#64748B]/20 border-[#64748B] text-[#94A3B8]';
+                        return `
+                            <div class="p-3 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] transition space-y-2 flex flex-col justify-between">
+                                <div>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="text-xs font-bold text-white flex items-center space-x-1.5">
+                                            <span>${c.card_name}</span>
+                                            ${c.mana_cost ? `<span class="text-[10px] font-mono text-[#94A3B8]">${c.mana_cost}</span>` : ''}
+                                        </div>
+                                        <div class="flex items-center space-x-1 flex-shrink-0">
+                                            <span class="px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase border ${verdictClass}">${c.fit_verdict}</span>
+                                            <span class="px-1.5 py-0.2 text-[9px] font-mono font-bold bg-[#263245] text-white">${c.synergy_rating.toFixed(1)}/10</span>
+                                        </div>
+                                    </div>
+                                    <div class="text-[10px] text-[#64748B] mt-0.5">${c.type_line || ''} ${c.price_usd ? `&bull; $${c.price_usd.toFixed(2)}` : ''}</div>
+                                    <p class="text-xs text-[#94A3B8] mt-1 leading-relaxed">${c.rationale || 'Tactical upgrade.'}</p>
+                                </div>
+
+                                <div class="pt-2 border-t border-[#263245] flex items-center justify-between text-xs font-mono">
+                                    <div class="text-[11px] text-[#FF3358] truncate max-w-[170px]">
+                                        Cut: <strong>${c.suggested_cut}</strong>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5">
+                                        <button onclick="applyEvaluatorSwap(${deck.deck_id}, '${c.suggested_cut.replace(/'/g, "\\'")}', '${c.card_name.replace(/'/g, "\\'")}')" class="px-2 py-1 bg-[#00CED1]/20 hover:bg-[#00CED1] text-[#00CED1] hover:text-slate-950 font-bold border border-[#00CED1]/40 text-[10px] transition uppercase">
+                                            Apply Swap
+                                        </button>
+                                        <button onclick="directAddCardToDeck(${deck.deck_id}, '${c.card_name.replace(/'/g, "\\'")}')" class="px-2 py-1 bg-[#10141D] hover:bg-[#263245] text-[#94A3B8] hover:text-white border border-[#263245] text-[10px] transition uppercase" title="Add directly to deck">
+                                            + Add
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            ` : `
+                <div class="p-6 text-center text-xs text-[#64748B] font-mono">
+                    None of the evaluated cards are legal additions for this commander.
+                </div>
+            `}
+        </div>
+    `;
+}
+
+// -----------------------------------------------------------------------------
+// TAB 3: Secret Lair Drops & EV
+// -----------------------------------------------------------------------------
+function renderSecretLairDrops(bestDrops, drops) {
+    const container = document.getElementById('sl-ranked-drops-list');
+    if (!container) return;
+
+    if (!drops || drops.length === 0) {
+        container.innerHTML = '<div class="p-6 text-center text-xs text-[#64748B] font-mono">No drop data available.</div>';
+        return;
+    }
+
+    container.innerHTML = drops.map((d, idx) => {
+        const rankInfo = bestDrops.find(b => b.drop_name.toLowerCase() === d.drop_name.toLowerCase()) || {};
+        const tier = rankInfo.recommendation_tier || d.ev_status || 'Analyzed';
+        const rank = rankInfo.rank || (idx + 1);
+        const singlesVal = d.singles_value_nonfoil ? `$${d.singles_value_nonfoil.toFixed(2)}` : 'N/A';
+        const priceNF = d.price_nonfoil ? `$${d.price_nonfoil.toFixed(2)}` : '$29.99';
+
+        return `
+            <div class="bg-[#1B2230] border border-[#263245] p-5 shadow-xl space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-sm font-mono font-black text-[#A855F7]">#${rank}</span>
+                        <div>
+                            <h4 class="text-sm font-bold text-white uppercase">${d.drop_name}</h4>
+                            <div class="text-[10px] font-mono text-[#94A3B8]">Retail: ${priceNF} &bull; TCG Singles Market: <strong class="text-white">${singlesVal}</strong></div>
+                        </div>
+                    </div>
+                    <span class="px-2 py-0.5 text-xs font-mono font-bold uppercase bg-[#A855F7]/20 border border-[#A855F7] text-[#C084FC]">${tier}</span>
+                </div>
+                ${rankInfo.summary_rationale ? `<p class="text-xs text-[#94A3B8] leading-relaxed">${rankInfo.summary_rationale}</p>` : ''}
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-2">
+                    ${(d.cards || []).map(c => `
+                        <div class="p-2 bg-[#10141D] border border-[#263245] flex items-center space-x-2">
+                            <div class="w-7 h-7 rounded bg-[#263245] overflow-hidden flex-shrink-0">
+                                ${c.image_uri ? `<img src="${c.image_uri}" alt="${c.canonical_name}" class="w-full h-full object-cover">` : ''}
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="text-[11px] font-bold text-white truncate">${c.canonical_name}</div>
+                                <div class="text-[9px] text-[#00CED1] font-mono">${c.price_usd ? `$${c.price_usd.toFixed(2)}` : 'N/A'}</div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// -----------------------------------------------------------------------------
+// TAB 4: New Commander Opportunities
+// -----------------------------------------------------------------------------
+function renderNewCommanders(cmdrs) {
+    const container = document.getElementById('new-commanders-grid');
+    if (!container) return;
+
+    if (!cmdrs || cmdrs.length === 0) {
+        container.innerHTML = '<div class="col-span-full p-6 text-center text-xs text-[#64748B] font-mono">No new legendary commander helms detected in this card set.</div>';
+        return;
+    }
+
+    container.innerHTML = cmdrs.map(c => `
+        <div class="p-4 bg-[#1B2230] border border-[#263245] shadow-xl space-y-2">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded bg-[#10141D] border border-[#263245] overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    ${c.image_uri ? `<img src="${c.image_uri}" alt="${c.card_name}" class="w-full h-full object-cover">` : `<span class="text-[10px] font-mono font-bold text-[#A855F7]">EDH</span>`}
+                </div>
+                <div>
+                    <h4 class="text-xs font-bold text-white uppercase">${c.card_name}</h4>
+                    <div class="text-[10px] font-mono text-[#00CED1]">[${(c.colors || []).join('')}] &bull; ${c.archetype || 'Commander'}</div>
+                </div>
+            </div>
+            <p class="text-xs text-[#94A3B8] leading-relaxed pt-1 border-t border-[#263245]">${c.rationale || 'Premier commander potential.'}</p>
+        </div>
+    `).join('');
+}
+
+// -----------------------------------------------------------------------------
+// Actions: Apply Swap, Add Card, Add to Watchlist
+// -----------------------------------------------------------------------------
+async function applyEvaluatorSwap(deckId, cardOut, cardIn) {
+    if (!confirm(`Apply tactical swap in deck?\n\nCUT: ${cardOut}\nADD: ${cardIn}\n\nThis will update your deck list and recalculate telemetry.`)) {
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/api/deck/${deckId}/apply-swap`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({card_out: cardOut, card_in: cardIn})
+        });
+
+        const res = await resp.json();
+        if (res.success) {
+            alert(`✓ Swap Applied!\nReplaced '${cardOut}' with '${cardIn}' in deck.`);
+        } else {
+            alert(`Swap Error: ${res.error || 'Failed to apply swap.'}`);
+        }
+    } catch (e) {
+        alert(`Communication error: ${e.message}`);
+    }
+}
+
+async function directAddCardToDeck(deckId, cardName) {
+    if (!confirm(`Directly add '${cardName}' to deck?`)) return;
+
+    try {
+        const resp = await fetch(`/api/deck/${deckId}/add-card`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({card_name: cardName})
+        });
+
+        const res = await resp.json();
+        if (res.success) {
+            alert(`✓ Added '${cardName}' to deck.`);
+        } else {
+            alert(`Add Error: ${res.error || 'Failed to add card.'}`);
+        }
+    } catch (e) {
+        alert(`Communication error: ${e.message}`);
+    }
+}
+
+async function quickAddToWatchlist(cardName) {
+    try {
+        const resp = await fetch('/api/watchlist/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: cardName})
+        });
+        const res = await resp.json();
+        if (res.success) {
+            alert(`✓ '${cardName}' added to your surveillance Watchlist.`);
+        } else {
+            alert(res.error || 'Failed to add to watchlist.');
+        }
+    } catch (e) {
+        alert(`Error: ${e.message}`);
+    }
+}
+
+// History Modal
+function openHistoryModal() {
+    const m = document.getElementById('modal-history');
+    if (m) m.classList.remove('hidden');
+}
+
+function closeHistoryModal() {
+    const m = document.getElementById('modal-history');
+    if (m) m.classList.add('hidden');
+}
+
+function switchHistoryTab(tab) {
+    const htabCards = document.getElementById('htab-cards');
+    const htabSl = document.getElementById('htab-sl');
+    const hlistCards = document.getElementById('hlist-cards');
+    const hlistSl = document.getElementById('hlist-sl');
+
+    if (tab === 'cards') {
+        htabCards.className = 'px-3 py-1 bg-[#00CED1] text-slate-950 font-bold';
+        htabSl.className = 'px-3 py-1 text-[#94A3B8] hover:text-white';
+        hlistCards.classList.remove('hidden');
+        hlistSl.classList.add('hidden');
+    } else {
+        htabCards.className = 'px-3 py-1 text-[#94A3B8] hover:text-white';
+        htabSl.className = 'px-3 py-1 bg-[#A855F7] text-white font-bold';
+        hlistCards.classList.add('hidden');
+        hlistSl.classList.remove('hidden');
+    }
+}
+
+async function loadSavedAnalysis(type, id) {
+    closeHistoryModal();
+    const endpoint = type === 'cards' ? `/api/add-evaluator/history/${id}` : `/api/secret-lair/history/${id}`;
+    try {
+        const resp = await fetch(endpoint);
+        const data = await resp.json();
+        if (data.analysis) {
+            const suitePayload = data.analysis;
+            suitePayload.title = data.title;
+            suitePayload.banner_image = data.banner_image;
+            suitePayload.drops = data.drops;
+            suitePayload.mode = data.source_type === 'secret_lair' ? 'secret_lair' : (type === 'sl' ? 'secret_lair' : 'cards');
+            activeSuiteData = suitePayload;
+            renderResults(suitePayload);
+        }
+    } catch (e) {
+        alert(`Error loading analysis: ${e.message}`);
+    }
+}
+
+async function deleteSavedAnalysis(type, id) {
+    if (!confirm('Permanently delete this saved analysis?')) return;
+    const endpoint = type === 'cards' ? `/api/add-evaluator/history/${id}` : `/api/secret-lair/history/${id}`;
+    try {
+        const resp = await fetch(endpoint, {method: 'DELETE'});
+        const res = await resp.json();
+        if (res.success) {
+            window.location.reload();
+        }
+    } catch (e) {
+        alert(`Error: ${e.message}`);
+    }
+}
+</script>
+{% endblock %}

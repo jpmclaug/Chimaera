@@ -56,6 +56,13 @@ class User(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+    card_add_analyses = db.relationship(
+        "CardAddAnalysis",
+        backref=db.backref("user", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+    )
 
 
     DISCORD_WEBHOOK_REGEX = re.compile(
@@ -1261,3 +1268,61 @@ class SecretLairAnalysis(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class CardAddAnalysis(db.Model):
+    """Saved Card Add Analysis record evaluating cards or Secret Lair drops against Commander decks."""
+
+    __tablename__ = "card_add_analysis"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    title = db.Column(db.String(255), nullable=False, default="Card Add Analysis")
+    source_type = db.Column(db.String(50), default="card_list")  # 'single_card', 'card_list', 'secret_lair'
+    input_text = db.Column(db.Text, nullable=True)
+    cards_data = db.Column(db.Text, nullable=True)  # JSON string of parsed and enriched candidate cards
+    analysis_json = db.Column(db.Text, nullable=True)  # JSON string of full analysis output (matrix, breakdowns, etc.)
+    model_used = db.Column(db.String(100), default="gemini-3.8-flash")
+    target_deck_ids = db.Column(db.String(255), nullable=True)  # Comma-separated deck IDs evaluated
+    created_at = db.Column(db.DateTime, default=utc_now, index=True)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+    def get_cards(self) -> list[dict]:
+        """Returns deserialized cards_data list."""
+        if not self.cards_data:
+            return []
+        try:
+            return json.loads(self.cards_data)
+        except Exception:
+            return []
+
+    def get_analysis(self) -> dict:
+        """Returns deserialized analysis_json dict."""
+        if not self.analysis_json:
+            return {}
+        try:
+            return json.loads(self.analysis_json)
+        except Exception:
+            return {}
+
+    def to_dict(self) -> dict:
+        """Serializes CardAddAnalysis record into dict."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "title": self.title,
+            "source_type": self.source_type,
+            "input_text": self.input_text,
+            "cards": self.get_cards(),
+            "analysis": self.get_analysis(),
+            "model_used": self.model_used,
+            "target_deck_ids": self.target_deck_ids,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
