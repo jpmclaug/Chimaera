@@ -512,17 +512,18 @@ def _migrate_db_schema(app):
                         db.session.commit()
                         logger.info(f"Assigned {len(orphans)} legacy watchlist items to admin ({admin_email}).")
 
-                # Ensure default AI model is migrated to Gemini 3.8 Flash if unset or legacy default
+                # Ensure default AI model is set to 'auto' (prompt-optimized) if unset or legacy default
                 try:
                     current_model = SystemSetting.get_val("gemini_default_model")
                     if not current_model or current_model in (
+                        "gemini-3.8-flash",
                         "gemini-3.7-flash",
                         "gemini-3.6-flash",
                         "gemini-3.5-flash-lite",
                         "gemini-3.5-flash",
                     ):
-                        SystemSetting.set_val("gemini_default_model", "gemini-3.8-flash")
-                        logger.info("Migrated default AI model in SystemSetting to gemini-3.8-flash.")
+                        SystemSetting.set_val("gemini_default_model", "auto")
+                        logger.info("Migrated default AI model in SystemSetting to auto (prompt-optimized).")
                 except Exception as model_mig_err:
                     logger.debug(f"Gemini default model migration check skipped: {model_mig_err}")
 

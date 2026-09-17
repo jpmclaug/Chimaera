@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
 import requests
 
@@ -31,13 +32,15 @@ def get_est_timestamp_str(dt_val: datetime | None = None) -> str:
 logger = logging.getLogger(__name__)
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = "auto"
+
 SUPPORTED_MODELS = [
-    {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Default)", "description": "Next-generation ultra-high accuracy and speed tactical MTG evaluations."},
-    {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash", "description": "High speed, high accuracy tactical MTG evaluations."},
+    {"id": "auto", "name": "Auto (Cost & Value Optimized)", "description": "Automatically routes each prompt to the most cost-effective Gemini model for that task."},
+    {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Deep Intel)", "description": "Next-generation ultra-high accuracy and speed tactical MTG evaluations."},
+    {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash (Balanced)", "description": "High speed, high accuracy tactical MTG evaluations."},
     {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "description": "High performance low latency MTG analysis."},
     {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "description": "Fast tactical Commander evaluations."},
-    {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite", "description": "Ultra lightweight, low latency model."},
+    {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite (Fast / Lowest Cost)", "description": "Ultra lightweight, low latency model for utility tasks."},
 ]
 
 MODEL_TIER_SEQUENCE = [
@@ -47,6 +50,14 @@ MODEL_TIER_SEQUENCE = [
     "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
 ]
+
+TASK_MODEL_MAP = {
+    "deck_analysis": "gemini-3.8-flash",
+    "fleet_synergy": "gemini-3.8-flash",
+    "card_evaluation": "gemini-3.7-flash",
+    "data_extraction": "gemini-3.5-flash-lite",
+    "api_test": "gemini-3.5-flash-lite",
+}
 
 MODEL_FALLBACK_MAP = {
     "gemini-3.8": "gemini-3.8-flash",
@@ -64,6 +75,18 @@ MODEL_FALLBACK_MAP = {
 }
 
 
+def get_model_for_task(task_type: str, preferred_model: str | None = None) -> str:
+    """
+    Resolves the most cost-effective and appropriate Gemini model for a given task.
+    - If preferred_model is 'auto', None, or empty, routes to the task-optimized model.
+    - Otherwise, honors explicit user model selection (mapping legacy aliases if needed).
+    """
+    if preferred_model and str(preferred_model).strip().lower() not in ("auto", "default", "none", ""):
+        clean_pref = str(preferred_model).strip()
+        return MODEL_FALLBACK_MAP.get(clean_pref, clean_pref)
+    return TASK_MODEL_MAP.get(task_type, "gemini-3.8-flash")
+
+
 class GeminiAnalysisError(Exception):
     """Raised when Gemini API analysis fails."""
     pass
@@ -75,7 +98,11 @@ class GeminiAnalyzer:
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
         raw_model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
-        self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
+        self.requested_model = raw_model
+        if raw_model and str(raw_model).strip().lower() in ("auto", "default", "none", ""):
+            self.model = TASK_MODEL_MAP.get("deck_analysis", "gemini-3.8-flash")
+        else:
+            self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
 
     @staticmethod
     def get_available_models(api_key: str | None = None) -> list[dict]:
@@ -84,12 +111,14 @@ class GeminiAnalyzer:
 
     @staticmethod
     def test_api_key(api_key: str, model: str = DEFAULT_MODEL) -> tuple[bool, str]:
-        """Tests whether a Gemini API key is valid by sending a ping request with fallback support."""
+        """Tests whether a Gemini API key is valid using the most cost-effective model."""
         if not api_key or not str(api_key).strip():
             return False, "Gemini API key is required."
 
         clean_key = str(api_key).strip()
-        test_model = MODEL_FALLBACK_MAP.get(model, model)
+        # For health check / ping, use lightweight model (gemini-3.5-flash-lite) if auto/default,
+        # or the explicitly requested model if specified
+        test_model = get_model_for_task("api_test", preferred_model=model)
         url = f"{GEMINI_API_BASE}/{test_model}:generateContent?key={clean_key}"
         gen_config = {
             "maxOutputTokens": 10,
@@ -105,37 +134,29 @@ class GeminiAnalyzer:
             "generationConfig": gen_config,
         }
 
-        try:
-            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
-            if resp.status_code == 200:
-                return True, "API Key successfully verified."
-            else:
-                try:
-                    err_json = resp.json()
-                    msg = err_json.get("error", {}).get("message", f"HTTP {resp.status_code}")
-                except Exception:
-                    msg = f"HTTP {resp.status_code}: {resp.text[:150]}"
+        # Direct execution with short retry on transient errors
+        for attempt in range(2):
+            try:
+                resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=10)
+                if resp.status_code == 200:
+                    return True, "API Key successfully verified."
+                elif resp.status_code in (429, 503) and attempt == 0:
+                    time.sleep(1)
+                    continue
+                else:
+                    try:
+                        err_json = resp.json()
+                        msg = err_json.get("error", {}).get("message", f"HTTP {resp.status_code}")
+                    except Exception:
+                        msg = f"HTTP {resp.status_code}: {resp.text[:150]}"
+                    return False, f"Gemini API Error ({test_model}): {msg}"
+            except Exception as e:
+                if attempt == 0:
+                    time.sleep(1)
+                    continue
+                return False, f"Connection failed ({test_model}): {str(e)}"
 
-                # If the specific model failed due to availability, try fallback to default flash model
-                if ("no longer available" in msg.lower() or "not found" in msg.lower()) and test_model != DEFAULT_MODEL:
-                    fallback_url = f"{GEMINI_API_BASE}/{DEFAULT_MODEL}:generateContent?key={clean_key}"
-                    fallback_gen_config = {
-                        "maxOutputTokens": 10,
-                        "temperature": 0.1,
-                    }
-                    if "gemini-3" in DEFAULT_MODEL:
-                        fallback_gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
-                    fallback_payload = {
-                        "contents": payload["contents"],
-                        "generationConfig": fallback_gen_config,
-                    }
-                    fallback_resp = requests.post(fallback_url, json=fallback_payload, headers={"Content-Type": "application/json"}, timeout=10)
-                    if fallback_resp.status_code == 200:
-                        return True, f"API key is valid. Note: '{test_model}' was deprecated, so Chimaera will use '{DEFAULT_MODEL}'."
-
-                return False, f"Gemini API Error: {msg}"
-        except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+        return False, f"Gemini API ping timed out or failed ({test_model})."
 
     def analyze_deck(
         self,
@@ -314,39 +335,40 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
             "responseMimeType": "application/json",
         }
 
-        # Determine model fallback sequence starting with the chosen/mapped model
-        initial_model = MODEL_FALLBACK_MAP.get(self.model, self.model)
-        if initial_model in MODEL_TIER_SEQUENCE:
-            start_idx = MODEL_TIER_SEQUENCE.index(initial_model)
-            model_chain = MODEL_TIER_SEQUENCE[start_idx:]
-        else:
-            model_chain = [initial_model] + [m for m in MODEL_TIER_SEQUENCE if m != initial_model]
+        target_model = get_model_for_task("deck_analysis", preferred_model=self.model)
+        attempt_ts = get_est_timestamp_str()
+        url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={self.api_key}"
+        logger.info(f"Submitting deck '{deck_name}' to Gemini ({target_model}) at {attempt_ts}...")
 
-        attempt_logs = []
+        # Apply low thinking level for Gemini 3 models to prevent high-latency timeouts
+        model_gen_config = dict(base_gen_config)
+        if "gemini-3" in target_model:
+            model_gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+
+        model_payload = {
+            "contents": [
+                {"role": "user", "parts": [{"text": user_prompt}]}
+            ],
+            "systemInstruction": {
+                "parts": [{"text": system_instruction}]
+            },
+            "generationConfig": model_gen_config,
+        }
+
+        # Adaptive timeout: 60s for 3.8, 45s for 3.7/3.6/3.5
+        model_timeout = 60 if "gemini-3.8" in target_model else 45
+
+        # Direct execution with transient retries (exponential backoff) on target_model
+        max_retries = 2
+        last_err = ""
+        last_status = 0
 
         try:
-            for target_model in model_chain:
-                attempt_ts = get_est_timestamp_str()
-                url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={self.api_key}"
-                logger.info(f"Submitting deck '{deck_name}' to Gemini ({target_model}) at {attempt_ts}...")
-
-                # Apply low thinking level for Gemini 3 models to prevent high-latency timeouts
-                model_gen_config = dict(base_gen_config)
-                if "gemini-3" in target_model:
-                    model_gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
-
-                model_payload = {
-                    "contents": [
-                        {"role": "user", "parts": [{"text": user_prompt}]}
-                    ],
-                    "systemInstruction": {
-                        "parts": [{"text": system_instruction}]
-                    },
-                    "generationConfig": model_gen_config,
-                }
-
-                # Adaptive timeout: 60s for 3.8, 45s for 3.7/3.6/3.5
-                model_timeout = 60 if "gemini-3.8" in target_model else 45
+            for attempt in range(max_retries + 1):
+                if attempt > 0:
+                    backoff_sec = 1.0 * attempt
+                    logger.info(f"Retrying Gemini call ({target_model}) attempt {attempt + 1}/{max_retries + 1} after {backoff_sec}s delay...")
+                    time.sleep(backoff_sec)
 
                 try:
                     resp = requests.post(url, json=model_payload, headers={"Content-Type": "application/json"}, timeout=model_timeout)
@@ -354,24 +376,14 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
                         data = resp.json()
                         candidates = data.get("candidates", [])
                         if not candidates:
-                            attempt_logs.append({
-                                "model": target_model,
-                                "timestamp": attempt_ts,
-                                "status_code": resp.status_code,
-                                "error": "Gemini returned no response candidates."
-                            })
-                            logger.warning(f"Model '{target_model}' returned empty candidates at {attempt_ts}. Trying next model...")
+                            last_err = "Gemini returned no response candidates."
+                            last_status = 200
                             continue
 
                         content_parts = candidates[0].get("content", {}).get("parts", [])
                         if not content_parts:
-                            attempt_logs.append({
-                                "model": target_model,
-                                "timestamp": attempt_ts,
-                                "status_code": resp.status_code,
-                                "error": "Gemini response contained empty content."
-                            })
-                            logger.warning(f"Model '{target_model}' returned empty content parts at {attempt_ts}. Trying next model...")
+                            last_err = "Gemini response contained empty content."
+                            last_status = 200
                             continue
 
                         raw_text = content_parts[0].get("text", "").strip()
@@ -410,52 +422,33 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
                         return parsed_json
 
                     # Handle non-200 responses
-                    err_msg = ""
+                    last_status = resp.status_code
                     try:
                         err_json = resp.json()
-                        err_msg = err_json.get("error", {}).get("message", "")
+                        last_err = err_json.get("error", {}).get("message", "")
                     except Exception:
-                        err_msg = resp.text[:200]
+                        last_err = resp.text[:200]
 
-                    attempt_logs.append({
-                        "model": target_model,
-                        "timestamp": attempt_ts,
-                        "status_code": resp.status_code,
-                        "error": err_msg or f"HTTP {resp.status_code}"
-                    })
-
-                    logger.warning(
-                        f"Model '{target_model}' failed at {attempt_ts} (HTTP {resp.status_code}: {err_msg}). "
-                        f"Cascading to lower model in tier sequence..."
-                    )
+                    logger.warning(f"Model '{target_model}' request returned HTTP {resp.status_code}: {last_err}")
+                    if resp.status_code in (429, 500, 503) and attempt < max_retries:
+                        continue
+                    break
 
                 except requests.RequestException as req_err:
-                    attempt_logs.append({
-                        "model": target_model,
-                        "timestamp": attempt_ts,
-                        "status_code": 0,
-                        "error": f"Network error: {str(req_err)}"
-                    })
-                    logger.warning(f"Model '{target_model}' network failure at {attempt_ts}: {req_err}. Trying next model...")
+                    last_err = f"Network error: {str(req_err)}"
+                    last_status = 0
+                    if attempt < max_retries:
+                        logger.warning(f"Model '{target_model}' network failure: {req_err}. Retrying...")
+                        continue
                 except GeminiAnalysisError as parse_err:
-                    attempt_logs.append({
-                        "model": target_model,
-                        "timestamp": attempt_ts,
-                        "status_code": 200,
-                        "error": f"Output parsing error: {str(parse_err)}"
-                    })
-                    logger.warning(f"Model '{target_model}' output parse failure at {attempt_ts}: {parse_err}. Trying next model...")
+                    last_err = f"Output parsing error: {str(parse_err)}"
+                    last_status = 200
+                    if attempt < max_retries:
+                        continue
+                    break
 
-            # If we exhausted all models in the chain
-            lines = [
-                "Gemini AI Strategic Intel: All attempted models failed due to high demand / service unavailability.",
-                "Model Attempt Log (EST):"
-            ]
-            for att in attempt_logs:
-                sc_str = f"HTTP {att['status_code']}: " if att['status_code'] else ""
-                lines.append(f"  • {att['model']} [{att['timestamp']}] - {sc_str}{att['error']}")
-
-            err_report = "\n".join(lines)
+            sc_str = f"HTTP {last_status}: " if last_status else ""
+            err_report = f"Gemini analysis failed on model '{target_model}': {sc_str}{last_err}"
             logger.error(err_report)
             raise GeminiAnalysisError(err_report)
 

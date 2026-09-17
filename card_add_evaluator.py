@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -37,6 +38,7 @@ from gemini_analyzer import (
     MODEL_FALLBACK_MAP,
     MODEL_TIER_SEQUENCE,
     GeminiAnalysisError,
+    get_model_for_task,
 )
 from providers.edhrec import EDHRECProvider
 from providers.scryfall import ScryfallProvider
@@ -515,7 +517,10 @@ class CardAddEvaluator:
             raise GeminiAnalysisError("Gemini API Key is required for AI tactical analysis.")
 
         raw_model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
-        target_model_base = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
+        if not raw_model or str(raw_model).strip().lower() in ("auto", "default", "none", ""):
+            target_model_base = "gemini-3.8-flash" if (len(cards) > 5 or len(decks) > 3) else get_model_for_task("card_evaluation")
+        else:
+            target_model_base = get_model_for_task("card_evaluation", preferred_model=raw_model)
 
         # Format cards prompt block
         card_lines = []
@@ -630,24 +635,31 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
 """
 
         clean_key = effective_key.strip()
-        models_to_try = [target_model_base] + [m for m in MODEL_TIER_SEQUENCE if m != target_model_base]
+        target_model = target_model_base
+        url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={clean_key}"
+        gen_config = {"temperature": 0.2, "maxOutputTokens": 8192}
+        if "gemini-3" in target_model:
+            gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
 
-        attempt_logs = []
-        for target_model in models_to_try:
-            url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={clean_key}"
-            gen_config = {"temperature": 0.2, "maxOutputTokens": 8192}
-            if "gemini-3" in target_model:
-                gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": system_instruction + "\n\n" + user_prompt}],
+                }
+            ],
+            "generationConfig": gen_config,
+        }
 
-            payload = {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [{"text": system_instruction + "\n\n" + user_prompt}],
-                    }
-                ],
-                "generationConfig": gen_config,
-            }
+        max_retries = 2
+        last_err = ""
+        last_status = 0
+
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                backoff_sec = 1.0 * attempt
+                logger.info(f"Retrying Card Add Gemini call ({target_model}) attempt {attempt + 1}/{max_retries + 1} after {backoff_sec}s delay...")
+                time.sleep(backoff_sec)
 
             try:
                 resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=90)
@@ -655,11 +667,13 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                     data = resp.json()
                     candidates = data.get("candidates", [])
                     if not candidates:
-                        attempt_logs.append(f"{target_model}: Empty candidates")
+                        last_err = "Empty candidates"
+                        last_status = 200
                         continue
                     parts = candidates[0].get("content", {}).get("parts", [])
                     if not parts:
-                        attempt_logs.append(f"{target_model}: Empty parts")
+                        last_err = "Empty parts"
+                        last_status = 200
                         continue
 
                     raw_text = parts[0].get("text", "").strip()
@@ -668,14 +682,22 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                     parsed["_analyzed_at"] = datetime.now(timezone.utc).isoformat()
                     return parsed
                 else:
-                    err_msg = resp.text[:150]
-                    attempt_logs.append(f"{target_model} (HTTP {resp.status_code}): {err_msg}")
-                    logger.warning(f"Model '{target_model}' failed: {err_msg}. Trying fallback...")
+                    last_status = resp.status_code
+                    last_err = resp.text[:200]
+                    logger.warning(f"Card Add model '{target_model}' failed (HTTP {resp.status_code}): {last_err}")
+                    if resp.status_code in (429, 500, 503) and attempt < max_retries:
+                        continue
+                    break
             except Exception as e:
-                attempt_logs.append(f"{target_model}: {str(e)}")
-                logger.warning(f"Model '{target_model}' exception: {e}. Trying fallback...")
+                last_err = str(e)
+                last_status = 0
+                logger.warning(f"Card Add model '{target_model}' exception: {e}")
+                if attempt < max_retries:
+                    continue
+                break
 
-        raise GeminiAnalysisError(f"All Gemini models failed for Card Add evaluation. Logs: {'; '.join(attempt_logs)}")
+        sc_str = f"HTTP {last_status}: " if last_status else ""
+        raise GeminiAnalysisError(f"Card Add evaluation failed on model '{target_model}': {sc_str}{last_err}")
 
     def _clean_and_parse_json(self, raw: str) -> dict:
         """Strips markdown code fences and safely extracts JSON."""

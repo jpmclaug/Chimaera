@@ -230,69 +230,82 @@
                             Sign In &rarr;
                         </a>
                         {% endif %}
-                    <!-- Active Sector Indicator (Mobile HUD Breadcrumb) -->
-                    <div class="md:hidden flex items-center">
-                        <span class="text-[10px] font-mono px-1.5 py-0.5 border uppercase font-bold tracking-wider truncate max-w-[125px]
-                            {% if active_tab == 'wishlist' %}bg-[#00CED1]/10 text-[#00CED1] border-[#00CED1]/40
-                            {% elif active_tab == 'deals' %}bg-[#DC143C]/10 text-[#FF3358] border-[#DC143C]/40
-                            {% elif active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}bg-[#00CED1]/10 text-[#00CED1] border-[#00CED1]/40
-                            {% elif active_tab == 'inventory' %}bg-[#10B981]/10 text-[#10B981] border-[#10B981]/40
-                            {% elif active_tab == 'buylist' %}bg-[#2DD4BF]/10 text-[#2DD4BF] border-[#2DD4BF]/40
-                            {% elif active_tab == 'microcenter' %}bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/40
-                            {% elif active_tab in ['add_evaluator', 'secret_lair'] %}bg-[#00CED1]/10 text-[#00CED1] border-[#00CED1]/40
-                            {% elif active_tab == 'system_overview' %}bg-[#00CED1]/10 text-[#00CED1] border-[#00CED1]/40
-                            {% elif active_tab == 'admin' %}bg-[#00CED1]/10 text-[#00CED1] border-[#00CED1]/40
-                            {% else %}bg-[#263245] text-[#94A3B8] border-[#3D4F6B]{% endif %}">
-                            {% if active_tab == 'wishlist' %}01 REGISTRY
-                            {% elif active_tab == 'deals' %}02 DEALS
-                            {% elif active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}05 CMDR
-                            {% elif active_tab == 'inventory' %}06 BINDER
-                            {% elif active_tab == 'buylist' %}03 BUYLIST
-                            {% elif active_tab == 'microcenter' %}04 MICROCENTER
-                            {% elif active_tab in ['add_evaluator', 'secret_lair'] %}08 EVALUATOR
-                            {% elif active_tab == 'system_overview' %}00 MANUAL
-                            {% elif active_tab == 'admin' %}07 ADMIN
-                            {% else %}CHIMAERA{% endif %}
-                        </span>
                     </div>
                 </div>
 
-                <!-- Right Actions: Refresh, Acquire & Mobile Menu -->
-                <div class="flex items-center space-x-1.5 sm:space-x-3 flex-shrink-0">
-                    <a href="/system-overview" class="btn-bridge px-2 sm:px-2.5 py-1.5 sm:py-2 text-xs hidden sm:flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1]" title="Open Tactical Field Manual & System Overview">
-                        <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                        </svg>
-                        <span class="font-mono tracking-wider uppercase font-semibold hidden md:inline">Manual</span>
-                    </a>
-
-                    {% if current_user %}
-                    <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge px-2 sm:px-3 py-1.5 sm:py-2 text-xs flex items-center space-x-1.5" title="Poll Watchlist Prices">
-                        <svg id="refresh-all-icon" class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                        <span class="font-mono tracking-wider uppercase font-semibold hidden sm:inline">Poll</span>
-                    </button>
-
-                    <button onclick="openAddCardModal()" class="btn-crimson px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs flex items-center space-x-1 sm:space-x-1.5 shadow-none flex-shrink-0" title="Register New Target">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
-                        </svg>
-                        <span class="text-xs font-bold">Acquire</span>
-                    </button>
-
-                    <!-- Mobile Drawer Toggle Button -->
-                    <button onclick="toggleMobileDrawer()" id="btn-mobile-drawer-toggle" class="md:hidden btn-bridge p-1.5 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center justify-center" title="Open Tactical Menu">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-                        </svg>
-                    </button>
-                    {% else %}
-                    <a href="{{ url_for('login_page') }}" class="btn-crimson px-3.5 sm:px-4 py-1.5 sm:py-2 text-xs uppercase font-bold tracking-wider">
-                        Sign In &rarr;
-                    </a>
-                    {% endif %}
+                <!-- Active Sector Indicator (Mobile HUD Breadcrumb) -->
+                <div class="md:hidden flex items-center pl-2 border-l border-[#263245]">
+                    <span class="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase font-bold tracking-wider
+                        {% if active_tab == 'wishlist' %}text-[#00CED1]
+                        {% elif active_tab == 'deals' %}text-[#FF3358]
+                        {% elif active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}text-[#00CED1]
+                        {% elif active_tab == 'inventory' %}text-[#10B981]
+                        {% elif active_tab == 'buylist' %}text-[#2DD4BF]
+                        {% elif active_tab == 'microcenter' %}text-[#F59E0B]
+                        {% elif active_tab in ['add_evaluator', 'secret_lair'] %}text-[#00CED1]
+                        {% elif active_tab == 'system_overview' %}text-[#00CED1]
+                        {% elif active_tab == 'admin' %}text-[#00CED1]
+                        {% else %}text-[#94A3B8]{% endif %}">
+                        <span class="w-1.5 h-1.5 rounded-full animate-pulse
+                            {% if active_tab == 'wishlist' %}bg-[#00CED1]
+                            {% elif active_tab == 'deals' %}bg-[#FF3358]
+                            {% elif active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}bg-[#00CED1]
+                            {% elif active_tab == 'inventory' %}bg-[#10B981]
+                            {% elif active_tab == 'buylist' %}bg-[#2DD4BF]
+                            {% elif active_tab == 'microcenter' %}bg-[#F59E0B]
+                            {% else %}bg-[#00CED1]{% endif %}"></span>
+                        <span class="truncate max-w-[80px] sm:max-w-[120px]">
+                            {% if active_tab == 'wishlist' %}Registry
+                            {% elif active_tab == 'deals' %}Deals
+                            {% elif active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}Cmdr
+                            {% elif active_tab == 'inventory' %}Binder
+                            {% elif active_tab == 'buylist' %}Buylist
+                            {% elif active_tab == 'microcenter' %}MicroCenter
+                            {% elif active_tab in ['add_evaluator', 'secret_lair'] %}Evaluator
+                            {% elif active_tab == 'system_overview' %}Manual
+                            {% elif active_tab == 'admin' %}Admin
+                            {% else %}Chimaera{% endif %}
+                        </span>
+                    </span>
                 </div>
+            </div>
+
+            <!-- Right Actions: Refresh, Acquire & Mobile Menu -->
+            <div class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink-0">
+                <a href="/system-overview" class="btn-bridge h-9 px-2.5 text-xs hidden sm:flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1]" title="Open Tactical Field Manual & System Overview">
+                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                    </svg>
+                    <span class="font-mono tracking-wider uppercase font-semibold hidden md:inline">Manual</span>
+                </a>
+
+                {% if current_user %}
+                <button onclick="triggerRefreshAll()" id="btn-refresh-all" class="btn-bridge h-9 w-9 sm:w-auto sm:px-3 text-xs flex items-center justify-center sm:space-x-1.5" title="Poll Watchlist Prices">
+                    <svg id="refresh-all-icon" class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span class="font-mono tracking-wider uppercase font-semibold hidden sm:inline">Poll</span>
+                </button>
+
+                <button onclick="openAddCardModal()" class="btn-crimson h-9 px-2.5 sm:px-3.5 text-xs flex items-center justify-center space-x-1 sm:space-x-1.5 shadow-none flex-shrink-0" title="Register New Target">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span class="font-bold hidden xs:inline">Acquire</span>
+                </button>
+
+                <!-- Mobile Drawer Toggle Button -->
+                <button onclick="toggleMobileDrawer()" id="btn-mobile-drawer-toggle" class="md:hidden btn-bridge h-9 w-9 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center justify-center flex-shrink-0" title="Open Tactical Menu">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+                {% else %}
+                <a href="{{ url_for('login_page') }}" class="btn-crimson h-9 px-3.5 sm:px-4 text-xs flex items-center uppercase font-bold tracking-wider">
+                    Sign In &rarr;
+                </a>
+                {% endif %}
+            </div>
             </div>
         </div>
     </nav>

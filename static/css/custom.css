@@ -441,4 +441,31 @@ input:focus, select:focus, textarea:focus {
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* =========================================================================
+   Mobile-Friendly Tactical Toolbar & Action Controls
+   ========================================================= */
+.tactical-touch-target {
+    min-height: 36px;
+    min-width: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tactical-action-btn {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Fira Code', 'Roboto Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+
 

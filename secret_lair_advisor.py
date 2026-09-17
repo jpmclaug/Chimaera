@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.parse
 from datetime import datetime, timezone
 import requests
@@ -22,6 +23,7 @@ from gemini_analyzer import (
     MODEL_TIER_SEQUENCE,
     MODEL_FALLBACK_MAP,
     GeminiAnalysisError,
+    get_model_for_task,
 )
 
 logger = logging.getLogger(__name__)
@@ -280,8 +282,9 @@ class SecretLairScraper:
         return unique_drops, bundles
 
     def _parse_drops_with_gemini(self, text: str, api_key: str) -> tuple[list[dict], list[dict]]:
-        """Fallback LLM parser to extract drop JSON from irregular layouts."""
-        url = f"{GEMINI_API_BASE}/{DEFAULT_MODEL}:generateContent?key={api_key}"
+        """Fallback LLM parser to extract drop JSON from irregular layouts using cost-effective flash-lite model."""
+        target_model = get_model_for_task("data_extraction")
+        url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={api_key}"
         prompt = f"""You are a specialized MTG Secret Lair data extractor.
 Extract all Secret Lair drops, cards, prices, and bundles from this announcement text into strict JSON.
 
@@ -314,22 +317,36 @@ REQUIRED SCHEMA:
 }}
 Respond with JSON only. Do not wrap with markdown code fences.
 """
+        gen_config = {"temperature": 0.1, "maxOutputTokens": 4096}
+        if "gemini-3" in target_model:
+            gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
+            "generationConfig": gen_config,
         }
-        try:
-            resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=20)
-            if resp.status_code == 200:
-                candidates = resp.json().get("candidates", [])
-                if candidates:
-                    raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                    clean = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
-                    clean = re.sub(r"\s*```$", "", clean).strip()
-                    parsed = json.loads(clean)
-                    return parsed.get("drops", []), parsed.get("bundles", [])
-        except Exception as e:
-            logger.error(f"Gemini drop parsing fallback failed: {e}")
+        for attempt in range(2):
+            try:
+                resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=25)
+                if resp.status_code == 200:
+                    candidates = resp.json().get("candidates", [])
+                    if candidates:
+                        raw = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        clean = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.IGNORECASE)
+                        clean = re.sub(r"\s*```$", "", clean).strip()
+                        parsed = json.loads(clean)
+                        return parsed.get("drops", []), parsed.get("bundles", [])
+                elif resp.status_code in (429, 503) and attempt == 0:
+                    time.sleep(1)
+                    continue
+                else:
+                    logger.warning(f"Gemini drop parsing ({target_model}) returned HTTP {resp.status_code}")
+                    break
+            except Exception as e:
+                if attempt == 0:
+                    time.sleep(1)
+                    continue
+                logger.error(f"Gemini drop parsing fallback failed on {target_model}: {e}")
 
         return [], []
 
@@ -444,7 +461,11 @@ class SecretLairGeminiAdvisor:
     def __init__(self, api_key: str | None = None, model: str | None = None):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
         raw_model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
-        self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
+        self.requested_model = raw_model
+        if raw_model and str(raw_model).strip().lower() in ("auto", "default", "none", ""):
+            self.model = get_model_for_task("fleet_synergy")
+        else:
+            self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
 
     def analyze_fleet_synergy(
         self,
@@ -632,33 +653,39 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
 }}
 """
 
-        # Dispatch through model sequence with automatic fallback
+        # Direct dispatch to optimal fleet synergy model with transient retries
         clean_key = self.api_key.strip()
-        models_to_try = [self.model] + [m for m in MODEL_TIER_SEQUENCE if m != self.model]
+        target_model = get_model_for_task("fleet_synergy", preferred_model=self.model)
+        url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={clean_key}"
 
-        attempt_logs = []
-        for target_model in models_to_try:
-            attempt_ts = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
-            url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={clean_key}"
+        gen_config = {
+            "temperature": 0.2,
+            "maxOutputTokens": 8192,
+        }
+        if "gemini-3" in target_model:
+            gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
 
-            gen_config = {
-                "temperature": 0.2,
-                "maxOutputTokens": 8192,
-            }
-            if "gemini-3" in target_model:
-                gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+        payload = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": system_instruction + "\n\n" + user_prompt}
+                    ],
+                }
+            ],
+            "generationConfig": gen_config,
+        }
 
-            payload = {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"text": system_instruction + "\n\n" + user_prompt}
-                        ],
-                    }
-                ],
-                "generationConfig": gen_config,
-            }
+        max_retries = 2
+        last_err = ""
+        last_status = 0
+
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                backoff_sec = 1.0 * attempt
+                logger.info(f"Retrying Secret Lair Gemini call ({target_model}) attempt {attempt + 1}/{max_retries + 1} after {backoff_sec}s delay...")
+                time.sleep(backoff_sec)
 
             try:
                 resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=90)
@@ -666,29 +693,40 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                     data = resp.json()
                     candidates = data.get("candidates", [])
                     if not candidates:
-                        attempt_logs.append(f"{target_model}: Empty candidates")
+                        last_err = "Empty candidates"
+                        last_status = 200
                         continue
 
                     parts = candidates[0].get("content", {}).get("parts", [])
                     if not parts:
-                        attempt_logs.append(f"{target_model}: Empty parts")
+                        last_err = "Empty parts"
+                        last_status = 200
                         continue
 
                     raw_text = parts[0].get("text", "").strip()
                     parsed = self._clean_and_parse_json(raw_text)
                     parsed["_model_used"] = target_model
                     parsed["_analyzed_at"] = datetime.now(timezone.utc).isoformat()
+                    self.model = target_model
                     return parsed
                 else:
-                    err_msg = resp.text[:150]
-                    attempt_logs.append(f"{target_model} (HTTP {resp.status_code}): {err_msg}")
-                    logger.warning(f"Model '{target_model}' failed: {err_msg}. Trying fallback...")
+                    last_status = resp.status_code
+                    last_err = resp.text[:200]
+                    logger.warning(f"Secret Lair model '{target_model}' failed (HTTP {resp.status_code}): {last_err}")
+                    if resp.status_code in (429, 500, 503) and attempt < max_retries:
+                        continue
+                    break
             except Exception as e:
-                attempt_logs.append(f"{target_model}: {str(e)}")
-                logger.warning(f"Model '{target_model}' exception: {e}. Trying fallback...")
+                last_err = str(e)
+                last_status = 0
+                logger.warning(f"Secret Lair model '{target_model}' exception: {e}")
+                if attempt < max_retries:
+                    continue
+                break
 
+        sc_str = f"HTTP {last_status}: " if last_status else ""
         raise GeminiAnalysisError(
-            f"All Gemini models failed for Secret Lair analysis. Logs: {'; '.join(attempt_logs)}"
+            f"Gemini fleet analysis failed on model '{target_model}': {sc_str}{last_err}"
         )
 
     def _clean_and_parse_json(self, raw: str) -> dict:

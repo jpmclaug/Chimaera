@@ -21,23 +21,23 @@
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex items-center space-x-3">
+        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {% if saved_gdrive_url %}
-            <button onclick="triggerQuickGdriveSync()" id="btnQuickGdriveSync" class="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-mono font-bold uppercase transition flex items-center space-x-2 shadow-lg shadow-cyan-950/40" title="Re-sync immediately using your linked Google Drive file">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button onclick="triggerQuickGdriveSync()" id="btnQuickGdriveSync" class="flex-1 sm:flex-initial px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 shadow-lg shadow-cyan-950/40 h-9" title="Re-sync immediately using your linked Google Drive file">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                 </svg>
-                <span>⚡ Quick Sync Drive</span>
+                <span class="truncate">⚡ Sync Drive</span>
             </button>
             {% endif %}
-            <button onclick="openUploadModal()" class="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition flex items-center space-x-2 shadow-lg shadow-emerald-950/40">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button onclick="openUploadModal()" class="flex-1 sm:flex-initial px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 shadow-lg shadow-emerald-950/40 h-9">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
                 </svg>
-                <span>Sync Collection / Link CSV</span>
+                <span class="truncate">Sync / Import CSV</span>
             </button>
-            <button onclick="confirmClearInventory()" class="px-3 py-2 bg-[#1B2230] hover:bg-[#DC143C]/20 text-[#94A3B8] hover:text-[#FF3358] border border-[#263245] hover:border-[#DC143C]/50 text-xs font-mono font-bold uppercase transition">
-                Clear Vault
+            <button onclick="confirmClearInventory()" class="px-3 py-2 bg-[#1B2230] hover:bg-[#DC143C]/20 text-[#94A3B8] hover:text-[#FF3358] border border-[#263245] hover:border-[#DC143C]/50 text-xs font-mono font-bold uppercase transition h-9 flex items-center justify-center">
+                Clear
             </button>
         </div>
     </div>
