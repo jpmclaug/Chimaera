@@ -2322,9 +2322,68 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertEqual(updated_card["lowest_price"], 30.00)
             self.assertEqual(updated_card["savings_amount"], 10.00)
 
+    def test_47_card_image_enlarged_overlay_rendering(self):
+        """Tests that registry and deals pages render the enlarged card image overlay modal and interactive card image triggers."""
+        user = self.login_as("overlay_test@example.com")
+        with self.app.app_context():
+            card = WatchlistItem(
+                user_id=user.id,
+                name="Rhystic Study",
+                finish="foil",
+                set_code="WOT",
+                collector_number="25",
+                image_uri="https://cards.scryfall.io/normal/front/9/f/9f37c5b6-a59c-45cd-9a99-e9357fe9ea1b.jpg",
+                target_price=35.00,
+                notify_mm_stock=True,
+                tag="Commander",
+            )
+            db.session.add(card)
+            db.session.commit()
+
+            vp = VendorPrice(
+                watchlist_id=card.id,
+                vendor_name="TCGplayer",
+                price=25.00,
+                in_stock=True,
+            )
+            db.session.add(vp)
+            db.session.commit()
+
+            # 1. Test Registry GET / renders modal and triggers
+            resp_index = self.client.get("/")
+            self.assertEqual(resp_index.status_code, 200)
+            html_index = resp_index.data.decode("utf-8")
+
+            # Check modal elements in base template
+            self.assertIn('id="modal-card-image"', html_index)
+            self.assertIn('id="modal-card-image-img"', html_index)
+            self.assertIn('id="modal-card-image-name"', html_index)
+            self.assertIn('id="modal-card-image-meta"', html_index)
+            self.assertIn('id="modal-card-image-finish"', html_index)
+            self.assertIn('closeCardImageModal()', html_index)
+
+            # Check registry cards have interactive enlarge trigger attributes
+            self.assertIn('onclick="openCardImageOverlay(this)"', html_index)
+            self.assertIn('data-card-image="https://cards.scryfall.io/normal/front/9/f/9f37c5b6-a59c-45cd-9a99-e9357fe9ea1b.jpg"', html_index)
+            self.assertIn('data-card-name="Rhystic Study"', html_index)
+            self.assertIn('data-card-set="WOT"', html_index)
+            self.assertIn('data-card-number="25"', html_index)
+            self.assertIn('data-card-finish="foil"', html_index)
+            self.assertIn('card-thumbnail-interactive', html_index)
+            self.assertIn('title="Click to enlarge Rhystic Study"', html_index)
+
+            # 2. Test Deals GET /deals also renders modal and triggers
+            resp_deals = self.client.get("/deals")
+            self.assertEqual(resp_deals.status_code, 200)
+            html_deals = resp_deals.data.decode("utf-8")
+            self.assertIn('id="modal-card-image"', html_deals)
+            self.assertIn('onclick="openCardImageOverlay(this)"', html_deals)
+            self.assertIn('card-thumbnail-interactive', html_deals)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

@@ -1227,6 +1227,40 @@
         </div>
     </div>
 
+    <!-- Card Image Enlarged Overlay Modal -->
+    <div id="modal-card-image" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto" onclick="handleCardImageBackdropClick(event)">
+        <div class="bg-[#1B2230] border-2 border-[#00CED1] max-w-sm sm:max-w-md md:max-w-lg w-full p-3 sm:p-4 relative max-h-[95vh] max-h-[95dvh] flex flex-col my-auto shadow-2xl tactical-corners" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between border-b border-[#263245] pb-2.5 mb-3 flex-shrink-0">
+                <div class="min-w-0 flex-1 pr-2">
+                    <span class="text-[10px] font-mono text-[#00CED1] uppercase tracking-widest block font-bold">// TACTICAL OPTICS // TARGET INTEL</span>
+                    <h3 id="modal-card-image-name" class="text-sm sm:text-base font-heading font-black text-white uppercase tracking-wider truncate">Card Artwork</h3>
+                    <div id="modal-card-image-badges" class="flex flex-wrap gap-1.5 mt-1 items-center">
+                        <span id="modal-card-image-meta" class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-[10px] px-2 py-0.5 font-mono uppercase font-medium"></span>
+                        <span id="modal-card-image-finish" class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-[10px] px-2 py-0.5 font-mono uppercase font-semibold"></span>
+                    </div>
+                </div>
+                <button type="button" onclick="closeCardImageModal()" class="text-[#94A3B8] hover:text-[#FF3358] text-2xl leading-none font-mono p-1 transition" title="Close (Esc)">&times;</button>
+            </div>
+
+            <!-- Modal Body: Enlarged Image -->
+            <div class="flex-1 min-h-0 flex items-center justify-center p-1 overflow-hidden relative">
+                <img id="modal-card-image-img" 
+                     src="" 
+                     alt="Enlarged Card Art" 
+                     class="max-w-full max-h-[70vh] max-h-[70dvh] object-contain rounded-lg border border-[#263245] shadow-2xl bg-[#10141D] select-none transition-transform duration-200">
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="flex items-center justify-between pt-2.5 mt-3 border-t border-[#263245] flex-shrink-0 text-xs font-mono">
+                <span class="text-[11px] text-[#64748B]">ESC to dismiss</span>
+                <button type="button" onclick="closeCardImageModal()" class="btn-bridge px-3 py-1.5 text-xs text-[#94A3B8] hover:text-white uppercase font-bold">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

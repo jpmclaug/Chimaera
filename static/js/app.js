@@ -98,6 +98,94 @@ function openAddCardModal() {
     }
 }
 
+// =========================================================================
+// Card Image Overlay / Enlarged View Controls
+// =========================================================================
+function openCardImageModal(imageUri, cardName, setCode, collectorNumber, finish) {
+    if (!imageUri) return;
+    const modal = document.getElementById("modal-card-image");
+    const imgElem = document.getElementById("modal-card-image-img");
+    const nameElem = document.getElementById("modal-card-image-name");
+    const metaElem = document.getElementById("modal-card-image-meta");
+    const finishElem = document.getElementById("modal-card-image-finish");
+
+    if (!modal || !imgElem) return;
+
+    if (nameElem) {
+        nameElem.textContent = cardName || "Card Intel";
+        nameElem.title = cardName || "";
+    }
+
+    if (metaElem) {
+        if (setCode && setCode.toUpperCase() !== "ANY") {
+            metaElem.textContent = `${setCode.toUpperCase()}${collectorNumber ? ' #' + collectorNumber : ''}`;
+            metaElem.classList.remove("hidden");
+        } else {
+            metaElem.textContent = "ANY VERSION";
+            metaElem.classList.remove("hidden");
+        }
+    }
+
+    if (finishElem) {
+        if (finish) {
+            finishElem.textContent = finish.toUpperCase();
+            finishElem.classList.remove("hidden");
+        } else {
+            finishElem.classList.add("hidden");
+        }
+    }
+
+    // Set dataset tracker to avoid async image swap race conditions
+    imgElem.dataset.currentCard = cardName || imageUri;
+
+    // Immediately show existing cached image so there is no blank loading flicker
+    imgElem.onerror = function() {
+        imgElem.onerror = null;
+        imgElem.src = imageUri;
+    };
+    imgElem.src = imageUri;
+    imgElem.alt = cardName || "Card Art";
+
+    // If Scryfall normal URL, asynchronously upgrade to large high-res version
+    if (imageUri && imageUri.includes("/normal/")) {
+        const largeUri = imageUri.replace("/normal/", "/large/");
+        const highResLoader = new Image();
+        highResLoader.onload = function() {
+            if (modal && !modal.classList.contains("hidden") && imgElem.dataset.currentCard === (cardName || imageUri)) {
+                imgElem.src = largeUri;
+            }
+        };
+        highResLoader.src = largeUri;
+    }
+
+    modal.classList.remove("hidden");
+    document.body.classList.add("overflow-hidden");
+}
+
+function openCardImageOverlay(el) {
+    if (!el) return;
+    const imageUri = el.dataset.cardImage || el.getAttribute("src") || "";
+    const cardName = el.dataset.cardName || el.getAttribute("alt") || "";
+    const setCode = el.dataset.cardSet || "";
+    const collectorNumber = el.dataset.cardNumber || "";
+    const finish = el.dataset.cardFinish || "";
+    openCardImageModal(imageUri, cardName, setCode, collectorNumber, finish);
+}
+
+function closeCardImageModal() {
+    const modal = document.getElementById("modal-card-image");
+    if (modal) {
+        modal.classList.add("hidden");
+    }
+    document.body.classList.remove("overflow-hidden");
+}
+
+function handleCardImageBackdropClick(e) {
+    if (e.target && e.target.id === "modal-card-image") {
+        closeCardImageModal();
+    }
+}
+
 function setModalTag(inputId, tagName) {
     const input = document.getElementById(inputId);
     if (input) {
@@ -478,7 +566,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Close modals on backdrop click
-    const modalIds = ["modal-add-card", "modal-bulk-add", "modal-edit-target", "modal-cadence-settings", "modal-buylist-variants"];
+    const modalIds = ["modal-add-card", "modal-bulk-add", "modal-edit-target", "modal-cadence-settings", "modal-buylist-variants", "modal-card-image"];
     modalIds.forEach(id => {
         const modal = document.getElementById(id);
         if (modal) {
@@ -489,6 +577,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     else if (id === "modal-edit-target") closeEditTargetModal();
                     else if (id === "modal-cadence-settings") closeCadenceModal();
                     else if (id === "modal-buylist-variants" && typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
+                    else if (id === "modal-card-image") closeCardImageModal();
                 }
             });
         }
@@ -501,6 +590,7 @@ document.addEventListener("DOMContentLoaded", () => {
             closeBulkAddModal();
             closeEditTargetModal();
             closeCadenceModal();
+            closeCardImageModal();
             if (typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
             closeMobileDrawer();
             const logoMenu = document.getElementById("logo-dropdown-menu");

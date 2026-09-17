@@ -467,5 +467,21 @@ input:focus, select:focus, textarea:focus {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* =========================================================================
+   Card Image Interactive Thumbnail & Enlarged Overlay
+   ========================================================================= */
+.card-thumbnail-interactive {
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
 
+.card-thumbnail-interactive:hover {
+    border-color: var(--accent-teal-bright) !important;
+    box-shadow: 0 0 12px rgba(0, 206, 209, 0.35);
+    transform: scale(1.04);
+    filter: brightness(1.08);
+}
 
+#modal-card-image-img {
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 25px rgba(0, 206, 209, 0.2);
+}
