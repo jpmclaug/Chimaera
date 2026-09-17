@@ -502,6 +502,7 @@ document.addEventListener("DOMContentLoaded", () => {
             closeEditTargetModal();
             closeCadenceModal();
             if (typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
+            closeMobileDrawer();
             const logoMenu = document.getElementById("logo-dropdown-menu");
             if (logoMenu && !logoMenu.classList.contains("hidden")) {
                 logoMenu.classList.add("hidden");
@@ -2466,9 +2467,47 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // =========================================================================
-// Logo Dropdown Tactical Menu Controls
+// Logo Dropdown & Mobile Tactical Command Drawer Controls
 // =========================================================================
+function openMobileDrawer() {
+    const drawer = document.getElementById("mobile-nav-drawer");
+    const backdrop = document.getElementById("mobile-nav-backdrop");
+    if (!drawer || !backdrop) return;
+    backdrop.classList.remove("hidden");
+    requestAnimationFrame(() => {
+        backdrop.classList.remove("opacity-0");
+        drawer.classList.remove("-translate-x-full");
+    });
+    document.body.classList.add("overflow-hidden");
+}
+
+function closeMobileDrawer() {
+    const drawer = document.getElementById("mobile-nav-drawer");
+    const backdrop = document.getElementById("mobile-nav-backdrop");
+    if (!drawer || !backdrop) return;
+    drawer.classList.add("-translate-x-full");
+    backdrop.classList.add("opacity-0");
+    setTimeout(() => {
+        backdrop.classList.add("hidden");
+        document.body.classList.remove("overflow-hidden");
+    }, 250);
+}
+
+function toggleMobileDrawer() {
+    const drawer = document.getElementById("mobile-nav-drawer");
+    if (!drawer) return;
+    if (drawer.classList.contains("-translate-x-full")) {
+        openMobileDrawer();
+    } else {
+        closeMobileDrawer();
+    }
+}
+
 function toggleLogoMenu() {
+    if (window.innerWidth < 768) {
+        toggleMobileDrawer();
+        return;
+    }
     const menu = document.getElementById("logo-dropdown-menu");
     const chevron = document.getElementById("logo-menu-chevron");
     if (!menu) return;

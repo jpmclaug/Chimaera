@@ -398,4 +398,47 @@ input:focus, select:focus, textarea:focus {
     }
 }
 
+/* =========================================================================
+   Mobile Navigation & Tactical Drawer
+   ========================================================================= */
+.safe-area-bottom {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.mobile-bottom-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 52px;
+    padding: 0.35rem 0.25rem;
+    position: relative;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s ease;
+}
+
+.mobile-bottom-nav-item.active {
+    color: var(--accent-teal-bright);
+}
+
+.mobile-bottom-nav-item.active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background-color: var(--accent-teal-bright);
+    box-shadow: 0 0 8px var(--accent-teal-bright);
+}
+
+.mobile-drawer-backdrop {
+    transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-drawer-panel {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 
