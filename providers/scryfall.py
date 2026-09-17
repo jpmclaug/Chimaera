@@ -485,6 +485,16 @@ class ScryfallProvider:
             price_val = prices.get("usd_foil") or prices.get("usd_etched") or prices.get("usd")
         elif finish == "etched":
             price_val = prices.get("usd_etched") or prices.get("usd_foil") or prices.get("usd")
+        elif finish == "any":
+            candidates = [prices.get("usd"), prices.get("usd_foil"), prices.get("usd_etched")]
+            cand_nums = []
+            for c in candidates:
+                try:
+                    if c is not None:
+                        cand_nums.append(float(c))
+                except (ValueError, TypeError):
+                    pass
+            price_val = min(cand_nums) if cand_nums else None
         else:
             price_val = prices.get("usd") or prices.get("usd_foil")
 

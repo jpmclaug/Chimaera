@@ -1967,6 +1967,13 @@ def create_app(test_config=None):
             except ValueError:
                 return jsonify({"error": "Invalid target price number."}), 400
 
+        finish_changed = False
+        if "finish" in data:
+            raw_finish = (data.get("finish") or "").strip().lower()
+            if raw_finish in ("any", "nonfoil", "foil", "etched") and raw_finish != item.finish:
+                item.finish = raw_finish
+                finish_changed = True
+
         if "notify_mm_stock" in data:
             item.notify_mm_stock = bool(data["notify_mm_stock"])
 
@@ -1975,7 +1982,15 @@ def create_app(test_config=None):
             item.tag = raw_tag or None
 
         db.session.commit()
-        log_activity("CARD_UPDATE", details=f"Updated target price to ${item.target_price or 'None'} for '{item.name}'", user=user)
+
+        # If finish variant changed, re-poll card immediately to refresh stock and prices
+        if finish_changed:
+            try:
+                deal_engine.poll_card(item, notify=True)
+            except Exception as poll_err:
+                logger.warning(f"Error re-polling card after finish update for {item.name}: {poll_err}")
+
+        log_activity("CARD_UPDATE", details=f"Updated target price to ${item.target_price or 'None'} and finish to '{item.finish}' for '{item.name}'", user=user)
         return jsonify({
             "message": "Target configuration committed.",
             "card": item.to_dict(),

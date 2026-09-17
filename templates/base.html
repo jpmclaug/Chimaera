@@ -669,6 +669,7 @@
                         <div>
                             <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Finish Variant</label>
                             <select id="card-finish-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
+                                <option value="any">Any Finish (Cheapest / In Stock)</option>
                                 <option value="nonfoil">Non-foil</option>
                                 <option value="foil">Foil</option>
                                 <option value="etched">Etched Foil</option>
@@ -791,7 +792,8 @@
                     <div>
                         <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Finish Variant</label>
                         <select id="bulk-finish-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
-                            <option value="nonfoil" selected>Non-foil</option>
+                            <option value="any" selected>Any Finish (Cheapest / In Stock)</option>
+                            <option value="nonfoil">Non-foil</option>
                             <option value="foil">Foil</option>
                             <option value="etched">Etched Foil</option>
                         </select>
@@ -991,10 +993,21 @@
                     <span id="edit-target-scope-label" class="text-[11px] text-[#94A3B8] font-mono block mt-0.5"></span>
                 </div>
 
-                <div>
-                    <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold Price ($ USD)</label>
-                    <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
-                        class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold Price ($ USD)</label>
+                        <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
+                            class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Finish Variant</label>
+                        <select id="edit-target-finish-select" class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
+                            <option value="any">Any Finish (Cheapest / In Stock)</option>
+                            <option value="nonfoil">Non-foil</option>
+                            <option value="foil">Foil</option>
+                            <option value="etched">Etched Foil</option>
+                        </select>
+                    </div>
                 </div>
 
                 <!-- Tag / Deck / Purpose for Edit Target -->

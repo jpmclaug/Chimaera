@@ -342,7 +342,7 @@ function toggleBulkCustomTargetInput() {
     }
 }
 
-async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true, currentTag = "") {
+async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true, currentTag = "", currentFinish = "") {
     const modal = document.getElementById("modal-edit-target");
     if (!modal) return;
 
@@ -353,6 +353,13 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
     const tagInput = document.getElementById("edit-target-tag-input");
     if (tagInput) {
         tagInput.value = currentTag || "";
+    }
+
+    const finishSelect = document.getElementById("edit-target-finish-select");
+    if (finishSelect) {
+        const domFinish = document.getElementById(`card-row-${id}`)?.dataset?.cardFinish;
+        const resolvedFinish = (currentFinish || domFinish || "any").toLowerCase().trim();
+        finishSelect.value = resolvedFinish;
     }
 
     const scopeElem = document.getElementById("edit-target-scope-label");
@@ -463,19 +470,8 @@ function updatePriceIntelPresets(marketPrice) {
 // =========================================================================
 function getLowestPriceAcrossPrints(prints, finish) {
     if (!prints || prints.length === 0) return null;
-    const finishKey = finish === "foil" ? "usd_foil" : (finish === "etched" ? "usd_etched" : "usd");
     let prices = [];
-    prints.forEach(p => {
-        if (!p.prices) return;
-        const val = p.prices[finishKey] || (finish === "nonfoil" ? p.prices.usd : null);
-        if (val) {
-            const num = parseFloat(val);
-            if (!isNaN(num) && num > 0) {
-                prices.push(num);
-            }
-        }
-    });
-    if (prices.length === 0) {
+    if (finish === "any") {
         prints.forEach(p => {
             if (!p.prices) return;
             [p.prices.usd, p.prices.usd_foil, p.prices.usd_etched].forEach(v => {
@@ -485,6 +481,29 @@ function getLowestPriceAcrossPrints(prints, finish) {
                 }
             });
         });
+    } else {
+        const finishKey = finish === "foil" ? "usd_foil" : (finish === "etched" ? "usd_etched" : "usd");
+        prints.forEach(p => {
+            if (!p.prices) return;
+            const val = p.prices[finishKey] || (finish === "nonfoil" ? p.prices.usd : null);
+            if (val) {
+                const num = parseFloat(val);
+                if (!isNaN(num) && num > 0) {
+                    prices.push(num);
+                }
+            }
+        });
+        if (prices.length === 0) {
+            prints.forEach(p => {
+                if (!p.prices) return;
+                [p.prices.usd, p.prices.usd_foil, p.prices.usd_etched].forEach(v => {
+                    if (v) {
+                        const num = parseFloat(v);
+                        if (!isNaN(num) && num > 0) prices.push(num);
+                    }
+                });
+            });
+        }
     }
     return prices.length > 0 ? Math.min(...prices) : null;
 }
@@ -634,6 +653,10 @@ async function selectCardName(cardName) {
             ${printOptions}
         `;
 
+        if (finishSelect) {
+            finishSelect.value = "any";
+        }
+
         printContainer.classList.remove("hidden");
         submitBtn.disabled = false;
 
@@ -658,7 +681,7 @@ function updateSelectedPrintView() {
     if (!currentPrintsData || currentPrintsData.length === 0) return;
 
     const selectedValue = printSelect ? printSelect.value : "any";
-    const selectedFinish = finishSelect ? finishSelect.value : "nonfoil";
+    const selectedFinish = finishSelect ? finishSelect.value : "any";
 
     if (selectedValue === "any") {
         // Any Version Mode
@@ -677,7 +700,10 @@ function updateSelectedPrintView() {
         // Enable all finish options
         Array.from(finishSelect.options).forEach(opt => {
             opt.disabled = false;
-            opt.textContent = opt.value === "nonfoil" ? "Non-foil" : (opt.value === "foil" ? "Foil" : "Etched Foil");
+            if (opt.value === "any") opt.textContent = "Any Finish (Cheapest / In Stock)";
+            else if (opt.value === "nonfoil") opt.textContent = "Non-foil";
+            else if (opt.value === "foil") opt.textContent = "Foil";
+            else if (opt.value === "etched") opt.textContent = "Etched Foil";
         });
 
         const lowest = getLowestPriceAcrossPrints(currentPrintsData, selectedFinish);
@@ -707,23 +733,34 @@ function updateSelectedPrintView() {
         // Update finish dropdown availability for specific print
         const availableFinishes = printObj.finishes || ["nonfoil"];
         Array.from(finishSelect.options).forEach(opt => {
-            if (availableFinishes.includes(opt.value)) {
+            if (opt.value === "any" || availableFinishes.includes(opt.value)) {
                 opt.disabled = false;
-                opt.textContent = opt.value === "nonfoil" ? "Non-foil" : (opt.value === "foil" ? "Foil" : "Etched Foil");
+                if (opt.value === "any") opt.textContent = "Any Finish (Cheapest / In Stock)";
+                else if (opt.value === "nonfoil") opt.textContent = "Non-foil";
+                else if (opt.value === "foil") opt.textContent = "Foil";
+                else if (opt.value === "etched") opt.textContent = "Etched Foil";
             } else {
                 opt.disabled = true;
                 opt.textContent = `${opt.value.toUpperCase()} (UNAVAILABLE)`;
             }
         });
 
-        if (!availableFinishes.includes(finishSelect.value)) {
+        if (finishSelect.value !== "any" && !availableFinishes.includes(finishSelect.value)) {
             finishSelect.value = availableFinishes[0];
         }
 
         const finishVal = finishSelect.value;
         let estPrice = "N/A";
         let numericPrice = null;
-        if (finishVal === "foil" && printObj.prices.usd_foil) {
+        if (finishVal === "any") {
+            const candidates = [printObj.prices.usd, printObj.prices.usd_foil, printObj.prices.usd_etched]
+                .map(v => v ? parseFloat(v) : null)
+                .filter(v => v !== null && !isNaN(v) && v > 0);
+            if (candidates.length > 0) {
+                numericPrice = Math.min(...candidates);
+                estPrice = `$${numericPrice.toFixed(2)}`;
+            }
+        } else if (finishVal === "foil" && printObj.prices.usd_foil) {
             estPrice = `$${printObj.prices.usd_foil}`;
             numericPrice = parseFloat(printObj.prices.usd_foil);
         } else if (finishVal === "etched" && printObj.prices.usd_etched) {
@@ -1206,6 +1243,7 @@ async function submitEditTarget() {
     const itemId = document.getElementById("edit-target-item-id").value;
     const targetPriceVal = document.getElementById("edit-target-price-input").value;
     const mmAlertChecked = document.getElementById("edit-target-mm-alert")?.checked ?? true;
+    const finishVal = document.getElementById("edit-target-finish-select")?.value || "any";
     const tagInput = document.getElementById("edit-target-tag-input");
     const tagVal = (tagInput ? tagInput.value : "").trim();
 
@@ -1222,6 +1260,7 @@ async function submitEditTarget() {
             body: JSON.stringify({
                 target_price: targetPriceVal ? parseFloat(targetPriceVal) : null,
                 notify_mm_stock: mmAlertChecked,
+                finish: finishVal,
                 tag: tagVal,
             }),
         });
@@ -1258,14 +1297,22 @@ function updateCardInRegistryDom(card) {
     const safeName = (card.name || "").replace(/'/g, "\\'");
     const targetArg = card.target_price !== null && card.target_price !== undefined ? card.target_price : "null";
     const safeTag = (card.tag || "").replace(/'/g, "\\'");
-    const editOnclickStr = `openEditTargetModal(${cid}, '${safeName}', ${targetArg}, ${card.notify_mm_stock ? 'true' : 'false'}, ${card.is_any_version ? 'true' : 'false'}, '${safeTag}')`;
+    const safeFinish = (card.finish || "any").toLowerCase().trim();
+    const editOnclickStr = `openEditTargetModal(${cid}, '${safeName}', ${targetArg}, ${card.notify_mm_stock ? 'true' : 'false'}, ${card.is_any_version ? 'true' : 'false'}, '${safeTag}', '${safeFinish}')`;
 
     // 1. GRID VIEW UPDATES
     const gridRow = document.getElementById(`card-row-${cid}`);
     if (gridRow) {
         gridRow.dataset.tag = (card.tag || "").toLowerCase().trim();
+        gridRow.dataset.cardFinish = safeFinish;
         gridRow.dataset.isDeal = card.is_deal ? "true" : "false";
         gridRow.dataset.mmStock = card.mm_in_stock ? "true" : "false";
+
+        // Update finish badge if present
+        const finishBadge = gridRow.querySelector("[data-card-finish-badge]") || gridRow.querySelector(".font-mono.uppercase.font-semibold");
+        if (finishBadge) {
+            finishBadge.textContent = safeFinish.toUpperCase();
+        }
 
         if (card.is_deal) {
             gridRow.classList.remove("border-[#263245]", "hover:border-[#3D4F6B]");
@@ -1342,6 +1389,7 @@ function updateCardInRegistryDom(card) {
     const compactCard = document.getElementById(`compact-card-${cid}`);
     if (compactCard) {
         compactCard.dataset.tag = (card.tag || "").toLowerCase().trim();
+        compactCard.dataset.cardFinish = safeFinish;
         compactCard.dataset.isDeal = card.is_deal ? "true" : "false";
 
         if (card.is_deal) {
@@ -1399,6 +1447,7 @@ function updateCardInRegistryDom(card) {
     const swipeSlide = document.getElementById(`swipe-card-slide-${cid}`);
     if (swipeSlide) {
         swipeSlide.dataset.tag = (card.tag || "").toLowerCase().trim();
+        swipeSlide.dataset.cardFinish = safeFinish;
         swipeSlide.dataset.isDeal = card.is_deal ? "true" : "false";
 
         const swipeBox = document.getElementById(`swipe-card-box-${cid}`);

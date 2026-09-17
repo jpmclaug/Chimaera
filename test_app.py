@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 import json
 from app import create_app, parse_bulk_card_names
 from models import db, User, AllowedEmail, WatchlistItem, VendorPrice, SystemSetting, ActivityLog, MicrocenterItem, MicrocenterHistory
@@ -2379,6 +2380,49 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn('id="modal-card-image"', html_deals)
             self.assertIn('onclick="openCardImageOverlay(this)"', html_deals)
             self.assertIn('card-thumbnail-interactive', html_deals)
+
+    def test_51_any_finish_functionality(self):
+        """Tests that 'Any Finish' functions across Scryfall, Watchlist, and update-target endpoint."""
+        with self.app.app_context():
+            # 1. Test ScryfallProvider.get_tcgplayer_price with finish="any"
+            from providers.scryfall import ScryfallProvider
+            sf = ScryfallProvider()
+            with patch.object(sf, "get_card_by_id", return_value={
+                "name": "Test Card",
+                "prices": {"usd": None, "usd_foil": "14.50", "usd_etched": "20.00"},
+                "purchase_uris": {"tcgplayer": "https://example.com/tcg"},
+            }):
+                quote = sf.get_tcgplayer_price("dummy-id", finish="any")
+                self.assertIsNotNone(quote)
+                self.assertEqual(quote["price"], 14.50)
+                self.assertTrue(quote["in_stock"])
+
+            # 2. Test updating target finish via /api/watchlist/update-target/<id>
+            user = self.login_as(email="admin@chimera.local", is_admin=True)
+
+            item = WatchlistItem(
+                user_id=user.id,
+                name="Sol Ring",
+                finish="nonfoil",
+                target_price=10.0,
+            )
+            db.session.add(item)
+            db.session.commit()
+            item_id = item.id
+
+            with patch.object(DealEngine, "poll_card", return_value={"card_name": "Sol Ring"}):
+                resp = self.client.post(
+                    f"/api/watchlist/update-target/{item_id}",
+                    json={"finish": "any", "target_price": 8.50, "notify_mm_stock": True},
+                )
+                self.assertEqual(resp.status_code, 200)
+                data = resp.get_json()
+                self.assertEqual(data["card"]["finish"], "any")
+                self.assertEqual(data["card"]["target_price"], 8.50)
+
+            refreshed = db.session.get(WatchlistItem, item_id)
+            self.assertEqual(refreshed.finish, "any")
+            self.assertEqual(refreshed.target_price, 8.50)
 
 
 if __name__ == "__main__":
