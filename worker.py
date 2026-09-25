@@ -74,6 +74,16 @@ def run_worker_cycle(deal_engine: DealEngine, notify: bool = True) -> dict:
             except Exception as mc_err:
                 logger.error(f"Error syncing MicroCenter in worker cycle: {mc_err}")
 
+        # Best Buy Local Store Surveillance Sync
+        bb_summary = None
+        if SystemSetting.get_bool("bestbuy_poll_enabled", default=True):
+            try:
+                logger.info("Executing Best Buy local store inventory sweep in worker...")
+                bb_summary = deal_engine.sync_bestbuy(notify=notify)
+                logger.info(f"Best Buy sync finished: {bb_summary.get('message', 'Complete')}")
+            except Exception as bb_err:
+                logger.error(f"Error syncing Best Buy in worker cycle: {bb_err}")
+
         duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         
         deals_count = sum(1 for r in results if r.get("is_deal"))
@@ -88,6 +98,7 @@ def run_worker_cycle(deal_engine: DealEngine, notify: bool = True) -> dict:
             "count": len(results),
             "deals": deals_count,
             "microcenter": mc_summary,
+            "bestbuy": bb_summary,
             "duration": duration,
         }
     except Exception as e:

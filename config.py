@@ -9,11 +9,44 @@ class Config:
 
     SECRET_KEY = os.getenv("SECRET_KEY", "chimera-dev-secret-key-mtg")
 
-    # Neon Postgres connection string (e.g. postgresql://user:pass@ep-xyz.us-east-2.aws.neon.tech/neondb?sslmode=require)
-    # Standardize scheme if provided as postgres://
+    # Neon Postgres connection string (e.g. postgresql://... or postgresql+psycopg://...)
+    # Standardize scheme and ensure driver compatibility (psycopg v3 vs psycopg2)
     db_url = os.getenv("DATABASE_URL")
-    if db_url and db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    if db_url:
+        db_url = db_url.strip()
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        elif db_url.startswith("postgres+"):
+            db_url = db_url.replace("postgres+", "postgresql+", 1)
+
+        # Check driver availability and automatically adapt dialect
+        if db_url.startswith("postgresql+psycopg://"):
+            try:
+                import psycopg  # noqa: F401
+            except ImportError:
+                try:
+                    import psycopg2  # noqa: F401
+                    db_url = db_url.replace("postgresql+psycopg://", "postgresql+psycopg2://", 1)
+                except ImportError:
+                    pass
+        elif db_url.startswith("postgresql+psycopg2://"):
+            try:
+                import psycopg2  # noqa: F401
+            except ImportError:
+                try:
+                    import psycopg  # noqa: F401
+                    db_url = db_url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+                except ImportError:
+                    pass
+        elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
+            try:
+                import psycopg2  # noqa: F401
+            except ImportError:
+                try:
+                    import psycopg  # noqa: F401
+                    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+                except ImportError:
+                    pass
 
     # Fallback to local SQLite if DATABASE_URL is not set
     SQLALCHEMY_DATABASE_URI = db_url if db_url else "sqlite:///chimera.db"
@@ -59,4 +92,12 @@ class Config:
     # Google Gemini AI Commander Deck Analyzer Configuration
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_DEFAULT_MODEL", "auto").strip()
+
+    # Best Buy Local Store Stock & Price Surveillance Configuration
+    BESTBUY_API_KEY = os.getenv("BESTBUY_API_KEY", "").strip()
+    BESTBUY_POSTAL_CODE = os.getenv("BESTBUY_POSTAL_CODE", "28202").strip()
+    try:
+        BESTBUY_SEARCH_RADIUS = int(os.getenv("BESTBUY_SEARCH_RADIUS", 25))
+    except (ValueError, TypeError):
+        BESTBUY_SEARCH_RADIUS = 25
 

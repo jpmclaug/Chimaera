@@ -3,9 +3,9 @@ import time
 from datetime import datetime, timezone
 import requests
 from config import Config
-from models import db, WatchlistItem, VendorPrice, SystemSetting, User, MicrocenterItem, ActivityLog
+from models import db, WatchlistItem, VendorPrice, SystemSetting, User, MicrocenterItem, BestBuyItem, ActivityLog
 from card_utils import fix_mojibake
-from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider, MicrocenterProvider
+from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider, MicrocenterProvider, BestBuyProvider
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,11 @@ class DealEngine:
         self.microcenter = MicrocenterProvider(
             store_id=Config.MICROCENTER_STORE_ID,
             store_name=Config.MICROCENTER_STORE_NAME,
+        )
+        self.bestbuy = BestBuyProvider(
+            api_key=Config.BESTBUY_API_KEY,
+            postal_code=Config.BESTBUY_POSTAL_CODE,
+            radius=Config.BESTBUY_SEARCH_RADIUS,
         )
 
     def poll_card(self, item: WatchlistItem, notify: bool = True) -> dict:
@@ -767,4 +772,157 @@ class DealEngine:
             return resp.status_code in (200, 204)
         except Exception as e:
             logger.error(f"Failed to send Discord MicroCenter low stock alert: {e}")
+            return False
+
+    def sync_bestbuy(self, notify: bool = True) -> dict:
+        """Executes a full sweep of all monitored Best Buy products and triggers alerts."""
+        logger.info("Executing Best Buy local store inventory and price surveillance...")
+        return self.bestbuy.sync_all_tracked_items(notify=notify, deal_engine=self)
+
+    def send_discord_bestbuy_restock_alert(
+        self,
+        item: BestBuyItem,
+        available_stores: list[str] | None = None,
+        user: User | None = None,
+        webhook_url: str | None = None,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed when a Best Buy product is in stock locally."""
+        dest_url = self.get_effective_webhook_url(user=user, override_url=webhook_url)
+        if not dest_url:
+            return False
+
+        try:
+            stores_list = available_stores or item.stores_in_stock_list
+            if stores_list:
+                stores_text = ", ".join(stores_list[:5])
+                if len(stores_list) > 5:
+                    stores_text += f" (+{len(stores_list) - 5} more)"
+            else:
+                stores_text = "Available Online / Check Store Locator"
+
+            fields = [
+                {
+                    "name": "Current Price",
+                    "value": f"**${item.current_price:.2f}**" + (f" *(MSRP: ${item.regular_price:.2f})*" if item.regular_price and item.regular_price > item.current_price else ""),
+                    "inline": True,
+                },
+                {
+                    "name": "Local Store Stock",
+                    "value": f"✓ **IN STOCK** ({len(stores_list)} stores)" if stores_list else "✓ **In Stock**",
+                    "inline": True,
+                },
+                {
+                    "name": "SKU",
+                    "value": f"`{item.sku}`",
+                    "inline": True,
+                },
+                {
+                    "name": "Available at Best Buy Stores Near You",
+                    "value": f"📍 **{stores_text}**",
+                    "inline": False,
+                },
+            ]
+
+            if item.product_url:
+                fields.append({
+                    "name": "Direct Product Link",
+                    "value": f"[🛒 Buy / Reserve on BestBuy.com]({item.product_url})",
+                    "inline": False,
+                })
+
+            embed = {
+                "title": f"📦 Best Buy Local Restock: {item.display_name}",
+                "description": f"Target Magic product is now **in stock** at Best Buy stores near you!",
+                "color": 0x0046BE,  # Best Buy Royal Blue
+                "fields": fields,
+                "footer": {
+                    "text": "Chimaera MTG Tactical Intelligence // Best Buy Local Surveillance",
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            if item.image_url:
+                embed["thumbnail"] = {"url": item.image_url}
+
+            payload = {
+                "username": "Chimaera Best Buy Monitor",
+                "embeds": [embed],
+            }
+
+            resp = requests.post(dest_url, json=payload, timeout=8)
+            if resp.status_code in (200, 204):
+                logger.info(f"Discord Best Buy restock alert sent for {item.name}")
+                return True
+            else:
+                logger.warning(f"Discord Best Buy alert failed with status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Failed to send Discord Best Buy restock alert: {e}")
+
+        return False
+
+    def send_discord_bestbuy_price_alert(
+        self,
+        item: BestBuyItem,
+        old_price: float,
+        new_price: float,
+        user: User | None = None,
+        webhook_url: str | None = None,
+    ) -> bool:
+        """Dispatches a Discord alert when a monitored Best Buy item drops in price."""
+        dest_url = self.get_effective_webhook_url(user=user, override_url=webhook_url)
+        if not dest_url:
+            return False
+
+        try:
+            delta = round(new_price - old_price, 2)
+            pct = round(abs(delta) / old_price * 100.0, 1) if old_price > 0 else 0.0
+
+            fields = [
+                {
+                    "name": "New Price",
+                    "value": f"**${new_price:.2f}**",
+                    "inline": True,
+                },
+                {
+                    "name": "Previous Price",
+                    "value": f"~~${old_price:.2f}~~",
+                    "inline": True,
+                },
+                {
+                    "name": "Price Drop",
+                    "value": f"📉 **-${abs(delta):.2f} (-{pct}%)**",
+                    "inline": True,
+                },
+            ]
+
+            if item.product_url:
+                fields.append({
+                    "name": "Direct Product Link",
+                    "value": f"[🛒 View on BestBuy.com]({item.product_url})",
+                    "inline": False,
+                })
+
+            embed = {
+                "title": f"🏷️ Best Buy Price Drop: {item.display_name}",
+                "description": f"Price drop detected on monitored Best Buy product!",
+                "color": 0xDC143C,  # Crimson
+                "fields": fields,
+                "footer": {
+                    "text": "Chimaera MTG Tactical Intelligence // Best Buy Surveillance",
+                },
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            if item.image_url:
+                embed["thumbnail"] = {"url": item.image_url}
+
+            payload = {
+                "username": "Chimaera Best Buy Monitor",
+                "embeds": [embed],
+            }
+
+            resp = requests.post(dest_url, json=payload, timeout=8)
+            return resp.status_code in (200, 204)
+        except Exception as e:
+            logger.error(f"Failed to send Discord Best Buy price alert: {e}")
             return False

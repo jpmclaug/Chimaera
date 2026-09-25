@@ -864,6 +864,186 @@ class MicrocenterHistory(db.Model):
         }
 
 
+class BestBuyItem(db.Model):
+    """Magic: The Gathering product monitored at Best Buy stores."""
+
+    __tablename__ = "bestbuy_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), unique=True, index=True, nullable=False)
+    name = db.Column(db.String(255), index=True, nullable=False)
+    product_url = db.Column(db.Text, nullable=True)
+    image_url = db.Column(db.Text, nullable=True)
+    current_price = db.Column(db.Float, default=0.0, nullable=False)
+    previous_price = db.Column(db.Float, nullable=True)
+    regular_price = db.Column(db.Float, nullable=True)
+    in_stock = db.Column(db.Boolean, default=False, nullable=False)
+    online_available = db.Column(db.Boolean, default=False, nullable=False)
+    stores_in_stock = db.Column(db.Text, nullable=True)  # JSON list of store names
+    nearby_stores_data = db.Column(db.Text, nullable=True)  # JSON list of store dictionaries
+    target_price = db.Column(db.Float, nullable=True)
+    notify_on_restock = db.Column(db.Boolean, default=True, nullable=False)
+    notify_on_price_drop = db.Column(db.Boolean, default=True, nullable=False)
+    first_seen_at = db.Column(db.DateTime, default=utc_now)
+    last_scanned_at = db.Column(db.DateTime, default=utc_now)
+    last_price_change_at = db.Column(db.DateTime, nullable=True)
+    last_stock_change_at = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    history_entries = db.relationship(
+        "BestBuyHistory",
+        backref=db.backref("item", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+        order_by="BestBuyHistory.recorded_at.desc()",
+    )
+
+    @staticmethod
+    def clean_name_text(raw_name: str | None) -> str:
+        """Strips redundant brand prefixes from Best Buy titles."""
+        if not raw_name:
+            return ""
+        name = str(raw_name).strip()
+        prefixes = [
+            r"^Wizards\s+of\s+the\s+Coast\s*[-–—:]\s*",
+            r"^Wizards\s+of\s+The\s+Coast\s*[-–—:]\s*",
+            r"^Magic:\s+The\s+Gathering\s*[-–—:]\s*",
+            r"^Magic\s+The\s+Gathering\s*[-–—:]\s*",
+            r"^MTG\s*[-–—:]\s*",
+        ]
+        for pattern in prefixes:
+            name = re.sub(pattern, "", name, flags=re.IGNORECASE).strip()
+        return name
+
+    @property
+    def display_name(self) -> str:
+        return self.clean_name_text(self.name) or self.name
+
+    @property
+    def stores_in_stock_list(self) -> list:
+        if not self.stores_in_stock:
+            return []
+        try:
+            return json.loads(self.stores_in_stock)
+        except Exception:
+            return []
+
+    @property
+    def nearby_stores_list(self) -> list:
+        if not self.nearby_stores_data:
+            return []
+        try:
+            return json.loads(self.nearby_stores_data)
+        except Exception:
+            return []
+
+    @property
+    def in_stock_stores_count(self) -> int:
+        return len(self.stores_in_stock_list)
+
+    @property
+    def price_change_amount(self) -> float:
+        if self.previous_price is not None and self.previous_price > 0:
+            return round(self.current_price - self.previous_price, 2)
+        return 0.0
+
+    @property
+    def price_change_percent(self) -> float:
+        if self.previous_price is not None and self.previous_price > 0:
+            diff = self.current_price - self.previous_price
+            return round((diff / self.previous_price) * 100.0, 1)
+        return 0.0
+
+    @property
+    def has_price_dropped(self) -> bool:
+        if self.previous_price is not None and self.current_price < self.previous_price:
+            return True
+        if self.regular_price is not None and self.current_price < self.regular_price:
+            return True
+        return False
+
+    @property
+    def savings_from_regular(self) -> float:
+        if self.regular_price is not None and self.regular_price > self.current_price:
+            return round(self.regular_price - self.current_price, 2)
+        return 0.0
+
+    @property
+    def is_deal(self) -> bool:
+        if self.target_price is not None and self.target_price > 0:
+            return bool(self.in_stock and self.current_price <= self.target_price)
+        return self.has_price_dropped
+
+    def to_dict(self, include_history: bool = False, history_limit: int = 15) -> dict:
+        data = {
+            "id": self.id,
+            "sku": self.sku,
+            "name": self.name,
+            "display_name": self.display_name,
+            "product_url": self.product_url,
+            "image_url": self.image_url,
+            "current_price": self.current_price,
+            "previous_price": self.previous_price,
+            "regular_price": self.regular_price,
+            "in_stock": self.in_stock,
+            "online_available": self.online_available,
+            "stores_in_stock": self.stores_in_stock_list,
+            "nearby_stores": self.nearby_stores_list,
+            "in_stock_stores_count": self.in_stock_stores_count,
+            "target_price": self.target_price,
+            "is_deal": self.is_deal,
+            "has_price_dropped": self.has_price_dropped,
+            "price_change_amount": self.price_change_amount,
+            "price_change_percent": self.price_change_percent,
+            "savings_from_regular": self.savings_from_regular,
+            "notify_on_restock": self.notify_on_restock,
+            "notify_on_price_drop": self.notify_on_price_drop,
+            "first_seen_at": self.first_seen_at.isoformat() if self.first_seen_at else None,
+            "last_scanned_at": self.last_scanned_at.isoformat() if self.last_scanned_at else None,
+            "last_price_change_at": self.last_price_change_at.isoformat() if self.last_price_change_at else None,
+            "last_stock_change_at": self.last_stock_change_at.isoformat() if self.last_stock_change_at else None,
+            "is_active": self.is_active,
+        }
+        if include_history:
+            data["history"] = [h.to_dict() for h in self.history_entries[:history_limit]]
+        return data
+
+
+class BestBuyHistory(db.Model):
+    """Historical timestamped snapshot of price and inventory for a Best Buy product."""
+
+    __tablename__ = "bestbuy_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("bestbuy_item.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    price = db.Column(db.Float, nullable=False)
+    regular_price = db.Column(db.Float, nullable=True)
+    in_stock = db.Column(db.Boolean, default=False, nullable=False)
+    stores_in_stock_count = db.Column(db.Integer, default=0, nullable=False)
+    stores_in_stock_names = db.Column(db.Text, nullable=True)
+    price_change = db.Column(db.Float, default=0.0, nullable=False)
+    recorded_at = db.Column(db.DateTime, default=utc_now, index=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "item_id": self.item_id,
+            "price": self.price,
+            "regular_price": self.regular_price,
+            "in_stock": self.in_stock,
+            "stores_in_stock_count": self.stores_in_stock_count,
+            "stores_in_stock_names": self.stores_in_stock_names,
+            "price_change": self.price_change,
+            "recorded_at": self.recorded_at.isoformat() if self.recorded_at else None,
+        }
+
+
 class DeckAnalysis(db.Model):
     """Saved Commander deck analysis generated by Gemini AI with Scryfall metadata and instant stats."""
 

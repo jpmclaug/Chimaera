@@ -31,6 +31,8 @@
   1. **Scryfall API:** Card name autocomplete, printing resolution, high-resolution artwork, oracle metadata, and TCGplayer Market USD prices.
   2. **Mighty Meeple:** Live stock and variant scanner querying Mighty Meeple's Shopify/BinderPOS backend (`search/suggest.json` and `/products/{handle}.js`) for condition tiers (NM, LP) and in-stock pricing.
   3. **eBay:** MTG singles scanner supporting the official eBay Finding/Browse API with an HTML scraping fallback for Buy-It-Now listings.
+  4. **MicroCenter:** Live in-store inventory and price markdown scraper for physical MicroCenter stores.
+  5. **Best Buy:** Local retail store pickup availability and price surveillance engine (dual-mode: official Developer API + direct web telemetry) monitoring nearby stores by postal code/radius for Magic: The Gathering booster packs, bundles, and collector boxes.
 - **Deal Engine & Notifications:** Automated deal evaluator that triggers rich Discord Webhook embeds when an in-stock card price drops to or below the target threshold.
 
 ---
@@ -42,13 +44,15 @@ Chimera/
 ├── app.py                  # Flask web factory, API endpoints & template routes
 ├── worker.py               # Standalone daemon/cron worker for background surveillance
 ├── config.py               # Central environment variable & database connection config
-├── models.py               # SQLAlchemy models (User, AllowedEmail, WatchlistItem, VendorPrice, ActivityLog, SystemSetting)
+├── models.py               # SQLAlchemy models (User, AllowedEmail, WatchlistItem, VendorPrice, BestBuyItem, etc.)
 ├── deal_engine.py          # Multi-vendor deal aggregator & Discord dispatcher
 ├── providers/
 │   ├── __init__.py
 │   ├── scryfall.py         # Scryfall REST client & lowest price calculator across printings
 │   ├── mightymeeple.py     # Mighty Meeple Shopify/BinderPOS inventory scanner
-│   └── ebay.py             # eBay MTG single listings search & price extractor
+│   ├── ebay.py             # eBay MTG single listings search & price extractor
+│   ├── microcenter.py      # MicroCenter in-store stock & markdown scraper
+│   └── bestbuy.py          # Best Buy local store stock & pickup availability surveillance
 ├── templates/
 │   ├── base.html           # Tactical layout with navigation, modals, and toast alerts
 │   ├── index.html          # Registry dashboard with multi-vendor price comparison matrix

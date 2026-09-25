@@ -30,6 +30,8 @@ from models import (
     ActivityLog,
     MicrocenterItem,
     MicrocenterHistory,
+    BestBuyItem,
+    BestBuyHistory,
     DeckAnalysis,
     UserInventoryCard,
     SecretLairAnalysis,
@@ -37,7 +39,7 @@ from models import (
     utc_now,
 )
 from deal_engine import DealEngine
-from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider, EDHRECProvider
+from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider, BestBuyProvider, EDHRECProvider
 from deck_parser import DeckParser, DeckParseError
 from card_classifier import MTGCardClassifier
 from deck_analyzer import DeckAnalyzer
@@ -189,6 +191,45 @@ def _migrate_db_schema(app):
                             stock_change INTEGER NOT NULL DEFAULT 0,
                             recorded_at DATETIME,
                             FOREIGN KEY (item_id) REFERENCES microcenter_item(id) ON DELETE CASCADE
+                        )
+                    """))
+                    # Ensure bestbuy_item and bestbuy_history tables exist in SQLite
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS bestbuy_item (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            sku VARCHAR(50) NOT NULL UNIQUE,
+                            name VARCHAR(255) NOT NULL,
+                            product_url TEXT,
+                            image_url TEXT,
+                            current_price FLOAT NOT NULL DEFAULT 0.0,
+                            previous_price FLOAT,
+                            regular_price FLOAT,
+                            in_stock BOOLEAN NOT NULL DEFAULT 0,
+                            online_available BOOLEAN NOT NULL DEFAULT 0,
+                            stores_in_stock TEXT,
+                            nearby_stores_data TEXT,
+                            target_price FLOAT,
+                            notify_on_restock BOOLEAN NOT NULL DEFAULT 1,
+                            notify_on_price_drop BOOLEAN NOT NULL DEFAULT 1,
+                            first_seen_at DATETIME,
+                            last_scanned_at DATETIME,
+                            last_price_change_at DATETIME,
+                            last_stock_change_at DATETIME,
+                            is_active BOOLEAN NOT NULL DEFAULT 1
+                        )
+                    """))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS bestbuy_history (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            item_id INTEGER NOT NULL,
+                            price FLOAT NOT NULL,
+                            regular_price FLOAT,
+                            in_stock BOOLEAN NOT NULL DEFAULT 0,
+                            stores_in_stock_count INTEGER NOT NULL DEFAULT 0,
+                            stores_in_stock_names TEXT,
+                            price_change FLOAT NOT NULL DEFAULT 0.0,
+                            recorded_at DATETIME,
+                            FOREIGN KEY (item_id) REFERENCES bestbuy_item(id) ON DELETE CASCADE
                         )
                     """))
                     # Ensure deck_analysis table and columns exist in SQLite
@@ -363,6 +404,43 @@ def _migrate_db_schema(app):
                                 stock_text VARCHAR(100),
                                 price_change FLOAT NOT NULL DEFAULT 0.0,
                                 stock_change INTEGER NOT NULL DEFAULT 0,
+                                recorded_at TIMESTAMP
+                            )
+                        """))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS bestbuy_item (
+                                id SERIAL PRIMARY KEY,
+                                sku VARCHAR(50) NOT NULL UNIQUE,
+                                name VARCHAR(255) NOT NULL,
+                                product_url TEXT,
+                                image_url TEXT,
+                                current_price FLOAT NOT NULL DEFAULT 0.0,
+                                previous_price FLOAT,
+                                regular_price FLOAT,
+                                in_stock BOOLEAN NOT NULL DEFAULT FALSE,
+                                online_available BOOLEAN NOT NULL DEFAULT FALSE,
+                                stores_in_stock TEXT,
+                                nearby_stores_data TEXT,
+                                target_price FLOAT,
+                                notify_on_restock BOOLEAN NOT NULL DEFAULT TRUE,
+                                notify_on_price_drop BOOLEAN NOT NULL DEFAULT TRUE,
+                                first_seen_at TIMESTAMP,
+                                last_scanned_at TIMESTAMP,
+                                last_price_change_at TIMESTAMP,
+                                last_stock_change_at TIMESTAMP,
+                                is_active BOOLEAN NOT NULL DEFAULT TRUE
+                            )
+                        """))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS bestbuy_history (
+                                id SERIAL PRIMARY KEY,
+                                item_id INTEGER NOT NULL REFERENCES bestbuy_item(id) ON DELETE CASCADE,
+                                price FLOAT NOT NULL,
+                                regular_price FLOAT,
+                                in_stock BOOLEAN NOT NULL DEFAULT FALSE,
+                                stores_in_stock_count INTEGER NOT NULL DEFAULT 0,
+                                stores_in_stock_names TEXT,
+                                price_change FLOAT NOT NULL DEFAULT 0.0,
                                 recorded_at TIMESTAMP
                             )
                         """))
@@ -578,6 +656,11 @@ def create_app(test_config=None):
         store_id=Config.MICROCENTER_STORE_ID,
         store_name=Config.MICROCENTER_STORE_NAME,
     )
+    bestbuy_provider = BestBuyProvider(
+        api_key=Config.BESTBUY_API_KEY,
+        postal_code=Config.BESTBUY_POSTAL_CODE,
+        radius=Config.BESTBUY_SEARCH_RADIUS,
+    )
     inventory_manager = InventoryManager(scryfall_provider=scryfall_provider)
     upgrade_engine = DualTierUpgradeEngine(scryfall_provider=scryfall_provider)
     edhrec_provider = EDHRECProvider()
@@ -586,10 +669,34 @@ def create_app(test_config=None):
     app.upgrade_engine = upgrade_engine
     app.inventory_manager = inventory_manager
     app.card_add_evaluator = card_add_evaluator
+    app.bestbuy_provider = bestbuy_provider
 
     with app.app_context():
         db.create_all()
         _migrate_db_schema(app)
+        # Seed default Best Buy item (SKU 6539370) if not present
+        try:
+            if BestBuyItem.query.filter_by(sku="6539370").first() is None:
+                default_bb = BestBuyItem(
+                    sku="6539370",
+                    name="Magic: The Gathering: The Lord of the Rings: Tales of Middle-earth Draft Booster Multipack",
+                    product_url="https://www.bestbuy.com/site/6539370.p?skuId=6539370",
+                    image_url="https://pisces.bbystatic.com/image2/BestBuy_US/images/products/6539/6539370_sd.jpg",
+                    current_price=14.99,
+                    regular_price=14.99,
+                    in_stock=False,
+                    online_available=False,
+                    stores_in_stock=json.dumps([]),
+                    nearby_stores_data=json.dumps([]),
+                    notify_on_restock=True,
+                    notify_on_price_drop=True,
+                    is_active=True,
+                )
+                db.session.add(default_bb)
+                db.session.commit()
+                logger.info("Seeded initial Best Buy monitored product: SKU 6539370")
+        except Exception as seed_err:
+            logger.debug(f"Could not seed initial Best Buy product: {seed_err}")
         logger.info("Database initialized successfully.")
 
     # ---------------------------------------------------------
@@ -753,6 +860,12 @@ def create_app(test_config=None):
                             deal_engine.sync_microcenter(notify=True)
                         except Exception as e:
                             logger.error(f"Error syncing MicroCenter in scheduled poll: {e}")
+                    if SystemSetting.get_bool("bestbuy_poll_enabled", default=True):
+                        try:
+                            logger.info("Running scheduled Best Buy local store inventory sync...")
+                            deal_engine.sync_bestbuy(notify=True)
+                        except Exception as e:
+                            logger.error(f"Error syncing Best Buy in scheduled poll: {e}")
 
             scheduler = BackgroundScheduler(daemon=True)
             with app.app_context():
@@ -1555,6 +1668,299 @@ def create_app(test_config=None):
             })
 
         return jsonify({"events": events, "count": len(events)})
+
+    # ---------------------------------------------------------
+    # Routes & API: Best Buy Local Store Surveillance
+    # ---------------------------------------------------------
+    @app.route("/bestbuy")
+    @login_required
+    def bestbuy():
+        """Best Buy Local Store MTG inventory & price tracking view."""
+        user = get_current_user()
+        postal_code = bestbuy_provider.get_effective_postal_code()
+        radius = bestbuy_provider.get_effective_radius()
+        api_key = bestbuy_provider.get_effective_api_key()
+
+        total_items = BestBuyItem.query.count()
+        in_stock_items = BestBuyItem.query.filter_by(in_stock=True).count()
+        all_items = BestBuyItem.query.all()
+        deals_count = sum(1 for item in all_items if item.is_deal)
+        last_scan_time = SystemSetting.get_val("bestbuy_last_scan_time")
+        last_scan_status = SystemSetting.get_val("bestbuy_last_scan_status")
+        recent_scan_times = SystemSetting.get_recent_successful_runs("bestbuy", limit=3)
+
+        log_activity("PAGE_VIEW", details=f"Accessed Best Buy Local Stock Surveillance ({postal_code})", user=user)
+
+        return render_template(
+            "bestbuy.html",
+            postal_code=postal_code,
+            radius=radius,
+            has_api_key=bool(api_key),
+            total_items=total_items,
+            in_stock_items=in_stock_items,
+            deals_count=deals_count,
+            last_scan_time=last_scan_time,
+            recent_scan_times=recent_scan_times,
+            last_scan_status=last_scan_status,
+            active_tab="bestbuy",
+        )
+
+    @app.route("/api/bestbuy/items")
+    @login_required
+    def bestbuy_items():
+        """Returns list of tracked Best Buy MTG products with filters and sorting."""
+        search_query = (request.args.get("q") or request.args.get("search") or "").strip().lower()
+        filter_mode = (request.args.get("filter") or "all").strip().lower()
+        sort_by = (request.args.get("sort") or "default").strip().lower()
+
+        query = BestBuyItem.query
+
+        if search_query:
+            query = query.filter(
+                db.or_(
+                    db.func.lower(BestBuyItem.name).like(f"%{search_query}%"),
+                    db.func.lower(BestBuyItem.sku).like(f"%{search_query}%"),
+                )
+            )
+
+        if filter_mode == "in_stock":
+            query = query.filter(BestBuyItem.in_stock == True)
+        elif filter_mode == "out_of_stock":
+            query = query.filter(BestBuyItem.in_stock == False)
+        elif filter_mode == "active":
+            query = query.filter(BestBuyItem.is_active == True)
+
+        items = query.all()
+
+        if filter_mode == "deals":
+            items = [item for item in items if item.is_deal]
+
+        # Sorting
+        if sort_by == "price_asc":
+            items.sort(key=lambda x: x.current_price)
+        elif sort_by == "price_desc":
+            items.sort(key=lambda x: x.current_price, reverse=True)
+        elif sort_by == "stores_desc":
+            items.sort(key=lambda x: (x.in_stock, x.in_stock_stores_count), reverse=True)
+        elif sort_by == "name":
+            items.sort(key=lambda x: x.name.lower())
+        else:
+            # Default: In stock first, then deals, then by name
+            items.sort(key=lambda x: (not x.in_stock, not x.is_deal, x.name.lower()))
+
+        total_tracked = BestBuyItem.query.count()
+        in_stock_tracked = BestBuyItem.query.filter_by(in_stock=True).count()
+        deals_tracked = sum(1 for item in BestBuyItem.query.all() if item.is_deal)
+
+        return jsonify({
+            "items": [item.to_dict(include_history=False) for item in items],
+            "count": len(items),
+            "total_tracked": total_tracked,
+            "in_stock_tracked": in_stock_tracked,
+            "deals_tracked": deals_tracked,
+            "postal_code": bestbuy_provider.get_effective_postal_code(),
+            "radius": bestbuy_provider.get_effective_radius(),
+            "has_api_key": bool(bestbuy_provider.get_effective_api_key()),
+            "last_scan_time": SystemSetting.get_val("bestbuy_last_scan_time"),
+            "recent_scan_times": SystemSetting.get_recent_successful_runs("bestbuy", limit=3),
+            "last_scan_status": SystemSetting.get_val("bestbuy_last_scan_status"),
+        })
+
+    @app.route("/api/bestbuy/lookup/<sku>")
+    @login_required
+    def bestbuy_lookup(sku: str):
+        """Looks up live Best Buy product information and store availability for a SKU."""
+        clean_sku = str(sku).strip()
+        prod = bestbuy_provider.lookup_product(clean_sku)
+        avail = bestbuy_provider.check_store_availability(clean_sku)
+        return jsonify({
+            "product": prod,
+            "availability": avail,
+        })
+
+    @app.route("/api/bestbuy/add", methods=["POST"])
+    @login_required
+    def bestbuy_add():
+        """Adds a new Best Buy product to surveillance by SKU."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_sku = str(data.get("sku") or "").strip()
+
+        if not raw_sku:
+            return jsonify({"success": False, "error": "Best Buy SKU is required."}), 400
+
+        # Strip any URL or non-alphanumeric characters if user pasted a full URL
+        sku_match = re.search(r"(\d{7,8})", raw_sku)
+        sku = sku_match.group(1) if sku_match else raw_sku
+
+        existing = BestBuyItem.query.filter_by(sku=sku).first()
+        if existing:
+            if not existing.is_active:
+                existing.is_active = True
+                db.session.commit()
+                return jsonify({
+                    "success": True,
+                    "message": f"Reactivated surveillance for SKU {sku} ({existing.display_name}).",
+                    "item": existing.to_dict(),
+                })
+            return jsonify({
+                "success": False,
+                "error": f"SKU {sku} is already being tracked in Best Buy surveillance.",
+                "item": existing.to_dict(),
+            }), 409
+
+        # Fetch product metadata and initial store inventory
+        prod_data = bestbuy_provider.lookup_product(sku)
+        avail_data = bestbuy_provider.check_store_availability(sku)
+
+        target_price = None
+        if data.get("target_price"):
+            try:
+                target_price = float(data["target_price"])
+            except (ValueError, TypeError):
+                pass
+
+        new_item = BestBuyItem(
+            sku=sku,
+            name=prod_data.get("name") or f"Best Buy Product (SKU {sku})",
+            product_url=prod_data.get("product_url") or f"https://www.bestbuy.com/site/{sku}.p?skuId={sku}",
+            image_url=prod_data.get("image_url") or "",
+            current_price=float(prod_data.get("current_price") or 0.0),
+            regular_price=float(prod_data.get("regular_price") or prod_data.get("current_price") or 0.0),
+            in_stock=bool(avail_data.get("in_stock", False) or prod_data.get("online_available", False)),
+            online_available=bool(prod_data.get("online_available", False)),
+            stores_in_stock=json.dumps(avail_data.get("stores_in_stock", [])),
+            nearby_stores_data=json.dumps(avail_data.get("nearby_stores", [])),
+            target_price=target_price,
+            notify_on_restock=bool(data.get("notify_on_restock", True)),
+            notify_on_price_drop=bool(data.get("notify_on_price_drop", True)),
+            is_active=True,
+        )
+        db.session.add(new_item)
+        db.session.commit()
+
+        log_activity(
+            "BESTBUY_ADD",
+            details=f"Added Best Buy surveillance target: {new_item.display_name} (SKU {sku})",
+            user=user,
+        )
+        return jsonify({
+            "success": True,
+            "message": f"Successfully registered {new_item.display_name} (SKU {sku}) into surveillance.",
+            "item": new_item.to_dict(),
+        })
+
+    @app.route("/api/bestbuy/delete/<int:item_id>", methods=["POST"])
+    @login_required
+    def bestbuy_delete(item_id: int):
+        """Deletes a tracked Best Buy product."""
+        user = get_current_user()
+        item = BestBuyItem.query.get_or_404(item_id)
+        sku = item.sku
+        name = item.name
+        db.session.delete(item)
+        db.session.commit()
+
+        log_activity(
+            "BESTBUY_DELETE",
+            details=f"Removed Best Buy target: {name} (SKU {sku})",
+            user=user,
+        )
+        return jsonify({"success": True, "message": f"Removed SKU {sku} from surveillance."})
+
+    @app.route("/api/bestbuy/toggle-active/<int:item_id>", methods=["POST"])
+    @login_required
+    def bestbuy_toggle_active(item_id: int):
+        """Toggles active surveillance monitoring for a product."""
+        item = BestBuyItem.query.get_or_404(item_id)
+        item.is_active = not item.is_active
+        db.session.commit()
+        return jsonify({"success": True, "is_active": item.is_active, "item": item.to_dict()})
+
+    @app.route("/api/bestbuy/item/<int:item_id>/update", methods=["POST"])
+    @login_required
+    def bestbuy_item_update(item_id: int):
+        """Updates alert configuration and target price for a Best Buy product."""
+        user = get_current_user()
+        item = BestBuyItem.query.get_or_404(item_id)
+        data = request.get_json(silent=True) or {}
+
+        if "target_price" in data:
+            raw_tp = data.get("target_price")
+            if raw_tp is None or str(raw_tp).strip() == "":
+                item.target_price = None
+            else:
+                try:
+                    tp = float(raw_tp)
+                    item.target_price = max(0.0, tp) if tp > 0 else None
+                except (ValueError, TypeError):
+                    pass
+
+        if "notify_on_restock" in data:
+            item.notify_on_restock = bool(data.get("notify_on_restock"))
+
+        if "notify_on_price_drop" in data:
+            item.notify_on_price_drop = bool(data.get("notify_on_price_drop"))
+
+        db.session.commit()
+        log_activity(
+            "CARD_UPDATE",
+            details=f"Updated alert settings for Best Buy SKU {item.sku}: {item.display_name}",
+            user=user,
+        )
+        return jsonify({"success": True, "item": item.to_dict()})
+
+    @app.route("/api/bestbuy/sync", methods=["POST"])
+    @login_required
+    def bestbuy_sync():
+        """Triggers an on-demand stock and price surveillance sweep for all Best Buy products."""
+        user = get_current_user()
+        try:
+            result = deal_engine.sync_bestbuy(notify=True)
+            log_activity("BESTBUY_SYNC", details=result.get("message"), user=user)
+            result["recent_scan_times"] = SystemSetting.get_recent_successful_runs("bestbuy", limit=3)
+            return jsonify(result)
+        except Exception as e:
+            logger.error(f"Manual Best Buy sync failed: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e), "message": str(e)}), 500
+
+    @app.route("/api/bestbuy/settings", methods=["GET", "POST"])
+    @login_required
+    def bestbuy_settings():
+        """Reads or updates Best Buy location and API credentials."""
+        user = get_current_user()
+        if request.method == "POST":
+            data = request.get_json(silent=True) or {}
+            if "postal_code" in data:
+                new_zip = str(data["postal_code"]).strip()
+                if new_zip:
+                    SystemSetting.set_val("bestbuy_postal_code", new_zip)
+            if "radius" in data:
+                try:
+                    new_rad = int(data["radius"])
+                    if new_rad > 0:
+                        SystemSetting.set_val("bestbuy_search_radius", new_rad)
+                except (ValueError, TypeError):
+                    pass
+            if "api_key" in data:
+                new_key = str(data["api_key"]).strip()
+                SystemSetting.set_val("bestbuy_api_key", new_key)
+
+            log_activity("SETTINGS_UPDATE", details="Updated Best Buy surveillance location / credentials", user=user)
+            return jsonify({
+                "success": True,
+                "message": "Best Buy settings updated successfully.",
+                "postal_code": bestbuy_provider.get_effective_postal_code(),
+                "radius": bestbuy_provider.get_effective_radius(),
+                "has_api_key": bool(bestbuy_provider.get_effective_api_key()),
+            })
+
+        return jsonify({
+            "postal_code": bestbuy_provider.get_effective_postal_code(),
+            "radius": bestbuy_provider.get_effective_radius(),
+            "has_api_key": bool(bestbuy_provider.get_effective_api_key()),
+            "api_key_masked": f"...{bestbuy_provider.get_effective_api_key()[-4:]}" if len(bestbuy_provider.get_effective_api_key()) >= 4 else "",
+        })
 
     # ---------------------------------------------------------
     # API Routes: Mighty Meeple Buylist Endpoints
