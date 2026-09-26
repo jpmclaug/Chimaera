@@ -664,10 +664,16 @@
                 <!-- Autocomplete Search -->
                 <div>
                     <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Card Nomenclature / Search Query</label>
-                    <div class="relative">
+                    <div class="relative flex items-center">
                         <input type="text" id="card-search-input" placeholder="e.g. Rhystic Study, Force of Will, Black Lotus..." 
-                            class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2.5 text-sm text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono"
+                            class="w-full bg-[#10141D] border border-[#263245] pl-3.5 pr-24 py-2.5 text-sm text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono"
                             autocomplete="off">
+                        <button type="button" id="btn-search-card" class="absolute right-1 top-1 bottom-1 px-3 bg-[#222B3D] hover:bg-[#00CED1] hover:text-[#10141D] text-[#00CED1] border border-[#3D4F6B] font-mono text-xs font-bold transition flex items-center space-x-1 uppercase" title="Search Scryfall Prints">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                            <span>Search</span>
+                        </button>
                         <div id="autocomplete-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#10141D] border border-[#3D4F6B] max-h-56 overflow-y-auto hidden z-50 shadow-2xl"></div>
                     </div>
                 </div>

@@ -511,11 +511,22 @@ function getLowestPriceAcrossPrints(prints, finish) {
 // =========================================================================
 // Autocomplete & Print Selection
 // =========================================================================
+function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     const searchInput = document.getElementById("card-search-input");
     const dropdown = document.getElementById("autocomplete-dropdown");
     const printSelect = document.getElementById("card-print-select");
     const finishSelect = document.getElementById("card-finish-select");
+    const searchBtn = document.getElementById("btn-search-card");
 
     if (searchInput) {
         searchInput.addEventListener("input", (e) => {
@@ -535,15 +546,30 @@ document.addEventListener("DOMContentLoaded", () => {
                     const suggestions = data.suggestions || [];
 
                     if (suggestions.length === 0) {
-                        dropdown.innerHTML = `<div class="p-3 text-xs font-mono text-[#94A3B8] text-center uppercase font-medium">[ NO MATCHING TARGETS IDENTIFIED ]</div>`;
+                        dropdown.innerHTML = `
+                            <div class="p-2.5 text-xs font-mono text-[#94A3B8] text-center uppercase font-medium border-b border-[#263245]/60">[ NO MATCHING TARGETS IDENTIFIED ]</div>
+                            <div class="px-3.5 py-2.5 text-xs font-mono text-[#00CED1] hover:bg-[#222B3D] cursor-pointer transition flex items-center justify-between"
+                                 data-action="search-direct">
+                                <span>🔍 Search Scryfall directly for "${escapeHtml(query)}"</span>
+                                <span class="text-xs text-[#00CED1] font-bold">&rarr;</span>
+                            </div>
+                        `;
                     } else {
-                        dropdown.innerHTML = suggestions.map(name => `
+                        const itemsHtml = suggestions.map(name => `
                             <div class="px-3.5 py-2.5 text-xs font-mono text-[#F1F5F9] hover:bg-[#222B3D] hover:text-[#00CED1] cursor-pointer transition flex items-center justify-between border-b border-[#263245]/60"
-                                 onclick="selectCardName('${name.replace(/'/g, "\\'")}')">
-                                <span>${name}</span>
+                                 data-card-name="${escapeHtml(name)}">
+                                <span>${escapeHtml(name)}</span>
                                 <span class="text-xs text-[#00CED1] font-bold">&rarr;</span>
                             </div>
                         `).join("");
+                        const directHtml = `
+                            <div class="px-3.5 py-2 text-[11px] font-mono text-[#00CED1] hover:bg-[#222B3D] cursor-pointer transition flex items-center justify-between bg-[#151B27]"
+                                 data-action="search-direct">
+                                <span>🔍 Search Scryfall directly for "${escapeHtml(query)}"</span>
+                                <span class="text-xs font-bold">&rarr;</span>
+                            </div>
+                        `;
+                        dropdown.innerHTML = itemsHtml + directHtml;
                     }
                     dropdown.classList.remove("hidden");
                 } catch (err) {
@@ -555,12 +581,39 @@ document.addEventListener("DOMContentLoaded", () => {
         searchInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 e.preventDefault();
-                const firstSuggestion = dropdown.querySelector(".cursor-pointer");
-                if (firstSuggestion && !dropdown.classList.contains("hidden")) {
-                    firstSuggestion.click();
+                const firstCardItem = dropdown.querySelector("[data-card-name]");
+                if (firstCardItem && !dropdown.classList.contains("hidden")) {
+                    const cardName = firstCardItem.getAttribute("data-card-name");
+                    if (cardName) selectCardName(cardName);
                 } else if (searchInput.value.trim().length >= 2) {
                     selectCardName(searchInput.value.trim());
                 }
+            }
+        });
+    }
+
+    if (searchBtn && searchInput) {
+        searchBtn.addEventListener("click", () => {
+            const val = searchInput.value.trim();
+            if (val.length >= 2) {
+                selectCardName(val);
+            }
+        });
+    }
+
+    if (dropdown) {
+        dropdown.addEventListener("click", (e) => {
+            const item = e.target.closest("[data-card-name]");
+            if (item) {
+                const cardName = item.getAttribute("data-card-name");
+                if (cardName) selectCardName(cardName);
+                return;
+            }
+            const direct = e.target.closest('[data-action="search-direct"]');
+            if (direct && searchInput) {
+                const val = searchInput.value.trim();
+                if (val) selectCardName(val);
+                return;
             }
         });
     }
@@ -625,6 +678,7 @@ async function selectCardName(cardName) {
     const dropdown = document.getElementById("autocomplete-dropdown");
     const printContainer = document.getElementById("print-selector-container");
     const printSelect = document.getElementById("card-print-select");
+    const finishSelect = document.getElementById("card-finish-select");
     const submitBtn = document.getElementById("btn-submit-add-card");
 
     if (searchInput) searchInput.value = cardName;
@@ -658,7 +712,9 @@ async function selectCardName(cardName) {
         }
 
         printContainer.classList.remove("hidden");
-        submitBtn.disabled = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
 
         // Render "Any Version" view by default
         updateSelectedPrintView();

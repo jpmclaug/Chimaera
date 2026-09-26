@@ -91,19 +91,51 @@ class ScryfallProvider:
         return ScryfallProvider._sets_cache.get(code_lower)
 
     def autocomplete(self, query: str) -> list[str]:
-        """Returns list of card name suggestions from Scryfall."""
+        """Returns list of card name suggestions from Scryfall with prefix/annotation sanitization and fuzzy fallback."""
         if not query or len(query.strip()) < 2:
             return []
 
-        try:
-            url = f"{SCRYFALL_BASE_URL}/cards/autocomplete"
-            response = self._request("get", url, params={"q": query.strip()}, timeout=8)
-            if response.status_code == 200:
-                data = response.json()
-                return data.get("data", [])
-            logger.warning(f"Scryfall autocomplete returned status {response.status_code}")
-        except Exception as e:
-            logger.error(f"Error querying Scryfall autocomplete for '{query}': {e}")
+        clean_q = fix_mojibake(str(query)).strip()
+        # Strip leading counts: "1x Sol Ring" -> "Sol Ring"
+        clean_q = re.sub(r"^\s*\d+\s*[xX]?\s+", "", clean_q).strip()
+        # Strip set/parentheses: "Sol Ring (C21)" -> "Sol Ring"
+        clean_q = re.sub(r"\[.*?\]|\(.*?\)", "", clean_q).strip()
+        # Strip trailing numbers: "Sol Ring 249" -> "Sol Ring"
+        clean_q = re.sub(r"\s*#?\d+\s*$", "", clean_q).strip()
+
+        q_to_try = []
+        if clean_q and len(clean_q) >= 2:
+            q_to_try.append(clean_q)
+        raw_trimmed = query.strip()
+        if raw_trimmed not in q_to_try and len(raw_trimmed) >= 2:
+            q_to_try.append(raw_trimmed)
+
+        for q in q_to_try:
+            try:
+                url = f"{SCRYFALL_BASE_URL}/cards/autocomplete"
+                response = self._request("get", url, params={"q": q}, timeout=6)
+                if response.status_code == 200:
+                    data = response.json()
+                    suggestions = data.get("data", [])
+                    if suggestions:
+                        return suggestions
+            except Exception as e:
+                logger.debug(f"Error querying Scryfall autocomplete for '{q}': {e}")
+
+        # Fuzzy named fallback if autocomplete yielded nothing and query has 3+ chars
+        target = clean_q or query.strip()
+        if len(target) >= 3:
+            try:
+                url = f"{SCRYFALL_BASE_URL}/cards/named"
+                response = self._request("get", url, params={"fuzzy": target}, timeout=6)
+                if response.status_code == 200:
+                    card = response.json()
+                    c_name = card.get("name")
+                    if c_name:
+                        return [c_name]
+            except Exception as e:
+                logger.debug(f"Error querying Scryfall fuzzy named for '{target}': {e}")
+
         return []
 
     def get_card_by_id(self, scryfall_id: str) -> dict | None:
@@ -370,9 +402,14 @@ class ScryfallProvider:
         if not card_name:
             return []
 
-        # 1. Clean base name (strip set brackets and variant parentheticals)
+        # 1. Clean base name (strip leading quantities, set brackets, variant parentheticals, and trailing numbers)
         clean_name = fix_mojibake(card_name)
+        # Strip leading counts: e.g. "1 Sol Ring", "1x Sol Ring", "4 Lightning Bolt"
+        clean_name = re.sub(r"^\s*\d+\s*[xX]?\s+", "", clean_name).strip()
+        # Strip brackets & parentheses: e.g. "Sol Ring (C21) 249" -> "Sol Ring 249"
         clean_name = re.sub(r"\[.*?\]|\(.*?\)", "", clean_name).strip()
+        # Strip trailing collector numbers: e.g. "Sol Ring 249" -> "Sol Ring"
+        clean_name = re.sub(r"\s*#?\d+\s*$", "", clean_name).strip()
         if not clean_name:
             clean_name = fix_mojibake(card_name).strip()
 
@@ -397,7 +434,12 @@ class ScryfallProvider:
         try:
             cards = []
             for cand in candidates:
-                query = f'!"{cand}"'
+                # Remove inner double quotes so Scryfall query !"..." syntax doesn't break
+                # (e.g. Kongming, "Sleeping Dragon" -> !"Kongming, Sleeping Dragon")
+                cand_clean = cand.replace('"', '').strip()
+                if not cand_clean:
+                    continue
+                query = f'!"{cand_clean}"'
                 url = f"{SCRYFALL_BASE_URL}/cards/search"
                 response = self._request(
                     "get",
@@ -414,20 +456,34 @@ class ScryfallProvider:
             # 2. If exact matches failed, attempt fuzzy named lookup
             if not cards:
                 named_url = f"{SCRYFALL_BASE_URL}/cards/named"
-                named_resp = self._request("get", named_url, params={"fuzzy": clean_name}, timeout=10)
+                fuzzy_target = clean_name.replace('"', '').strip() or card_name.strip()
+                named_resp = self._request("get", named_url, params={"fuzzy": fuzzy_target}, timeout=10)
                 if named_resp.status_code == 200:
-                    canonical_name = named_resp.json().get("name")
-                    if canonical_name:
-                        query = f'!"{canonical_name}"'
-                        url = f"{SCRYFALL_BASE_URL}/cards/search"
-                        search_resp = self._request(
-                            "get",
-                            url,
-                            params={"q": query, "unique": "prints", "order": "released", "dir": "desc"},
-                            timeout=10,
-                        )
-                        if search_resp.status_code == 200:
-                            cards = search_resp.json().get("data", [])
+                    named_data = named_resp.json()
+                    # 2a. Use prints_search_uri provided directly by Scryfall (searches by oracleid)
+                    prints_url = named_data.get("prints_search_uri")
+                    if prints_url:
+                        prints_resp = self._request("get", prints_url, timeout=10)
+                        if prints_resp.status_code == 200:
+                            cards = prints_resp.json().get("data", [])
+
+                    # 2b. Fallback to querying canonical name if prints_search_uri failed
+                    if not cards:
+                        canonical_name = named_data.get("name", "")
+                        if canonical_name:
+                            c_query = canonical_name.replace('"', '').strip()
+                            search_resp = self._request(
+                                "get",
+                                f"{SCRYFALL_BASE_URL}/cards/search",
+                                params={"q": f'!"{c_query}"', "unique": "prints", "order": "released", "dir": "desc"},
+                                timeout=10,
+                            )
+                            if search_resp.status_code == 200:
+                                cards = search_resp.json().get("data", [])
+
+                    # 2c. Fallback to using the named card itself if search returned no list
+                    if not cards and named_data.get("id"):
+                        cards = [named_data]
 
             if cards:
                 formatted_prints = []

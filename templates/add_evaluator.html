@@ -500,13 +500,17 @@ function initSingleCardAutocomplete() {
             try {
                 const res = await fetch(`/api/scryfall/autocomplete?q=${encodeURIComponent(q)}`);
                 const data = await res.json();
-                if (data && data.length > 0) {
-                    dropdown.innerHTML = data.slice(0, 8).map(name => `
-                        <div onclick="selectSingleCard('${name.replace(/'/g, "\\'")}')" class="p-2 hover:bg-[#10141D] cursor-pointer text-white flex items-center justify-between">
-                            <span>${name}</span>
-                            <span class="text-[10px] text-[#00CED1] font-bold">&rarr; Select</span>
-                        </div>
-                    `).join('');
+                const suggestions = Array.isArray(data) ? data : (data.suggestions || []);
+                if (suggestions && suggestions.length > 0) {
+                    dropdown.innerHTML = suggestions.slice(0, 8).map(name => {
+                        const safeName = (name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+                        return `
+                            <div data-card-name="${safeName}" class="p-2 hover:bg-[#10141D] cursor-pointer text-white flex items-center justify-between single-card-item">
+                                <span>${safeName}</span>
+                                <span class="text-[10px] text-[#00CED1] font-bold">&rarr; Select</span>
+                            </div>
+                        `;
+                    }).join('');
                     dropdown.classList.remove('hidden');
                 } else {
                     dropdown.classList.add('hidden');
@@ -515,6 +519,27 @@ function initSingleCardAutocomplete() {
                 dropdown.classList.add('hidden');
             }
         }, 220);
+    });
+
+    dropdown.addEventListener('click', (e) => {
+        const item = e.target.closest('.single-card-item');
+        if (item) {
+            const cardName = item.getAttribute('data-card-name');
+            if (cardName) selectSingleCard(cardName);
+        }
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const first = dropdown.querySelector('.single-card-item');
+            if (first && !dropdown.classList.contains('hidden')) {
+                const cardName = first.getAttribute('data-card-name');
+                if (cardName) selectSingleCard(cardName);
+            } else if (input.value.trim().length >= 2) {
+                selectSingleCard(input.value.trim());
+            }
+        }
     });
 
     document.addEventListener('click', (e) => {
