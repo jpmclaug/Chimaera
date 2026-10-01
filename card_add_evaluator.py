@@ -1013,7 +1013,7 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
 
         # 1. Fetch & Parse announcement
         announcement = self.scraper.fetch_announcement(url_or_text)
-        drops, bundles = self.scraper.parse_drops(announcement["text"], api_key=effective_key)
+        drops, bundles = self.scraper.parse_drops(announcement["text"], api_key=effective_key, html=announcement.get("html"))
         if not drops:
             raise ValueError("No Secret Lair drops or cards could be parsed from the provided announcement.")
 

@@ -81,10 +81,10 @@ class SecretLairScraper:
                 # Extract body text
                 article = (
                     soup.find("article")
-                    or soup.find("div", class_=lambda c: c and "article" in c.lower())
+                    or soup.find("div", class_=lambda c: c and "article" in (c if isinstance(c, str) else " ".join(c)).lower())
                     or soup.body
                 )
-                text = article.get_text("\n", strip=True) if article else soup.get_text("\n", strip=True)
+                text = self._extract_structured_text_from_html(article or soup) if article else soup.get_text("\n", strip=True)
 
                 return {
                     "source_url": clean_input,
@@ -107,18 +107,182 @@ class SecretLairScraper:
                 "text": clean_input,
             }
 
-    def parse_drops(self, text: str, api_key: str | None = None) -> tuple[list[dict], list[dict]]:
+    @staticmethod
+    def _extract_structured_text_from_html(article_or_soup) -> str:
         """
-        Parses drops, cards, prices, and bundles from announcement text.
+        Extracts clean, structured markdown-like text from HTML/DOM node,
+        preserving headings (##), list items (- 1x ...), and paragraph boundaries.
+        """
+        if article_or_soup is None:
+            return ""
+
+        soup_copy = BeautifulSoup(str(article_or_soup), "html.parser")
+        for s in soup_copy.find_all(["script", "style", "nav", "footer", "noscript"]):
+            s.decompose()
+
+        lines = []
+        for el in soup_copy.descendants:
+            if not hasattr(el, "name") or not el.name:
+                continue
+            if el.name in ["h1", "h2", "h3", "h4"]:
+                t = el.get_text(" ", strip=True)
+                if t:
+                    lines.append(f"## {t}")
+            elif el.name == "li":
+                t = el.get_text(" ", strip=True)
+                if t:
+                    lines.append(f"- {t}")
+            elif el.name == "p":
+                if not el.find(["h1", "h2", "h3", "h4", "ul", "ol", "li"]):
+                    t = el.get_text(" ", strip=True)
+                    if t:
+                        lines.append(t)
+
+        return "\n".join(lines)
+
+    def parse_drops(self, text: str, api_key: str | None = None, html: str | None = None) -> tuple[list[dict], list[dict]]:
+        """
+        Parses drops, cards, prices, and bundles from announcement text or HTML.
         Returns a tuple of (drops_list, bundles_list).
-        Falls back to Gemini intelligent parsing if deterministic regex yields insufficient drops.
+        Falls back to Gemini intelligent parsing if deterministic parsers yield 0 drops.
         """
+        # 1. Direct HTML parsing if html provided or if text contains HTML markup
+        if html:
+            try:
+                drops, bundles = self._parse_drops_html(html)
+                if len(drops) >= 1:
+                    return drops, bundles
+            except Exception as e:
+                logger.warning(f"HTML drop parsing encountered error: {e}")
+        elif text and ("<article" in text or "<h2" in text or "<html" in text or "<!doctype" in text.lower()):
+            try:
+                drops, bundles = self._parse_drops_html(text)
+                if len(drops) >= 1:
+                    return drops, bundles
+            except Exception as e:
+                logger.warning(f"HTML text drop parsing encountered error: {e}")
+
+        # 2. Deterministic text parsing
         drops, bundles = self._parse_drops_deterministic(text)
 
-        # If deterministic regex failed to find valid drops, fall back to Gemini
+        # 3. If deterministic regex failed to find valid drops, fall back to Gemini
         if len(drops) == 0 and api_key:
             logger.info("Deterministic drop parser found 0 drops. Falling back to Gemini extraction...")
             drops, bundles = self._parse_drops_with_gemini(text, api_key)
+
+        return drops, bundles
+
+    def _parse_drops_html(self, html_or_soup) -> tuple[list[dict], list[dict]]:
+        """Extracts drops and bundles directly from HTML DOM structures."""
+        soup = html_or_soup if hasattr(html_or_soup, "find_all") else BeautifulSoup(html_or_soup, "html.parser")
+        article = (
+            soup.find("article")
+            or soup.find("div", class_=lambda c: c and "article" in (c if isinstance(c, str) else " ".join(c)).lower())
+            or soup.body
+            or soup
+        )
+        drops = []
+        bundles = []
+
+        skip_titles = (
+            "footer", "social", "where to find", "statement", "bulletin",
+            "company", "find a store", "sign up", "terms", "overview", "superdrop"
+        )
+        bundle_keywords = ("bundle", "everything", "all-in", "superdrop all-in")
+
+        headings = article.find_all(["h2", "h3"])
+        seen_drop_names = set()
+        seen_bundle_names = set()
+
+        for h in headings:
+            name = h.get_text(strip=True).replace("\u00ae", "").replace("\u2122", "").replace("\u2019", "'").strip()
+            if not name:
+                continue
+            lower = name.lower()
+            if any(k in lower for k in skip_titles):
+                continue
+
+            is_bundle = any(kw in lower for kw in bundle_keywords)
+
+            contents_items = []
+            price_nonfoil = None
+            price_foil = None
+            single_price = None
+
+            curr = h.next_sibling
+            in_price = False
+
+            while curr:
+                if getattr(curr, "name", None) in ["h1", "h2", "h3"]:
+                    break
+                if hasattr(curr, "get_text"):
+                    txt = curr.get_text(" ", strip=True)
+                    if "price" in txt.lower():
+                        in_price = True
+                    if getattr(curr, "name", None) in ["ul", "ol"]:
+                        for li in curr.find_all("li"):
+                            li_txt = li.get_text(" ", strip=True)
+                            if in_price or "$" in li_txt:
+                                m = re.search(r"(\d+\.\d{2})", li_txt)
+                                if m:
+                                    val = float(m.group(1))
+                                    if "non-foil" in li_txt.lower() or "nonfoil" in li_txt.lower():
+                                        price_nonfoil = val
+                                    elif "foil" in li_txt.lower():
+                                        price_foil = val
+                                    elif single_price is None:
+                                        single_price = val
+                            else:
+                                contents_items.append(li_txt)
+                    elif in_price or "$" in txt:
+                        m = re.search(r"(\d+\.\d{2})", txt)
+                        if m:
+                            val = float(m.group(1))
+                            if "non-foil" in txt.lower() or "nonfoil" in txt.lower():
+                                price_nonfoil = val
+                            elif "foil" in txt.lower():
+                                price_foil = val
+                            elif single_price is None:
+                                single_price = val
+                curr = curr.next_sibling
+
+            if is_bundle:
+                if single_price is not None:
+                    if "foil" in lower and "non" not in lower:
+                        price_foil = single_price
+                    elif "non" in lower:
+                        price_nonfoil = single_price
+                    else:
+                        price_nonfoil = single_price
+
+                b_key = name.lower()
+                if b_key not in seen_bundle_names:
+                    seen_bundle_names.add(b_key)
+                    bundles.append({
+                        "bundle_name": name,
+                        "price_nonfoil": price_nonfoil,
+                        "price_foil": price_foil,
+                        "price": single_price,
+                        "contents_summary": f"{len(contents_items)} items" if contents_items else "",
+                    })
+            else:
+                cards = []
+                for item in contents_items:
+                    parsed_card = self._parse_card_line(item)
+                    if parsed_card:
+                        cards.append(parsed_card)
+
+                if len(cards) >= 1:
+                    d_key = name.lower()
+                    if d_key not in seen_drop_names:
+                        seen_drop_names.add(d_key)
+                        drops.append({
+                            "drop_name": name,
+                            "cards": cards,
+                            "price_nonfoil": price_nonfoil or 29.99,
+                            "price_foil": price_foil or 39.99,
+                            "currency": "USD",
+                        })
 
         return drops, bundles
 
@@ -129,22 +293,31 @@ class SecretLairScraper:
         if not clean:
             return None
 
-        # Ignore obvious section titles/headers
+        # Ignore obvious section titles/headers or prose
         lower = clean.lower()
         if lower in ["contents", "contents:", "price", "price:", "foil", "non-foil", "usd", "release date"]:
             return None
+        if len(clean) > 175 or clean.endswith("."):
+            return None
+        if any(lower.startswith(s) for s in ["you may notice", "please note", "for more", "don't miss", "if you", "check out", "art by", "learn more"]):
+            return None
+        if any(w in lower for w in ["originates from", "two-card scene", "highlighted above", "for details and terms", "while supplies last"]):
+            return None
 
         qty = 1
-        m_qty = re.match(r"^(\d+)x\s+(.+)$", clean, re.IGNORECASE)
+        m_qty = re.match(r"^[-•*]?\s*(\d+)x\s+(.+)$", clean, re.IGNORECASE)
+        m_bullet = re.match(r"^[-•*]\s+(.+)$", clean)
         if m_qty:
             qty = int(m_qty.group(1))
             clean = m_qty.group(2).strip()
-        elif re.match(r"^[-•*]\s+(.+)$", clean):
-            clean = re.sub(r"^[-•*]\s+", "", clean).strip()
+        elif m_bullet:
+            clean = m_bullet.group(1).strip()
         else:
-            # If line doesn't start with 1x or a bullet, accept only if it has " as " or special card tag
-            if " as " not in clean.lower() and not re.search(r"\((?:full art|borderless|textless|double sided)\)", clean, re.IGNORECASE):
-                return None
+            # If line doesn't start with quantity or bullet:
+            # Only accept if it looks like a valid card name line
+            if " as " not in lower and not re.search(r"\((?:full art|borderless|textless|double sided|reversible)\)", lower):
+                if len(clean) > 50 or re.search(r"[,:;!]", clean):
+                    return None
 
         # Check for extra notes in parenthesis at the end (e.g. "(Full Art, Textless)")
         extra_tag = ""
@@ -155,7 +328,7 @@ class SecretLairScraper:
 
         # Check for alias: "Card Name as 'Flavor Alias'"
         flavor_name = ""
-        m_alias = re.search(r"\s+as\s+[\"“']?(.*?)[\"”']?$", clean, re.IGNORECASE)
+        m_alias = re.search(r'\s+as\s+[\"“\']?(.*?)[\"”\']?$', clean, re.IGNORECASE)
         if m_alias:
             flavor_name = m_alias.group(1).strip(' "\'“”')
             canonical_name = clean[:m_alias.start()].strip()
@@ -163,10 +336,10 @@ class SecretLairScraper:
             canonical_name = clean.strip()
 
         # Clean up any residual symbols
-        canonical_name = canonical_name.replace("®", "").replace("™", "").replace("’", "'").strip()
-        flavor_name = flavor_name.replace("®", "").replace("™", "").replace("’", "'").strip()
+        canonical_name = canonical_name.replace("\u00ae", "").replace("\u2122", "").replace("\u2019", "'").strip()
+        flavor_name = flavor_name.replace("\u00ae", "").replace("\u2122", "").replace("\u2019", "'").strip()
 
-        if not canonical_name or len(canonical_name) < 2:
+        if not canonical_name or len(canonical_name) < 2 or canonical_name.endswith("."):
             return None
 
         return {
@@ -177,7 +350,7 @@ class SecretLairScraper:
         }
 
     def _parse_drops_deterministic(self, text: str) -> tuple[list[dict], list[dict]]:
-        """Extracts drops and bundles using structured regex patterns."""
+        """Extracts drops and bundles using structured regex patterns and content boundaries."""
         drops = []
         bundles = []
 
@@ -186,86 +359,152 @@ class SecretLairScraper:
         current_drop = None
         current_bundle = None
         mode = None  # "drop" or "bundle"
+        in_contents = False
 
-        drop_header_regex = re.compile(
-            r"^(?:###?\s*)?(Secret Lair x [^\n]+|Secret Lair:\s*[^\n]+|Drop:\s*[^\n]+)",
-            re.IGNORECASE,
+        drop_prefixes = (
+            "secret lair x", "secret lair:", "drop:", "artist series:",
+            "featuring:", "special guest:", "showcase:"
         )
-        bundle_header_regex = re.compile(
-            r"^(?:###?\s*)?([^\n]+(?:Bundle|Everything|Superdrop All-in)[^\n]*)",
-            re.IGNORECASE,
+        bundle_keywords = ("bundle", "everything", "all-in", "superdrop all-in")
+        skip_titles = (
+            "footer", "social", "where to find", "statement", "bulletin",
+            "company", "find a store", "sign up", "terms", "overview",
+            "checklist", "please note", "superdrop"
         )
 
-        for line in lines:
-            drop_match = drop_header_regex.match(line)
-            if drop_match:
-                drop_name = drop_match.group(1).strip().replace("®", "").replace("™", "").replace("’", "'").strip()
-                # Skip article headers that are not individual drops
-                if not any(kw in drop_name.lower() for kw in ["footer", "social", "where to find", "statement", "superdrop in the universe"]):
-                    if current_drop and len(current_drop.get("cards", [])) >= 2:
-                        drops.append(current_drop)
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            lower_line = line.lower()
+
+            # Track contents section
+            if lower_line.startswith("contents"):
+                in_contents = True
+                i += 1
+                continue
+            elif lower_line.startswith("price") or "$" in line:
+                in_contents = False
+
+            # Check if line is a header candidate
+            is_md_header = bool(re.match(r"^#{1,4}\s+", line))
+            clean_title = re.sub(r"^#{1,4}\s+", "", line).replace("\u00ae", "").replace("\u2122", "").replace("\u2019", "'").strip()
+            lower_title = clean_title.lower()
+
+            has_contents_next = False
+            for offset in range(1, 3):
+                if i + offset < len(lines) and re.match(r"^contents\b", lines[i + offset], re.IGNORECASE):
+                    has_contents_next = True
+                    break
+
+            is_disqualified = (
+                lower_title.startswith("price")
+                or lower_title.startswith("contents")
+                or "$" in line
+                or line.startswith(("-", "•", "*"))
+                or bool(re.match(r"^\d+x\b", line, re.IGNORECASE))
+                or any(k in lower_title for k in skip_titles)
+                or len(clean_title) >= 90
+                or clean_title.endswith(".")
+            )
+
+            is_header_candidate = False
+            if not is_disqualified:
+                if is_md_header:
+                    is_header_candidate = True
+                elif has_contents_next:
+                    is_header_candidate = True
+                elif any(lower_title.startswith(pfx) for pfx in drop_prefixes):
+                    is_header_candidate = True
+                elif any(kw in lower_title for kw in bundle_keywords):
+                    is_header_candidate = True
+
+            if is_header_candidate:
+                is_bundle = any(kw in lower_title for kw in bundle_keywords)
+
+                if current_drop and len(current_drop.get("cards", [])) >= 1:
+                    drops.append(current_drop)
+                    current_drop = None
+                if current_bundle:
+                    bundles.append(current_bundle)
+                    current_bundle = None
+
+                if is_bundle:
+                    current_bundle = {
+                        "bundle_name": clean_title,
+                        "price_nonfoil": None,
+                        "price_foil": None,
+                        "price": None,
+                        "contents_summary": "",
+                    }
+                    mode = "bundle"
+                else:
                     current_drop = {
-                        "drop_name": drop_name,
+                        "drop_name": clean_title,
                         "cards": [],
                         "price_nonfoil": 29.99,
                         "price_foil": 39.99,
                         "currency": "USD",
                     }
                     mode = "drop"
-                    continue
-
-            bundle_match = bundle_header_regex.match(line)
-            if bundle_match and ("bundle" in line.lower() or "everything" in line.lower()):
-                if current_drop and len(current_drop.get("cards", [])) >= 2:
-                    drops.append(current_drop)
-                    current_drop = None
-                if current_bundle:
-                    bundles.append(current_bundle)
-                b_name = bundle_match.group(1).strip().replace("®", "").replace("™", "").replace("’", "'")
-                current_bundle = {
-                    "bundle_name": b_name,
-                    "price_nonfoil": None,
-                    "price_foil": None,
-                    "contents_summary": "",
-                }
-                mode = "bundle"
+                in_contents = False
+                i += 1
                 continue
 
             if mode == "drop" and current_drop:
-                parsed_card = self._parse_card_line(line)
-                if parsed_card:
-                    current_drop["cards"].append(parsed_card)
-
-                if "non-foil:" in line.lower() or "nonfoil:" in line.lower():
-                    m = re.search(r"\$?([0-9]+\.[0-9]{2})", line)
+                if "non-foil" in lower_line or "nonfoil" in lower_line:
+                    m = re.search(r"(\d+\.\d{2})", line)
                     if m:
                         try:
                             current_drop["price_nonfoil"] = float(m.group(1))
                         except Exception:
                             pass
-                elif "foil:" in line.lower():
-                    m = re.search(r"\$?([0-9]+\.[0-9]{2})", line)
+                elif "foil" in lower_line:
+                    m = re.search(r"(\d+\.\d{2})", line)
                     if m:
                         try:
                             current_drop["price_foil"] = float(m.group(1))
                         except Exception:
                             pass
+                else:
+                    parsed_card = self._parse_card_line(line)
+                    if parsed_card:
+                        current_drop["cards"].append(parsed_card)
 
-            if mode == "bundle" and current_bundle:
-                if "non-foil:" in line.lower() or "nonfoil:" in line.lower():
-                    m = re.search(r"\$?([0-9]+\.[0-9]{2})", line)
+            elif mode == "bundle" and current_bundle:
+                if "non-foil" in lower_line or "nonfoil" in lower_line:
+                    m = re.search(r"(\d+\.\d{2})", line)
                     if m:
-                        current_bundle["price_nonfoil"] = float(m.group(1))
-                elif "foil:" in line.lower():
-                    m = re.search(r"\$?([0-9]+\.[0-9]{2})", line)
+                        try:
+                            current_bundle["price_nonfoil"] = float(m.group(1))
+                        except Exception:
+                            pass
+                elif "foil" in lower_line and "non" not in lower_line:
+                    m = re.search(r"(\d+\.\d{2})", line)
                     if m:
-                        current_bundle["price_foil"] = float(m.group(1))
+                        try:
+                            current_bundle["price_foil"] = float(m.group(1))
+                        except Exception:
+                            pass
                 elif "$" in line:
-                    m = re.search(r"\$?([0-9]+\.[0-9]{2})", line)
-                    if m and current_bundle["price_nonfoil"] is None:
-                        current_bundle["price_nonfoil"] = float(m.group(1))
+                    m = re.search(r"(\d+\.\d{2})", line)
+                    if m:
+                        try:
+                            val = float(m.group(1))
+                            b_low = current_bundle["bundle_name"].lower()
+                            current_bundle["price"] = val
+                            if "foil" in b_low and "non" not in b_low:
+                                current_bundle["price_foil"] = val
+                            elif "non" in b_low:
+                                current_bundle["price_nonfoil"] = val
+                            else:
+                                if current_bundle["price_nonfoil"] is None:
+                                    current_bundle["price_nonfoil"] = val
+                        except Exception:
+                            pass
 
-        if current_drop and len(current_drop.get("cards", [])) >= 2:
+            i += 1
+
+        if current_drop and len(current_drop.get("cards", [])) >= 1:
             drops.append(current_drop)
         if current_bundle:
             bundles.append(current_bundle)
@@ -275,11 +514,19 @@ class SecretLairScraper:
         seen_drop_names = set()
         for d in drops:
             key = d["drop_name"].lower()
-            if key not in seen_drop_names and len(d["cards"]) >= 2:
+            if key not in seen_drop_names and len(d["cards"]) >= 1:
                 seen_drop_names.add(key)
                 unique_drops.append(d)
 
-        return unique_drops, bundles
+        unique_bundles = []
+        seen_bundle_names = set()
+        for b in bundles:
+            key = b["bundle_name"].lower()
+            if key not in seen_bundle_names:
+                seen_bundle_names.add(key)
+                unique_bundles.append(b)
+
+        return unique_drops, unique_bundles
 
     def _parse_drops_with_gemini(self, text: str, api_key: str) -> tuple[list[dict], list[dict]]:
         """Fallback LLM parser to extract drop JSON from irregular layouts using cost-effective flash-lite model."""
@@ -544,9 +791,16 @@ class SecretLairGeminiAdvisor:
             bundle_lines = []
             for b in bundles:
                 bname = b.get("bundle_name", "Bundle")
-                pnf = f"${b['price_nonfoil']}" if b.get("price_nonfoil") else "N/A"
-                pf = f"${b['price_foil']}" if b.get("price_foil") else "N/A"
-                bundle_lines.append(f"  • {bname}: Non-foil {pnf} | Foil {pf}")
+                if b.get("price") and not (b.get("price_nonfoil") and b.get("price_foil")):
+                    bundle_lines.append(f"  • {bname}: Bundle Price ${b['price']}")
+                elif b.get("price_nonfoil") and b.get("price_foil"):
+                    bundle_lines.append(f"  • {bname}: Non-foil ${b['price_nonfoil']} | Foil ${b['price_foil']}")
+                elif b.get("price_foil"):
+                    bundle_lines.append(f"  • {bname}: Foil ${b['price_foil']}")
+                elif b.get("price_nonfoil"):
+                    bundle_lines.append(f"  • {bname}: Non-foil ${b['price_nonfoil']}")
+                else:
+                    bundle_lines.append(f"  • {bname}: Price N/A")
             bundle_text = "AVAILABLE BUNDLES:\n" + "\n".join(bundle_lines)
 
         system_instruction = (

@@ -4302,7 +4302,7 @@ def create_app(test_config=None):
         except Exception as e:
             return jsonify({"error": f"Failed to fetch announcement: {str(e)}"}), 400
 
-        drops, bundles = scraper.parse_drops(announcement["text"], api_key=effective_key)
+        drops, bundles = scraper.parse_drops(announcement["text"], api_key=effective_key, html=announcement.get("html"))
         if not drops:
             return jsonify({"error": "No Secret Lair drops or cards could be parsed from the provided content."}), 400
 

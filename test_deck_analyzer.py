@@ -1604,6 +1604,157 @@ class TestSecretLairAndCardEvaluatorModelRouting(unittest.TestCase):
             self.assertIn("gemini-3.7-flash", call[0][0])
 
 
+class TestSecretLairDropParsing(unittest.TestCase):
+    """Tests that SecretLairScraper accurately parses HTML and text drops, prices, aliases, and bundles."""
+
+    def setUp(self):
+        from secret_lair_advisor import SecretLairScraper
+        self.scraper = SecretLairScraper()
+
+    def test_parse_corn_maze_layout_html(self):
+        sample_html = """
+        <article>
+            <h1>Secret Lair: Corn Maze Superdrop</h1>
+            <p>Some drops are scary, but everything in the Corn Maze Superdrop is exciting.</p>
+            <h2>Secret Lair x Jim Henson's Labyrinth: Fear Me, Love Me</h2>
+            <p>Contents :</p>
+            <ul>
+                <li>1x Muxus, Goblin Grandee as "Jareth, Goblin King"</li>
+                <li>1x Boggart Shenanigans as "Call Out the Goblins!"</li>
+                <li>1x Dance with Calamity as "Dance with Goblins"</li>
+            </ul>
+            <p>Price :</p>
+            <ul>
+                <li>Non-foil $29.99 USD</li>
+                <li>Foil: $39.99 USD</li>
+            </ul>
+
+            <h2>Secret Lair x Jim Henson's Labyrinth: Should You Need Us</h2>
+            <p>Contents :</p>
+            <ul>
+                <li>1x Jodah, the Unifier as "Sarah, Champion to the Lost"</li>
+                <li>1x Lu Xun, Scholar General as "Sir Didymus, Rider of Ambrosius // Sir Didymus, Faithful Companion" (Reversible)</li>
+                <li>1x Kami of the Crescent Moon as "The Worm, Sagely Guide"</li>
+            </ul>
+            <p>Price :</p>
+            <ul>
+                <li>Non-foil $29.99 USD</li>
+                <li>Foil: $39.99 USD</li>
+            </ul>
+            <p>You may notice that the art used for Jodah, the Unifier as "Sarah, Champion to the Lost" originates from the same piece and comprises a two-card scene, which you can see highlighted above.</p>
+
+            <h2>Artist Series: Veronique Meignaud</h2>
+            <p>Contents :</p>
+            <ul>
+                <li>1x Bloodsoaked Champion</li>
+                <li>1x Voldaren Pariah // Abolisher of Bloodlines</li>
+                <li>1x Ashnod's Altar</li>
+            </ul>
+            <p>Price :</p>
+            <ul>
+                <li>Non-foil $29.99 USD</li>
+                <li>Foil: $39.99 USD</li>
+            </ul>
+
+            <h2>Peace, Love, & Treefolk</h2>
+            <p>Contents :</p>
+            <ul>
+                <li>1x Dauntless Dourbark</li>
+                <li>1x Leaf-Crowned Elder</li>
+                <li>1x Doran, the Siege Tower</li>
+            </ul>
+            <p>Price :</p>
+            <ul>
+                <li>Non-foil $29.99 USD</li>
+                <li>Foil: $39.99 USD</li>
+            </ul>
+
+            <h2>A-Maize-Ing Everything Bundle</h2>
+            <p>Contents :</p>
+            <ul>
+                <li>1x Secret Lair x Jim Henson's Labyrinth: Fear Me, Love Me Foil Edition</li>
+                <li>1x Peace, Love, & Treefolk Non-Foil Edition</li>
+            </ul>
+            <p>Price : $539.99 USD</p>
+
+            <h2>Full Moon Foil Bundle</h2>
+            <p>Contents :</p>
+            <ul>
+                <li>1x Secret Lair x Jim Henson's Labyrinth: Fear Me, Love Me Foil Edition</li>
+            </ul>
+            <p>Price : $319.92 USD</p>
+        </article>
+        """
+        drops, bundles = self.scraper.parse_drops("fallback text", html=sample_html)
+
+        self.assertEqual(len(drops), 4)
+        self.assertEqual(len(bundles), 2)
+
+        drop_names = [d["drop_name"] for d in drops]
+        self.assertIn("Secret Lair x Jim Henson's Labyrinth: Fear Me, Love Me", drop_names)
+        self.assertIn("Secret Lair x Jim Henson's Labyrinth: Should You Need Us", drop_names)
+        self.assertIn("Artist Series: Veronique Meignaud", drop_names)
+        self.assertIn("Peace, Love, & Treefolk", drop_names)
+
+        # Check reversible tag and flavor aliases
+        should_you_need_us = next(d for d in drops if "Should You Need Us" in d["drop_name"])
+        self.assertEqual(len(should_you_need_us["cards"]), 3)
+        lu_xun = next(c for c in should_you_need_us["cards"] if "Lu Xun" in c["canonical_name"])
+        self.assertEqual(lu_xun["canonical_name"], "Lu Xun, Scholar General")
+        self.assertIn("Sir Didymus", lu_xun["flavor_name"])
+        self.assertEqual(lu_xun["extra_tag"], "Reversible")
+
+        # Verify prose sentence was not parsed as a card
+        for card in should_you_need_us["cards"]:
+            self.assertNotIn("You may notice", card["canonical_name"])
+
+        # Check bundle pricing
+        everything_bundle = next(b for b in bundles if "Everything" in b["bundle_name"])
+        self.assertEqual(everything_bundle["price"], 539.99)
+        self.assertEqual(everything_bundle["price_nonfoil"], 539.99)
+
+        foil_bundle = next(b for b in bundles if "Full Moon" in b["bundle_name"])
+        self.assertEqual(foil_bundle["price"], 319.92)
+        self.assertEqual(foil_bundle["price_foil"], 319.92)
+
+    def test_parse_deterministic_structured_text(self):
+        sample_text = """
+## Secret Lair x KPop Demon Hunters: How It's Done
+Contents :
+- 1x Dawn's Truce
+- 1x Unbreakable Formation
+- 1x Underworld Breach
+Price :
+- Non-foil $29.99 USD
+- Foil: $39.99 USD
+
+## Manufactured Grounds by See Machine
+Contents :
+- 1x Ancient Den
+- 1x Seat of the Synod
+- 1x Great Furnace
+Price :
+- Non-foil $29.99 USD
+- Foil: $39.99 USD
+
+## Pumpkin Spiced Non-Foil Bundle
+Contents :
+- 1x Manufactured Grounds by See Machine Non-Foil Edition
+Price : $239.92 USD
+"""
+        drops, bundles = self.scraper.parse_drops(sample_text)
+        self.assertEqual(len(drops), 2)
+        self.assertEqual(len(bundles), 1)
+
+        d_names = [d["drop_name"] for d in drops]
+        self.assertIn("Secret Lair x KPop Demon Hunters: How It's Done", d_names)
+        self.assertIn("Manufactured Grounds by See Machine", d_names)
+
+        bundle = bundles[0]
+        self.assertEqual(bundle["bundle_name"], "Pumpkin Spiced Non-Foil Bundle")
+        self.assertEqual(bundle["price_nonfoil"], 239.92)
+
+
 if __name__ == "__main__":
     unittest.main()
 
