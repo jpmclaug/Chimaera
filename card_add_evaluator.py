@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -49,6 +50,26 @@ from secret_lair_advisor import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Lazily-built {lowercase name: staple} indices for O(1) curated staple lookups.
+_STAPLE_INDEX: dict[bool, dict[str, dict]] = {}
+
+# Max non-basic cut candidates per deck sent to Gemini (keeps prompt small).
+GEMINI_CUT_POOL_SIZE = 12
+
+
+def _staple_index(is_pauper: bool) -> dict[str, dict]:
+    idx = _STAPLE_INDEX.get(is_pauper)
+    if idx is None:
+        idx = {}
+        for s in (CURATED_PAUPER_UPGRADES if is_pauper else CURATED_UPGRADES):
+            idx.setdefault(s["name"].lower(), s)  # first match wins (same as prior next())
+        _STAPLE_INDEX[is_pauper] = idx
+    return idx
+
+
+def _is_pauper_deck(deck: dict) -> bool:
+    return bool(deck.get("is_pauper") or str(deck.get("deck_format", "")).lower() == "pauper_commander")
 
 
 class CardAddEvaluator:
@@ -172,10 +193,12 @@ class CardAddEvaluator:
             return []
 
         unique_names = list({c["name"] for c in cards if c.get("name")})
-        scryfall_map, not_found = self.scryfall.get_cards_collection(unique_names)
+        # Disable the built-in named fallback so each unresolved name is looked up exactly once below
+        # (previously up to 20 names were re-queried twice).
+        scryfall_map, not_found = self.scryfall.get_cards_collection(unique_names, fallback_named=False)
 
         # For any not resolved via collection batch, try single named lookup
-        for name in not_found:
+        for name in dict.fromkeys(not_found):
             single = self.scryfall.get_card_named(name)
             if single:
                 self.scryfall._index_card_in_map(scryfall_map, single, extra_names=[name])
@@ -198,7 +221,7 @@ class CardAddEvaluator:
             val_nonfoil = float(p_usd) if p_usd is not None else 0.0
             val_foil = float(p_usd_foil) if p_usd_foil is not None else val_nonfoil
 
-            if val_nonfoil == 0.0:
+            if val_nonfoil == 0.0 and meta:
                 try:
                     cheap = self.scryfall.get_cheapest_tcgplayer_price(c_name)
                     if cheap and cheap.get("price", 0) > 0:
@@ -263,6 +286,7 @@ class CardAddEvaluator:
         card_meta: dict,
         deck: dict,
         deck_cards_set: Optional[set[str]] = None,
+        deck_ci: Optional[set[str]] = None,
     ) -> dict:
         """
         Evaluates color legality, format legality, and duplicate presence
@@ -273,14 +297,15 @@ class CardAddEvaluator:
         clean_front = clean_name.split(" // ")[0].strip() if " // " in clean_name else clean_name
 
         # 1. Color Identity check
-        deck_ci = self.normalize_color_identity(deck.get("color_identity"))
+        if deck_ci is None:
+            deck_ci = self.normalize_color_identity(deck.get("color_identity"))
         card_ci = self.normalize_color_identity(card_meta.get("color_identity"))
         is_color_legal = card_ci.issubset(deck_ci)
 
         illegal_colors = sorted(list(card_ci - deck_ci))
 
         # 2. Format Legality check
-        is_pauper = bool(deck.get("is_pauper") or str(deck.get("deck_format", "")).lower() == "pauper_commander")
+        is_pauper = _is_pauper_deck(deck)
         is_format_banned = False
         ban_reason = None
 
@@ -333,21 +358,15 @@ class CardAddEvaluator:
     # Algorithmic Synergy Scoring & Cut Candidate Selection
     # -------------------------------------------------------------------------
 
-    def evaluate_card_algorithmic(
-        self,
-        card_meta: dict,
-        deck: dict,
-        cut_candidates: list[dict],
-        used_cuts: Optional[set[str]] = None,
-        edhrec_synergies: Optional[dict[str, dict]] = None,
-    ) -> dict:
+    def build_card_profile(self, card_meta: dict) -> dict:
         """
-        Calculates functional role, synergy score (1-100 and 1.0-10.0 scale),
-        fit verdict, deficit filling, and matching cut candidate.
+        Computes deck-independent card data (clean names, classification, primary role) once,
+        so it can be reused across every deck in a suite run.
         """
         card_name = card_meta.get("canonical_name") or card_meta.get("name", "")
         clean_name = strip_accents(card_name).lower().strip()
         clean_front = clean_name.split(" // ")[0].strip() if " // " in clean_name else clean_name
+        type_lower = (card_meta.get("type_line") or "").lower()
 
         # Classify functional role
         card_dict = {
@@ -381,8 +400,38 @@ class CardAddEvaluator:
             role = "Protection / Counterspell"
         elif classification.get("wincon_tags"):
             role = "Finisher / Win-Con"
-        elif "land" in (card_meta.get("type_line") or "").lower():
+        elif "land" in type_lower:
             role = "Mana Base / Land"
+
+        return {
+            "card_name": card_name,
+            "clean_name": clean_name,
+            "clean_front": clean_front,
+            "is_land": "land" in type_lower,
+            "classification": classification,
+            "role": role,
+        }
+
+    def evaluate_card_algorithmic(
+        self,
+        card_meta: dict,
+        deck: dict,
+        cut_candidates: list[dict],
+        used_cuts: Optional[set[str]] = None,
+        edhrec_synergies: Optional[dict[str, dict]] = None,
+        profile: Optional[dict] = None,
+    ) -> dict:
+        """
+        Calculates functional role, synergy score (1-100 and 1.0-10.0 scale),
+        fit verdict, deficit filling, and matching cut candidate.
+        Pass a precomputed `profile` (from build_card_profile) to skip re-classification.
+        """
+        if profile is None:
+            profile = self.build_card_profile(card_meta)
+        clean_name = profile["clean_name"]
+        clean_front = profile["clean_front"]
+        classification = profile["classification"]
+        role = profile["role"]
 
         # Check EDHREC synergy if available
         syn = 0.0
@@ -438,16 +487,15 @@ class CardAddEvaluator:
             reasons.append("provides essential board sweeper reset")
 
         # 3. Curated staple check
-        is_pauper = bool(deck.get("is_pauper") or str(deck.get("deck_format", "")).lower() == "pauper_commander")
-        pool = CURATED_PAUPER_UPGRADES if is_pauper else CURATED_UPGRADES
-        staple_match = next((s for s in pool if s["name"].lower() == clean_name or s["name"].lower() == clean_front), None)
+        staples = _staple_index(_is_pauper_deck(deck))
+        staple_match = staples.get(clean_name) or staples.get(clean_front)
         if staple_match:
             score += 15.0
             reasons.append(f"premier format staple ({staple_match.get('category', 'Staple')})")
 
         # 4. Low CMC efficiency
         cmc = card_meta.get("cmc", 0.0)
-        if cmc <= 2 and not ("land" in (card_meta.get("type_line") or "").lower()):
+        if cmc <= 2 and not profile["is_land"]:
             score += 8.0
 
         # Cap score between 1 and 100
@@ -507,10 +555,17 @@ class CardAddEvaluator:
         custom_instructions: str = "",
         model: Optional[str] = None,
         api_key: Optional[str] = None,
+        eligible_pairs: Optional[dict[Any, list[str]]] = None,
+        cut_pools: Optional[dict[Any, list[str]]] = None,
     ) -> dict:
         """
         Sends candidate cards and target Commander decks to Gemini.
         Returns tactical fleet fit matrix, cuts, and new commander opportunities.
+
+        Token-lean: only legal, not-already-in-deck (card, deck) pairs are sent
+        (`eligible_pairs`: deck_id -> card names), each deck ships a short weakest-card
+        cut pool instead of a 40-card sample, and the response is a flat `evals` list
+        (no duplicated deck_breakdowns section).
         """
         effective_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
         if not effective_key:
@@ -522,130 +577,95 @@ class CardAddEvaluator:
         else:
             target_model_base = get_model_for_task("card_evaluation", preferred_model=raw_model)
 
-        # Format cards prompt block
+        # Pre-filter pairs locally (color identity / bans / duplicates) if caller didn't supply them,
+        # so Gemini never spends tokens on pairings that can't be played.
+        if eligible_pairs is None:
+            eligible_pairs = {}
+            for d in decks:
+                d_ci = self.normalize_color_identity(d.get("color_identity"))
+                names = []
+                for c in cards:
+                    compat = self.check_card_deck_compatibility(c, d, deck_ci=d_ci)
+                    if compat["is_legal"] and not compat["is_already_in_deck"]:
+                        names.append(c.get("canonical_name") or c.get("name", ""))
+                if names:
+                    eligible_pairs[d.get("id")] = names
+
+        if cut_pools is None:
+            cut_pools = {}
+            for d in decks:
+                cands = self.upgrade_engine._identify_cut_candidates(d.get("cards", []), ai_analysis=d.get("analysis"))
+                cut_pools[d.get("id")] = [c["name"] for c in cands if not c.get("is_basic")][:GEMINI_CUT_POOL_SIZE]
+
+        if not any(eligible_pairs.values()):
+            raise GeminiAnalysisError("No legal card/deck pairings to evaluate.")
+
+        # Only send cards that appear in at least one eligible pairing
+        needed = {n.lower() for names in eligible_pairs.values() for n in names}
         card_lines = []
+        legendary_names = []
         for c in cards:
             c_name = c.get("canonical_name") or c.get("name", "")
-            mana = f" ({c.get('mana_cost')})" if c.get("mana_cost") else ""
-            t_line = f" [{c.get('type_line')}]" if c.get("type_line") else ""
-            ci = f" CI:[{','.join(c.get('color_identity', []))}]"
-            pr = f" ~${c.get('price_usd')}" if c.get("price_usd") is not None else ""
-            card_lines.append(f"  • {c_name}{mana}{t_line}{ci}{pr}")
+            t_line = c.get("type_line") or ""
+            t_low = t_line.lower()
+            is_legend = "legendary" in t_low and "creature" in t_low
+            if is_legend:
+                legendary_names.append(c_name)
+            if c_name.lower() not in needed and not is_legend:
+                continue
+            ci = "".join(c.get("color_identity") or []) or "C"
+            card_lines.append(f"{c_name}|{c.get('mana_cost') or '-'}|{t_line or '?'}|{ci}")
 
-        cards_prompt = "\n".join(card_lines)
-
-        # Format decks prompt block
         deck_blocks = []
         for d in decks:
             did = d.get("id")
-            dname = d.get("deck_name", "Deck")
-            cmdrs = d.get("commander_name", "Unspecified")
-            ci = d.get("color_identity", "")
-            arch = d.get("archetype", "Commander Synergy")
-            cards_sample = [c.get("name") for c in d.get("cards", []) if c.get("name")]
-
+            names = eligible_pairs.get(did)
+            if not names:
+                continue
+            ci = "".join(sorted(self.normalize_color_identity(d.get("color_identity")))) or "C"
+            arch = d.get("archetype") or "Synergy"
+            pool = cut_pools.get(did) or []
             deck_blocks.append(
-                f"DECK ID [{did}]: \"{dname}\"\n"
-                f"  Commander: {cmdrs} | Color Identity: [{ci}] | Archetype: {arch}\n"
-                f"  Sample 99 Cards: {', '.join(cards_sample[:40])} ... ({len(cards_sample)} cards)"
+                f"[{did}] {d.get('commander_name') or 'Unknown'} ({ci}, {arch})\n"
+                f" rate: {'; '.join(names)}\n"
+                f" cuts: {'; '.join(pool) if pool else 'any weak card'}"
             )
 
-        decks_prompt = "\n\n".join(deck_blocks)
-
         system_instruction = (
-            "You are an elite Magic: The Gathering Commander (EDH) tactical advisor and deck optimization engine. "
-            "You evaluate candidate cards against the player's Commander decks with mathematical and strategic precision.\n"
-            "Rules:\n"
-            "1. Commander Color Identity Rule: A card CANNOT be placed in a Commander deck if its color identity contains colors outside the commander's color identity.\n"
-            "2. Already in Deck: Check if the deck already runs the card. If so, mark fit_verdict as 'Already in Deck' or 'Art Swap'.\n"
-            "3. Cut Candidates: Always suggest an exact card from the deck's sample 99 to cut for the upgrade.\n"
-            "4. Respond ONLY with raw, valid JSON adhering to the required schema."
+            "You are an expert MTG Commander deckbuilding advisor. Rate each listed card for each deck it is "
+            "listed under. Pairings are already legal and not duplicates. suggested_cut must come from that deck's "
+            "cuts list. Keep rationale under 25 words, citing the commander's synergy. Output raw JSON only."
         )
 
-        user_prompt = f"""Evaluate these candidate cards against the player's Commander deck fleet.
-
-CANDIDATE CARDS TO EVALUATE:
-{cards_prompt}
-
-PLAYER'S ACTIVE COMMANDER DECKS:
-{decks_prompt}
-
-{f"USER CUSTOM DIRECTIVES: {custom_instructions}" if custom_instructions else ""}
-
-TASK:
-1. For EACH candidate card, determine which decks in the fleet would benefit from it.
-2. For each applicable deck, provide:
-   - fit_verdict: 'Essential Upgrade', 'High Synergy', 'Alternative Win-Con', 'Role Filler / Utility', or 'Suboptimal / Redundant'
-   - role: e.g. 'Finisher / Win-Con', 'Synergy Engine', 'Ramp / Rocks', 'Spot Removal', 'Card Advantage', 'Protection', 'Mana Base'
-   - synergy_rating: 1.0 to 10.0 score
-   - suggested_cut: Exact card from deck's 99 to replace
-   - rationale: Detailed tactical explanation citing the commander and key synergies
-3. Identify any legendary creatures in the candidate cards that could lead brand new Commander decks.
-
-CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surrounding code fences) strictly adhering to this schema:
-{{
-  "executive_summary": "High-level briefing on these card additions for the player's fleet...",
-  "card_matrix": [
-    {{
-      "card_name": "Card Name",
-      "best_fit_deck": "Top Deck Name",
-      "compatible_decks_count": 2,
-      "deck_recommendations": [
-        {{
-          "deck_id": 1,
-          "deck_name": "Deck Name",
-          "fit_verdict": "Essential Upgrade",
-          "role": "Synergy Engine",
-          "synergy_rating": 9.5,
-          "is_already_in_deck": false,
-          "suggested_cut": "Card to Cut",
-          "rationale": "Why this card is an essential add..."
-        }}
-      ]
-    }}
-  ],
-  "deck_breakdowns": [
-    {{
-      "deck_id": 1,
-      "deck_name": "Deck Name",
-      "commander_name": "Commander Name",
-      "color_identity": ["W", "U"],
-      "total_applicable_cards": 2,
-      "applicable_cards": [
-        {{
-          "card_name": "Card Name",
-          "fit_verdict": "Essential Upgrade",
-          "role": "Synergy Engine",
-          "synergy_rating": 9.5,
-          "suggested_cut": "Card to Cut",
-          "rationale": "Tactical upgrade rationale..."
-        }}
-      ]
-    }}
-  ],
-  "new_commander_opportunities": [
-    {{
-      "card_name": "Legendary Creature Name",
-      "colors": ["W", "B"],
-      "archetype": "Orzhov Aristocrats",
-      "rationale": "Potential new deck concept..."
-    }}
-  ]
-}}
-"""
+        new_cmdr_schema = (
+            ',"new_commander_opportunities":[{"card_name":str,"colors":[str],"archetype":str,"rationale":str}]'
+            if legendary_names
+            else ""
+        )
+        user_prompt = (
+            "CARDS (name|cost|type|CI):\n" + "\n".join(card_lines) + "\n\n"
+            "DECKS ([id] commander (CI, archetype)):\n" + "\n".join(deck_blocks) + "\n\n"
+            + (f"USER DIRECTIVES: {custom_instructions}\n\n" if custom_instructions else "")
+            + "fit_verdict is one of: Essential Upgrade, High Synergy, Alternative Win-Con, Role Filler / Utility, "
+            "Suboptimal / Redundant. synergy_rating is 1.0-10.0.\n"
+            + (f"Also assess these legends as new commanders: {'; '.join(legendary_names)}.\n" if legendary_names else "")
+            + 'Schema: {"executive_summary":str (2-3 sentences),"evals":[{"card":str,"deck_id":int,"fit_verdict":str,'
+            '"role":str,"synergy_rating":num,"suggested_cut":str,"rationale":str}]' + new_cmdr_schema + "}"
+        )
 
         clean_key = effective_key.strip()
         target_model = target_model_base
         url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={clean_key}"
-        gen_config = {"temperature": 0.2, "maxOutputTokens": 8192}
+        gen_config = {"temperature": 0.2, "maxOutputTokens": 8192, "responseMimeType": "application/json"}
         if "gemini-3" in target_model:
             gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
 
         payload = {
+            "systemInstruction": {"parts": [{"text": system_instruction}]},
             "contents": [
                 {
                     "role": "user",
-                    "parts": [{"text": system_instruction + "\n\n" + user_prompt}],
+                    "parts": [{"text": user_prompt}],
                 }
             ],
             "generationConfig": gen_config,
@@ -748,6 +768,8 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
         deck_cut_candidates: dict[int, list[dict]] = {}
         deck_synergies_cache: dict[int, dict] = {}
 
+        deck_ci_cache: dict[int, set[str]] = {}
+
         for d in decks:
             did = d["id"]
             d_cards = d.get("cards", [])
@@ -759,19 +781,17 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                     if " // " in c_name:
                         d_set.add(c_name.split(" // ")[0].strip())
             deck_cards_sets[did] = d_set
+            deck_ci_cache[did] = self.normalize_color_identity(d.get("color_identity"))
 
             # Identify cut candidates from existing deck cards
             cuts = self.upgrade_engine._identify_cut_candidates(d_cards, ai_analysis=d.get("analysis"))
             deck_cut_candidates[did] = cuts
 
-            # Query EDHREC synergies for commander
-            cmdrs = [c.strip() for c in (d.get("commander_name") or "").split(",") if c.strip()]
-            if cmdrs:
-                primary_cmdr = cmdrs[0]
-                try:
-                    deck_synergies_cache[did] = self.edhrec.get_commander_synergies(primary_cmdr)
-                except Exception:
-                    deck_synergies_cache[did] = {}
+        # Query EDHREC synergies once per unique commander (parallel, cached by provider)
+        deck_synergies_cache = self._fetch_deck_synergies(decks)
+
+        # Classify each candidate card once (deck-independent)
+        card_profiles = [self.build_card_profile(card) for card in cards]
 
         # 1. Compute Algorithmic Baseline for Card Matrix & Deck Breakdowns
         card_matrix = []
@@ -782,13 +802,18 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                 "deck_id": d["id"],
                 "deck_name": d["deck_name"],
                 "commander_name": d.get("commander_name") or "Unspecified",
-                "color_identity": sorted(list(self.normalize_color_identity(d.get("color_identity")))),
+                "color_identity": sorted(deck_ci_cache[d["id"]]),
                 "commander_art": d.get("commander_art"),
                 "total_applicable_cards": 0,
                 "applicable_cards": [],
             }
 
-        for card in cards:
+        # deck_id -> card names that are legal & not already in deck (sent to Gemini)
+        eligible_pairs: dict[int, list[str]] = {}
+        # (card_name_lower, deck_id) -> (matrix rec, breakdown entry) for O(1) AI overlay
+        pair_index: dict[tuple[str, Any], tuple[dict, dict]] = {}
+
+        for card, profile in zip(cards, card_profiles):
             c_name = card.get("canonical_name") or card.get("name", "")
             card_entry = {
                 "card_name": c_name,
@@ -810,7 +835,9 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
             for d in decks:
                 did = d["id"]
                 deck_cards_set = deck_cards_sets[did]
-                compat = self.check_card_deck_compatibility(card, d, deck_cards_set=deck_cards_set)
+                compat = self.check_card_deck_compatibility(
+                    card, d, deck_cards_set=deck_cards_set, deck_ci=deck_ci_cache[did]
+                )
 
                 if not compat["is_legal"]:
                     card_entry["incompatible_decks"].append({
@@ -828,10 +855,14 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                     })
                     continue
 
+                eligible_pairs.setdefault(did, []).append(c_name)
+
                 # Algorithmic evaluation
                 cuts = deck_cut_candidates[did]
                 synergies = deck_synergies_cache.get(did, {})
-                algo_res = self.evaluate_card_algorithmic(card, d, cut_candidates=cuts, edhrec_synergies=synergies)
+                algo_res = self.evaluate_card_algorithmic(
+                    card, d, cut_candidates=cuts, edhrec_synergies=synergies, profile=profile
+                )
 
                 rec = {
                     "deck_id": did,
@@ -852,7 +883,7 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                 card_entry["deck_recommendations"].append(rec)
 
                 # Add to deck breakdown
-                deck_breakdowns_map[did]["applicable_cards"].append({
+                app_card = {
                     "card_name": c_name,
                     "mana_cost": card.get("mana_cost", ""),
                     "cmc": card.get("cmc", 0.0),
@@ -867,7 +898,9 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                     "suggested_cut_cmc": algo_res["suggested_cut_cmc"],
                     "suggested_cut_type": algo_res["suggested_cut_type"],
                     "rationale": algo_res["rationale"],
-                })
+                }
+                deck_breakdowns_map[did]["applicable_cards"].append(app_card)
+                pair_index[(c_name.lower(), did)] = (rec, app_card)
 
             # Sort deck recommendations by synergy score descending
             card_entry["deck_recommendations"].sort(key=lambda x: -x["synergy_rating"])
@@ -915,14 +948,21 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
         }
 
         # 2. If Gemini is requested and API key is present, enrich with Gemini
-        if use_gemini:
+        #    (skipped entirely when no card is a legal, new add for any deck — saves a full API call)
+        if use_gemini and eligible_pairs:
             try:
+                cut_pools = {
+                    did: [c["name"] for c in cands if not c.get("is_basic")][:GEMINI_CUT_POOL_SIZE]
+                    for did, cands in deck_cut_candidates.items()
+                }
                 gemini_res = self.evaluate_with_gemini(
                     cards=cards,
                     decks=decks,
                     custom_instructions=custom_instructions,
                     model=model,
                     api_key=api_key,
+                    eligible_pairs=eligible_pairs,
+                    cut_pools=cut_pools,
                 )
 
                 # Merge Gemini insights into algorithmic matrix
@@ -931,59 +971,47 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                 if gemini_res.get("new_commander_opportunities"):
                     result["new_commander_opportunities"] = gemini_res["new_commander_opportunities"]
 
-                # Overlay Gemini rationales, ratings, and cuts onto card matrix
-                ai_matrix_map = {
-                    (cm.get("card_name", "").lower()): cm
-                    for cm in gemini_res.get("card_matrix", [])
-                }
-
-                for c_entry in result["card_matrix"]:
-                    c_low = c_entry["card_name"].lower()
-                    ai_c = ai_matrix_map.get(c_low)
-                    if not ai_c and " // " in c_low:
-                        ai_c = ai_matrix_map.get(c_low.split(" // ")[0].strip())
-
-                    if ai_c:
-                        ai_rec_map = {
-                            r.get("deck_id"): r
-                            for r in ai_c.get("deck_recommendations", [])
-                            if r.get("deck_id")
-                        }
-                        for rec in c_entry["deck_recommendations"]:
-                            ai_r = ai_rec_map.get(rec["deck_id"])
-                            if ai_r:
-                                if ai_r.get("fit_verdict"):
-                                    rec["fit_verdict"] = ai_r["fit_verdict"]
-                                if ai_r.get("role"):
-                                    rec["role"] = ai_r["role"]
-                                if ai_r.get("synergy_rating") is not None:
-                                    rec["synergy_rating"] = float(ai_r["synergy_rating"])
-                                if ai_r.get("suggested_cut"):
-                                    rec["suggested_cut"] = ai_r["suggested_cut"]
-                                if ai_r.get("rationale"):
-                                    rec["rationale"] = ai_r["rationale"]
-
-                        # Re-sort deck recommendations by updated synergy rating
-                        c_entry["deck_recommendations"].sort(key=lambda x: -x["synergy_rating"])
-                        c_entry["best_fit_deck"] = (
-                            c_entry["deck_recommendations"][0]["deck_name"]
-                            if c_entry["deck_recommendations"]
-                            else None
+                # Overlay Gemini rationales, ratings, and cuts onto both views in one pass
+                for ev in self._iter_gemini_evals(gemini_res):
+                    c_low = str(ev.get("card") or ev.get("card_name") or "").strip().lower()
+                    raw_did = ev.get("deck_id")
+                    try:
+                        did = int(raw_did)
+                    except (TypeError, ValueError):
+                        did = raw_did
+                    hit = pair_index.get((c_low, did)) or pair_index.get((c_low, raw_did))
+                    if not hit and " // " not in c_low:
+                        # Gemini may return only the front face of a DFC/split card
+                        hit = next(
+                            (v for (n, d_id), v in pair_index.items() if d_id == did and n.split(" // ")[0] == c_low),
+                            None,
                         )
+                    if not hit:
+                        continue
+                    for target in hit:
+                        if ev.get("fit_verdict"):
+                            target["fit_verdict"] = ev["fit_verdict"]
+                        if ev.get("role"):
+                            target["role"] = ev["role"]
+                        if ev.get("synergy_rating") is not None:
+                            try:
+                                target["synergy_rating"] = float(ev["synergy_rating"])
+                            except (TypeError, ValueError):
+                                pass
+                        if ev.get("suggested_cut"):
+                            target["suggested_cut"] = ev["suggested_cut"]
+                        if ev.get("rationale"):
+                            target["rationale"] = ev["rationale"]
 
-                # Re-sync deck breakdowns with merged data
+                # Re-sort both views by updated synergy rating
+                for c_entry in result["card_matrix"]:
+                    c_entry["deck_recommendations"].sort(key=lambda x: -x["synergy_rating"])
+                    c_entry["best_fit_deck"] = (
+                        c_entry["deck_recommendations"][0]["deck_name"]
+                        if c_entry["deck_recommendations"]
+                        else None
+                    )
                 for db_info in result["deck_breakdowns"]:
-                    did = db_info["deck_id"]
-                    for app_card in db_info["applicable_cards"]:
-                        c_match = next((cm for cm in result["card_matrix"] if cm["card_name"] == app_card["card_name"]), None)
-                        if c_match:
-                            deck_match = next((dr for dr in c_match["deck_recommendations"] if dr["deck_id"] == did), None)
-                            if deck_match:
-                                app_card["fit_verdict"] = deck_match["fit_verdict"]
-                                app_card["role"] = deck_match["role"]
-                                app_card["synergy_rating"] = deck_match["synergy_rating"]
-                                app_card["suggested_cut"] = deck_match["suggested_cut"]
-                                app_card["rationale"] = deck_match["rationale"]
                     db_info["applicable_cards"].sort(key=lambda x: -x["synergy_rating"])
 
             except Exception as e:
@@ -991,6 +1019,61 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
                 result["_gemini_warning"] = f"Gemini strategic enrichment skipped: {str(e)}"
 
         return result
+
+    @staticmethod
+    def _iter_gemini_evals(gemini_res: dict):
+        """Yields flat eval dicts from the compact `evals` schema (or legacy nested `card_matrix`)."""
+        evals = gemini_res.get("evals")
+        if isinstance(evals, list):
+            yield from (e for e in evals if isinstance(e, dict))
+            return
+        for cm in gemini_res.get("card_matrix", []) or []:
+            for r in cm.get("deck_recommendations", []) or []:
+                yield {**r, "card": cm.get("card_name", "")}
+
+    def _fetch_deck_synergies(self, decks: list[dict]) -> dict[Any, dict]:
+        """
+        Fetches EDHREC card synergies once per unique commander, in parallel.
+        Returns {deck_id: {card_name_lower: synergy_info}}.
+        """
+        cmdr_by_deck = {
+            d["id"]: (d.get("commander_name") or "").strip()
+            for d in decks
+            if (d.get("commander_name") or "").strip()
+        }
+        unique_cmdrs = list(dict.fromkeys(cmdr_by_deck.values()))
+        if not unique_cmdrs:
+            return {}
+
+        # EDHREC provider's DB cache needs a Flask app context inside worker threads
+        app_obj = None
+        try:
+            from flask import current_app, has_app_context
+
+            if has_app_context():
+                app_obj = current_app._get_current_object()
+        except Exception:
+            app_obj = None
+
+        def _fetch(cmdr: str) -> dict:
+            try:
+                if app_obj is not None:
+                    with app_obj.app_context():
+                        data = self.edhrec.get_commander_data(cmdr)
+                else:
+                    data = self.edhrec.get_commander_data(cmdr)
+                return (data or {}).get("card_synergies") or {}
+            except Exception as e:
+                logger.debug(f"EDHREC synergy lookup failed for {cmdr}: {e}")
+                return {}
+
+        if len(unique_cmdrs) == 1:
+            results = {unique_cmdrs[0]: _fetch(unique_cmdrs[0])}
+        else:
+            with ThreadPoolExecutor(max_workers=min(6, len(unique_cmdrs))) as ex:
+                results = dict(zip(unique_cmdrs, ex.map(_fetch, unique_cmdrs)))
+
+        return {did: results.get(cmdr, {}) for did, cmdr in cmdr_by_deck.items()}
 
     # -------------------------------------------------------------------------
     # Secret Lair Superdrop Integration

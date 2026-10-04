@@ -4138,7 +4138,7 @@ def create_app(test_config=None):
                 "commander_art": d.commander_art,
                 "color_identity": d.color_identity,
                 "archetype": d.archetype or "Commander Synergy",
-                "cards": d.get_parsed_cards()[:80],
+                "cards": d.get_parsed_cards(),
                 "stats": d.get_stats(),
                 "analysis": d.get_analysis(),
                 "is_pauper": d.is_pauper_commander,
