@@ -2996,7 +2996,7 @@ def create_app(test_config=None):
         return deck_dicts, fleet_stats
 
     @app.route("/commander")
-    @login_required
+# @login_required
     def commander_hub_page():
         """Commander Hub - Fleet Overview."""
         user = get_current_user()
