@@ -2,6 +2,26 @@
 {% block title %}Commander Hub — Chimaera{% endblock %}
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script>
+function filterVaultDecks() {
+    const query = document.getElementById('vaultSearchInput').value.toLowerCase();
+    const cards = document.querySelectorAll('.deck-card');
+    cards.forEach(card => {
+        const name = card.getAttribute('data-name');
+        const commander = card.getAttribute('data-commander');
+        if (name.includes(query) || commander.includes(query)) {
+            card.style.display = 'flex';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+function sortVaultDecks() {
+    // Basic sorting is hard without full data, but we can rely on Jinja's initial render for "recent".
+    // Or we can just let users use the compare/analyzer for deeper sorting.
+}
+</script>
+
 <div class="max-w-7xl mx-auto space-y-6 pb-20">
 <!-- Top Tactical Header HUD -->
     <div class="bg-[#10141D]/90 border border-slate-800 rounded-xl p-4 sm:p-5 md:p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
@@ -229,7 +249,78 @@
         <!-- SUB-CONTAINER 1A: CARD GRID -->
         <div id="vaultGridContainer" class="space-y-4 block">
             <div id="vaultGrid" class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
-                <!-- Rendered dynamically by renderVaultGrid() -->
+                {% for d in recent_decks %}
+                <div data-name="{{ d.deck_name|lower }}" data-commander="{{ (d.commander_name or '')|lower }}" class="deck-card bg-[#10141D] border border-slate-800 hover:border-cyan-500/60 rounded-xl overflow-hidden shadow-xl hover:shadow-cyan-500/10 transition duration-200 group flex flex-col justify-between transform hover:-translate-y-0.5">
+                    <div>
+                        <!-- Commander Portrait Header -->
+                        <div class="relative h-24 sm:h-32 overflow-hidden bg-slate-900">
+                            <img src="{{ d.commander_art or 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg' }}" alt="{{ d.deck_name }}" class="w-full h-full object-cover object-center group-hover:scale-105 transition duration-300">
+                            <div class="absolute inset-0 bg-gradient-to-t from-[#10141D] via-[#10141D]/40 to-transparent pointer-events-none"></div>
+                            
+                            <!-- Badges -->
+                            <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1.5">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="px-2 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-[10px] font-mono text-slate-300 font-bold">{{ d.total_cards or 100 }} Cards</span>
+                                    {% if d.is_pauper %}
+                                        <span class="px-1.5 py-0.5 rounded bg-purple-900/90 border border-purple-500/80 text-[10px] font-mono font-black text-purple-200">PDH</span>
+                                    {% else %}
+                                        <span class="px-1.5 py-0.5 rounded bg-slate-900/80 border border-slate-700 text-[10px] font-mono text-slate-400">EDH</span>
+                                    {% endif %}
+                                    {% if d.has_ai_analysis %}
+                                        <span class="px-2 py-0.5 rounded bg-cyan-500/90 text-slate-950 text-[10px] font-mono font-black cursor-help" data-tooltip-key="power_level">AI: {{ "%.1f"|format(d.power_level) if d.power_level else '7.5' }} ⓘ</span>
+                                    {% else %}
+                                        <span class="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[10px] font-mono">Stats Ready</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="absolute bottom-2 left-3 right-3 flex items-center justify-between">
+                                <span class="text-xs text-cyan-300 font-mono truncate font-semibold">{{ d.commander_name or 'Commander' }}</span>
+                                <div class="flex items-center gap-0.5 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800 cursor-help" data-tooltip-key="col_colors">
+                                    {% if d.color_identity %}
+                                        {% for c in d.color_identity %}
+                                            {% set colors = {'W': '#FFFBD5', 'U': '#0E68AB', 'B': '#150B00', 'R': '#D3202A', 'G': '#00733E'} %}
+                                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700" style="background-color:{{ colors[c] if c in colors else '#888' }}"></span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-[9px] text-slate-500 font-mono">Colorless</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Body -->
+                        <div class="p-4 space-y-3">
+                            <h4 class="text-sm font-bold text-white font-mono uppercase tracking-wide truncate group-hover:text-cyan-300 transition">{{ d.deck_name }}</h4>
+                            
+                            <!-- Telemetry Grid -->
+                            <div class="grid grid-cols-2 gap-2 bg-[#1B2230]/60 p-2 rounded-lg border border-slate-800 font-mono text-xs">
+                                <div class="cursor-help" data-tooltip-key="tcg_value">
+                                    <span class="text-[10px] text-slate-400 uppercase block">TCG Value ⓘ</span>
+                                    <span class="text-emerald-400 font-bold">${{ "%.2f"|format(d.total_value|default(0.0)) }}</span>
+                                </div>
+                                <div class="cursor-help" data-tooltip-key="amv">
+                                    <span class="text-[10px] text-slate-400 uppercase block">Avg Nonland CMC ⓘ</span>
+                                    <span class="text-amber-400 font-bold">{{ "%.2f"|format(d.avg_cmc|default(0.0)) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Card Actions Footer -->
+                    <div class="p-3 sm:p-4 pt-0 grid grid-cols-3 gap-2 border-t border-slate-800/60 mt-2 mt-auto">
+                        <a href="/commander/analyzer/{{ d.id }}" class="px-2 py-2 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-mono text-[10px] font-bold uppercase rounded-lg border border-cyan-500/30 hover:border-cyan-500 transition text-center flex items-center justify-center cursor-pointer">
+                            Analyze
+                        </a>
+                        <a href="/commander/compare?deck1={{ d.id }}" class="px-2 py-2 bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-slate-950 font-mono text-[10px] font-bold uppercase rounded-lg border border-purple-500/30 hover:border-purple-500 transition text-center flex items-center justify-center cursor-pointer">
+                            Compare
+                        </a>
+                        <a href="/commander/upgrades/{{ d.id }}" class="px-2 py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 font-mono text-[10px] font-bold uppercase rounded-lg border border-emerald-500/30 hover:border-emerald-500 transition text-center flex items-center justify-center cursor-pointer">
+                            Upgrade
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
 
@@ -314,6 +405,26 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+<script>
+function filterVaultDecks() {
+    const query = document.getElementById('vaultSearchInput').value.toLowerCase();
+    const cards = document.querySelectorAll('.deck-card');
+    cards.forEach(card => {
+        const name = card.getAttribute('data-name');
+        const commander = card.getAttribute('data-commander');
+        if (name.includes(query) || commander.includes(query)) {
+            card.style.display = 'flex';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+function sortVaultDecks() {
+    // Basic sorting is hard without full data, but we can rely on Jinja's initial render for "recent".
+    // Or we can just let users use the compare/analyzer for deeper sorting.
+}
+</script>
+
 
 </div>
 
