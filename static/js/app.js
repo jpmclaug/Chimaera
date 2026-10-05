@@ -88,13 +88,33 @@ function showToast(message, type = "success") {
 }
 
 // =========================================================================
-// Modal Controls
+// Modal & Viewport Scroll Lock Controls
 // =========================================================================
+window.openModalsCount = 0;
+
+function lockBody() {
+    window.openModalsCount = Math.max(0, window.openModalsCount) + 1;
+    document.body.classList.add("overflow-hidden");
+}
+
+function unlockBody(force = false) {
+    if (force) {
+        window.openModalsCount = 0;
+    } else {
+        window.openModalsCount = Math.max(0, window.openModalsCount - 1);
+    }
+    if (window.openModalsCount === 0) {
+        document.body.classList.remove("overflow-hidden");
+    }
+}
+
 function openAddCardModal() {
     const modal = document.getElementById("modal-add-card");
     if (modal) {
         modal.classList.remove("hidden");
-        document.getElementById("card-search-input").focus();
+        lockBody();
+        const input = document.getElementById("card-search-input");
+        if (input) input.focus();
     }
 }
 
@@ -159,7 +179,7 @@ function openCardImageModal(imageUri, cardName, setCode, collectorNumber, finish
     }
 
     modal.classList.remove("hidden");
-    document.body.classList.add("overflow-hidden");
+    lockBody();
 }
 
 function openCardImageOverlay(el) {
@@ -176,8 +196,8 @@ function closeCardImageModal() {
     const modal = document.getElementById("modal-card-image");
     if (modal) {
         modal.classList.add("hidden");
+        unlockBody();
     }
-    document.body.classList.remove("overflow-hidden");
 }
 
 function handleCardImageBackdropClick(e) {
@@ -241,6 +261,7 @@ function closeAddCardModal() {
     const modal = document.getElementById("modal-add-card");
     if (modal) {
         modal.classList.add("hidden");
+        unlockBody();
         document.getElementById("card-search-input").value = "";
         const tagInput = document.getElementById("card-tag-input");
         if (tagInput) tagInput.value = "";
@@ -256,6 +277,7 @@ function openBulkAddModal() {
     const modal = document.getElementById("modal-bulk-add");
     if (modal) {
         modal.classList.remove("hidden");
+        lockBody();
         const textarea = document.getElementById("bulk-cards-input");
         if (textarea) {
             textarea.focus();
@@ -268,6 +290,7 @@ function closeBulkAddModal() {
     const modal = document.getElementById("modal-bulk-add");
     if (modal) {
         modal.classList.add("hidden");
+        unlockBody();
         const tagInput = document.getElementById("bulk-tag-input");
         if (tagInput) tagInput.value = "";
         const progressBox = document.getElementById("bulk-progress-box");
@@ -373,6 +396,7 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
     }
 
     modal.classList.remove("hidden");
+    lockBody();
     document.getElementById("edit-target-price-input").focus();
 
     // Fetch price intel for quick presets in edit modal
@@ -403,7 +427,10 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
 
 function closeEditTargetModal() {
     const modal = document.getElementById("modal-edit-target");
-    if (modal) modal.classList.add("hidden");
+    if (modal) {
+        modal.classList.add("hidden");
+        unlockBody();
+    }
 }
 
 // =========================================================================
@@ -1032,6 +1059,7 @@ function openTcgPurchaseModal() {
     const modal = document.getElementById("modal-tcgplayer-purchase");
     if (modal) {
         modal.classList.remove("hidden");
+        lockBody();
         const textarea = document.getElementById("tcg-purchase-input");
         if (textarea) {
             textarea.focus();
@@ -1044,6 +1072,7 @@ function closeTcgPurchaseModal() {
     const modal = document.getElementById("modal-tcgplayer-purchase");
     if (modal) {
         modal.classList.add("hidden");
+        unlockBody();
         const progressBox = document.getElementById("tcg-progress-box");
         if (progressBox) progressBox.classList.add("hidden");
         const resultsContainer = document.getElementById("tcg-results-container");
@@ -2032,13 +2061,17 @@ function openBulkTagModal() {
     }
     if (modal) {
         modal.classList.remove("hidden");
+        lockBody();
         if (input) input.focus();
     }
 }
 
 function closeBulkTagModal() {
     const modal = document.getElementById("modal-bulk-tag");
-    if (modal) modal.classList.add("hidden");
+    if (modal) {
+        modal.classList.add("hidden");
+        unlockBody();
+    }
 }
 
 function clearBulkTagInput() {
@@ -2388,12 +2421,16 @@ async function openCadenceModal() {
     const modal = document.getElementById("modal-cadence-settings");
     if (!modal) return;
     modal.classList.remove("hidden");
+    lockBody();
     await fetchCadenceTelemetry();
 }
 
 function closeCadenceModal() {
     const modal = document.getElementById("modal-cadence-settings");
-    if (modal) modal.classList.add("hidden");
+    if (modal) {
+        modal.classList.add("hidden");
+        unlockBody();
+    }
 }
 
 async function fetchCadenceTelemetry() {
@@ -2673,7 +2710,7 @@ function openMobileDrawer() {
         backdrop.classList.remove("opacity-0");
         drawer.classList.remove("-translate-x-full");
     });
-    document.body.classList.add("overflow-hidden");
+    lockBody();
 }
 
 function closeMobileDrawer() {
@@ -2684,7 +2721,7 @@ function closeMobileDrawer() {
     backdrop.classList.add("opacity-0");
     setTimeout(() => {
         backdrop.classList.add("hidden");
-        document.body.classList.remove("overflow-hidden");
+        unlockBody();
     }, 250);
 }
 
@@ -3686,11 +3723,15 @@ function openBuylistVariantModal(idx, source = "single") {
 
     contentEl.innerHTML = html;
     modal.classList.remove("hidden");
+    lockBody();
 }
 
 function closeBuylistVariantModal() {
     const modal = document.getElementById("modal-buylist-variants");
-    if (modal) modal.classList.add("hidden");
+    if (modal) {
+        modal.classList.add("hidden");
+        unlockBody();
+    }
 }
 
 // -------------------------------------------------------------------------

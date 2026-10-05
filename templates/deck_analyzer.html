@@ -597,10 +597,10 @@
 
         <!-- Sticky Inspector Tab Navigation Bar (100% visible on Mobile & Desktop) -->
         <div id="inspectorTabBarContainer" class="sticky top-14 sm:top-16 z-30 bg-[#0B0F17]/95 backdrop-blur-md border border-slate-800 rounded-xl shadow-xl overflow-hidden">
-            <div class="grid grid-cols-4 md:flex md:items-center p-1 md:px-4 md:py-0 gap-1 md:gap-2 overflow-x-auto no-scrollbar">
+            <div class="flex items-center p-1 md:px-4 md:py-0 gap-1 md:gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory">
                 <!-- Tab 1: Mana Curve & Composition -->
                 <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" 
-                        class="py-3 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-1 text-center">
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
                     <span class="text-sm md:text-base leading-none">📊</span>
                     <span class="block md:hidden text-[11px] tracking-tight">Curve</span>
                     <span class="hidden md:inline whitespace-nowrap">Mana Curve & Composition</span>
@@ -608,7 +608,7 @@
 
                 <!-- Tab 2: Full Card Registry -->
                 <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" 
-                        class="py-3 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 text-center">
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
                     <span class="text-sm md:text-base leading-none">🃏</span>
                     <span class="block md:hidden text-[11px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
                     <span class="hidden md:inline whitespace-nowrap">Full Card Registry (<span id="tabCardCount">100</span>)</span>
@@ -616,7 +616,7 @@
 
                 <!-- Tab 3: Gemini AI Strategic Intel -->
                 <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" 
-                        class="py-3 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 text-center">
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
                     <span class="text-sm md:text-base leading-none">⚡</span>
                     <span class="block md:hidden text-[11px] tracking-tight">AI Intel</span>
                     <span class="hidden md:inline whitespace-nowrap">Gemini AI Strategic Intel</span>
@@ -625,7 +625,7 @@
 
                 <!-- Tab 4: Tactical Upgrades -->
                 <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" 
-                        class="py-3 md:py-3 px-1 md:px-4 text-[10px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex flex-col md:flex-row items-center justify-center gap-0.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 text-center">
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
                     <span class="text-sm md:text-base leading-none">💎</span>
                     <span class="block md:hidden text-[11px] tracking-tight">Upgrades</span>
                     <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
@@ -1377,7 +1377,7 @@
                         {% endfor %}
                     </select>
 
-                    <button onclick="runAiAnalysisOnSavedDeck()" id="runSavedAiBtn" class="w-full sm:w-auto px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition whitespace-nowrap">
+                    <button onclick="runAiAnalysisOnSavedDeck()" id="runSavedAiBtn" class="w-full sm:w-auto min-w-[140px] justify-center px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition whitespace-nowrap flex items-center">
                         ⚡ Analyze Now
                     </button>
                 </div>
@@ -1411,7 +1411,7 @@
                             </select>
                         </div>
                         <button onclick="runAiAnalysisOnSavedDeck(this)" id="btnRerunAiIntel" 
-                                class="w-full sm:w-auto px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer">
+                                class="w-full sm:w-auto min-w-[140px] px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                             <span>⚡ Rerun AI Intel</span>
                         </button>
@@ -4798,10 +4798,10 @@ function renderCardRatings(ratings) {
 
         return `
             <tr class="hover:bg-[#1B2230]/50 transition rating-row" data-rating="${score}">
-                <td class="py-2.5 px-3 font-black ${colorClass} text-sm">${score.toFixed(1)}</td>
-                <td class="py-2.5 px-3 font-semibold text-white">${escapeHtml(r.card_name || '')}</td>
-                <td class="py-2.5 px-3 text-slate-400 text-xs">${escapeHtml(r.role || 'Utility')}</td>
-                <td class="py-2.5 px-3 text-slate-300 font-sans text-xs">${escapeHtml(r.purpose || '')}</td>
+                <td class="py-2.5 px-3 font-black ${colorClass} text-sm whitespace-nowrap">${score.toFixed(1)}</td>
+                <td class="py-2.5 px-3 font-semibold text-white whitespace-nowrap">${escapeHtml(r.card_name || '')}</td>
+                <td class="py-2.5 px-3 text-slate-400 text-xs whitespace-nowrap">${escapeHtml(r.role || 'Utility')}</td>
+                <td class="py-2.5 px-3 text-slate-300 font-sans text-xs min-w-[220px] max-w-[380px] break-words">${escapeHtml(r.purpose || '')}</td>
             </tr>
         `;
     }).join('');
