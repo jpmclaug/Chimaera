@@ -1,0 +1,1062 @@
+{% extends "base.html" %}
+{% block title %}Commander Analyzer — Chimaera{% endblock %}
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<div class="max-w-7xl mx-auto space-y-6 pb-20">
+
+<div class="mb-4 flex items-center space-x-2 text-xs font-mono text-slate-400 bg-[#10141D] p-3 rounded-lg border border-slate-800">
+    <a href="/commander" class="hover:text-cyan-400 transition text-cyan-500">Commander Hub</a>
+    <span>/</span>
+    <span class="text-slate-200">Analyzer</span>
+</div>
+
+<div id="deckInspectorView" class="space-y-6 block">
+        
+        <!-- Commander Banner & Tactical Telemetry Header -->
+        <div id="deckHeaderBanner" class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
+            <div id="commanderBannerBg" class="absolute inset-0 bg-cover bg-center opacity-15 filter blur-sm pointer-events-none"></div>
+            <div class="relative z-10 p-4 md:p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
+                
+                <!-- Left: Commander Portrait & Title -->
+                <div class="flex items-center space-x-3 sm:space-x-4">
+                    <div class="relative group flex-shrink-0">
+                        <img id="inspectorCmdrArt" src="https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg" alt="Commander Art" 
+                             class="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-xl object-cover border-2 border-cyan-500/40 shadow-xl bg-slate-900">
+                        <div id="cmdrColorPips" class="absolute -bottom-1.5 -right-1.5 flex space-x-0.5 bg-slate-950/90 px-1.5 py-0.5 rounded-full border border-slate-700 shadow-md">
+                            <!-- Color pips injected here -->
+                        </div>
+                    </div>
+
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                            <button type="button" id="inspectorFormatBadge" onclick="toggleActiveDeckFormat()" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase transition flex items-center gap-1 cursor-pointer bg-slate-800 border border-slate-700 text-slate-300 hover:border-purple-400 hover:text-white" title="Click to toggle between Regular Commander (EDH) and Pauper Commander (PDH)">
+                                <span id="inspectorFormatLabel">EDH</span>
+                                <span class="text-[8px] opacity-70">⇄</span>
+                            </button>
+                            <span id="inspectorCardCount" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold cursor-help hover:border-cyan-400 transition" data-tooltip-key="deck_size">100 Cards <span class="text-cyan-400 text-[9px]">ⓘ</span></span>
+                            <button type="button" onclick="document.getElementById('inspectorBadgeOverflow').classList.toggle('hidden'); this.querySelector('svg').classList.toggle('rotate-180')" class="sm:hidden text-slate-400 hover:text-white p-0.5 transition" title="Show more details">
+                                <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="inspectorBadgeOverflow" class="hidden sm:contents">
+                                <span id="inspectorPowerVal" class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">-- / 10 <span class="text-cyan-300 text-[9px]">ⓘ</span></span>
+                                <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase truncate max-w-[120px] sm:max-w-none cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">Pre-AI Ready</span>
+                                <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono hidden sm:inline-block cursor-help hover:border-cyan-400 transition" data-tooltip-key="archetype">Commander <span class="text-cyan-400 text-[9px]">ⓘ</span></span>
+                                <span id="inspectorSourceBadge" class="text-[10px] text-slate-400 font-mono">ManaBox</span>
+                                <span id="inspectorDateBadge" class="text-[10px] px-2 py-0.5 rounded bg-slate-900/90 text-slate-400 border border-slate-800 font-mono">📅 Updated: Recent</span>
+                            </div>
+                        </div>
+                        <h2 id="inspectorDeckName" class="text-lg sm:text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1 truncate">Commander Deck</h2>
+                        <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono truncate">The Ur-Dragon</p>
+                        
+                        <!-- EDHREC Metadata Badge Strip -->
+                        <div id="edhrecBadgeStrip" class="hidden items-center gap-1.5 sm:gap-2 flex-wrap mt-1 pt-1 border-t border-slate-800/80 cursor-help" data-tooltip-key="edhrec_metrics">
+                            <span id="edhrecRankBadge" class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-bold">Rank: #--</span>
+                            <span id="edhrecDecksBadge" class="text-[10px] px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 font-mono font-bold">Decks: --</span>
+                            <span id="edhrecSaltBadge" class="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono font-bold">Salt: --</span>
+                            <a id="edhrecLinkBadge" href="#" target="_blank" rel="noopener noreferrer" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-cyan-300 border border-slate-700 font-mono font-semibold transition flex items-center gap-1">
+                                <span>View on EDHREC</span>
+                                <span>↗</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Center & Right: Tactical Stats Pills & Actions -->
+                <div class="flex flex-col lg:flex-row items-start lg:items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
+                    
+                    <!-- 6 Stat Cards Grid (3 columns on mobile, 6 columns on sm/md, flex row on lg) -->
+                    <div class="flex sm:grid sm:grid-cols-6 gap-2 w-full lg:w-auto overflow-x-auto sm:overflow-visible no-scrollbar snap-x snap-mandatory sm:snap-none">
+                        <!-- Nonland AMV -->
+                        <div id="inspectorAmvContainer" class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-amber-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="amv">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Nonland AMV <span class="text-amber-400">ⓘ</span></span>
+                            <span id="inspectorAvgCmc" class="text-xs sm:text-sm font-black text-amber-400 font-mono">0.00</span>
+                        </div>
+
+                        <!-- Fast Ramp -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="fast_ramp">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Fast Ramp <span class="text-emerald-400">ⓘ</span></span>
+                            <span id="inspectorFastRamp" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">0</span>
+                        </div>
+
+                        <!-- Instant Speed % -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-cyan-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="instant_speed">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Instant % <span class="text-cyan-400">ⓘ</span></span>
+                            <span id="inspectorInstantSpeed" class="text-xs sm:text-sm font-black text-cyan-400 font-mono">0%</span>
+                        </div>
+
+                        <!-- Tapland Penalty % -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-rose-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="tapland_penalty">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Tapland % <span class="text-rose-400">ⓘ</span></span>
+                            <span id="inspectorTaplandPenalty" class="text-xs sm:text-sm font-black text-rose-400 font-mono">0%</span>
+                        </div>
+
+                        <!-- Engines -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-purple-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="draw_engines">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Engines <span class="text-purple-400">ⓘ</span></span>
+                            <span id="inspectorEngineDraw" class="text-xs sm:text-sm font-black text-purple-400 font-mono">0</span>
+                        </div>
+
+                        <!-- Total Deck Value -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="tcg_value">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">TCG Value <span class="text-emerald-400">ⓘ</span></span>
+                            <span id="inspectorTotalValue" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">$0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-800">
+                        <button type="button" onclick="document.getElementById('inspectorActionBtns').classList.toggle('hidden')" class="sm:hidden w-full text-center text-[11px] font-mono text-slate-400 hover:text-white py-1 flex items-center justify-center gap-1 transition">
+                            <span>Actions</span>
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="inspectorActionBtns" class="hidden sm:flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end">
+                            <select id="inspectorDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
+                                    class="flex-1 sm:flex-initial bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer min-w-0 max-w-[155px] sm:max-w-[200px] truncate"
+                                    title="Switch Deck in Inspector">
+                                <option value="">⚡ Switch Deck...</option>
+                                {% for d in recent_decks %}
+                                <option value="{{ d.id }}">{{ d.deck_name }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <button id="inspectorCompareBtn" onclick="launchCompareFromActiveDeck()" title="Compare this deck head-to-head" 
+                                    class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500 hover:to-blue-500 hover:text-slate-950 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1.5 flex-shrink-0">
+                                <span>⚔️ Compare</span>
+                            </button>
+
+                            <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
+                                    class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex-shrink-0">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </button>
+
+                            <button id="inspectorRerunAiBtn" onclick="runAiAnalysisOnSavedDeck(this)" title="Rerun Gemini AI Strategic Intel on this deck" 
+                                    class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1.5 flex-shrink-0">
+                                <span>⚡</span>
+                                <span class="hidden md:inline">Rerun Intel</span>
+                            </button>
+                            
+                            <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault">
+                                <span>&larr;</span>
+                                <span>Deck Vault</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sticky Inspector Tab Navigation Bar (100% visible on Mobile & Desktop) -->
+        <div id="inspectorTabBarContainer" class="sticky top-14 sm:top-16 z-30 bg-[#0B0F17]/95 backdrop-blur-md border border-slate-800 rounded-xl shadow-xl overflow-hidden">
+            <div class="flex items-center p-1 md:px-4 md:py-0 gap-1 md:gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory">
+                <!-- Tab 1: Mana Curve & Composition -->
+                <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">📊</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">Curve</span>
+                    <span class="hidden md:inline whitespace-nowrap">Mana Curve & Composition</span>
+                </button>
+
+                <!-- Tab 2: Full Card Registry -->
+                <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">🃏</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
+                    <span class="hidden md:inline whitespace-nowrap">Full Card Registry (<span id="tabCardCount">100</span>)</span>
+                </button>
+
+                <!-- Tab 3: Gemini AI Strategic Intel -->
+                <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">⚡</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">AI Intel</span>
+                    <span class="hidden md:inline whitespace-nowrap">Gemini AI Strategic Intel</span>
+                    <span id="aiTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Ready</span>
+                </button>
+
+                <!-- Tab 4: Tactical Upgrades -->
+                <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">💎</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">Upgrades</span>
+                    <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
+                    <span id="upgradesTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 1: MANA CURVE, PIP/SOURCE BALANCE & DECK COMPOSITION -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentStats" class="space-y-6">
+            
+            <!-- Format Legality & Rules Evaluation Banner -->
+            <div id="rulesEvaluationBanner" class="hidden"></div>
+
+            <!-- Row 1: Mana Curve Histogram & Card Type Breakdown -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Mana Curve Bar Chart -->
+                <div class="lg:col-span-2 bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="mana_curve">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            <span>Mana Value (CMC) Curve (Non-Lands)</span>
+                            <span class="text-cyan-400 text-xs">ⓘ</span>
+                        </h3>
+                        <span id="curveAvgCmc" class="text-xs font-mono text-cyan-400 font-bold cursor-help" data-tooltip-key="amv">Avg CMC: 3.20</span>
+                    </div>
+
+                    <!-- Bars -->
+                    <div id="manaCurveContainer" class="h-44 flex items-end justify-between gap-2 md:gap-3 pt-6 pb-2 px-2 border-b border-slate-800 cursor-help" data-tooltip-key="mana_curve">
+                        <!-- Injected by renderManaCurve() -->
+                    </div>
+                    <div class="flex justify-between px-2 pt-2 text-[10px] font-mono text-slate-400 cursor-help" data-tooltip-key="mana_curve">
+                        <span>0 CMC</span>
+                        <span>1</span>
+                        <span>2</span>
+                        <span>3</span>
+                        <span>4</span>
+                        <span>5</span>
+                        <span>6</span>
+                        <span>7+ CMC</span>
+                    </div>
+                </div>
+
+                <!-- Card Type Distribution -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="card_types">
+                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                        <span>Card Type Breakdown</span>
+                        <span class="text-blue-400 text-xs">ⓘ</span>
+                    </h3>
+                    <div id="typeBreakdownList" class="space-y-2.5 pt-1 cursor-help" data-tooltip-key="card_types">
+                        <!-- Injected by renderTypeBreakdown() -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Mana Pip Demand vs Source Supply Breakdown (Radar & Matrix) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div class="cursor-help" data-tooltip-key="pip_source_balance">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            <span>Mana Pip Demand vs. Source Supply Balance</span>
+                            <span class="text-emerald-400 text-xs">ⓘ</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Compares colored spell pips demand % against land/rock mana source supply % across W, U, B, R, G, C.</p>
+                    </div>
+                    <div class="flex items-center gap-2 text-[11px] font-mono cursor-help" data-tooltip-key="pip_source_balance">
+                        <span class="inline-flex items-center gap-1 text-cyan-400"><span class="w-2 h-2 rounded-full bg-cyan-400"></span> % Pip Demand</span>
+                        <span class="inline-flex items-center gap-1 text-amber-400 ml-2"><span class="w-2 h-2 rounded-full bg-amber-400"></span> % Source Supply</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                    <!-- Chart.js Radar Canvas -->
+                    <div class="lg:col-span-1 flex items-center justify-center p-2 bg-[#0B0F17]/80 rounded-xl border border-slate-800 h-48 sm:h-64 cursor-help" data-tooltip-key="pip_source_balance">
+                        <canvas id="pipSourceRadarChart"></canvas>
+                    </div>
+
+                    <!-- 6-Color Balance Breakdown Cards -->
+                    <div id="colorPipCardsGrid" class="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <!-- Injected dynamically by renderPipSourceCards() -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 3: Tactical Telemetry Profiles (Velocity, Interaction & Card Advantage) -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <!-- Velocity Profile -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5 cursor-help" data-tooltip-key="speed_pacing">
+                            <span>⚡ Velocity & Mana Base</span>
+                            <span class="text-xs">ⓘ</span>
+                        </h4>
+                    </div>
+                    <div class="space-y-1.5 text-xs font-mono">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="fast_ramp">
+                            <span class="text-slate-400">Fast Ramp (CMC &le; 2):</span>
+                            <span id="velFastRamp" class="text-emerald-400 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="std_ramp">
+                            <span class="text-slate-400">Standard Ramp (CMC &ge; 3):</span>
+                            <span id="velStdRamp" class="text-slate-300 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between text-[11px] text-slate-400 bg-slate-900/60 px-2 py-1 rounded border border-slate-800/60 cursor-help" data-tooltip-key="ramp_taxonomy">
+                            <span>Dorks & Rocks: <b id="velDorkRock" class="text-cyan-300 font-bold">0</b></span>
+                            <span>Fetch: <b id="velLandFetch" class="text-emerald-300 font-bold">0</b></span>
+                            <span>Treasure: <b id="velTreasure" class="text-amber-300 font-bold">0</b></span>
+                        </div>
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="tapland_penalty">
+                            <span class="text-slate-400">Total Lands / Taplands:</span>
+                            <span id="velLandsSummary" class="text-slate-300 font-bold">0 / 0</span>
+                        </div>
+                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5 cursor-help hover:text-white transition" data-tooltip-key="tapland_penalty">
+                            <span class="text-slate-400">Tapland Penalty Index:</span>
+                            <span id="velTaplandPenalty" class="text-rose-400 font-bold">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interaction Profile -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5 cursor-help" data-tooltip-key="threat_coverage">
+                            <span>🎯 Interaction & Removal</span>
+                            <span class="text-xs">ⓘ</span>
+                        </h4>
+                    </div>
+                    <div class="space-y-2 text-xs font-mono">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="targeted_removal">
+                            <span class="text-slate-400">Targeted Removal:</span>
+                            <span id="intTargeted" class="text-cyan-400 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="board_wipes">
+                            <span class="text-slate-400">Board Wipes:</span>
+                            <span id="intWipes" class="text-amber-400 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="removal_efficiency">
+                            <span class="text-slate-400">Removal Efficiency:</span>
+                            <span id="intEfficiency" class="text-slate-300 font-bold">0.0 CMC</span>
+                        </div>
+                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5 cursor-help hover:text-white transition" data-tooltip-key="instant_speed">
+                            <span class="text-slate-400">Instant Speed Nonlands:</span>
+                            <span id="intInstantSpeed" class="text-cyan-400 font-bold">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Advantage Profile -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5 cursor-help" data-tooltip-key="virtual_card_advantage">
+                            <span>🔄 Card Advantage & Tutors</span>
+                            <span class="text-xs">ⓘ</span>
+                        </h4>
+                    </div>
+                    <div class="space-y-2 text-xs font-mono">
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="draw_engines">
+                            <span class="text-slate-400">Engine Draw:</span>
+                            <span id="caEngine" class="text-purple-400 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="burst_cantrip">
+                            <span class="text-slate-400">Burst Draw & Cantrips:</span>
+                            <span id="caBurstCantrip" class="text-slate-300 font-bold">0 / 0</span>
+                        </div>
+                        <div class="flex justify-between cursor-help hover:text-white transition" data-tooltip-key="general_tutors">
+                            <span class="text-slate-400">General Tutors:</span>
+                            <span id="caTutorGen" class="text-amber-400 font-bold">0</span>
+                        </div>
+                        <div class="flex justify-between border-t border-slate-800/80 pt-1.5 cursor-help hover:text-white transition" data-tooltip-key="land_tutors">
+                            <span class="text-slate-400">Land Search / Ramp Tutors:</span>
+                            <span id="caTutorLand" class="text-emerald-400 font-bold">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Row 4: Mana & Speed Station (Land Drops, Keepability & Commander Cast) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div class="cursor-help" data-tooltip-key="speed_pacing">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            <span>Mana Pacing & Speed Telemetry</span>
+                            <span class="text-cyan-400 text-xs">ⓘ</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Hypergeometric land drop distribution, simulated 7-card opening hand keepability, and median Commander cast timing.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono cursor-help" data-tooltip-key="land_drop_probs">1 Free Mulligan Included ⓘ</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <!-- Turn 1-4 Land Drop Probability (Hypergeometric) -->
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-cyan-500/40 p-4 space-y-3 cursor-help transition" data-tooltip-key="land_drop_probs">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1">
+                                <span>🎲 Land Drop Chances</span>
+                                <span class="text-xs">ⓘ</span>
+                            </h4>
+                            <span id="speedCantripCount" class="text-[10px] font-mono text-slate-400">0 Cantrips</span>
+                        </div>
+                        <div class="space-y-2.5 text-xs font-mono">
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 1 (1+ Land):</span>
+                                    <span id="landProbT1" class="text-emerald-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT1Bar" class="bg-emerald-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 2 (2+ Lands):</span>
+                                    <span id="landProbT2" class="text-emerald-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT2Bar" class="bg-emerald-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 3 (3+ Lands):</span>
+                                    <span id="landProbT3" class="text-cyan-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT3Bar" class="bg-cyan-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[11px] mb-1">
+                                    <span class="text-slate-400">Turn 4 (4+ Lands):</span>
+                                    <span id="landProbT4" class="text-amber-400 font-bold">0% (eff 0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="landProbT4Bar" class="bg-amber-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Opening Hand Keepability Rate -->
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-emerald-500/40 p-4 space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="hand_keepability">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1">
+                                    <span>✋ Opening Hand Keepability</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
+                                <span id="keepAvgLands" class="text-[10px] font-mono text-slate-400">Avg 0 Lands</span>
+                            </div>
+                            <div class="mt-3 flex items-baseline gap-2">
+                                <span id="keepEffectiveRate" class="text-3xl font-black text-emerald-400 font-mono">0%</span>
+                                <span class="text-xs text-slate-400 font-mono">Effective Keep Rate</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 font-mono mt-0.5">Natural 1st Hand: <b id="keepNaturalRate" class="text-slate-300 font-mono">0%</b></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[11px] font-mono">
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Optimal (3-4L + play)</span>
+                                <span id="keepOptimalPct" class="text-emerald-400 font-bold">0%</span>
+                            </div>
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Workable (2-5L)</span>
+                                <span id="keepWorkablePct" class="text-cyan-400 font-bold">0%</span>
+                            </div>
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Risky (No curve)</span>
+                                <span id="keepRiskyPct" class="text-amber-400 font-bold">0%</span>
+                            </div>
+                            <div class="bg-[#10141D] p-1.5 rounded border border-slate-800">
+                                <span class="text-slate-500 block text-[9px] uppercase">Mulligan (0-1 / 6-7L)</span>
+                                <span id="keepUnkeepablePct" class="text-rose-400 font-bold">0%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Earliest Commander Cast Turn -->
+                    <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-purple-500/40 p-4 space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="commander_cast">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1">
+                                    <span>👑 Commander Cast Timing</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
+                                <span id="cmdrCastEarliest" class="text-[10px] font-mono text-purple-300">Earliest T0</span>
+                            </div>
+                            <div class="mt-3 flex items-baseline gap-2">
+                                <span id="cmdrMedianCastTurn" class="text-3xl font-black text-purple-400 font-mono">Turn 4</span>
+                                <span class="text-xs text-slate-400 font-mono">Median Cast Turn</span>
+                            </div>
+                            <p class="text-[10px] text-slate-500 font-mono mt-0.5">Average: <b id="cmdrAvgCastTurn" class="text-slate-300 font-mono">4.0</b> &bull; Bottleneck: <b id="cmdrColorBottleneck" class="text-cyan-300 font-mono">None</b></p>
+                        </div>
+                        <div class="space-y-1 pt-2 border-t border-slate-800/80 text-[11px] font-mono">
+                            <span class="text-slate-500 text-[9px] uppercase block">Simulated Turn Arrival Distribution</span>
+                            <div id="cmdrCastDistBars" class="flex gap-1 items-center h-4 pt-0.5">
+                                <!-- Injected dynamically -->
+                            </div>
+                            <div class="flex justify-between text-[9px] text-slate-400 font-mono pt-1">
+                                <span>T2</span>
+                                <span>T3</span>
+                                <span>T4</span>
+                                <span>T5</span>
+                                <span>T6+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 5: Interaction & Threat Matrix (Coverage, Protection & Instant Holdout) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div class="cursor-help" data-tooltip-key="threat_coverage">
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            <span>Interaction & Defense Matrix</span>
+                            <span class="text-cyan-400 text-xs">ⓘ</span>
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Permanent threat type coverage, counterspell vs. commander protection density, and instant-speed mana holdout requirements.</p>
+                    </div>
+                    <div id="holdoutRatingBadge" class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 border border-slate-700 cursor-help" data-tooltip-key="instant_holdout">
+                        Holdout: -- CMC ⓘ
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                    <!-- Threat Type Coverage Cards -->
+                    <div class="lg:col-span-2 space-y-3">
+                        <div class="flex items-center justify-between cursor-help" data-tooltip-key="threat_coverage">
+                            <span class="text-xs font-mono font-bold text-slate-300 uppercase flex items-center gap-1">
+                                <span>Threat Type Coverage</span>
+                                <span class="text-cyan-400 text-xs">ⓘ</span>
+                            </span>
+                            <span class="text-[10px] font-mono text-slate-500">Instant vs. Sorcery answers</span>
+                        </div>
+                        <div id="threatCoverageGrid" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            <!-- Injected by renderThreatCoverage() -->
+                        </div>
+                        <div id="threatVulnerabilitiesContainer" class="hidden text-xs font-mono bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-rose-300 space-y-1 cursor-help" data-tooltip-key="threat_coverage">
+                            <!-- Injected vulnerabilities list -->
+                        </div>
+                    </div>
+
+                    <!-- Counterspell vs Protection & Instant Holdout Meter -->
+                    <div class="space-y-4">
+                        <!-- Counter vs Protection -->
+                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-cyan-500/40 p-4 space-y-2.5 cursor-help transition" data-tooltip-key="stack_vs_protection">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1">
+                                    <span>🛡️ Stack vs. Protection</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
+                                <span id="cpStanceBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono">Balanced</span>
+                            </div>
+                            <div class="flex justify-between text-xs font-mono pt-1">
+                                <span class="text-slate-400">Counterspells:</span>
+                                <span id="cpCounterCount" class="text-cyan-400 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between text-xs font-mono">
+                                <span class="text-slate-400">Defensive Protection:</span>
+                                <span id="cpProtectionCount" class="text-emerald-400 font-bold">0</span>
+                            </div>
+                            <div id="cpBreakdownPills" class="flex flex-wrap gap-1 pt-1.5 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+                                <!-- Injected breakdown -->
+                            </div>
+                        </div>
+
+                        <!-- Instant Speed Holdout -->
+                        <div class="bg-[#0B0F17]/80 rounded-xl border border-slate-800 hover:border-amber-500/40 p-4 space-y-2 cursor-help transition" data-tooltip-key="instant_holdout">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-mono font-bold text-amber-400 uppercase flex items-center gap-1">
+                                    <span>⚡ Instant Holdout Mana</span>
+                                    <span class="text-xs">ⓘ</span>
+                                </h4>
+                                <span id="holdoutAvgValue" class="text-xs font-mono font-black text-amber-400">0.0 CMC</span>
+                            </div>
+                            <p id="holdoutRatingDesc" class="text-[10px] text-slate-400 font-mono">Average mana required to pass turn holding interaction.</p>
+                            <div id="holdoutCmcPills" class="flex justify-between items-center text-[10px] font-mono text-slate-300 pt-1.5 border-t border-slate-800/80">
+                                <span>Free: <b id="holdoutCmc0" class="text-emerald-400 font-bold">0</b></span>
+                                <span>1 CMC: <b id="holdoutCmc1" class="text-cyan-400 font-bold">0</b></span>
+                                <span>2 CMC: <b id="holdoutCmc2" class="text-slate-200 font-bold">0</b></span>
+                                <span>3 CMC: <b id="holdoutCmc3" class="text-amber-400 font-bold">0</b></span>
+                                <span>4+ CMC: <b id="holdoutCmc4" class="text-rose-400 font-bold">0</b></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 6: Engine & Synergy Station (Enablers vs Payoffs & Typal Kindred) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Enabler-to-Payoff Ratio -->
+                <div class="bg-[#10141D] border border-slate-800 hover:border-purple-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="enabler_payoff">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5">
+                                <span>⚙️ Enabler-to-Payoff Ratio</span>
+                                <span class="text-xs">ⓘ</span>
+                            </h4>
+                            <span id="engineThemeBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">Engine</span>
+                        </div>
+                        <div class="mt-3 flex items-baseline gap-2">
+                            <span id="engineRatioValue" class="text-3xl font-black text-purple-400 font-mono">1.0 : 1</span>
+                            <span class="text-xs text-slate-400 font-mono">Enabler : Payoff</span>
+                        </div>
+                        <div class="flex justify-between text-xs font-mono mt-2 pt-1 border-t border-slate-800/60">
+                            <span class="text-slate-400">Enablers (Fuel): <b id="engineEnablerCount" class="text-cyan-300 font-bold">0</b></span>
+                            <span class="text-slate-400">Payoffs (Reward): <b id="enginePayoffCount" class="text-purple-300 font-bold">0</b></span>
+                        </div>
+                    </div>
+                    <div id="engineHealthBox" class="text-[11px] font-mono p-2 rounded bg-slate-900/80 border border-slate-800 text-slate-300">
+                        Engine Status: Analyzing...
+                    </div>
+                </div>
+
+                <!-- Typal / Kindred Density -->
+                <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="typal_density">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
+                                <span>🐾 Typal / Kindred Synergy</span>
+                                <span class="text-xs">ⓘ</span>
+                            </h4>
+                            <span id="typalDeckBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">Non-Typal</span>
+                        </div>
+                        <div class="mt-3 flex items-baseline gap-2">
+                            <span id="typalPrimaryType" class="text-2xl font-black text-cyan-400 font-mono">None</span>
+                            <span id="typalDeckPct" class="text-xs text-slate-400 font-mono">0% deck</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs font-mono mt-2 pt-1 border-t border-slate-800/60">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Matching Creatures:</span>
+                                <span id="typalCreatureCount" class="text-slate-200 font-bold">0 (0%)</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Kindred Support / Lords:</span>
+                                <span id="typalSupportCount" class="text-cyan-300 font-bold">0 cards</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="typalSupportList" class="text-[10px] font-mono text-slate-400 truncate">
+                        Support: None detected
+                    </div>
+                </div>
+
+                <!-- Virtual Card Advantage -->
+                <div class="bg-[#10141D] border border-slate-800 hover:border-emerald-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="virtual_card_advantage">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5">
+                                <span>📚 Virtual Card Advantage</span>
+                                <span class="text-xs">ⓘ</span>
+                            </h4>
+                            <span id="virtualTotalAdvantage" class="text-xs font-mono font-black text-emerald-400">0 Resources</span>
+                        </div>
+                        <div class="space-y-1.5 text-xs font-mono mt-3">
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Pure Card Draw:</span>
+                                <span id="vcaPureDraw" class="text-slate-200 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Impulse Draw (Red):</span>
+                                <span id="vcaImpulseDraw" class="text-rose-400 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Graveyard Recursion:</span>
+                                <span id="vcaRecursion" class="text-emerald-400 font-bold">0</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-400">Tutors & Selection:</span>
+                                <span id="vcaTutors" class="text-amber-400 font-bold">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="vcaRatingBox" class="text-[11px] font-mono p-2 rounded bg-slate-900/80 border border-slate-800 text-emerald-300">
+                        Resource Depth: Strong
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 7: Endgame & Win Conditions Station (Win Paths & Late-Game Mana Sinks) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Win Condition Classification -->
+                <div class="bg-[#10141D] border border-slate-800 hover:border-amber-500/40 rounded-xl p-5 shadow-xl space-y-3 cursor-help transition" data-tooltip-key="win_conditions">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h4 class="text-xs font-mono font-bold text-amber-400 uppercase flex items-center gap-1.5">
+                            <span>🏆 Win Condition Paths</span>
+                            <span class="text-xs">ⓘ</span>
+                        </h4>
+                        <span id="winconClockEstimate" class="text-[10px] font-mono text-slate-400">Clock: Turns 7-9</span>
+                    </div>
+                    <div class="space-y-3 pt-1">
+                        <div class="bg-[#0B0F17]/80 rounded-lg p-3 border border-slate-800 space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-mono uppercase text-amber-400 font-bold">Primary Win Path</span>
+                                <span id="primaryWinconConfidence" class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 font-mono">High</span>
+                            </div>
+                            <div id="primaryWinconName" class="text-sm font-bold font-mono text-white">Combat Damage & Board Swarm</div>
+                            <div id="primaryWinconCards" class="text-[10px] font-mono text-slate-400">Key cards: Analyzing...</div>
+                        </div>
+                        <div class="bg-[#0B0F17]/80 rounded-lg p-3 border border-slate-800 space-y-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-mono uppercase text-slate-400 font-bold">Secondary Win Path</span>
+                                <span id="secondaryWinconConfidence" class="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">Secondary</span>
+                            </div>
+                            <div id="secondaryWinconName" class="text-sm font-bold font-mono text-slate-200">Incidental Damage</div>
+                            <div id="secondaryWinconCards" class="text-[10px] font-mono text-slate-400">Key cards: Analyzing...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mana Sink Availability -->
+                <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/40 rounded-xl p-5 shadow-xl space-y-3 flex flex-col justify-between cursor-help transition" data-tooltip-key="mana_sinks">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                            <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5">
+                                <span>🚰 Late-Game Mana Sinks</span>
+                                <span class="text-xs">ⓘ</span>
+                            </h4>
+                            <span id="manaSinkTotalBadge" class="text-xs font-mono font-black text-cyan-400">0 Outlets</span>
+                        </div>
+                        <div class="mt-3">
+                            <div id="manaSinkResilienceBox" class="text-xs font-mono p-2 rounded bg-slate-900/80 border border-slate-800 text-cyan-300">
+                                Late-Game Flood Resilience: Analyzing...
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <span class="text-[10px] font-mono text-slate-400 uppercase block mb-1.5">Repeatable Outlets & X-Spells:</span>
+                            <div id="manaSinkCardsList" class="flex flex-wrap gap-1.5">
+                                <!-- Injected sinks list -->
+                            </div>
+                        </div>
+                    </div>
+                    <div id="manaSinkTypeCounts" class="text-[10px] font-mono text-slate-500 pt-2 border-t border-slate-800/60 flex justify-between">
+                        <span>X-Spells: <b id="sinkCountX" class="text-slate-300">0</b></span>
+                        <span>Abilities: <b id="sinkCountAct" class="text-slate-300">0</b></span>
+                        <span>Utility Lands: <b id="sinkCountLand" class="text-slate-300">0</b></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 2: COMPLETE CARD REGISTRY TABLE -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentCards" class="hidden space-y-4">
+            
+            <!-- Tactical Quick Add Card to Deck Bar -->
+            <div class="bg-[#10141D] border border-cyan-500/30 p-3.5 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+                <div class="flex items-center gap-2 text-xs font-mono text-cyan-400 font-bold uppercase tracking-wider">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span>⚡ Tactical Deck Add</span>
+                </div>
+                <div class="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-lg justify-end">
+                    <input type="text" id="quickAddCardInput" placeholder="Enter card name to add (e.g. Rhystic Study, Sol Ring)..."
+                           onkeydown="if(event.key==='Enter') executeQuickAddCard()"
+                           class="flex-1 bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
+                    <button type="button" onclick="executeQuickAddCard()" id="btnQuickAddCard"
+                            class="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-mono font-bold text-xs uppercase rounded transition whitespace-nowrap shadow flex items-center gap-1.5">
+                        <span>+ Add to Deck</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter, Sort & Action Controls -->
+            <div class="bg-[#10141D] border border-slate-800 p-3.5 sm:p-4 rounded-xl space-y-3 shadow-lg">
+                
+                <!-- Row 1: Search Bar & View Mode Toggle -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <div class="relative flex-1 max-w-md">
+                        <input type="text" id="cardTableSearchInput" oninput="sortAndFilterCardRegistry()" placeholder="Search cards, types, AI roles, or rationale..."
+                               class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-cyan-500">
+                        <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        <button type="button" onclick="clearCardSearchInput()" id="btnClearCardSearch" class="hidden absolute right-2.5 top-2 text-slate-400 hover:text-white text-xs font-mono font-bold" title="Clear search">✕</button>
+                    </div>
+
+                    <div class="flex items-center justify-between sm:justify-end gap-2">
+                        <!-- View Switcher (Tiles vs Table) -->
+                        <div class="inline-flex rounded-lg border border-slate-700 bg-[#1B2230] p-0.5 font-mono text-xs">
+                            <button type="button" onclick="setCardViewMode('tiles')" id="cardViewBtnTiles" 
+                                    class="px-2.5 py-1 rounded text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1" title="Mobile-friendly Card Tiles">
+                                <span>📱</span>
+                                <span class="hidden xs:inline">Tiles</span>
+                            </button>
+                            <button type="button" onclick="setCardViewMode('table')" id="cardViewBtnTable" 
+                                    class="px-2.5 py-1 rounded text-slate-400 hover:text-white transition flex items-center gap-1" title="Dense Telemetry Table">
+                                <span>📋</span>
+                                <span class="hidden xs:inline">Table</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 2: Type Filter Pills (Horizontally Scrollable on Mobile) -->
+                <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                    <button type="button" onclick="setCardTypeFilter('all')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950 flex-shrink-0 transition" data-filter="all">All</button>
+                    <button type="button" onclick="setCardTypeFilter('creature')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="creature">Creatures</button>
+                    <button type="button" onclick="setCardTypeFilter('instant')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="instant">Instants</button>
+                    <button type="button" onclick="setCardTypeFilter('sorcery')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="sorcery">Sorceries</button>
+                    <button type="button" onclick="setCardTypeFilter('artifact')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="artifact">Artifacts</button>
+                    <button type="button" onclick="setCardTypeFilter('enchantment')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="enchantment">Enchantments</button>
+                    <button type="button" onclick="setCardTypeFilter('planeswalker')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="planeswalker">Planeswalkers</button>
+                    <button type="button" onclick="setCardTypeFilter('land')" class="card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition" data-filter="land">Lands</button>
+                </div>
+
+                <!-- Row 3: Rating Tier Filter, Sort Selector & Status Counter -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- AI Rating Filter -->
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
+                                <span class="text-amber-400 font-bold">⚡</span> Rating:
+                            </span>
+                            <select id="cardRatingFilterSelect" onchange="setCardRatingFilter(this.value)" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                                <option value="all">All Ratings</option>
+                                <option value="9">★ Staples (9.0 - 10.0)</option>
+                                <option value="7">⚡ Synergizers (7.0 - 8.9)</option>
+                                <option value="5">🛡️ Role Players (5.0 - 6.9)</option>
+                                <option value="cuts">✂️ Cut Candidates (&lt; 5.0)</option>
+                                <option value="unrated">Unrated / No Intel</option>
+                            </select>
+                        </div>
+
+                        <!-- Sort Selector -->
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[10px] font-mono uppercase text-slate-400">Sort:</span>
+                            <select id="cardSortSelect" onchange="setCardSort(this.value)" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                                <option value="rating_desc">AI Rating: High → Low</option>
+                                <option value="rating_asc">AI Rating: Low → High (Cuts)</option>
+                                <option value="cmc_asc">CMC: Low → High</option>
+                                <option value="cmc_desc">CMC: High → Low</option>
+                                <option value="price_desc">Price: High → Low</option>
+                                <option value="price_asc">Price: Low → High</option>
+                                <option value="name_asc">Card Name: A → Z</option>
+                                <option value="name_desc">Card Name: Z → A</option>
+                                <option value="type_asc">Card Type</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Telemetry Counter & Reset -->
+                    <div class="flex items-center justify-between sm:justify-end gap-2 text-xs font-mono text-slate-400">
+                        <span>Showing <strong id="cardRegistryFilteredCount" class="text-cyan-400">--</strong> of <span id="cardRegistryTotalCount">--</span></span>
+                        <button type="button" id="btnResetCardFilters" onclick="resetCardFilters()" class="hidden px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-mono border border-slate-700 transition">
+                            Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mobile-Friendly Card Tiles View Container -->
+            <div id="mobileCardRegistryList" class="space-y-3">
+                <!-- Injected by renderCardRegistryTiles() -->
+            </div>
+
+            <!-- Desktop Table Container -->
+            <div id="desktopCardRegistryTableContainer" class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse font-mono text-xs">
+                        <thead>
+                            <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider select-none">
+                                <th class="py-3 px-3 w-12 text-center">Qty</th>
+                                <th class="py-3 px-3 cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('name')">
+                                    <div class="flex items-center gap-1">
+                                        <span>Card Name</span>
+                                        <span id="sortCol-name" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('type')">
+                                    <div class="flex items-center gap-1">
+                                        <span>Type Line</span>
+                                        <span id="sortCol-type" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3">Mana Cost</th>
+                                <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('cmc')">
+                                    <div class="flex items-center justify-center gap-1">
+                                        <span>CMC</span>
+                                        <span id="sortCol-cmc" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('rating')">
+                                    <div class="flex items-center gap-1">
+                                        <span class="text-amber-400">⚡</span>
+                                        <span>AI Rating & Role</span>
+                                        <span id="sortCol-rating" class="text-[10px] text-cyan-400">▼</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 text-right cursor-pointer hover:text-cyan-400 transition" onclick="toggleCardSort('price')">
+                                    <div class="flex items-center justify-end gap-1">
+                                        <span>TCG Market</span>
+                                        <span id="sortCol-price" class="text-[10px] text-slate-500">↕</span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 text-center">Watch</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cardRegistryTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                            <!-- Injected by renderCardRegistryTable() -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 3: GEMINI AI STRATEGIC INTEL -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentAi" class="hidden space-y-6">
+            
+            <!-- Persistent Error / Telemetry Alert Container -->
+            <div id="aiErrorAlertContainer" class="hidden bg-rose-950/40 border border-rose-500/50 rounded-xl p-5 shadow-2xl space-y-3 font-mono">
+                <div class="flex items-start justify-between gap-3 border-b border-rose-500/30 pb-2.5">
+                    <div class="flex items-center gap-2 text-rose-400 font-bold text-xs uppercase tracking-wider">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span id="aiErrorAlertTitle">AI Analysis Diagnostic Alert</span>
+                    </div>
+                    <button onclick="dismissAiErrorAlert()" class="text-rose-400 hover:text-white text-base leading-none px-1 py-0.5 rounded" title="Dismiss error">&times;</button>
+                </div>
+                <div id="aiErrorAlertBody" class="text-xs text-rose-200 whitespace-pre-wrap leading-relaxed"></div>
+            </div>
+
+            <!-- If Deck NOT Analyzed Yet: AI Trigger Banner -->
+            <div id="aiUnanalyzedBanner" class="hidden bg-[#10141D] border border-cyan-500/30 rounded-xl p-6 text-center space-y-4">
+                <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto shadow-lg">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-base font-black text-white font-mono uppercase tracking-wider">Run Gemini Strategic Analysis on this Deck</h3>
+                    <p class="text-xs text-slate-400 max-w-lg mx-auto mt-1">Get card-by-card 1–10 effectiveness ratings, strategic identity evaluation, win condition breakdown, and recommended upgrades.</p>
+                </div>
+
+                <div class="max-w-md mx-auto flex flex-col sm:flex-row items-center gap-2.5">
+                    <select id="savedDeckAiModel" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        {% for m in supported_models %}
+                        <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
+                        {% endfor %}
+                    </select>
+
+                    <button onclick="runAiAnalysisOnSavedDeck()" id="runSavedAiBtn" class="w-full sm:w-auto min-w-[140px] justify-center px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition whitespace-nowrap flex items-center">
+                        ⚡ Analyze Now
+                    </button>
+                </div>
+            </div>
+
+            <!-- If Deck IS Analyzed: Strategic Report -->
+            <div id="aiAnalyzedContent" class="space-y-6">
+
+                <!-- AI Intel Telemetry & Rerun Controls Bar -->
+                <div class="bg-[#10141D] border border-cyan-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center font-black text-lg flex-shrink-0 shadow-sm">
+                            ⚡
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">Gemini Strategic Intel Active</span>
+                                <span id="aiActiveModelBadge" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">gemini-3.8-flash</span>
+                                <span class="text-[10px] px-2 py-0.5 rounded font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">Analyzed</span>
+                            </div>
+                            <p class="text-[11px] text-slate-400 font-mono mt-0.5">Card rankings, tactical roles, and archetype synergy evaluation synced.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto justify-end">
+                        <div class="w-full sm:w-auto">
+                            <select id="rerunDeckAiModel" class="w-full sm:w-auto bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                                {% for m in supported_models %}
+                                <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button onclick="runAiAnalysisOnSavedDeck(this)" id="btnRerunAiIntel" 
+                                class="w-full sm:w-auto min-w-[140px] px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span>⚡ Rerun AI Intel</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Overall Strategy & Win-Cons Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Strategic Identity -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                        <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Strategic Identity & Gameplan
+                        </h3>
+                        <p id="aiSummaryText" class="text-xs text-slate-300 leading-relaxed font-sans"></p>
+                        <div class="pt-2 border-t border-slate-800/80">
+                            <span class="block text-[11px] font-mono text-slate-400 uppercase mb-1">Mana Base Telemetry</span>
+                            <p id="aiManaBaseText" class="text-xs text-slate-400 font-sans"></p>
+                        </div>
+                    </div>
+
+                    <!-- Win Conditions & Combos -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-3">
+                        <h3 class="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                            Win Conditions & Finisher Packages
+                        </h3>
+                        <div id="aiWinConsList" class="space-y-3 pt-1">
+                            <!-- Injected by renderWinCons() -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Ratings & Upgrades Sections -->
+                <div class="space-y-6">
+                    
+                    <!-- Proposed Card Upgrades Matrix -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                Proposed Tactical Upgrades & Swaps
+                            </h3>
+                            <span class="text-[11px] text-slate-500 font-mono">1-Click Watchlist Integration</span>
+                        </div>
+                        <div id="aiUpgradesGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Injected by renderUpgrades() -->
+                        </div>
+                    </div>
+
+                    <!-- Card-by-Card 1-10 Ratings Table -->
+                    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                        <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2 cursor-help" data-tooltip-key="card_ratings">
+                                <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                                <span>Card-by-Card Effectiveness Ratings (1–10)</span>
+                                <span class="text-cyan-400 text-xs">ⓘ</span>
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <select id="ratingFilterSelect" onchange="filterCardRatings()" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono">
+                                    <option value="all">All Ratings</option>
+                                    <option value="9">Core Staples (9.0 - 10.0)</option>
+                                    <option value="7">Strong Synergizers (7.0 - 8.9)</option>
+                                    <option value="5">Solid Role Players (5.0 - 6.9)</option>
+                                    <option value="cuts">Cut Candidates (&lt; 5.0)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse font-mono text-xs">
+                                <thead>
+                                    <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
+                                        <th class="py-2.5 px-3">Rating</th>
+                                        <th class="py-2.5 px-3">Card Name</th>
+                                        <th class="py-2.5 px-3">Role</th>
+                                        <th class="py-2.5 px-3">Purpose & Strategic Rationale</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="aiCardRatingsBody" class="divide-y divide-slate-800/60 text-slate-300">
+                                    <!-- Injected by renderCardRatings() -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        </div>
+
+</div>
+
+
+

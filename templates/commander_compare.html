@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+{% block title %}Commander Compare — Chimaera{% endblock %}
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<div class="max-w-7xl mx-auto space-y-6 pb-20">
+
+<div class="mb-4 flex items-center space-x-2 text-xs font-mono text-slate-400 bg-[#10141D] p-3 rounded-lg border border-slate-800">
+    <a href="/commander" class="hover:text-cyan-400 transition text-cyan-500">Commander Hub</a>
+    <span>/</span>
+    <span class="text-slate-200">Compare</span>
+</div>
+
+<div id="fleetCompareView" class="space-y-6 block">
+        
+        <!-- Top Selection Bar for Comparison -->
+        <div class="bg-[#10141D] border border-slate-800 p-4 rounded-xl shadow-xl space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        Head-to-Head Deck Matchup Matcher (Select 2 to 4 Decks)
+                    </h3>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Compare mana curves, archetype matchups, shared staples, and high-value bomb packages.</p>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="runActiveComparison()" class="px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-bold text-xs uppercase rounded-lg shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        <span>Refresh Matchup</span>
+                    </button>
+                    <button type="button" onclick="switchMainView('vault')" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs uppercase rounded-lg transition cursor-pointer">
+                        &larr; Vault
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dropdown Selectors Grid (2 to 4 slots) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-cyan-400 font-bold">Deck Slot 1</label>
+                    <select id="compareSelect1" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- Choose Deck 1 --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-cyan-400 font-bold">Deck Slot 2</label>
+                    <select id="compareSelect2" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- Choose Deck 2 --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-slate-400 font-bold">Deck Slot 3 (Optional)</label>
+                    <select id="compareSelect3" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- None (2-Way) --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[10px] font-mono uppercase text-slate-400 font-bold">Deck Slot 4 (Optional)</label>
+                    <select id="compareSelect4" onchange="handleDropdownDeckChange()" class="w-full bg-[#1B2230] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="">-- None (3-Way) --</option>
+                        {% for d in (decks or recent_decks) %}
+                        <option value="{{ d.id }}">{{ d.deck_name }} ({{ d.commander_name or 'Commander' }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State for Comparison -->
+        <div id="compareLoading" class="hidden text-center py-16 bg-[#10141D] border border-slate-800 rounded-xl space-y-3">
+            <svg class="animate-spin w-8 h-8 text-cyan-400 mx-auto" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-xs font-mono text-cyan-400 uppercase tracking-wider font-bold">Generating Comparative Matchup Telemetry...</p>
+        </div>
+
+        <!-- Rendered Comparison Station Results Container -->
+        <div id="compareResultsContainer" class="hidden space-y-6">
+            
+            <!-- 1. Commander Face-Off Cards Grid -->
+            <div id="compareCommanderCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Injected dynamically by renderComparisonResults() -->
+            </div>
+
+            <!-- 2. Side-by-Side Statistical Delta Matrix (When 2 Decks Compared) -->
+            <div id="compareDeltaMatrixSection" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                            Head-to-Head Statistical Delta Matrix (&Delta; = Deck A - Deck B)
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Direct analytical differential across velocity, interaction speed, mana efficiency, and card advantage.</p>
+                    </div>
+                    <span id="matchupArchetypeSummary" class="text-xs font-mono px-2.5 py-1 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold">Matchup Analysis</span>
+                </div>
+
+                <div class="overflow-x-auto border border-slate-800 rounded-lg">
+                    <table class="w-full text-left font-mono text-xs">
+                        <thead>
+                            <tr class="bg-[#0B0F17] text-slate-400 text-[10px] uppercase border-b border-slate-800">
+                                <th class="py-2.5 px-4">Analytical Metric</th>
+                                <th id="deltaThDeckA" class="py-2.5 px-4 text-center">Deck A</th>
+                                <th id="deltaThDeckB" class="py-2.5 px-4 text-center">Deck B</th>
+                                <th class="py-2.5 px-4 text-center">&Delta; Difference (A - B)</th>
+                                <th class="py-2.5 px-4 text-right">Advantage / Advantage Vector</th>
+                            </tr>
+                        </thead>
+                        <tbody id="deltaMatrixTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                            <!-- Injected dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. Categorized Profiles & Pip vs Source Balance Chart -->
+            <div id="compareCategorizedProfilesSection" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <!-- Velocity Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-emerald-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>⚡ Velocity & Mana Base</span>
+                    </h4>
+                    <div id="compVelocityContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <!-- Interaction Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-cyan-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>🎯 Interaction & Removal</span>
+                    </h4>
+                    <div id="compInteractionContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+
+                <!-- Card Advantage Profile Card -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 shadow-xl space-y-3">
+                    <h4 class="text-xs font-mono font-bold text-purple-400 uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+                        <span>🔄 Card Advantage & Tutors</span>
+                    </h4>
+                    <div id="compCardAdvantageContent" class="space-y-2 text-xs font-mono">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Comparative Pip Demand vs. Source Supply Radar -->
+            <div id="comparePipRadarSection" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            Comparative Mana Pip Demand vs. Source Supply Balance
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Overlay of color pip demand % and mana source supply % across both decks.</p>
+                    </div>
+                </div>
+                <div class="h-64 flex items-center justify-center p-2 bg-[#0B0F17]/80 rounded-xl border border-slate-800">
+                    <canvas id="comparePipRadarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 5. Side-by-Side Speed & Mana Curves Comparison -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        Comparative Mana Value (CMC) Curves & Acceleration
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">Normalized Distribution</span>
+                </div>
+
+                <div id="compareCurveChartContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                    <!-- Injected dynamically by renderComparisonResults() -->
+                </div>
+            </div>
+
+            <!-- 6. Card Type Composition Balance -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+                        Deck Composition Breakdown (Card Types & Land/Spell Ratios)
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">Side-by-Side Breakdown</span>
+                </div>
+
+                <div id="compareTypeCompositionGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
+                    <!-- Injected dynamically by renderComparisonResults() -->
+                </div>
+            </div>
+
+            <!-- 7. Shared Cards & Staple Overlap Explorer -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                            Shared Cards & Staple Overlap Matrix
+                        </h3>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Cards present across selected decks (Universal Staples vs Unique Signatures).</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="sharedOverlapSummaryBadge" class="text-[11px] px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/40">0 Shared Cards</span>
+                    </div>
+                </div>
+
+                <!-- Universal Staples Table -->
+                <div class="space-y-2">
+                    <h4 class="text-[11px] font-mono font-bold text-cyan-400 uppercase tracking-wider">Universal Staples (Present in ALL Selected Decks)</h4>
+                    <div class="overflow-x-auto border border-slate-800 rounded-lg">
+                        <table class="w-full text-left font-mono text-xs">
+                            <thead>
+                                <tr class="bg-[#0B0F17] text-slate-400 text-[10px] uppercase border-b border-slate-800">
+                                    <th class="py-2.5 px-3">Card Name</th>
+                                    <th class="py-2.5 px-3">Type</th>
+                                    <th class="py-2.5 px-3">Mana Cost</th>
+                                    <th class="py-2.5 px-3 text-center">CMC</th>
+                                    <th class="py-2.5 px-3 text-right">TCG Market</th>
+                                    <th class="py-2.5 px-3 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sharedAllTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                                <!-- Injected dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Unique Signatures Section -->
+                <div class="pt-2">
+                    <h4 class="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider mb-2">Unique Signature Cards (Exclusive to Each Deck)</h4>
+                    <div id="compareUniqueSignaturesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <!-- Injected dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 8. High-Value Bomb Packages (Top 5 Most Expensive Cards) -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        High-Value Bomb Assets (Top 5 Most Expensive Cards Per Deck)
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">TCGplayer Live Market</span>
+                </div>
+
+                <div id="compareTopCardsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                    <!-- Injected dynamically -->
+                </div>
+            </div>
+
+            <!-- 9. Strategic Playstyle & Win Condition Dynamic -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+                        Strategic Archetype & Win-Con Matchup Dynamic
+                    </h3>
+                    <span class="text-[11px] text-slate-400 font-mono">Gemini AI Insights</span>
+                </div>
+
+                <div id="compareStrategyGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+                    <!-- Injected dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    
+</div>
+
+
+

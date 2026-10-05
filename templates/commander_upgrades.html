@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+{% block title %}Commander Upgrades — Chimaera{% endblock %}
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<div class="max-w-7xl mx-auto space-y-6 pb-20">
+
+<div class="mb-4 flex items-center space-x-2 text-xs font-mono text-slate-400 bg-[#10141D] p-3 rounded-lg border border-slate-800">
+    <a href="/commander" class="hover:text-cyan-400 transition text-cyan-500">Commander Hub</a>
+    <span>/</span>
+    <span class="text-slate-200">Upgrades</span>
+</div>
+
+<div id="deckInspectorView" class="space-y-6 block">
+        
+        <!-- Commander Banner & Tactical Telemetry Header -->
+        <div id="deckHeaderBanner" class="bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl relative">
+            <div id="commanderBannerBg" class="absolute inset-0 bg-cover bg-center opacity-15 filter blur-sm pointer-events-none"></div>
+            <div class="relative z-10 p-4 md:p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
+                
+                <!-- Left: Commander Portrait & Title -->
+                <div class="flex items-center space-x-3 sm:space-x-4">
+                    <div class="relative group flex-shrink-0">
+                        <img id="inspectorCmdrArt" src="https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg" alt="Commander Art" 
+                             class="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-xl object-cover border-2 border-cyan-500/40 shadow-xl bg-slate-900">
+                        <div id="cmdrColorPips" class="absolute -bottom-1.5 -right-1.5 flex space-x-0.5 bg-slate-950/90 px-1.5 py-0.5 rounded-full border border-slate-700 shadow-md">
+                            <!-- Color pips injected here -->
+                        </div>
+                    </div>
+
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                            <button type="button" id="inspectorFormatBadge" onclick="toggleActiveDeckFormat()" class="text-[10px] px-2 py-0.5 rounded font-mono font-bold uppercase transition flex items-center gap-1 cursor-pointer bg-slate-800 border border-slate-700 text-slate-300 hover:border-purple-400 hover:text-white" title="Click to toggle between Regular Commander (EDH) and Pauper Commander (PDH)">
+                                <span id="inspectorFormatLabel">EDH</span>
+                                <span class="text-[8px] opacity-70">⇄</span>
+                            </button>
+                            <span id="inspectorCardCount" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold cursor-help hover:border-cyan-400 transition" data-tooltip-key="deck_size">100 Cards <span class="text-cyan-400 text-[9px]">ⓘ</span></span>
+                            <button type="button" onclick="document.getElementById('inspectorBadgeOverflow').classList.toggle('hidden'); this.querySelector('svg').classList.toggle('rotate-180')" class="sm:hidden text-slate-400 hover:text-white p-0.5 transition" title="Show more details">
+                                <svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <div id="inspectorBadgeOverflow" class="hidden sm:contents">
+                                <span id="inspectorPowerVal" class="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">-- / 10 <span class="text-cyan-300 text-[9px]">ⓘ</span></span>
+                                <span id="inspectorPowerBracket" class="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase truncate max-w-[120px] sm:max-w-none cursor-help hover:bg-cyan-500/30 transition" data-tooltip-key="power_level">Pre-AI Ready</span>
+                                <span id="inspectorArchetype" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono hidden sm:inline-block cursor-help hover:border-cyan-400 transition" data-tooltip-key="archetype">Commander <span class="text-cyan-400 text-[9px]">ⓘ</span></span>
+                                <span id="inspectorSourceBadge" class="text-[10px] text-slate-400 font-mono">ManaBox</span>
+                                <span id="inspectorDateBadge" class="text-[10px] px-2 py-0.5 rounded bg-slate-900/90 text-slate-400 border border-slate-800 font-mono">📅 Updated: Recent</span>
+                            </div>
+                        </div>
+                        <h2 id="inspectorDeckName" class="text-lg sm:text-xl md:text-2xl font-black text-white font-mono uppercase tracking-wide mt-1 truncate">Commander Deck</h2>
+                        <p id="inspectorCmdrName" class="text-xs text-cyan-300 font-mono truncate">The Ur-Dragon</p>
+                        
+                        <!-- EDHREC Metadata Badge Strip -->
+                        <div id="edhrecBadgeStrip" class="hidden items-center gap-1.5 sm:gap-2 flex-wrap mt-1 pt-1 border-t border-slate-800/80 cursor-help" data-tooltip-key="edhrec_metrics">
+                            <span id="edhrecRankBadge" class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono font-bold">Rank: #--</span>
+                            <span id="edhrecDecksBadge" class="text-[10px] px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 font-mono font-bold">Decks: --</span>
+                            <span id="edhrecSaltBadge" class="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono font-bold">Salt: --</span>
+                            <a id="edhrecLinkBadge" href="#" target="_blank" rel="noopener noreferrer" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 hover:text-cyan-300 border border-slate-700 font-mono font-semibold transition flex items-center gap-1">
+                                <span>View on EDHREC</span>
+                                <span>↗</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Center & Right: Tactical Stats Pills & Actions -->
+                <div class="flex flex-col lg:flex-row items-start lg:items-center gap-3 w-full lg:w-auto justify-start lg:justify-end">
+                    
+                    <!-- 6 Stat Cards Grid (3 columns on mobile, 6 columns on sm/md, flex row on lg) -->
+                    <div class="flex sm:grid sm:grid-cols-6 gap-2 w-full lg:w-auto overflow-x-auto sm:overflow-visible no-scrollbar snap-x snap-mandatory sm:snap-none">
+                        <!-- Nonland AMV -->
+                        <div id="inspectorAmvContainer" class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-amber-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="amv">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Nonland AMV <span class="text-amber-400">ⓘ</span></span>
+                            <span id="inspectorAvgCmc" class="text-xs sm:text-sm font-black text-amber-400 font-mono">0.00</span>
+                        </div>
+
+                        <!-- Fast Ramp -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="fast_ramp">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Fast Ramp <span class="text-emerald-400">ⓘ</span></span>
+                            <span id="inspectorFastRamp" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">0</span>
+                        </div>
+
+                        <!-- Instant Speed % -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-cyan-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="instant_speed">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Instant % <span class="text-cyan-400">ⓘ</span></span>
+                            <span id="inspectorInstantSpeed" class="text-xs sm:text-sm font-black text-cyan-400 font-mono">0%</span>
+                        </div>
+
+                        <!-- Tapland Penalty % -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-rose-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="tapland_penalty">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Tapland % <span class="text-rose-400">ⓘ</span></span>
+                            <span id="inspectorTaplandPenalty" class="text-xs sm:text-sm font-black text-rose-400 font-mono">0%</span>
+                        </div>
+
+                        <!-- Engines -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-purple-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="draw_engines">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">Engines <span class="text-purple-400">ⓘ</span></span>
+                            <span id="inspectorEngineDraw" class="text-xs sm:text-sm font-black text-purple-400 font-mono">0</span>
+                        </div>
+
+                        <!-- Total Deck Value -->
+                        <div class="snap-start min-w-[90px] flex-shrink-0 sm:flex-shrink sm:min-w-0 bg-[#1B2230]/90 border border-slate-700/80 hover:border-emerald-500/60 rounded-xl px-2 py-1.5 text-center min-w-0 flex-1 sm:flex-initial cursor-help transition" data-tooltip-key="tcg_value">
+                            <span class="block text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase">TCG Value <span class="text-emerald-400">ⓘ</span></span>
+                            <span id="inspectorTotalValue" class="text-xs sm:text-sm font-black text-emerald-400 font-mono">$0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-slate-800">
+                        <button type="button" onclick="document.getElementById('inspectorActionBtns').classList.toggle('hidden')" class="sm:hidden w-full text-center text-[11px] font-mono text-slate-400 hover:text-white py-1 flex items-center justify-center gap-1 transition">
+                            <span>Actions</span>
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div id="inspectorActionBtns" class="hidden sm:flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end">
+                            <select id="inspectorDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
+                                    class="flex-1 sm:flex-initial bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer min-w-0 max-w-[155px] sm:max-w-[200px] truncate"
+                                    title="Switch Deck in Inspector">
+                                <option value="">⚡ Switch Deck...</option>
+                                {% for d in recent_decks %}
+                                <option value="{{ d.id }}">{{ d.deck_name }}</option>
+                                {% endfor %}
+                            </select>
+
+                            <button id="inspectorCompareBtn" onclick="launchCompareFromActiveDeck()" title="Compare this deck head-to-head" 
+                                    class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500 hover:to-blue-500 hover:text-slate-950 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1.5 flex-shrink-0">
+                                <span>⚔️ Compare</span>
+                            </button>
+
+                            <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
+                                    class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white transition cursor-pointer flex-shrink-0">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </button>
+
+                            <button id="inspectorRerunAiBtn" onclick="runAiAnalysisOnSavedDeck(this)" title="Rerun Gemini AI Strategic Intel on this deck" 
+                                    class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1.5 flex-shrink-0">
+                                <span>⚡</span>
+                                <span class="hidden md:inline">Rerun Intel</span>
+                            </button>
+                            
+                            <button onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-slate-700 hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault">
+                                <span>&larr;</span>
+                                <span>Deck Vault</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sticky Inspector Tab Navigation Bar (100% visible on Mobile & Desktop) -->
+        <div id="inspectorTabBarContainer" class="sticky top-14 sm:top-16 z-30 bg-[#0B0F17]/95 backdrop-blur-md border border-slate-800 rounded-xl shadow-xl overflow-hidden">
+            <div class="flex items-center p-1 md:px-4 md:py-0 gap-1 md:gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory">
+                <!-- Tab 1: Mana Curve & Composition -->
+                <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">📊</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">Curve</span>
+                    <span class="hidden md:inline whitespace-nowrap">Mana Curve & Composition</span>
+                </button>
+
+                <!-- Tab 2: Full Card Registry -->
+                <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">🃏</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
+                    <span class="hidden md:inline whitespace-nowrap">Full Card Registry (<span id="tabCardCount">100</span>)</span>
+                </button>
+
+                <!-- Tab 3: Gemini AI Strategic Intel -->
+                <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">⚡</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">AI Intel</span>
+                    <span class="hidden md:inline whitespace-nowrap">Gemini AI Strategic Intel</span>
+                    <span id="aiTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Ready</span>
+                </button>
+
+                <!-- Tab 4: Tactical Upgrades -->
+                <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" 
+                        class="snap-start py-2.5 md:py-3 px-3 md:px-4 text-[11px] md:text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition flex items-center justify-center gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-shrink-0 min-w-[90px] md:min-w-0 md:flex-1 text-center whitespace-nowrap">
+                    <span class="text-sm md:text-base leading-none">💎</span>
+                    <span class="block md:hidden text-[11px] tracking-tight">Upgrades</span>
+                    <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
+                    <span id="upgradesTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 4: DUAL-TIER TACTICAL UPGRADE ENGINE -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentUpgrades" class="space-y-6 block">
+            
+            <!-- Pauper Commander Mode Notice Banner -->
+            <div id="pauperUpgradeBanner" class="hidden bg-purple-950/40 border border-purple-500/50 rounded-xl p-4 text-purple-200">
+                <div class="flex items-center gap-2 font-mono font-bold text-xs uppercase tracking-wider text-purple-300">
+                    <span class="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+                    <span>Pauper Commander (PDH) Upgrade Protocol Active</span>
+                </div>
+                <p class="text-xs text-purple-300/80 font-mono mt-1">
+                    All upgrade recommendations (Owned Swaps, Curated Staples, and Market Acquisitions) are strictly filtered to <strong>Common</strong> rarity MTG cards only. High-rarity staples and non-pauper combos are automatically omitted.
+                </p>
+            </div>
+
+            <!-- Dual-Tier Header / Status Banner -->
+            <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2 text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider mb-1">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Dual-Tier Upgrade Engine // ManaBox Vault Integration
+                    </div>
+                    <h3 class="font-heading font-black text-lg text-white uppercase">
+                        Tactical Deck Enhancements
+                    </h3>
+                    <p class="text-xs text-slate-400 font-sans mt-0.5 max-w-2xl">
+                        Cross-referenced against your physical ManaBox collection. Swap owned cards from your binder for immediate zero-cost power boosts, or export prioritized acquisition wishlists.
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <!-- Archetype Theme Selector -->
+                    <select id="upgradeThemeSelect" onchange="handleUpgradeThemeChange(this.value)" 
+                            class="bg-[#1B2230] hover:bg-[#222B3D] text-amber-300 border border-slate-700 hover:border-amber-500/50 text-xs font-mono font-bold px-2.5 py-1.5 rounded transition cursor-pointer max-w-[180px] truncate"
+                            title="Filter recommendations by commander archetype/theme">
+                        <option value="">🎯 All Themes (Average)</option>
+                    </select>
+
+                    <!-- Anti-Salt Filter Toggle -->
+                    <button id="antiSaltToggleBtn" type="button" onclick="toggleAntiSaltFilter()" 
+                            class="px-2.5 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-slate-300 border border-slate-700 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer"
+                            title="Exclude high-salt cards from purchase recommendations">
+                        <span>🧂 Casual Mode: <strong id="antiSaltStateText" class="text-slate-400">OFF</strong></span>
+                    </button>
+
+                    <a href="/inventory" target="_blank" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                        <span>Open Binder Vault</span>
+                        <span>&rarr;</span>
+                    </a>
+
+                    <!-- Background Collection Enrichment Pill -->
+                    <div id="collectionEnrichPill" class="hidden items-center gap-1.5 px-2.5 py-1.5 bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 text-xs font-mono">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
+                        </span>
+                        <span id="collectionEnrichText">Enriching Binder...</span>
+                    </div>
+
+                    <a href="/add-evaluator" class="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer" title="Evaluate specific card additions against your decks">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        <span>Add Evaluator</span>
+                    </a>
+
+                    <button id="refreshUpgradesBtn" onclick="refreshDualTierUpgrades()" class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg id="refreshUpgradesIcon" class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span id="refreshUpgradesText">Re-evaluate</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dual-Tier Sub-Tab Navigation Bar -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-800 bg-[#0B0F17] rounded-t-xl p-1 sm:px-4 sm:py-0 gap-1 sm:gap-2">
+                <button type="button" onclick="switchUpgradeSubtab('owned')" id="subtab-btn-owned" 
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 border-b-2 border-emerald-400 bg-emerald-500/10 sm:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">🎴 In Binder</span>
+                    <span id="ownedSwapsCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold">0 Swaps</span>
+                </button>
+                <button type="button" onclick="switchUpgradeSubtab('shop')" id="subtab-btn-shop" 
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">🛒 Shopping List</span>
+                    <span id="shoppingCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold">0 Cards</span>
+                </button>
+                <button type="button" onclick="switchUpgradeSubtab('primers')" id="subtab-btn-primers" 
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">📖 Primers & Guides</span>
+                    <span id="articlesCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold">0</span>
+                </button>
+                <button type="button" onclick="switchUpgradeSubtab('combos')" id="subtab-btn-combos" 
+                        class="py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-lg sm:rounded-none flex-1 text-center">
+                    <span class="whitespace-nowrap">⚡ Known Combos</span>
+                    <span id="combosCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 font-mono font-bold">0</span>
+                </button>
+            </div>
+
+            <!-- SUB-TAB 1: OWNED SWAPS ("IN YOUR BINDER") -->
+            <div id="subtab-content-owned" class="space-y-4">
+                <div id="ownedSwapsLoading" class="py-12 text-center text-slate-400 font-mono text-xs">
+                    <span class="inline-block animate-spin mr-2">⟳</span> Scanning your collection binder for legal in-color upgrades...
+                </div>
+
+                <div id="ownedSwapsEmpty" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-8 text-center space-y-3">
+                    <div class="text-3xl">📦</div>
+                    <h4 class="font-heading font-bold text-white text-sm uppercase">No Direct Binder Upgrades Found</h4>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto">
+                        All eligible cards in your collection are either already slotted in this deck, outside this commander's color identity, or you haven't uploaded your ManaBox CSV export yet.
+                    </p>
+                    <div class="pt-2">
+                        <a href="/inventory" target="_blank" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-mono text-xs font-bold uppercase transition inline-block">
+                            Upload ManaBox Collection CSV &rarr;
+                        </a>
+                    </div>
+                </div>
+
+                <div id="ownedSwapsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Injected dynamically by renderOwnedSwaps() -->
+                </div>
+            </div>
+
+            <!-- SUB-TAB 2: SHOPPING LIST ("TO BUY / WISHLIST") -->
+            <div id="subtab-content-shop" class="hidden space-y-4">
+                
+                <!-- Toolbar: Budget Filter & Wishlist Export -->
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <!-- Budget Brackets -->
+                    <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+                        <button type="button" onclick="filterShoppingBracket('all')" id="btn-bracket-all" class="px-3 py-1 text-xs font-mono font-bold rounded bg-cyan-500 text-slate-950 transition">
+                            All (<span id="bracketCountAll">0</span>)
+                        </button>
+                        <button type="button" onclick="filterShoppingBracket('budget')" id="btn-bracket-budget" class="px-3 py-1 text-xs font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white border border-slate-700 transition">
+                            Budget &lt; $3 (<span id="bracketCountBudget">0</span>)
+                        </button>
+                        <button type="button" onclick="filterShoppingBracket('moderate')" id="btn-bracket-moderate" class="px-3 py-1 text-xs font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white border border-slate-700 transition">
+                            Mid $3-$15 (<span id="bracketCountModerate">0</span>)
+                        </button>
+                        <button type="button" onclick="filterShoppingBracket('high_impact')" id="btn-bracket-high_impact" class="px-3 py-1 text-xs font-mono font-bold rounded bg-[#1B2230] text-slate-400 hover:text-white border border-slate-700 transition">
+                            High Impact &gt; $15 (<span id="bracketCountHigh">0</span>)
+                        </button>
+                    </div>
+
+                    <!-- Export Buttons -->
+                    <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <button onclick="exportManaBoxWishlist('csv')" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-cyan-400 border border-slate-700 hover:border-cyan-500/50 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span>ManaBox CSV</span>
+                        </button>
+                        <button onclick="copyWishlistText()" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-slate-300 border border-slate-700 hover:border-slate-500 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                            <span>Copy Text</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="shoppingListGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Injected dynamically by renderShoppingList() -->
+                </div>
+            </div>
+
+            <!-- SUB-TAB 3: PRIMERS & COMMUNITY ARTICLES -->
+            <div id="subtab-content-primers" class="hidden space-y-4">
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h4 class="font-heading font-black text-sm text-white uppercase flex items-center gap-2">
+                            <span>📖</span>
+                            <span>Community Primers & Strategy Articles</span>
+                        </h4>
+                        <p class="text-xs text-slate-400 font-sans mt-0.5">
+                            Curated deck tech breakdowns and strategy articles written by EDHREC authors covering this commander.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="edhrecArticlesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Injected dynamically by renderEdhrecArticles() -->
+                </div>
+
+                <div id="edhrecArticlesEmpty" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-8 text-center space-y-2">
+                    <div class="text-3xl">📰</div>
+                    <h5 class="font-heading font-bold text-white text-sm uppercase">No Curated Primers Found</h5>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto">
+                        No articles specifically tagged for this commander were found in the current EDHREC dataset.
+                    </p>
+                </div>
+            </div>
+
+            <!-- SUB-TAB 4: KNOWN COMBOS (COMMANDER SPELLBOOK VIA EDHREC) -->
+            <div id="subtab-content-combos" class="hidden space-y-4">
+                <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl">
+                    <h4 class="font-heading font-black text-sm text-white uppercase flex items-center gap-2">
+                        <span>⚡</span>
+                        <span>Commander Spellbook Combos</span>
+                    </h4>
+                    <p class="text-xs text-slate-400 font-sans mt-0.5">
+                        Known game-winning loops and synergy combos indexed for this commander. Highlights combos already assembled in your deck or near-combos missing 1–2 cards.
+                    </p>
+                </div>
+
+                <!-- Active Combos in Deck -->
+                <div class="space-y-2">
+                    <h5 class="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                        <span>✅</span>
+                        <span>Active Combos Assembled in Deck</span>
+                        <span id="activeCombosCountBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">0</span>
+                    </h5>
+                    <div id="activeCombosGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Injected dynamically -->
+                    </div>
+                    <div id="activeCombosEmpty" class="hidden text-xs text-slate-500 font-mono italic p-3 bg-[#10141D] border border-slate-800 rounded-lg">
+                        No 100% complete combos detected in current 100-card list.
+                    </div>
+                </div>
+
+                <!-- Near Combos -->
+                <div class="space-y-2 pt-2">
+                    <h5 class="text-xs font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                        <span>⚡</span>
+                        <span>Near Combos (Missing 1–2 Cards)</span>
+                        <span id="nearCombosCountBadge" class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">0</span>
+                    </h5>
+                    <div id="nearCombosGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Injected dynamically -->
+                    </div>
+                    <div id="nearCombosEmpty" class="hidden text-xs text-slate-500 font-mono italic p-3 bg-[#10141D] border border-slate-800 rounded-lg">
+                        No near-combos detected for this commander archetype.
+                    </div>
+                </div>
+
+                <div id="combosEmpty" class="hidden bg-[#10141D] border border-slate-800 rounded-xl p-8 text-center space-y-2">
+                    <div class="text-3xl">🧩</div>
+                    <h5 class="font-heading font-bold text-white text-sm uppercase">No Known Combos Recorded</h5>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto">
+                        There are no known infinite combos indexed for this commander in the EDHREC database.
+                    </p>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+</div>
+
+    <!-- ========================================================================= -->
+    
+</div>
+
+
+

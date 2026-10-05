@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+{% block title %}Commander Hub — Chimaera{% endblock %}
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<div class="max-w-7xl mx-auto space-y-6 pb-20">
+<!-- Top Tactical Header HUD -->
+    <div class="bg-[#10141D]/90 border border-slate-800 rounded-xl p-4 sm:p-5 md:p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
+        <div class="absolute -right-16 -bottom-16 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+            <div>
+                <div class="flex items-center space-x-2.5 sm:space-x-3">
+                    <span class="inline-flex items-center justify-center p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex-shrink-0">
+                        <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                    </span>
+                    <div class="min-w-0">
+                        <h1 class="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-wide sm:tracking-wider uppercase font-mono flex flex-wrap items-center gap-1.5 sm:gap-2">
+                            <span>Commander Deck Vault</span>
+                            <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Overview & Compare</span>
+                        </h1>
+                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">ManaBox Deck Ingestion &bull; Live Pricing Telemetry &bull; Side-by-Side Comparison &bull; Analytics &bull; Google Gemini AI Evaluation</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View Switcher & Action Controls -->
+            <div class="flex flex-wrap items-center gap-2">
+                <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center flex-nowrap overflow-x-auto no-scrollbar gap-0.5">
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Deck Vault (Grid & Table)">
+                        <span class="sm:hidden">🛸 Vault</span><span class="hidden sm:inline">🛸 Deck Vault</span>
+                        <span id="savedDecksCount" class="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
+                    </button>
+                    <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="hidden px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Inspect Selected Deck">
+                        <span>🔍 Inspector</span>
+                        <span id="inspectorActiveNameBadge" class="hidden text-[10px] text-cyan-300 font-normal truncate max-w-[85px]"></span>
+                    </button>
+                    <button id="viewCompareBtn" onclick="switchMainView('compare')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Head-to-Head Comparison">
+                        <span class="sm:hidden">⚔️ H2H</span><span class="hidden sm:inline">⚔️ Head-to-Head</span>
+                        <span id="compareCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-mono">0</span>
+                    </button>
+                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex-shrink-0 whitespace-nowrap" title="Analytics & Distributions">
+                        <span class="sm:hidden">📈 Stats</span><span class="hidden sm:inline">📈 Analytics</span>
+                    </button>
+                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1 flex-shrink-0 whitespace-nowrap" title="Import New Deck">
+                        <span class="sm:hidden">➕ Import</span><span class="hidden sm:inline">➕ Import Deck</span>
+                    </button>
+                </div>
+
+                <!-- Desktop Secondary Actions -->
+                <div class="hidden sm:flex items-center gap-2">
+                    <!-- Quick Deck Selector -->
+                    <div class="relative flex items-center">
+                        <select id="quickDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
+                                class="bg-[#1B2230] hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[170px] sm:max-w-[210px] truncate"
+                                title="Quick Switch Deck">
+                            <option value="">⚡ Quick Select Deck...</option>
+                            {% for d in recent_decks %}
+                            <option value="{{ d.id }}">{{ d.deck_name }}{% if d.commander_name %} ({{ d.commander_name }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <a href="/system-overview#commander-stats" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Commander Statistical Telemetry & EDH Analytics Field Manual">
+                        <svg class="w-3.5 h-3.5 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                        </svg>
+                        <span>📖 Stats Guide</span>
+                    </a>
+
+                    <button onclick="openApiKeyModal()" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
+                        <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                        <span>Gemini Key</span>
+                        <span id="geminiKeyDot" class="w-2 h-2 rounded-full {% if has_gemini_key %}bg-emerald-400 shadow-[0_0_8px_#34d399]{% else %}bg-amber-500 animate-pulse{% endif %}"></span>
+                    </button>
+                </div>
+
+                <!-- Mobile Secondary Actions Overlay Trigger -->
+                <div class="flex sm:hidden items-center gap-1.5">
+                    <div class="relative flex items-center">
+                        <select id="quickDeckSelectMobile" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
+                                class="bg-[#1B2230] hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-lg px-2 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[120px] truncate"
+                                title="Quick Switch Deck">
+                            <option value="">⚡ Deck...</option>
+                            {% for d in recent_decks %}
+                            <option value="{{ d.id }}">{{ d.deck_name }}{% if d.commander_name %} ({{ d.commander_name }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button onclick="document.getElementById('mobileCommanderActions').classList.toggle('hidden')" class="p-2 rounded-lg bg-[#1B2230] border border-slate-700 text-slate-400 hover:text-white transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mobile Commander Actions Overflow -->
+        <div id="mobileCommanderActions" class="hidden sm:hidden bg-[#1B2230] border border-slate-700 rounded-xl p-3 mt-2 flex flex-wrap items-center gap-2">
+            <a href="/system-overview#commander-stats" class="px-2.5 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm">
+                <span>📖 Stats Guide</span>
+            </a>
+            <button onclick="openApiKeyModal()" class="px-2.5 py-1.5 rounded-lg bg-[#10141D] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
+                <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+                <span>Gemini Key</span>
+                <span id="geminiKeyDotMobile" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            </button>
+        </div>
+    </div>
+
+    
+<div id="deckVaultView" style="display:block;" class="space-y-4 block">
+        
+        <!-- Aggregate KPI Strip -->
+        <div class="flex sm:grid sm:grid-cols-3 lg:grid-cols-5 gap-3.5 overflow-x-auto sm:overflow-visible no-scrollbar snap-x snap-mandatory sm:snap-none pb-1 sm:pb-0">
+            <!-- 1. Arsenal Count -->
+            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="arsenal_fleet">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Arsenal <span class="text-cyan-400 text-xs">ⓘ</span></span>
+                    <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-white font-mono tracking-tight">{{ fleet_stats.total_decks if fleet_stats else recent_decks|length }} <span class="text-xs text-slate-400 font-normal">Decks</span></div>
+                    <div class="text-[10px] text-slate-500 font-mono mt-0.5">Active Commander Decks</div>
+                </div>
+            </div>
+
+            <!-- 2. Portfolio TCG Value -->
+            <div class="bg-[#10141D] border border-slate-800 hover:border-emerald-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="portfolio_value">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Portfolio Value <span class="text-emerald-400 text-xs">ⓘ</span></span>
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-emerald-400 font-mono tracking-tight">${{ "%.2f"|format(fleet_stats.total_portfolio_value) if fleet_stats else '0.00' }}</div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">Avg ${{ "%.2f"|format(fleet_stats.avg_deck_value) if fleet_stats else '0.00' }} / deck</div>
+                </div>
+            </div>
+
+            <!-- 3. Power -->
+            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="fleet_power">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Power <span class="text-cyan-400 text-xs">ⓘ</span></span>
+                    <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-cyan-400 font-mono tracking-tight">
+                        {% if fleet_stats and fleet_stats.avg_fleet_power %}
+                        {{ fleet_stats.avg_fleet_power }} <span class="text-xs text-slate-400 font-normal">/ 10</span>
+                        {% else %}
+                        <span class="text-slate-500 text-lg">Pre-AI</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">
+                        {% if fleet_stats and fleet_stats.avg_fleet_power and fleet_stats.avg_fleet_power >= 8.5 %}cEDH / High Power
+                        {% elif fleet_stats and fleet_stats.avg_fleet_power and fleet_stats.avg_fleet_power >= 7.0 %}Optimized
+                        {% elif fleet_stats and fleet_stats.avg_fleet_power and fleet_stats.avg_fleet_power >= 5.0 %}Focused
+                        {% else %}Casual / Mixed{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Speed (Avg CMC) -->
+            <div class="bg-[#10141D] border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="fleet_speed">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Speed <span class="text-amber-400 text-xs">ⓘ</span></span>
+                    <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-black text-amber-400 font-mono tracking-tight">{{ fleet_stats.avg_fleet_cmc if fleet_stats else '0.00' }} <span class="text-xs text-slate-400 font-normal">CMC</span></div>
+                    <div class="text-[10px] text-slate-400 font-mono mt-0.5">Nonland Average Mana Value</div>
+                </div>
+            </div>
+
+            <!-- 5. Color Saturation Wheel -->
+            <div class="sm:col-span-1 bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="color_wheel">
+                <div class="flex items-center justify-between text-slate-400">
+                    <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Color Wheel <span class="text-cyan-400 text-xs">ⓘ</span></span>
+                    <span class="text-[9px] text-slate-500 font-mono">WUBRG</span>
+                </div>
+                <div class="mt-2">
+                    <div class="flex items-center justify-between gap-1 py-1">
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#FFFBD5]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.W if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#0E68AB]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.U if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#150B00]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.B if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#D3202A]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.R if fleet_stats else 0 }}</div>
+                        </div>
+                        <div class="text-center flex-1">
+                            <span class="inline-block w-2.5 h-2.5 rounded-full border border-slate-700 bg-[#00733E]"></span>
+                            <div class="text-[10px] font-mono text-slate-300 font-bold mt-0.5">{{ fleet_stats.color_frequencies.G if fleet_stats else 0 }}</div>
+                        </div>
+                    </div>
+                    <div class="text-[10px] text-slate-500 font-mono text-center">Decks Represented</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter, Search & View Controls Bar -->
+        <div class="bg-[#10141D] border border-slate-800 p-3 rounded-xl flex flex-col lg:flex-row items-center justify-between gap-3 shadow-xl">
+            <!-- Search & Color Pills -->
+            <div class="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+                <div class="relative w-full sm:w-72">
+                    <input type="text" id="vaultSearchInput" oninput="filterVaultDecks()" placeholder="Search decks, commanders, archetypes..." 
+                           class="w-full bg-[#1B2230] border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono">
+                    <svg class="w-4 h-4 text-slate-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+
+                <!-- Color Filter Pills -->
+                <div class="flex items-center gap-1">
+                    <button type="button" onclick="setColorFilter('all')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-cyan-500 text-slate-950" data-color="all">All</button>
+                    <button type="button" onclick="setColorFilter('W')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="W" title="White">W</button>
+                    <button type="button" onclick="setColorFilter('U')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="U" title="Blue">U</button>
+                    <button type="button" onclick="setColorFilter('B')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="B" title="Black">B</button>
+                    <button type="button" onclick="setColorFilter('R')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="R" title="Red">R</button>
+                    <button type="button" onclick="setColorFilter('G')" class="color-filter-btn px-2 py-1 text-[11px] font-mono font-bold rounded bg-[#1B2230] text-slate-300 hover:text-white border border-slate-700" data-color="G" title="Green">G</button>
+                </div>
+            </div>
+
+            <!-- Mode Toggle, Sort & Table Actions -->
+            <div class="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
+                <!-- Sort Dropdown -->
+                <div class="hidden sm:flex items-center gap-1.5">
+                    <span class="text-xs text-slate-400 font-mono hidden sm:inline">Sort:</span>
+                    <select id="vaultSortSelect" onchange="sortVaultDecks()" class="bg-[#1B2230] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500">
+                        <option value="recent">Recently Added</option>
+                        <option value="name">Deck Name (A-Z)</option>
+                        <option value="price_desc">Market Value ($ High &rarr; Low)</option>
+                        <option value="cmc_asc">Avg CMC (Low &rarr; High)</option>
+                        <option value="power_desc">Power Level (High &rarr; Low)</option>
+                    </select>
+                </div>
+
+                <!-- View Mode Switcher: Grid vs Table -->
+                <div class="bg-[#1B2230] p-0.5 rounded-lg border border-slate-700 flex items-center flex-shrink-0">
+                    <button id="vaultModeGridBtn" type="button" onclick="switchVaultMode('grid')" class="px-2.5 py-1 text-xs font-mono rounded bg-cyan-500 text-slate-950 font-bold transition shadow-sm" title="Card Grid View">
+                        ⊞ Grid
+                    </button>
+                    <button id="vaultModeTableBtn" type="button" onclick="switchVaultMode('table')" class="px-2.5 py-1 text-xs font-mono rounded text-slate-400 hover:text-white transition" title="Comparative Matrix Table View">
+                        ☰ Table
+                    </button>
+                </div>
+
+                <!-- Table Specific Actions (shown when in Table mode) -->
+                <div id="tableActionControls" class="hidden flex items-center gap-1.5">
+                    <button type="button" onclick="toggleSelectAllDecks()" id="selectAllBtn" class="px-2 py-1 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">
+                        Select All
+                    </button>
+                    <button type="button" onclick="launchComparisonFromSelection()" id="launchCompareBtn" 
+                            class="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase shadow-md transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                        <span>⚔️ Compare (<span id="selectedCountText">0</span>)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUB-CONTAINER 1A: CARD GRID -->
+        <div id="vaultGridContainer" class="space-y-4 block">
+            <div id="vaultGrid" class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+                <!-- Rendered dynamically by renderVaultGrid() -->
+            </div>
+        </div>
+
+        <!-- SUB-CONTAINER 1B: MATRIX TABLE -->
+        <div id="vaultTableContainer" class="hidden bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse font-mono text-xs">
+                    <thead>
+                        <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
+                            <th class="py-3 px-3.5 w-10 text-center">
+                                <input type="checkbox" id="headerCheckbox" onchange="toggleSelectAllDecks()" class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0">
+                            </th>
+                            <th class="py-3 px-4 cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('commander')" data-tooltip-key="commander_deck">Commander & Deck <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('colors')" data-tooltip-key="color_identity">Colors <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('power')" data-tooltip-key="power_level">Power <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-4 text-right cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('value')" data-tooltip-key="tcg_value">TCG Value <span class="text-[10px] text-emerald-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('cmc')" data-tooltip-key="amv">Avg CMC <span class="text-[10px] text-amber-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('speed')" data-tooltip-key="speed_pacing">Speed & Pacing <span class="text-[10px] text-cyan-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('wincon')" data-tooltip-key="win_conditions">Win Path <span class="text-[10px] text-purple-400">ⓘ</span></th>
+                            <th class="py-3 px-4 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('composition')" data-tooltip-key="card_types">Lands / Spells <span class="text-[10px] text-blue-400">ⓘ</span></th>
+                            <th class="py-3 px-3 text-center" data-tooltip-key="ai_intel">AI Intel <span class="text-[10px] text-amber-400">ⓘ</span></th>
+                            <th class="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="matrixTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                        <!-- Injected dynamically by renderMatrixTable() -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty Matrix State -->
+            <div id="matrixEmptyState" class="hidden text-center py-16 px-4 bg-[#10141D]/40">
+                <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                </div>
+                <h4 class="text-base font-bold text-white font-mono uppercase tracking-wider">No Decks Match Filter Criteria</h4>
+                <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">Try clearing filters or search query to view your saved Commander decks.</p>
+                <button onclick="clearMatrixFilters()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs uppercase font-semibold rounded-lg transition">Clear Filters</button>
+            </div>
+        </div>
+
+        <!-- Empty Vault State (Zero decks in database) -->
+        <div id="vaultEmptyState" class="hidden text-center py-16 px-4 bg-[#10141D]/40 border border-slate-800/80 rounded-2xl">
+            <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white font-mono uppercase tracking-wider">No Decks In Your Vault Yet</h3>
+            <p class="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-5">Import your ManaBox deck links to view live deck stats, mana curves, market pricing, and run Google Gemini strategic analysis.</p>
+            <div class="flex items-center justify-center gap-3">
+                <button onclick="switchMainView('ingest')" class="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase rounded-lg shadow-lg transition">
+                    ➕ Import Your First Deck
+                </button>
+                <button onclick="openBulkImportModal()" class="px-4 py-2 bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 font-mono font-semibold text-xs uppercase rounded-lg transition">
+                    Bulk Import ManaBox Links
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl">
+        <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase mb-4">Color Distribution</h3>
+        <canvas id="hubColorChart"></canvas>
+    </div>
+    <div class="bg-[#10141D] border border-slate-800 rounded-xl p-5 shadow-xl">
+        <h3 class="text-xs font-mono font-bold text-cyan-400 uppercase mb-4">Power Level Distribution</h3>
+        <canvas id="hubPowerChart"></canvas>
+    </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const fleetStats = {{ fleet_stats|tojson|safe if fleet_stats else 'null' }};
+    if (fleetStats && fleetStats.color_frequencies) {
+        new Chart(document.getElementById('hubColorChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['White', 'Blue', 'Black', 'Red', 'Green'],
+                datasets: [{
+                    data: [
+                        fleetStats.color_frequencies.W || 0,
+                        fleetStats.color_frequencies.U || 0,
+                        fleetStats.color_frequencies.B || 0,
+                        fleetStats.color_frequencies.R || 0,
+                        fleetStats.color_frequencies.G || 0
+                    ],
+                    backgroundColor: ['#FFFBD5', '#0E68AB', '#150B00', '#D3202A', '#00733E'],
+                    borderColor: '#10141D',
+                    borderWidth: 2
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } } }
+        });
+    }
+    if (fleetStats && fleetStats.power_brackets) {
+        new Chart(document.getElementById('hubPowerChart'), {
+            type: 'bar',
+            data: {
+                labels: Object.keys(fleetStats.power_brackets),
+                datasets: [{
+                    label: 'Decks',
+                    data: Object.values(fleetStats.power_brackets),
+                    backgroundColor: '#22d3ee',
+                    borderRadius: 4
+                }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }, x: { ticks: { color: '#94a3b8' }, grid: { display: false } } }, plugins: { legend: { display: false } } }
+        });
+    }
+});
+</script>
+
+</div>
+
+
+

@@ -2993,10 +2993,10 @@ def create_app(test_config=None):
         }
         return deck_dicts, fleet_stats
 
-    @app.route("/deck-analyzer")
+    @app.route("/commander")
     @login_required
-    def deck_analyzer_page():
-        """Tactical Commander Deck Intelligence & Analysis Command Hub."""
+    def commander_hub_page():
+        """Commander Hub - Fleet Overview."""
         user = get_current_user()
         has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
@@ -3014,20 +3014,82 @@ def create_app(test_config=None):
 
         log_activity("PAGE_VIEW", details="Accessed Commander Deck Hub", user=user)
 
-        initial_view = request.args.get("view", "vault")
-        initial_deck_id = request.args.get("deck_id")
-
         return render_template(
-            "deck_analyzer.html",
+            "commander_hub.html",
             has_gemini_key=has_gemini_key,
             supported_models=available_models,
             default_model=SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
             recent_decks=deck_dicts,
             decks=deck_dicts,
             fleet_stats=fleet_stats,
+            active_tab="deck_analyzer"
+        )
+
+    @app.route("/commander/analyzer/<int:deck_id>")
+    @login_required
+    def commander_analyzer_page(deck_id):
+        user = get_current_user()
+        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
+        db_key = SystemSetting.get_val("gemini_api_key")
+        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
+        has_gemini_key = bool(effective_key)
+
+        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
+
+        deck = db.session.get(DeckAnalysis, deck_id)
+        if not deck or (not user.is_admin and deck.user_id and deck.user_id != user.id):
+            flash("Deck not found or access denied.", "error")
+            return redirect(url_for("commander_hub_page"))
+
+        log_activity("PAGE_VIEW", details=f"Accessed Commander Analyzer for Deck {deck_id}", user=user)
+
+        return render_template(
+            "commander_analyzer.html",
+            has_gemini_key=has_gemini_key,
+            supported_models=available_models,
+            default_model=SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
+            deck=deck.to_dict(include_full=True),
             active_tab="deck_analyzer",
-            initial_view=initial_view,
-            initial_deck_id=initial_deck_id,
+            deck_id=deck_id
+        )
+
+    @app.route("/commander/compare")
+    @login_required
+    def commander_compare_page():
+        user = get_current_user()
+        
+        recent_decks = []
+        if user:
+            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
+            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+        
+        deck_dicts = [d.to_dict(include_full=False) for d in recent_decks]
+
+        log_activity("PAGE_VIEW", details="Accessed Commander Compare", user=user)
+
+        return render_template(
+            "commander_compare.html",
+            recent_decks=deck_dicts,
+            decks=deck_dicts,
+            active_tab="deck_analyzer"
+        )
+
+    @app.route("/commander/upgrades/<int:deck_id>")
+    @login_required
+    def commander_upgrades_page(deck_id):
+        user = get_current_user()
+        deck = db.session.get(DeckAnalysis, deck_id)
+        if not deck or (not user.is_admin and deck.user_id and deck.user_id != user.id):
+            flash("Deck not found or access denied.", "error")
+            return redirect(url_for("commander_hub_page"))
+
+        log_activity("PAGE_VIEW", details=f"Accessed Commander Upgrades for Deck {deck_id}", user=user)
+
+        return render_template(
+            "commander_upgrades.html",
+            deck=deck.to_dict(include_full=True),
+            active_tab="deck_analyzer",
+            deck_id=deck_id
         )
 
     deck_analyzer = DeckAnalyzer(scryfall_provider=scryfall_provider)
@@ -3766,38 +3828,6 @@ def create_app(test_config=None):
             "default_model": default_model,
             "supported_models": models,
         })
-
-    @app.route("/deck-overview")
-    @login_required
-    def deck_overview_page():
-        """Commander Deck Overview & High-Level Comparison Dashboard."""
-        user = get_current_user()
-        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
-        db_key = SystemSetting.get_val("gemini_api_key")
-        effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
-        has_gemini_key = bool(effective_key)
-        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
-
-        recent_decks = []
-        if user:
-            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
-
-        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
-
-        log_activity("PAGE_VIEW", details="Accessed Commander Deck Overview & Comparison", user=user)
-
-        return render_template(
-            "deck_analyzer.html",
-            has_gemini_key=has_gemini_key,
-            supported_models=available_models,
-            default_model=SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL),
-            recent_decks=deck_dicts,
-            decks=deck_dicts,
-            fleet_stats=fleet_stats,
-            active_tab="deck_overview",
-            initial_view="matrix",
-        )
 
     @app.route("/api/deck/compare", methods=["POST"])
     @login_required
