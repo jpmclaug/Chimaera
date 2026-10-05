@@ -805,6 +805,41 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
                 bad_resp2 = client.post("/api/deck/compare", json={"deck_ids": [1, 2, 3, 4, 5]})
                 self.assertEqual(bad_resp2.status_code, 400)
 
+    def test_api_deck_remove_card(self):
+        """Tests removing and decrementing cards from a deck via API."""
+        with self.app.app_context():
+            user = User.query.get(self.user_id)
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Test Removal Deck",
+                commander_name="The Ur-Dragon",
+                cards_data=json.dumps([
+                    {"name": "Sol Ring", "quantity": 2, "cmc": 1, "type_line": "Artifact"},
+                    {"name": "Arcane Signet", "quantity": 1, "cmc": 2, "type_line": "Artifact"}
+                ])
+            )
+            db.session.add(deck)
+            db.session.commit()
+            deck_id = deck.id
+
+        self._login()
+        # Decrement quantity from 2 to 1
+        resp1 = self.client.post(f"/api/deck/{deck_id}/remove-card", json={"card_name": "Sol Ring"})
+        self.assertEqual(resp1.status_code, 200)
+        data1 = resp1.get_json()
+        self.assertTrue(data1["success"])
+        cards1 = data1["deck"]["cards_data"]
+        sol1 = next(c for c in cards1 if c["name"] == "Sol Ring")
+        self.assertEqual(sol1["quantity"], 1)
+
+        # Remove remaining Sol Ring
+        resp2 = self.client.post(f"/api/deck/{deck_id}/remove-card", json={"card_name": "Sol Ring"})
+        self.assertEqual(resp2.status_code, 200)
+        data2 = resp2.get_json()
+        cards2 = data2["deck"]["cards_data"]
+        self.assertFalse(any(c["name"] == "Sol Ring" for c in cards2))
+
+
 
 
 class TestCardClassifier(unittest.TestCase):

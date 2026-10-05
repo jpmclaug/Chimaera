@@ -5204,6 +5204,71 @@ def create_app(test_config=None):
             "deck": entry.to_dict(include_full=True),
         })
 
+    @app.route("/api/deck/<int:deck_id>/remove-card", methods=["POST"])
+    @login_required
+    def api_deck_remove_card(deck_id: int):
+        """Removes a card or decrements its quantity in a deck and recalculates stats."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized to edit this deck."}), 403
+
+        data = request.get_json(silent=True) or {}
+        card_name = (data.get("card_name") or data.get("name") or "").strip()
+        if not card_name:
+            return jsonify({"error": "Card name is required."}), 400
+
+        current_cards = entry.get_parsed_cards()
+        target_lower = card_name.lower()
+
+        found_idx = -1
+        for idx, c in enumerate(current_cards):
+            c_name = c.get("name", "").strip().lower()
+            if c_name == target_lower or (" // " in c_name and c_name.split(" // ")[0].strip() == target_lower):
+                found_idx = idx
+                break
+
+        if found_idx == -1:
+            return jsonify({"error": f"Card '{card_name}' not found in deck."}), 404
+
+        card = current_cards[found_idx]
+        qty = card.get("quantity", 1)
+        remove_all = data.get("all", False) or qty <= 1
+
+        if remove_all:
+            current_cards.pop(found_idx)
+        else:
+            card["quantity"] = qty - 1
+
+        cmdrs = [c.strip() for c in (entry.commander_name or "").split(",") if c.strip()]
+        analyzed_deck = deck_analyzer.analyze({
+            "deck_name": entry.deck_name,
+            "commander": cmdrs,
+            "cards": current_cards,
+            "is_pauper": entry.is_pauper_commander,
+            "deck_format": entry.deck_format or ("pauper_commander" if entry.is_pauper_commander else "commander"),
+        })
+
+        import json
+        new_stats = analyzed_deck.get("stats", {})
+        entry.cards_data = json.dumps(current_cards)
+        entry.stats_json = json.dumps(new_stats)
+        entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
+        entry.total_value = new_stats.get("total_value")
+        entry.avg_cmc = new_stats.get("avg_cmc")
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        log_activity("DECK_CARD_REMOVE", details=f"Removed '{card_name}' from deck '{entry.deck_name}'", user=user)
+
+        return jsonify({
+            "success": True,
+            "message": f"Successfully removed '{card_name}' from {entry.deck_name}.",
+            "deck": entry.to_dict(include_full=True),
+        })
+
     @app.route("/api/deck/<int:deck_id>/wishlist/export", methods=["POST", "GET"])
     @login_required
     def api_deck_wishlist_export(deck_id: int):
