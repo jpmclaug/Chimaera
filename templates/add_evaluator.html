@@ -191,8 +191,8 @@
                 </div>
                 <div class="flex items-center space-x-2 pt-4">
                     <label class="flex items-center space-x-1.5 text-xs font-mono text-[#94A3B8] cursor-pointer select-none">
-                        <input type="checkbox" id="chk-use-gemini" {% if has_gemini_key %}checked{% endif %} class="w-3.5 h-3.5 text-[#00CED1] bg-[#10141D] border-[#263245] rounded focus:ring-0">
-                        <span>Gemini Deep-Dive</span>
+                        <input type="checkbox" id="chk-use-gemini" class="w-3.5 h-3.5 text-[#00CED1] bg-[#10141D] border-[#263245] rounded focus:ring-0">
+                        <span>Gemini AI Tactical Deep-Dive</span>
                     </label>
                 </div>
                 <div class="flex-1 min-w-[200px]">
@@ -257,10 +257,17 @@
                         <span class="bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-model-used">ALGORITHMIC + AI</span>
                         <span class="bg-[#10B981]/20 border border-[#10B981] text-[#10B981] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-cards-count">0 CARDS EVALUATED</span>
                         <span class="bg-[#A855F7]/20 border border-[#A855F7] text-[#C084FC] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-mode">MODE: CARDS</span>
+                        <span class="hidden bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-saved-indicator">💾 SAVED TO INTEL</span>
                     </div>
-                    <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wide" id="result-title">
-                        Evaluation Results
-                    </h2>
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wide" id="result-title">
+                            Evaluation Results
+                        </h2>
+                        <button id="btn-rerun-gemini" onclick="triggerGeminiDeepDiveOnResults()" class="hidden px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-[11px] uppercase tracking-wider rounded shadow transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap self-start sm:self-auto">
+                            <span>⚡</span>
+                            <span id="btn-rerun-gemini-text">Run Gemini AI Deep-Dive</span>
+                        </button>
+                    </div>
                     <div class="bg-[#10141D] border border-[#263245] p-3.5 text-xs text-[#F1F5F9] font-sans leading-relaxed border-l-4 border-l-[#00CED1]" id="result-exec-summary">
                         Executive briefing loading...
                     </div>
@@ -404,6 +411,7 @@
 let currentInputMode = '{{ initial_mode or "batch" }}';
 let currentResultTab = 'card-matrix';
 let activeSuiteData = null;
+let lastEvaluationPayload = null;
 let activeBreakdownDeckId = null;
 let autocompleteDebounce = null;
 
@@ -677,6 +685,7 @@ async function runAddEvaluation() {
         }
 
         activeSuiteData = data;
+        lastEvaluationPayload = payload;
         renderResults(data);
 
     } catch (err) {
@@ -688,6 +697,65 @@ async function runAddEvaluation() {
     }
 }
 
+// Explicit User Action: Run Gemini Tactical Deep-Dive on Current Results
+async function triggerGeminiDeepDiveOnResults() {
+    if (!activeSuiteData) return;
+    const rerunBtn = document.getElementById('btn-rerun-gemini');
+    const rerunText = document.getElementById('btn-rerun-gemini-text');
+    const origText = rerunText ? rerunText.innerText : 'Run Gemini AI Deep-Dive';
+
+    if (rerunBtn) {
+        rerunBtn.disabled = true;
+        rerunText.innerText = 'Analyzing with Gemini...';
+    }
+
+    try {
+        let payload = null;
+        if (lastEvaluationPayload) {
+            payload = Object.assign({}, lastEvaluationPayload);
+        } else {
+            const selectedDeckIds = Array.from(document.querySelectorAll('input[name="target_deck_ids"]:checked')).map(cb => cb.value);
+            payload = {
+                deck_ids: selectedDeckIds.length > 0 ? selectedDeckIds : undefined,
+                mode: activeSuiteData.mode || 'cards',
+            };
+            if (activeSuiteData.mode === 'secret_lair') {
+                payload.raw_text = activeSuiteData.title || '';
+            } else if (activeSuiteData.cards && activeSuiteData.cards.length > 0) {
+                payload.cards = activeSuiteData.cards.map(c => c.canonical_name || c.name);
+            }
+        }
+
+        const modelSelect = document.getElementById('select-gemini-model');
+        payload.model = modelSelect ? modelSelect.value : undefined;
+        payload.use_gemini = true;
+        payload.save_to_history = true;
+
+        const resp = await fetch('/api/add-evaluator/evaluate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            alert(`Gemini Analysis Error: ${data.error || 'Failed to complete AI deep-dive.'}`);
+            return;
+        }
+
+        activeSuiteData = data;
+        lastEvaluationPayload = payload;
+        renderResults(data);
+    } catch (err) {
+        alert(`Communication error during Gemini analysis: ${err.message}`);
+    } finally {
+        if (rerunBtn) {
+            rerunBtn.disabled = false;
+            rerunText.innerText = origText;
+        }
+    }
+}
+
 // Results Renderer
 function renderResults(data) {
     const container = document.getElementById('results-container');
@@ -695,7 +763,38 @@ function renderResults(data) {
 
     document.getElementById('result-title').innerText = data.title || (data.mode === 'secret_lair' ? 'Secret Lair Superdrop Intelligence' : 'Card Add Fleet Evaluation');
     document.getElementById('result-exec-summary').innerText = data.executive_summary || 'Tactical analysis completed.';
-    document.getElementById('badge-model-used').innerText = (data._model_used || 'Gemini 3.8 Flash').toUpperCase();
+    const isGeminiUsed = Boolean(data._model_used && !data._model_used.toLowerCase().includes('algorithmic'));
+    const modelBadge = document.getElementById('badge-model-used');
+    if (modelBadge) {
+        if (isGeminiUsed) {
+            modelBadge.innerText = (data._model_used || 'Gemini 3.8 Flash').toUpperCase();
+            modelBadge.className = 'bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] text-[10px] font-mono px-2 py-0.5 font-bold uppercase';
+        } else {
+            modelBadge.innerText = 'FAST ALGORITHMIC';
+            modelBadge.className = 'bg-[#94A3B8]/20 border border-[#94A3B8] text-[#94A3B8] text-[10px] font-mono px-2 py-0.5 font-bold uppercase';
+        }
+    }
+
+    const savedBadge = document.getElementById('badge-saved-indicator');
+    if (savedBadge) {
+        if (data.id) {
+            savedBadge.classList.remove('hidden');
+        } else {
+            savedBadge.classList.add('hidden');
+        }
+    }
+
+    const rerunBtn = document.getElementById('btn-rerun-gemini');
+    if (rerunBtn) {
+        if (isGeminiUsed) {
+            rerunBtn.classList.remove('hidden');
+            document.getElementById('btn-rerun-gemini-text').innerText = 'Rerun Gemini Deep-Dive';
+        } else {
+            rerunBtn.classList.remove('hidden');
+            document.getElementById('btn-rerun-gemini-text').innerText = 'Run Gemini Deep-Dive';
+        }
+    }
+
     document.getElementById('badge-mode').innerText = `MODE: ${(data.mode || 'CARDS').toUpperCase()}`;
 
     const evaluatedCount = data.evaluated_cards_count || (data.cards ? data.cards.length : (data.drops ? data.drops.length : 0));
@@ -1184,11 +1283,28 @@ async function loadSavedAnalysis(type, id) {
         const data = await resp.json();
         if (data.analysis) {
             const suitePayload = data.analysis;
+            suitePayload.id = data.id;
             suitePayload.title = data.title;
             suitePayload.banner_image = data.banner_image;
             suitePayload.drops = data.drops;
             suitePayload.mode = data.source_type === 'secret_lair' ? 'secret_lair' : (type === 'sl' ? 'secret_lair' : 'cards');
             activeSuiteData = suitePayload;
+            
+            // Reconstruct lastEvaluationPayload from saved metadata
+            const deckIds = data.target_deck_ids ? data.target_deck_ids.split(',').map(s => s.trim()).filter(Boolean) : [];
+            lastEvaluationPayload = {
+                deck_ids: deckIds,
+                mode: suitePayload.mode,
+                model: data.model_used,
+            };
+            if (suitePayload.mode === 'secret_lair') {
+                lastEvaluationPayload.raw_text = data.input_text || suitePayload.title || '';
+            } else if (data.cards && data.cards.length > 0) {
+                lastEvaluationPayload.cards = data.cards.map(c => c.canonical_name || c.name);
+            } else if (data.input_text) {
+                lastEvaluationPayload.raw_text = data.input_text;
+            }
+
             renderResults(suitePayload);
         }
     } catch (e) {

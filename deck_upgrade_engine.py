@@ -545,11 +545,13 @@ class DualTierUpgradeEngine:
                 if needs_pauper or needs_cid:
                     candidates_to_validate.add(ic.name)
 
+        session_scryfall_cache: Dict[str, Dict[str, Any]] = {}
         if candidates_to_validate:
             # Strictly cap at 75 cards (exactly 1 Scryfall batch) to guarantee <300ms execution
             candidates_list = list(candidates_to_validate)[:75]
             try:
                 scryfall_meta, _ = self.scryfall_provider.get_cards_collection(candidates_list)
+                session_scryfall_cache.update(scryfall_meta)
                 for name_query in candidates_list:
                     q_low = name_query.lower().strip()
                     meta = scryfall_meta.get(q_low)
@@ -581,6 +583,24 @@ class DualTierUpgradeEngine:
                             pauper_legal_cache[q_low] = False
             except Exception as e:
                 logger.error(f"Error validating card metadata with Scryfall: {e}")
+
+        # Evaluate Known Combos from EDHREC / Commander Spellbook early to inform binder recommendations
+        combo_results = self.evaluate_combos(
+            combos=edhrec_combos,
+            deck_cards=cards,
+            user_inventory=user_inventory,
+            is_pauper=is_pauper,
+            pauper_legal_cache=pauper_legal_cache,
+        )
+        binder_combo_pieces: Set[str] = set()
+        for cb in combo_results.get("near", []):
+            for p in cb.get("missing_pieces", []):
+                if p.get("in_binder"):
+                    p_name = p.get("name", "").strip().lower()
+                    if p_name:
+                        binder_combo_pieces.add(p_name)
+                        if " // " in p_name:
+                            binder_combo_pieces.add(p_name.split(" // ")[0].strip().lower())
 
         # Choose curated staples pool based on format
         staples_pool = CURATED_PAUPER_UPGRADES if is_pauper else CURATED_UPGRADES
@@ -630,12 +650,42 @@ class DualTierUpgradeEngine:
                         avail = max(0, total_owned - other_allocated)
 
                         if card_out and self._is_card_in_deck(card_out, deck_cards_set) and card_out.lower() not in assigned_cuts:
-                            matched_cut = card_out
+                            cand_match = next((c for c in cut_candidates if c.get("name", "").strip().lower() == card_out.lower()), None)
+                            if not cand_match:
+                                deck_card_match = next((c for c in cards if c.get("name", "").strip().lower() == card_out.lower()), None)
+                                if deck_card_match:
+                                    cand_match = {
+                                        "name": deck_card_match.get("name", card_out),
+                                        "cmc": float(deck_card_match.get("cmc", 0.0)),
+                                        "type_line": deck_card_match.get("type_line", "Card"),
+                                    }
+                                else:
+                                    cand_match = {"name": card_out, "cmc": None, "type_line": "Card"}
+                            matched_cut = cand_match
                             assigned_cuts.add(card_out.lower())
                         else:
                             matched_cut = self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
 
                         syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
+                        is_combo = bool(primary_copy.name.lower() in binder_combo_pieces or strip_accents(primary_copy.name).lower() in binder_combo_pieces)
+                        cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+                        score, reasons = self._calculate_strategic_score(
+                            card_name=primary_copy.name,
+                            classification=None,
+                            synergy=syn,
+                            synergy_percent=syn_pct,
+                            inclusion_percent=inc_pct,
+                            deck_strategy=deck_strategy,
+                            staple_rating=None,
+                            is_combo_piece=is_combo,
+                            price_usd=primary_copy.price_usd,
+                            cmc=primary_copy.cmc or 0,
+                            cut_cmc=cut_cmc_val,
+                        )
+
+                        category_label = u.get("category", "Tactical Upgrade")
+                        if is_combo:
+                            category_label = "Combo Finisher"
 
                         owned_swaps.append({
                             "card_in": primary_copy.name,
@@ -648,16 +698,17 @@ class DualTierUpgradeEngine:
                             "card_in_condition": primary_copy.condition or "Near Mint",
                             "card_in_price": primary_copy.price_usd,
                             "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
-                            "card_out_cmc": matched_cut.get("cmc") if isinstance(matched_cut, dict) else None,
+                            "card_out_cmc": cut_cmc_val,
                             "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
-                            "category": u.get("category", "Tactical Upgrade"),
+                            "category": category_label,
                             "estimated_impact": u.get("estimated_impact", "High"),
                             "synergy": syn,
                             "synergy_percent": syn_pct,
                             "inclusion_percent": inc_pct,
                             "salt_score": salt,
-                            "strategic_score": round(45.0 + (syn * 50.0), 1),
-                            "rationale": u.get("rationale") or f"Upgrade into {primary_copy.name} from your binder for enhanced synergy and curve efficiency.",
+                            "is_salty": bool(salt is not None and salt >= max_salt),
+                            "strategic_score": score,
+                            "rationale": u.get("rationale") or f"Upgrade into {primary_copy.name} from your binder ({', '.join(reasons[:2]) if reasons else 'enhanced synergy'}). Replaces {matched_cut['name'] if isinstance(matched_cut, dict) else matched_cut}.",
                             "is_owned": True,
                             "total_owned": total_owned,
                             "available_copies": avail,
@@ -690,6 +741,23 @@ class DualTierUpgradeEngine:
 
                 matched_cut = self._find_best_cut(cut_candidates, primary_copy.type_line or "Synergy", used_cuts=assigned_cuts)
                 syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
+                is_combo = bool(primary_copy.name.lower() in binder_combo_pieces or strip_accents(primary_copy.name).lower() in binder_combo_pieces)
+                cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+                score, reasons = self._calculate_strategic_score(
+                    card_name=primary_copy.name,
+                    classification=None,
+                    synergy=syn,
+                    synergy_percent=syn_pct,
+                    inclusion_percent=inc_pct,
+                    deck_strategy=deck_strategy,
+                    staple_rating=None,
+                    is_combo_piece=is_combo,
+                    price_usd=primary_copy.price_usd,
+                    cmc=primary_copy.cmc or 0,
+                    cut_cmc=cut_cmc_val,
+                )
+
+                category_label = "Signature Synergy" if syn >= 0.50 else ("Combo Finisher" if is_combo else ("High Synergy" if syn >= 0.25 else "EDHREC Upgrade"))
 
                 owned_swaps.append({
                     "card_in": primary_copy.name,
@@ -702,15 +770,16 @@ class DualTierUpgradeEngine:
                     "card_in_condition": primary_copy.condition or "Near Mint",
                     "card_in_price": primary_copy.price_usd,
                     "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
-                    "card_out_cmc": matched_cut.get("cmc") if isinstance(matched_cut, dict) else None,
+                    "card_out_cmc": cut_cmc_val,
                     "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
-                    "category": "Signature Synergy" if syn >= 0.50 else ("High Synergy" if syn >= 0.25 else "EDHREC Upgrade"),
-                    "estimated_impact": "High" if syn >= 0.25 else "Medium",
+                    "category": category_label,
+                    "estimated_impact": "High" if (syn >= 0.25 or is_combo) else "Medium",
                     "synergy": syn,
                     "synergy_percent": syn_pct,
                     "inclusion_percent": inc_pct,
                     "salt_score": salt,
-                    "strategic_score": round(40.0 + (syn * 60.0), 1),
+                    "is_salty": bool(salt is not None and salt >= max_salt),
+                    "strategic_score": score,
                     "rationale": f"High EDHREC synergy (+{syn_pct}% in this commander) owned in your binder. Replace {matched_cut['name'] if isinstance(matched_cut, dict) else matched_cut}.",
                     "is_owned": True,
                     "total_owned": total_owned,
@@ -747,6 +816,24 @@ class DualTierUpgradeEngine:
 
                 matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=assigned_cuts)
                 syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
+                is_combo = bool(primary_copy.name.lower() in binder_combo_pieces or strip_accents(primary_copy.name).lower() in binder_combo_pieces)
+                cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+                score, reasons = self._calculate_strategic_score(
+                    card_name=primary_copy.name,
+                    classification=None,
+                    synergy=syn,
+                    synergy_percent=syn_pct,
+                    inclusion_percent=inc_pct,
+                    deck_strategy=deck_strategy,
+                    staple_rating=float(staple.get("rating", 9.0)),
+                    is_curated_staple=True,
+                    is_combo_piece=is_combo,
+                    price_usd=primary_copy.price_usd,
+                    cmc=primary_copy.cmc if primary_copy.cmc is not None else staple.get("cmc", 0),
+                    cut_cmc=cut_cmc_val,
+                )
+
+                category_label = "Combo Finisher" if is_combo else staple.get("category", "Power")
 
                 owned_swaps.append({
                     "card_in": primary_copy.name,
@@ -759,15 +846,16 @@ class DualTierUpgradeEngine:
                     "card_in_condition": primary_copy.condition or "Near Mint",
                     "card_in_price": primary_copy.price_usd,
                     "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
-                    "card_out_cmc": matched_cut.get("cmc") if isinstance(matched_cut, dict) else None,
+                    "card_out_cmc": cut_cmc_val,
                     "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
-                    "category": staple.get("category", "Power"),
+                    "category": category_label,
                     "estimated_impact": "High",
                     "synergy": syn,
                     "synergy_percent": syn_pct,
                     "inclusion_percent": inc_pct,
                     "salt_score": salt,
-                    "strategic_score": round(35.0 + float(staple.get("rating", 9.0)) * 2.0, 1),
+                    "is_salty": bool(salt is not None and salt >= max_salt),
+                    "strategic_score": score,
                     "rationale": f"Replace {matched_cut['name'] if isinstance(matched_cut, dict) else matched_cut} with {primary_copy.name} from your binder: {staple.get('rationale')}",
                     "is_owned": True,
                     "total_owned": total_owned,
@@ -792,8 +880,17 @@ class DualTierUpgradeEngine:
             is_pauper=is_pauper,
             pauper_legal_cache=pauper_legal_cache,
             cid_cache=cid_cache,
+            binder_combo_pieces=binder_combo_pieces,
+            max_salt=max_salt,
         )
         owned_swaps.extend(binder_recommendations)
+
+        # Anti-salt filter for owned swaps if requested
+        if anti_salt:
+            owned_swaps = [
+                s for s in owned_swaps
+                if s.get("salt_score") is None or s.get("salt_score") < max_salt
+            ]
 
         # Final pass: enforce strict color legality on owned swaps
         owned_swaps = [
@@ -827,7 +924,29 @@ class DualTierUpgradeEngine:
                     continue
 
                 if self._is_color_legal(card_in, color_identity, u.get("color_identity"), cid_cache=cid_cache, mana_cost=u.get("card_in_mana")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
-                    matched_cut = u.get("card_out") or self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
+                    matched_cut = u.get("card_out")
+                    cut_name = matched_cut
+                    cut_cmc_val = None
+                    cut_type_val = None
+                    if isinstance(matched_cut, dict):
+                        cut_name = matched_cut.get("name")
+                        cut_cmc_val = matched_cut.get("cmc")
+                        cut_type_val = matched_cut.get("type_line")
+                    elif isinstance(matched_cut, str) and matched_cut.strip():
+                        cut_name = matched_cut.strip()
+                        c_match = next((c for c in cards if c.get("name", "").strip().lower() == cut_name.lower()), None)
+                        if c_match:
+                            cut_cmc_val = c_match.get("cmc")
+                            cut_type_val = c_match.get("type_line")
+                    else:
+                        matched_obj = self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=None)
+                        if isinstance(matched_obj, dict):
+                            cut_name = matched_obj.get("name")
+                            cut_cmc_val = matched_obj.get("cmc")
+                            cut_type_val = matched_obj.get("type_line")
+                        else:
+                            cut_name = str(matched_obj)
+
                     price_val = None
                     try:
                         if u.get("card_in_price"):
@@ -841,7 +960,9 @@ class DualTierUpgradeEngine:
 
                     shopping_list_raw.append({
                         "name": card_in,
-                        "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
+                        "card_out": cut_name,
+                        "card_out_cmc": cut_cmc_val,
+                        "card_out_type": cut_type_val,
                         "category": u.get("category", "Tactical Upgrade"),
                         "estimated_impact": u.get("estimated_impact", "High"),
                         "synergy": syn,
@@ -876,12 +997,17 @@ class DualTierUpgradeEngine:
             if anti_salt and salt is not None and salt >= max_salt:
                 continue
 
-            matched_cut = self._find_best_cut(cut_candidates, "Synergy Card", used_cuts=assigned_cuts)
+            matched_cut = self._find_best_cut(cut_candidates, "Synergy Card", used_cuts=None)
             cat = "Signature Card" if syn >= 0.50 else ("High Synergy" if syn >= 0.25 else "EDHREC Recommendation")
+            cut_name = matched_cut.get("name") if isinstance(matched_cut, dict) else matched_cut
+            cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+            cut_type_val = matched_cut.get("type_line") if isinstance(matched_cut, dict) else None
 
             shopping_list_raw.append({
                 "name": rec_name,
-                "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
+                "card_out": cut_name,
+                "card_out_cmc": cut_cmc_val,
+                "card_out_type": cut_type_val,
                 "category": cat,
                 "estimated_impact": "High" if syn >= 0.25 else "Medium",
                 "synergy": syn,
@@ -917,11 +1043,16 @@ class DualTierUpgradeEngine:
             if anti_salt and salt is not None and salt >= max_salt:
                 continue
 
-            matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=assigned_cuts)
+            matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=None)
+            cut_name = matched_cut.get("name") if isinstance(matched_cut, dict) else matched_cut
+            cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+            cut_type_val = matched_cut.get("type_line") if isinstance(matched_cut, dict) else None
 
             shopping_list_raw.append({
                 "name": s_name,
-                "card_out": matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut,
+                "card_out": cut_name,
+                "card_out_cmc": cut_cmc_val,
+                "card_out_type": cut_type_val,
                 "category": staple.get("category", "Staple Upgrade"),
                 "estimated_impact": "High" if staple.get("rating", 0) >= 9.2 else "Medium",
                 "synergy": syn,
@@ -939,11 +1070,37 @@ class DualTierUpgradeEngine:
             })
             shopping_names_applied.add(s_name_lower)
 
-        # Batch resolve prices and Scryfall metadata for unowned cards if missing (capped at 1 batch of 75)
+        # Batch resolve prices and Scryfall metadata from session cache first
+        for s in shopping_list_raw:
+            meta = session_scryfall_cache.get(s["name"].lower())
+            if not meta:
+                clean_n = strip_accents(s["name"]).strip().lower()
+                meta = session_scryfall_cache.get(clean_n)
+            if meta:
+                if s.get("price_usd") is None and meta.get("prices", {}).get("usd"):
+                    try:
+                        s["price_usd"] = float(meta["prices"]["usd"])
+                    except Exception:
+                        pass
+                if not s.get("image_uri"):
+                    s["image_uri"] = meta.get("image_uri") or meta.get("small_image_uri")
+                if not s.get("tcgplayer_url"):
+                    s["tcgplayer_url"] = meta.get("tcgplayer_url")
+                if not s.get("mana_cost") and meta.get("mana_cost"):
+                    s["mana_cost"] = meta["mana_cost"]
+                if (not s.get("type_line") or s.get("type_line") == "Card") and meta.get("type_line"):
+                    s["type_line"] = meta["type_line"]
+                if meta.get("color_identity") is not None:
+                    for k in get_card_match_keys(meta.get("name", s["name"])):
+                        cid_cache[k] = meta["color_identity"]
+
+        # Fetch only truly missing card metadata from Scryfall (capped at 1 batch of 75)
         missing_meta_names = [s["name"] for s in shopping_list_raw if s.get("price_usd") is None or not s.get("image_uri")]
         if missing_meta_names:
             try:
                 scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names[:75])
+                for k, meta in scryfall_meta.items():
+                    session_scryfall_cache[k] = meta
                 for s in shopping_list_raw:
                     meta = scryfall_meta.get(s["name"].lower(), {})
                     if not meta:
@@ -995,15 +1152,6 @@ class DualTierUpgradeEngine:
         signature_bracket = [s for s in shopping_list_raw if (s.get("synergy") or 0.0) >= 0.50]
         high_syn_bracket = [s for s in shopping_list_raw if 0.25 <= (s.get("synergy") or 0.0) < 0.50]
         standard_bracket = [s for s in shopping_list_raw if (s.get("synergy") or 0.0) < 0.25]
-
-        # Evaluate Known Combos from EDHREC / Commander Spellbook
-        combo_results = self.evaluate_combos(
-            combos=edhrec_combos,
-            deck_cards=cards,
-            user_inventory=user_inventory,
-            is_pauper=is_pauper,
-            pauper_legal_cache=pauper_legal_cache,
-        )
 
         return {
             "owned_swaps": owned_swaps,
@@ -1065,7 +1213,7 @@ class DualTierUpgradeEngine:
         near_combos: List[Dict[str, Any]] = []
 
         for combo in combos:
-            pieces = combo.get("pieces", [])
+            pieces = combo.get("pieces") or combo.get("card_names") or combo.get("cards", [])
             if len(pieces) < 2:
                 continue
 
@@ -1087,8 +1235,9 @@ class DualTierUpgradeEngine:
                         "in_binder": is_in_binder,
                     })
 
+            combo_name_val = combo.get("name") or combo.get("combo_name") or " + ".join(pieces)
             combo_entry = {
-                "name": combo.get("name", " + ".join(pieces)),
+                "name": combo_name_val,
                 "pieces": pieces,
                 "url": combo.get("url", ""),
                 "in_deck_pieces": in_deck,
@@ -1251,9 +1400,19 @@ class DualTierUpgradeEngine:
                     break
 
         if card_cid is None and mana_cost:
-            extracted = set(re.findall(r"[WUBRG]", re.sub(r"[^WUBRG/]", "", str(mana_cost).upper())))
+            mana_str = str(mana_cost).strip().upper()
+            extracted = set(re.findall(r"[WUBRG]", re.sub(r"[^WUBRG/]", "", mana_str)))
             if extracted:
                 card_cid = list(extracted)
+            elif mana_str and (re.search(r"\{[0-9XC]+\}|\b\d+\b", mana_str) or mana_str.startswith("{")):
+                # Valid mana cost without colored mana symbols is colorless
+                card_cid = []
+
+        # If card_cid was resolved, store in cid_cache for subsequent lookups
+        if card_cid is not None and cid_cache is not None:
+            for k in get_card_match_keys(card_name):
+                if k not in cid_cache:
+                    cid_cache[k] = card_cid
 
         # If still None, reject for safety - never let unverified colors bypass
         if card_cid is None:
@@ -1278,6 +1437,133 @@ class DualTierUpgradeEngine:
             return False
         clean_deck_colors = {c.upper() for c in deck_colors if c and c.upper() in ("W", "U", "B", "R", "G")}
         return all(c.upper() in clean_deck_colors for c in staple_colors)
+
+    def _calculate_strategic_score(
+        self,
+        card_name: str,
+        classification: Optional[Dict[str, Any]] = None,
+        synergy: float = 0.0,
+        synergy_percent: float = 0.0,
+        inclusion_percent: float = 0.0,
+        deck_strategy: Optional[Dict[str, Any]] = None,
+        staple_rating: Optional[float] = None,
+        is_curated_staple: bool = False,
+        is_combo_piece: bool = False,
+        price_usd: Optional[float] = None,
+        cmc: float = 0.0,
+        cut_cmc: Optional[float] = None,
+        is_binder_scan: bool = False,
+    ) -> Tuple[float, List[str]]:
+        """
+        Calculates a calibrated 0 - 100 strategic upgrade score reflecting:
+        1. Base quality & format staple status (up to 45 pts)
+        2. Specific EDHREC Commander synergy & inclusion (up to 30 pts)
+        3. Engine / Typal / Poison strategy alignment (up to 20 pts)
+        4. Deficit remediation (draw, ramp, removal, board wipe) (up to 15 pts)
+        5. Combo piece / wincon finisher (up to 20 pts)
+        6. Mana curve velocity & efficiency (up to 5 pts)
+        """
+        reasons: List[str] = []
+
+        # 1. Base Score / Format Quality
+        if staple_rating is not None:
+            base_score = 35.0 + max(0.0, (float(staple_rating) - 7.0)) * 4.0
+            reasons.append("premier Commander staple")
+        elif is_curated_staple:
+            base_score = 38.0
+            reasons.append("top-tier format staple")
+        elif is_binder_scan:
+            base_score = 15.0
+        else:
+            base_score = 25.0
+
+        score = base_score
+
+        # 2. EDHREC Synergy & Inclusion
+        syn_pct = synergy_percent if synergy_percent != 0.0 else round(synergy * 100.0, 1)
+        if syn_pct > 0:
+            syn_bonus = min(syn_pct * 0.5, 25.0)
+            score += syn_bonus
+            reasons.append(f"+{syn_pct:.1f}% EDHREC synergy")
+        elif syn_pct < -15.0:
+            score -= 10.0
+
+        if inclusion_percent >= 15.0:
+            inc_bonus = min(inclusion_percent * 0.15, 8.0)
+            score += inc_bonus
+            if inclusion_percent >= 25.0:
+                reasons.append(f"played in {inclusion_percent:.0f}% of decks")
+
+        # 3. Deck Strategy & Engine Alignment
+        strategy = deck_strategy or {}
+        clf = classification or {}
+
+        dominant_engine = strategy.get("dominant_engine")
+        if dominant_engine:
+            card_enablers = clf.get("engine_enabler", [])
+            card_payoffs = clf.get("engine_payoff", [])
+            if dominant_engine in card_enablers or dominant_engine in card_payoffs:
+                score += 15.0
+                engine_label = strategy.get("engine_label", dominant_engine.title())
+                reasons.append(f"synergizes with {engine_label} engine")
+
+        primary_type = strategy.get("primary_type")
+        if primary_type and strategy.get("is_typal"):
+            subtypes = [s.lower() for s in clf.get("creature_subtypes", [])]
+            if primary_type.lower() in subtypes:
+                score += 14.0
+                reasons.append(f"creature type {primary_type}")
+
+        if strategy.get("has_poison") and any(k in clf.get("tags", []) for k in ["Deathtouch", "Toxic", "Poison", "Proliferate"]):
+            score += 12.0
+            reasons.append("advances poison win condition")
+
+        # 4. Deficit Remediation
+        if strategy.get("draw_deficit") and (clf.get("is_draw") or clf.get("draw_type") == "engine"):
+            score += 12.0
+            reasons.append("fills card draw deficit")
+
+        if strategy.get("ramp_deficit") and clf.get("is_ramp") and cmc <= 2:
+            score += 10.0
+            reasons.append("efficient early ramp")
+
+        if strategy.get("removal_deficit") and clf.get("is_targeted_removal"):
+            score += 10.0
+            reasons.append("fills interaction deficit")
+
+        if strategy.get("wipe_deficit") and clf.get("is_board_wipe"):
+            score += 12.0
+            reasons.append("provides board wipe reset")
+
+        # 5. Combo Enabler / Finisher
+        if is_combo_piece:
+            score += 20.0
+            reasons.append("completes active combo line")
+
+        if clf.get("wincon_tags"):
+            score += 10.0
+            reasons.append("game-ending finisher")
+
+        # Collection value boost
+        if price_usd is not None:
+            if price_usd >= 15.0:
+                score += 8.0
+                reasons.append("high-impact card in collection")
+            elif price_usd >= 5.0:
+                score += 4.0
+
+        # 6. Curve Velocity
+        if cut_cmc is not None and cut_cmc > cmc:
+            cmc_diff = cut_cmc - cmc
+            score += min(cmc_diff * 1.5, 5.0)
+            if cmc_diff >= 2:
+                reasons.append(f"accelerates curve (-{int(cmc_diff)} CMC)")
+        elif cmc <= 2 and "land" not in str(clf.get("type_line", "")).lower() and not clf.get("is_tapland"):
+            score += 3.0
+
+        # Cap score between 5.0 and 99.0
+        final_score = round(max(5.0, min(99.0, score)), 1)
+        return final_score, reasons
 
     def _extract_deck_strategy_and_deficits(
         self,
@@ -1411,6 +1697,8 @@ class DualTierUpgradeEngine:
         is_pauper: bool = False,
         pauper_legal_cache: Optional[Dict[str, bool]] = None,
         cid_cache: Optional[Dict[str, List[str]]] = None,
+        binder_combo_pieces: Optional[Set[str]] = None,
+        max_salt: float = 1.5,
     ) -> List[Dict[str, Any]]:
         """
         Scans the user's entire inventory to discover the strongest buff candidates matching
@@ -1418,6 +1706,7 @@ class DualTierUpgradeEngine:
         """
         binder_swaps = []
         curated_names_set = {strip_accents(s["name"]).lower() for s in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES}
+        combo_pieces = binder_combo_pieces or set()
 
         inventory_by_name: Dict[str, List[UserInventoryCard]] = {}
         for ic in user_inventory:
@@ -1461,11 +1750,7 @@ class DualTierUpgradeEngine:
             }
             classification = self.classifier.classify(card_dict)
 
-            score = 0.0
-            reasons = []
-            category = "Binder Upgrade"
-
-            # 1. EDHREC synergy and inclusion
+            # EDHREC synergy and inclusion
             syn_info = edhrec_synergies.get(clean_name)
             if not syn_info and " // " in clean_name:
                 syn_info = edhrec_synergies.get(clean_name.split(" // ")[0].strip())
@@ -1473,99 +1758,52 @@ class DualTierUpgradeEngine:
             syn_pct = syn_info.get("synergy_percent", 0.0) if syn_info else round(syn * 100.0, 1)
             inc_pct = syn_info.get("inclusion_percent", 0.0) if syn_info else 0.0
             salt = top_salt_map.get(clean_name)
+            if salt is None and " // " in clean_name:
+                salt = top_salt_map.get(clean_name.split(" // ")[0].strip())
 
-            if syn_pct > 0:
-                score += (syn_pct * 0.7)
-                reasons.append(f"+{syn_pct}% EDHREC synergy")
-            if inc_pct > 0:
-                score += min(inc_pct * 0.3, 15.0)
-                if inc_pct >= 20:
-                    reasons.append(f"played in {inc_pct}% of decks")
+            # Combo piece check
+            clean_lower = clean_name.lower()
+            is_combo = bool(
+                clean_lower in combo_pieces
+                or strip_accents(card_name).lower() in combo_pieces
+                or (" // " in clean_lower and clean_lower.split(" // ")[0].strip() in combo_pieces)
+            )
 
-            if syn >= 0.50:
+            # Assign categorical role
+            dominant_engine = deck_strategy.get("dominant_engine")
+            card_enablers = classification.get("engine_enabler", [])
+            card_payoffs = classification.get("engine_payoff", [])
+            primary_type = deck_strategy.get("primary_type")
+
+            if is_combo:
+                category = "Combo Finisher"
+            elif syn >= 0.50:
                 category = "Signature Synergy"
             elif syn >= 0.25:
                 category = "High Synergy"
-
-            # 2. Engine & Archetype alignment
-            dominant_engine = deck_strategy.get("dominant_engine")
-            if dominant_engine:
-                card_enablers = classification.get("engine_enabler", [])
-                card_payoffs = classification.get("engine_payoff", [])
-                if dominant_engine in card_enablers or dominant_engine in card_payoffs:
-                    score += 35.0
-                    engine_label = deck_strategy.get("engine_label", dominant_engine.title())
-                    reasons.append(f"synergizes with deck's {engine_label} engine")
-                    if category == "Binder Upgrade":
-                        category = f"Engine Synergy ({engine_label})"
-
-            primary_type = deck_strategy.get("primary_type")
-            if primary_type and deck_strategy.get("is_typal"):
-                card_subtypes = classification.get("creature_subtypes", [])
-                oracle_lower = (primary_copy.oracle_text or "").lower()
-                if primary_type.lower() in [s.lower() for s in card_subtypes]:
-                    score += 30.0
-                    reasons.append(f"creature type {primary_type}")
-                    if category == "Binder Upgrade":
-                        category = f"Typal Buff ({primary_type})"
-                elif re.search(rf"\b{re.escape(primary_type.lower())}\b", oracle_lower):
-                    score += 25.0
-                    reasons.append(f"kindred support for {primary_type}")
-                    if category == "Binder Upgrade":
-                        category = f"Typal Support ({primary_type})"
-
-            if deck_strategy.get("has_poison") and any(k in (primary_copy.oracle_text or "").lower() for k in ["deathtouch", "toxic", "poison", "proliferate"]):
-                score += 30.0
-                reasons.append("triggers commander poison / counter win conditions")
-                if category == "Binder Upgrade":
-                    category = "Commander Synergy"
-
-            # 3. Deficit filling
-            if deck_strategy.get("draw_deficit") and (classification.get("is_draw") or classification.get("draw_type") == "engine"):
-                score += 25.0
-                reasons.append("fills deck's card draw deficit")
-                if category == "Binder Upgrade":
-                    category = "Card Advantage Engine"
-
-            if deck_strategy.get("ramp_deficit") and classification.get("is_ramp") and (primary_copy.cmc or 0) <= 2:
-                score += 22.0
-                reasons.append("efficient low-cost ramp acceleration")
-                if category == "Binder Upgrade":
-                    category = "Fast Ramp"
-
-            if deck_strategy.get("removal_deficit") and classification.get("is_targeted_removal"):
-                score += 20.0
-                reasons.append("efficient interaction to answer threats")
-                if category == "Binder Upgrade":
-                    category = "Targeted Removal"
-
-            if deck_strategy.get("wipe_deficit") and classification.get("is_board_wipe"):
-                score += 22.0
-                reasons.append("board sweeper protection")
-                if category == "Binder Upgrade":
-                    category = "Board Wipe"
-
-            if classification.get("wincon_tags"):
-                score += 28.0
-                reasons.append("high-impact game-ending finisher")
-                if category == "Binder Upgrade":
-                    category = "Finisher / Win-Con"
-
-            if clean_name in curated_names_set:
-                score += 20.0
-                reasons.append("top-tier Commander staple")
-                if category == "Binder Upgrade":
-                    category = "Power Staple"
-
-            price = primary_copy.price_usd or 0.0
-            if price >= 15.0:
-                score += 15.0
-                reasons.append("high-impact card in collection")
-            elif price >= 5.0:
-                score += 8.0
-
-            if score < 18.0 and syn < 0.20:
-                continue
+            elif dominant_engine and (dominant_engine in card_enablers or dominant_engine in card_payoffs):
+                engine_label = deck_strategy.get("engine_label", dominant_engine.title())
+                category = f"Engine Synergy ({engine_label})"
+            elif deck_strategy.get("draw_deficit") and (classification.get("is_draw") or classification.get("draw_type") == "engine"):
+                category = "Card Advantage Engine"
+            elif deck_strategy.get("ramp_deficit") and classification.get("is_ramp") and (primary_copy.cmc or 0) <= 2:
+                category = "Fast Ramp"
+            elif deck_strategy.get("removal_deficit") and classification.get("is_targeted_removal"):
+                category = "Targeted Removal"
+            elif deck_strategy.get("wipe_deficit") and classification.get("is_board_wipe"):
+                category = "Board Wipe"
+            elif deck_strategy.get("is_typal") and primary_type and (primary_type.lower() in [s.lower() for s in classification.get("creature_subtypes", [])]):
+                category = f"Typal Buff ({primary_type})"
+            elif deck_strategy.get("is_typal") and primary_type and re.search(rf"\b{re.escape(primary_type.lower())}\b", (primary_copy.oracle_text or "").lower()):
+                category = f"Typal Support ({primary_type})"
+            elif deck_strategy.get("has_poison") and any(k in (primary_copy.oracle_text or "").lower() for k in ["deathtouch", "toxic", "poison", "proliferate"]):
+                category = "Commander Synergy"
+            elif classification.get("wincon_tags"):
+                category = "Finisher / Win-Con"
+            elif clean_name in curated_names_set:
+                category = "Power Staple"
+            else:
+                category = "Binder Upgrade"
 
             alloc_key = clean_name
             if alloc_key not in allocations and " // " in alloc_key:
@@ -1577,10 +1815,31 @@ class DualTierUpgradeEngine:
 
             matched_cut = self._find_best_cut(cut_candidates, category, used_cuts=assigned_cuts)
             cut_name = matched_cut["name"] if isinstance(matched_cut, dict) else matched_cut
+            cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+            cut_type_val = matched_cut.get("type_line") if isinstance(matched_cut, dict) else None
+
+            score, reasons = self._calculate_strategic_score(
+                card_name=card_name,
+                classification=classification,
+                synergy=syn,
+                synergy_percent=syn_pct,
+                inclusion_percent=inc_pct,
+                deck_strategy=deck_strategy,
+                staple_rating=9.3 if clean_name in curated_names_set else None,
+                is_curated_staple=(clean_name in curated_names_set),
+                is_combo_piece=is_combo,
+                price_usd=primary_copy.price_usd,
+                cmc=primary_copy.cmc or 0,
+                cut_cmc=cut_cmc_val,
+                is_binder_scan=True,
+            )
+
+            if not reasons or (score < 28.0 and syn < 0.15 and not is_combo):
+                continue
 
             rationale_text = f"Upgrade into {card_name} from your binder: {', '.join(reasons[:2])}. Replaces {cut_name}." if reasons else f"Recommended upgrade from your binder into {card_name}, replacing {cut_name}."
 
-            impact = "High" if (score >= 35 or syn >= 0.25) else "Medium"
+            impact = "High" if (is_combo or score >= 45.0 or syn >= 0.25) else "Medium"
 
             binder_swaps.append({
                 "card_in": card_name,
@@ -1593,15 +1852,16 @@ class DualTierUpgradeEngine:
                 "card_in_condition": primary_copy.condition or "Near Mint",
                 "card_in_price": primary_copy.price_usd,
                 "card_out": cut_name,
-                "card_out_cmc": matched_cut.get("cmc") if isinstance(matched_cut, dict) else None,
-                "card_out_type": matched_cut.get("type_line") if isinstance(matched_cut, dict) else None,
+                "card_out_cmc": cut_cmc_val,
+                "card_out_type": cut_type_val,
                 "category": category,
                 "estimated_impact": impact,
                 "synergy": syn,
                 "synergy_percent": syn_pct,
                 "inclusion_percent": inc_pct,
                 "salt_score": salt,
-                "strategic_score": round(score, 1),
+                "is_salty": bool(salt is not None and salt >= max_salt),
+                "strategic_score": score,
                 "rationale": rationale_text,
                 "is_owned": True,
                 "total_owned": total_owned,
@@ -1672,11 +1932,16 @@ class DualTierUpgradeEngine:
         if not cut_candidates:
             return {"name": "Suboptimal Slotted Card", "cmc": 3, "type_line": "Card"}
 
-        if used_cuts is None:
-            used_cuts = set()
+        record_used = used_cuts is not None
+        check_set = used_cuts if record_used else set()
 
         def _available(cand):
-            return cand.get("name", "").strip().lower() not in used_cuts
+            return cand.get("name", "").strip().lower() not in check_set
+
+        def _mark(cand):
+            if record_used:
+                used_cuts.add(cand.get("name", "").strip().lower())
+            return cand
 
         target_lower = (target_role_or_category or "").lower()
 
@@ -1684,8 +1949,7 @@ class DualTierUpgradeEngine:
         if "land" in target_lower or "mana base" in target_lower:
             for c in cut_candidates:
                 if _available(c) and "land" in (c.get("type_line") or "").lower():
-                    used_cuts.add(c.get("name", "").strip().lower())
-                    return c
+                    return _mark(c)
 
         # 2. Ramp / Rocks
         elif any(k in target_lower for k in ["ramp", "rock", "velocity"]):
@@ -1694,8 +1958,7 @@ class DualTierUpgradeEngine:
                     (c.get("cmc", 0) >= 3 and "artifact" in (c.get("type_line") or "").lower())
                     or c.get("rating", 7.0) <= 6.0
                 ):
-                    used_cuts.add(c.get("name", "").strip().lower())
-                    return c
+                    return _mark(c)
 
         # 3. Card Draw / Advantage
         elif any(k in target_lower for k in ["draw", "card advantage", "cantrip"]):
@@ -1703,8 +1966,7 @@ class DualTierUpgradeEngine:
                 if _available(c) and not c.get("is_basic") and (
                     c.get("rating", 7.0) <= 6.0 or (c.get("cmc", 0) >= 4 and "creature" in (c.get("type_line") or "").lower())
                 ):
-                    used_cuts.add(c.get("name", "").strip().lower())
-                    return c
+                    return _mark(c)
 
         # 4. Removal / Interaction
         elif any(k in target_lower for k in ["removal", "interaction", "counterspell", "protection"]):
@@ -1712,32 +1974,50 @@ class DualTierUpgradeEngine:
                 if _available(c) and not c.get("is_basic") and (
                     (c.get("cmc", 0) >= 3 and c.get("rating", 7.0) <= 6.5) or c.get("rating", 7.0) <= 5.5
                 ):
-                    used_cuts.add(c.get("name", "").strip().lower())
-                    return c
+                    return _mark(c)
 
         # 5. Finishers / High Impact
         elif any(k in target_lower for k in ["finisher", "win-con", "overrun"]):
             for c in cut_candidates:
                 if _available(c) and not c.get("is_basic") and c.get("cmc", 0) >= 4 and c.get("rating", 7.0) <= 6.5:
-                    used_cuts.add(c.get("name", "").strip().lower())
-                    return c
+                    return _mark(c)
 
         # Next check any non-basic candidate not yet assigned
         for c in cut_candidates:
             if _available(c) and not c.get("is_basic"):
-                used_cuts.add(c.get("name", "").strip().lower())
-                return c
+                return _mark(c)
 
         # If only basics left, check any candidate
         for c in cut_candidates:
             if _available(c):
-                used_cuts.add(c.get("name", "").strip().lower())
-                return c
+                return _mark(c)
 
-        # Fallback if all cut candidates have been allocated at least once
-        c = cut_candidates[0]
-        used_cuts.add(c.get("name", "").strip().lower())
-        return c
+        # Fallback if all cut candidates have been allocated at least once:
+        # Match by role across all candidates, otherwise pick lowest rated non-basic
+        if "land" in target_lower or "mana base" in target_lower:
+            for c in cut_candidates:
+                if "land" in (c.get("type_line") or "").lower():
+                    return _mark(c)
+        elif any(k in target_lower for k in ["ramp", "rock", "velocity"]):
+            for c in cut_candidates:
+                if not c.get("is_basic") and ((c.get("cmc", 0) >= 3 and "artifact" in (c.get("type_line") or "").lower()) or c.get("rating", 7.0) <= 6.0):
+                    return _mark(c)
+        elif any(k in target_lower for k in ["draw", "card advantage", "cantrip"]):
+            for c in cut_candidates:
+                if not c.get("is_basic") and (c.get("rating", 7.0) <= 6.0 or (c.get("cmc", 0) >= 4 and "creature" in (c.get("type_line") or "").lower())):
+                    return _mark(c)
+        elif any(k in target_lower for k in ["removal", "interaction", "counterspell", "protection"]):
+            for c in cut_candidates:
+                if not c.get("is_basic") and ((c.get("cmc", 0) >= 3 and c.get("rating", 7.0) <= 6.5) or c.get("rating", 7.0) <= 5.5):
+                    return _mark(c)
+
+        # Otherwise pick the lowest rated non-basic candidate
+        non_basics = [c for c in cut_candidates if not c.get("is_basic")]
+        if non_basics:
+            lowest = min(non_basics, key=lambda x: (x.get("rating", 7.0), -x.get("cmc", 0.0)))
+            return _mark(lowest)
+
+        return _mark(cut_candidates[0])
 
     @staticmethod
     def generate_manabox_wishlist_export(acquisitions: List[Dict[str, Any]], format_type: str = "csv") -> str:

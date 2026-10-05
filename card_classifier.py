@@ -23,6 +23,8 @@ class MTGCardClassifier:
     """Classifies MTG cards into functional EDH archetypes and roles based on oracle text, types, and CMC."""
 
     def __init__(self):
+        self._classification_cache: Dict[Tuple[str, str, str, float, str], Dict[str, Any]] = {}
+
         # 1. Ramp Patterns
         self.re_mana_dork_rock = re.compile(
             r"(?:add\s+(?:\{[WUBRGC0-9X\/\s]+\}|one\s+mana|mana\s+of\s+any|two\s+mana))",
@@ -273,7 +275,18 @@ class MTGCardClassifier:
 
     def classify(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
         """Classifies an individual MTG card into comprehensive roles and telemetry categories."""
+        card_name = str(card_data.get("name") or "").strip().lower()
         oracle_text, type_line, cmc = self.extract_text_and_types(card_data)
+
+        mana_cost = card_data.get("mana_cost", "")
+        if not mana_cost and "card_faces" in card_data and card_data["card_faces"]:
+            mana_cost = " // ".join([face.get("mana_cost", "") for face in card_data["card_faces"] if face.get("mana_cost")])
+
+        cache_key = (card_name, type_line, oracle_text, cmc, mana_cost)
+        cached = self._classification_cache.get(cache_key)
+        if cached is not None:
+            return {k: (v.copy() if isinstance(v, list) else v) for k, v in cached.items()}
+
         oracle_lower = oracle_text.lower()
         type_line_lower = type_line.lower()
         is_land = "land" in type_line_lower
@@ -284,10 +297,6 @@ class MTGCardClassifier:
         is_instant = "instant" in type_line_lower
         is_sorcery = "sorcery" in type_line_lower
         is_permanent = is_creature or is_artifact or is_enchantment or is_planeswalker or "battle" in type_line_lower
-
-        mana_cost = card_data.get("mana_cost", "")
-        if not mana_cost and "card_faces" in card_data and card_data["card_faces"]:
-            mana_cost = " // ".join([face.get("mana_cost", "") for face in card_data["card_faces"] if face.get("mana_cost")])
 
         tags: List[str] = []
         threat_targets: List[str] = []
@@ -512,4 +521,6 @@ class MTGCardClassifier:
             tags.append("Mana Sink")
 
         result["tags"] = sorted(list(set(tags)))
-        return result
+        if len(self._classification_cache) < 8192:
+            self._classification_cache[cache_key] = result
+        return {k: (v.copy() if isinstance(v, list) else v) for k, v in result.items()}

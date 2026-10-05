@@ -11,6 +11,7 @@ from inventory_parser import ManaBoxInventoryParser, InventoryParseError
 from inventory_manager import InventoryManager
 from deck_upgrade_engine import DualTierUpgradeEngine, COMMANDER_BANNED_CARDS, CURATED_UPGRADES
 from providers.scryfall import ScryfallProvider
+from card_classifier import MTGCardClassifier
 
 
 class InventoryAndUpgradeTestSuite(unittest.TestCase):
@@ -1108,6 +1109,210 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
             self.assertFalse(swaps[0]["already_allocated"])
             self.assertEqual(swaps[1]["card_in"], "Heroic Intervention")
             self.assertTrue(swaps[1]["already_allocated"])
+
+    def test_colorless_mana_cost_legality_without_scryfall(self):
+        """Tests that colorless mana costs (e.g. {1}, {2}, {C}) are recognized as color-legal without external API."""
+        engine = DualTierUpgradeEngine()
+        # In mono-green deck: {1} and {2} should be legal
+        self.assertTrue(engine._is_color_legal("Sol Ring", {"G"}, card_cid=None, mana_cost="{1}"))
+        self.assertTrue(engine._is_color_legal("Mind Stone", {"G"}, card_cid=None, mana_cost="{2}"))
+        # In colorless deck: {1} and {C} should be legal
+        self.assertTrue(engine._is_color_legal("Sol Ring", set(), card_cid=None, mana_cost="{1}"))
+        self.assertTrue(engine._is_color_legal("Warping Wail", set(), card_cid=None, mana_cost="{1}{C}"))
+        # In mono-green deck: {U}{U} should be illegal
+        self.assertFalse(engine._is_color_legal("Counterspell", {"G"}, card_cid=None, mana_cost="{U}{U}"))
+
+    def test_shopping_list_independent_cuts(self):
+        """Verifies that shopping list items have independent cut matching and include card_out metadata."""
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({}, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            cards = [
+                {"name": "Ghalta, Primal Hunger", "section": "commander", "color_identity": ["G"], "type_line": "Legendary Creature", "cmc": 12.0},
+                {"name": "Llanowar Elves", "quantity": 1, "cmc": 1.0, "type_line": "Creature — Elf Druid", "color_identity": ["G"], "rating": 6.5},
+                {"name": "Naturalize", "quantity": 1, "cmc": 2.0, "type_line": "Instant", "color_identity": ["G"], "rating": 5.0},
+                {"name": "Colossal Dreadmaw", "quantity": 1, "cmc": 6.0, "type_line": "Creature — Dinosaur", "color_identity": ["G"], "rating": 4.0},
+            ]
+            for i in range(96):
+                cards.append({"name": f"Forest {i}", "quantity": 1, "cmc": 0.0, "type_line": "Basic Land", "color_identity": ["G"]})
+
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Mono Green Stompy",
+                commander_name="Ghalta, Primal Hunger",
+                color_identity="G",
+                cards_data=json.dumps(cards),
+                total_cards=100
+            )
+            db.session.add(deck)
+            db.session.commit()
+
+            ai_analysis = {
+                "upgrades": [
+                    {"card_in": "Beast Within", "category": "Removal", "estimated_impact": "High", "color_identity": ["G"], "card_in_cmc": 3.0},
+                    {"card_in": "Sylvan Library", "category": "Card Draw", "estimated_impact": "High", "color_identity": ["G"], "card_in_cmc": 2.0},
+                ]
+            }
+
+            results = engine.generate_upgrades(
+                deck=deck,
+                user_inventory=[],
+                allocations={},
+                ai_analysis=ai_analysis,
+            )
+
+            shopping_cards = results["all_shopping_cards"]
+            self.assertGreaterEqual(len(shopping_cards), 2)
+            # Verify card_out_cmc and card_out_type are populated
+            for item in shopping_cards:
+                self.assertIsNotNone(item.get("card_out"))
+                self.assertIn("card_out_cmc", item)
+                self.assertIn("card_out_type", item)
+
+    def test_anti_salt_filters_owned_binder_swaps(self):
+        """Verifies that anti_salt=True removes high salt cards from owned_swaps."""
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({}, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            winter_orb = UserInventoryCard(
+                user_id=user.id,
+                name="Winter Orb",
+                color_identity="",
+                quantity=1,
+                mana_cost="{2}",
+                cmc=2.0,
+                type_line="Artifact",
+                price_usd=15.00
+            )
+            sol_ring = UserInventoryCard(
+                user_id=user.id,
+                name="Sol Ring",
+                color_identity="",
+                quantity=1,
+                mana_cost="{1}",
+                cmc=1.0,
+                type_line="Artifact",
+                price_usd=1.50
+            )
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Mono Green Stompy",
+                commander_name="Ghalta, Primal Hunger",
+                color_identity="G",
+                cards_data=json.dumps([
+                    {"name": "Ghalta, Primal Hunger", "section": "commander", "color_identity": ["G"]},
+                    {"name": "Forest", "quantity": 99, "type_line": "Basic Land"}
+                ]),
+                total_cards=100
+            )
+            db.session.add_all([winter_orb, sol_ring, deck])
+            db.session.commit()
+
+            edhrec_data = {
+                "top_salt_map": {
+                    "winter orb": 2.45,
+                    "sol ring": 0.35,
+                }
+            }
+
+            # With anti_salt=True and max_salt=1.5
+            results = engine.generate_upgrades(
+                deck=deck,
+                user_inventory=[winter_orb, sol_ring],
+                allocations={},
+                edhrec_data=edhrec_data,
+                anti_salt=True,
+                max_salt=1.5,
+            )
+
+            owned_names = [u["card_in"] for u in results["owned_swaps"]]
+            self.assertIn("Sol Ring", owned_names)
+            self.assertNotIn("Winter Orb", owned_names)
+
+    def test_combo_piece_prioritization_in_binder(self):
+        """Verifies that an owned card completing a Spellbook combo is tagged as Combo Finisher with +20 score bonus."""
+        user = self.login_as()
+        mock_scryfall = MagicMock(spec=ScryfallProvider)
+        mock_scryfall.get_cards_collection.return_value = ({}, [])
+        engine = DualTierUpgradeEngine(scryfall_provider=mock_scryfall)
+
+        with self.app.app_context():
+            # Inventory has Peregrine Drake
+            drake = UserInventoryCard(
+                user_id=user.id,
+                name="Peregrine Drake",
+                color_identity="U",
+                quantity=1,
+                mana_cost="{4}{U}",
+                cmc=5.0,
+                type_line="Creature — Drake",
+                price_usd=3.00
+            )
+            # Deck has Deadeye Navigator
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Mono Blue Blink",
+                commander_name="Urza, Lord High Artificer",
+                color_identity="U",
+                cards_data=json.dumps([
+                    {"name": "Urza, Lord High Artificer", "section": "commander", "color_identity": ["U"]},
+                    {"name": "Deadeye Navigator", "quantity": 1, "cmc": 6.0, "color_identity": ["U"], "type_line": "Creature — Spirit"},
+                    {"name": "Island", "quantity": 98, "cmc": 0.0, "type_line": "Basic Land"},
+                ]),
+                total_cards=100
+            )
+            db.session.add_all([drake, deck])
+            db.session.commit()
+
+            # Spellbook combo: Deadeye Navigator + Peregrine Drake = Infinite Mana
+            edhrec_data = {
+                "combos": [
+                    {
+                        "combo_name": "Deadeye Drake",
+                        "card_names": ["Deadeye Navigator", "Peregrine Drake"],
+                        "description": "Infinite mana and ETB triggers",
+                    }
+                ]
+            }
+
+            results = engine.generate_upgrades(
+                deck=deck,
+                user_inventory=[drake],
+                allocations={},
+                edhrec_data=edhrec_data,
+            )
+
+            owned_names = [u["card_in"] for u in results["owned_swaps"]]
+            self.assertIn("Peregrine Drake", owned_names)
+            drake_swap = next(u for u in results["owned_swaps"] if u["card_in"] == "Peregrine Drake")
+            self.assertEqual(drake_swap.get("category"), "Combo Finisher")
+            self.assertEqual(drake_swap.get("estimated_impact"), "High")
+            self.assertGreaterEqual(drake_swap.get("strategic_score", 0), 35.0)
+
+    def test_classifier_memoization_cache(self):
+        """Verifies that MTGCardClassifier caches classification results."""
+        classifier = MTGCardClassifier()
+        card_data = {
+            "name": "Beast Within",
+            "type_line": "Instant",
+            "oracle_text": "Destroy target permanent. Its controller creates a 3/3 green Beast creature token.",
+            "cmc": 3.0,
+            "mana_cost": "{2}{G}",
+        }
+        res1 = classifier.classify(card_data)
+        self.assertTrue(res1.get("is_targeted_removal"))
+
+        # Verify cached result
+        cache_key = (card_data["name"].lower().strip(), "Instant", card_data["oracle_text"], 3.0, "{2}{G}")
+        self.assertIn(cache_key, classifier._classification_cache)
+        res2 = classifier.classify(card_data)
+        self.assertEqual(res1, res2)
 
 
 if __name__ == "__main__":

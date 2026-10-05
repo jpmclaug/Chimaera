@@ -4153,6 +4153,7 @@ def create_app(test_config=None):
                 suite_result = card_add_evaluator.evaluate_secret_lair_suite(
                     url_or_text=url_or_text,
                     decks=deck_payloads,
+                    use_gemini=use_gemini,
                     custom_instructions=custom_instructions,
                     model=model,
                     api_key=effective_key,

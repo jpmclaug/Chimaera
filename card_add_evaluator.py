@@ -464,25 +464,42 @@ class CardAddEvaluator:
         pacing = deck_stats.get("pacing") or {}
         velocity = deck_stats.get("velocity") or {}
 
+        # Resolve counts from top-level deck_stats with fallback to nested pacing/velocity (mock compatibility)
+        def _stat_val(primary_key: str, fallback_dict: dict, fallback_key: str) -> int:
+            val = deck_stats.get(primary_key)
+            if val is None:
+                val = fallback_dict.get(fallback_key, 0)
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return 0
+
+        draw_engines = _stat_val("draw_engine_count", pacing, "draw_engine_count")
+        draw_total = _stat_val("total_draw_count", pacing, "draw_total")
+        fast_ramp = _stat_val("fast_ramp_count", velocity, "fast_ramp_count")
+        ramp_total = _stat_val("total_ramp_count", velocity, "ramp_count")
+        targeted_removal = _stat_val("targeted_removal_count", pacing, "targeted_removal_count")
+        board_wipes = _stat_val("board_wipe_count", pacing, "board_wipe_count")
+
         # Draw deficit
-        if (pacing.get("draw_engine_count", 0) < 5 or pacing.get("draw_total", 0) < 8) and (
+        if (draw_engines < 5 or draw_total < 8) and (
             classification.get("is_draw") or classification.get("draw_type") == "engine"
         ):
             score += 15.0
             reasons.append("fills deck's card draw deficit")
 
         # Ramp deficit
-        if (velocity.get("fast_ramp_count", 0) < 5 or velocity.get("ramp_count", 0) < 9) and classification.get("is_ramp"):
+        if (fast_ramp < 5 or ramp_total < 9) and classification.get("is_ramp"):
             score += 15.0
             reasons.append("enhances early mana acceleration")
 
         # Removal deficit
-        if (pacing.get("targeted_removal_count", 0) < 6) and classification.get("is_targeted_removal"):
+        if (targeted_removal < 6) and classification.get("is_targeted_removal"):
             score += 12.0
             reasons.append("fills instant-speed interaction gap")
 
         # Board Wipe deficit
-        if (pacing.get("board_wipe_count", 0) < 2) and classification.get("is_board_wipe"):
+        if (board_wipes < 2) and classification.get("is_board_wipe"):
             score += 12.0
             reasons.append("provides essential board sweeper reset")
 
@@ -1083,6 +1100,7 @@ class CardAddEvaluator:
         self,
         url_or_text: str,
         decks: list[dict],
+        use_gemini: bool = True,
         custom_instructions: str = "",
         model: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -1096,7 +1114,7 @@ class CardAddEvaluator:
 
         # 1. Fetch & Parse announcement
         announcement = self.scraper.fetch_announcement(url_or_text)
-        drops, bundles = self.scraper.parse_drops(announcement["text"], api_key=effective_key, html=announcement.get("html"))
+        drops, bundles = self.scraper.parse_drops(announcement["text"], api_key=effective_key if use_gemini else None, html=announcement.get("html"))
         if not drops:
             raise ValueError("No Secret Lair drops or cards could be parsed from the provided announcement.")
 
@@ -1112,24 +1130,30 @@ class CardAddEvaluator:
                 card_item["from_drop"] = d_name
                 all_drop_cards.append(card_item)
 
-        # 4. Dispatch to Gemini Fleet Synergy Advisor
-        advisor = SecretLairGeminiAdvisor(api_key=effective_key, model=model)
-        fleet_analysis = advisor.analyze_fleet_synergy(
-            superdrop_title=announcement["title"],
-            drops=enriched_drops,
-            bundles=bundles,
-            commander_decks=decks,
-            custom_instructions=custom_instructions,
-        )
+        # 4. Dispatch to Gemini Fleet Synergy Advisor if enabled
+        fleet_analysis = {}
+        if use_gemini and effective_key:
+            try:
+                advisor = SecretLairGeminiAdvisor(api_key=effective_key, model=model)
+                fleet_analysis = advisor.analyze_fleet_synergy(
+                    superdrop_title=announcement["title"],
+                    drops=enriched_drops,
+                    bundles=bundles,
+                    commander_decks=decks,
+                    custom_instructions=custom_instructions,
+                )
+            except Exception as e:
+                logger.warning(f"Secret Lair Gemini fleet synergy analysis skipped or failed: {e}")
+                fleet_analysis = {}
 
         # 5. Build unified Card Matrix from drops
         card_matrix_result = self.evaluate_cards_suite(
             cards=all_drop_cards,
             decks=decks,
-            use_gemini=False,  # Already analyzed via fleet_analysis
+            use_gemini=False,  # Evaluated above or via algorithmic matrix
         )
 
-        # Overlay fleet_analysis deck breakdowns into card matrix
+        # Overlay fleet_analysis deck breakdowns into card matrix if available
         ai_deck_cards_map: dict[str, dict] = {}
         for db_entry in fleet_analysis.get("deck_breakdowns", []):
             did = db_entry.get("deck_id")
@@ -1156,6 +1180,8 @@ class CardAddEvaluator:
             cm["deck_recommendations"].sort(key=lambda x: -x["synergy_rating"])
             cm["best_fit_deck"] = cm["deck_recommendations"][0]["deck_name"] if cm["deck_recommendations"] else None
 
+        model_used = fleet_analysis.get("_model_used", model or "gemini-3.8-flash") if use_gemini else "algorithmic-fast-engine"
+
         return {
             "mode": "secret_lair",
             "title": announcement["title"],
@@ -1165,9 +1191,9 @@ class CardAddEvaluator:
             "bundles": bundles,
             "fleet_analysis": fleet_analysis,
             "card_matrix": card_matrix_result.get("card_matrix", []),
-            "deck_breakdowns": fleet_analysis.get("deck_breakdowns", []),
+            "deck_breakdowns": fleet_analysis.get("deck_breakdowns", []) or card_matrix_result.get("deck_breakdowns", []),
             "best_drops_to_buy": fleet_analysis.get("best_drops_to_buy", []),
             "bundle_analysis": fleet_analysis.get("bundle_analysis", {}),
             "new_commander_opportunities": fleet_analysis.get("new_commander_opportunities", []),
-            "_model_used": fleet_analysis.get("_model_used", model or "gemini-3.8-flash"),
+            "_model_used": model_used,
         }
