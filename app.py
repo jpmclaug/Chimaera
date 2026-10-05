@@ -1065,6 +1065,7 @@ def create_app(test_config=None):
                 return redirect(url_for("access_denied", email=email, suspended="1"))
 
             # Establish Session
+            session.permanent = True
             session["user_id"] = user.id
             session["user_email"] = user.email
             session["is_admin"] = user.is_admin
@@ -1130,6 +1131,7 @@ def create_app(test_config=None):
             )
             return redirect(url_for("access_denied", email=email, suspended="1")) if not request.is_json else (jsonify({"error": "Account suspended."}), 403)
 
+        session.permanent = True
         session["user_id"] = user.id
         session["user_email"] = user.email
         session["is_admin"] = user.is_admin

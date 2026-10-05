@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,6 +9,8 @@ class Config:
     """Application configuration for Chimera MTG Market Tracker."""
 
     SECRET_KEY = os.getenv("SECRET_KEY", "chimera-dev-secret-key-mtg")
+    PERMANENT_SESSION_LIFETIME = timedelta(days=30)
+
 
     # Neon Postgres connection string (e.g. postgresql://... or postgresql+psycopg://...)
     # Standardize scheme and ensure driver compatibility (psycopg v3 vs psycopg2)
