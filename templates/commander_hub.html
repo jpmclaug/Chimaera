@@ -19,47 +19,16 @@
                             <span>Commander Deck Vault</span>
                             <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold tracking-widest uppercase">Overview & Compare</span>
                         </h1>
-                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">ManaBox Deck Ingestion &bull; Live Pricing Telemetry &bull; Side-by-Side Comparison &bull; Analytics &bull; Google Gemini AI Evaluation</p>
+                        <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5 break-words">Manage and analyze your Commander fleet.</p>
                     </div>
                 </div>
             </div>
 
             <!-- View Switcher & Action Controls -->
             <div class="flex flex-wrap items-center gap-2">
-                <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex items-center flex-nowrap overflow-x-auto no-scrollbar gap-0.5">
-                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Deck Vault (Grid & Table)">
-                        <span class="sm:hidden">🛸 Vault</span><span class="hidden sm:inline">🛸 Deck Vault</span>
-                        <span id="savedDecksCount" class="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
-                    </button>
-                    <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="hidden px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Inspect Selected Deck">
-                        <span>🔍 Inspector</span>
-                        <span id="inspectorActiveNameBadge" class="hidden text-[10px] text-cyan-300 font-normal truncate max-w-[85px]"></span>
-                    </button>
-                    <button id="viewCompareBtn" onclick="switchMainView('compare')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap" title="Head-to-Head Comparison">
-                        <span class="sm:hidden">⚔️ H2H</span><span class="hidden sm:inline">⚔️ Head-to-Head</span>
-                        <span id="compareCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-mono">0</span>
-                    </button>
-                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex-shrink-0 whitespace-nowrap" title="Analytics & Distributions">
-                        <span class="sm:hidden">📈 Stats</span><span class="hidden sm:inline">📈 Analytics</span>
-                    </button>
-                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-3 py-1.5 rounded-md text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center gap-1 flex-shrink-0 whitespace-nowrap" title="Import New Deck">
-                        <span class="sm:hidden">➕ Import</span><span class="hidden sm:inline">➕ Import Deck</span>
-                    </button>
-                </div>
-
                 <!-- Desktop Secondary Actions -->
                 <div class="hidden sm:flex items-center gap-2">
-                    <!-- Quick Deck Selector -->
-                    <div class="relative flex items-center">
-                        <select id="quickDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
-                                class="bg-[#1B2230] hover:bg-slate-800 border border-slate-700 hover:border-cyan-500/50 focus:border-cyan-400 rounded-lg px-2 sm:px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[170px] sm:max-w-[210px] truncate"
-                                title="Quick Switch Deck">
-                            <option value="">⚡ Quick Select Deck...</option>
-                            {% for d in recent_decks %}
-                            <option value="{{ d.id }}">{{ d.deck_name }}{% if d.commander_name %} ({{ d.commander_name }}){% endif %}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
+                    
 
                     <a href="/system-overview#commander-stats" class="px-2.5 sm:px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm" title="View Commander Statistical Telemetry & EDH Analytics Field Manual">
                         <svg class="w-3.5 h-3.5 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,9 +82,9 @@
 <div id="deckVaultView" style="display:block;" class="space-y-4 block">
         
         <!-- Aggregate KPI Strip -->
-        <div class="flex sm:grid sm:grid-cols-3 lg:grid-cols-5 gap-3.5 overflow-x-auto sm:overflow-visible no-scrollbar snap-x snap-mandatory sm:snap-none pb-1 sm:pb-0">
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 pb-1">
             <!-- 1. Arsenal Count -->
-            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="arsenal_fleet">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition " data-tooltip-key="arsenal_fleet">
                 <div class="flex items-center justify-between text-slate-400">
                     <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Arsenal <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,7 +98,7 @@
             </div>
 
             <!-- 2. Portfolio TCG Value -->
-            <div class="bg-[#10141D] border border-slate-800 hover:border-emerald-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="portfolio_value">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-emerald-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition " data-tooltip-key="portfolio_value">
                 <div class="flex items-center justify-between text-slate-400">
                     <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Portfolio Value <span class="text-emerald-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -143,7 +112,7 @@
             </div>
 
             <!-- 3. Power -->
-            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="fleet_power">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition " data-tooltip-key="fleet_power">
                 <div class="flex items-center justify-between text-slate-400">
                     <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Power <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -168,7 +137,7 @@
             </div>
 
             <!-- 4. Speed (Avg CMC) -->
-            <div class="bg-[#10141D] border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="fleet_speed">
+            <div class="bg-[#10141D] border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition " data-tooltip-key="fleet_speed">
                 <div class="flex items-center justify-between text-slate-400">
                     <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Speed <span class="text-amber-400 text-xs">ⓘ</span></span>
                     <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -182,7 +151,7 @@
             </div>
 
             <!-- 5. Color Saturation Wheel -->
-            <div class="sm:col-span-1 bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition snap-start min-w-[160px] flex-shrink-0 sm:flex-shrink sm:min-w-0" data-tooltip-key="color_wheel">
+            <div class="sm:col-span-1 bg-[#10141D] border border-slate-800 hover:border-cyan-500/50 rounded-xl p-4 shadow-xl flex flex-col justify-between cursor-help transition " data-tooltip-key="color_wheel">
                 <div class="flex items-center justify-between text-slate-400">
                     <span class="text-[10px] font-mono uppercase font-bold tracking-wider flex items-center gap-1">Color Wheel <span class="text-cyan-400 text-xs">ⓘ</span></span>
                     <span class="text-[9px] text-slate-500 font-mono">WUBRG</span>
@@ -252,26 +221,8 @@
                     </select>
                 </div>
 
-                <!-- View Mode Switcher: Grid vs Table -->
-                <div class="bg-[#1B2230] p-0.5 rounded-lg border border-slate-700 flex items-center flex-shrink-0">
-                    <button id="vaultModeGridBtn" type="button" onclick="switchVaultMode('grid')" class="px-2.5 py-1 text-xs font-mono rounded bg-cyan-500 text-slate-950 font-bold transition shadow-sm" title="Card Grid View">
-                        ⊞ Grid
-                    </button>
-                    <button id="vaultModeTableBtn" type="button" onclick="switchVaultMode('table')" class="px-2.5 py-1 text-xs font-mono rounded text-slate-400 hover:text-white transition" title="Comparative Matrix Table View">
-                        ☰ Table
-                    </button>
-                </div>
-
                 <!-- Table Specific Actions (shown when in Table mode) -->
-                <div id="tableActionControls" class="hidden flex items-center gap-1.5">
-                    <button type="button" onclick="toggleSelectAllDecks()" id="selectAllBtn" class="px-2 py-1 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">
-                        Select All
-                    </button>
-                    <button type="button" onclick="launchComparisonFromSelection()" id="launchCompareBtn" 
-                            class="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase shadow-md transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
-                        <span>⚔️ Compare (<span id="selectedCountText">0</span>)</span>
-                    </button>
-                </div>
+                
             </div>
         </div>
 
@@ -283,43 +234,6 @@
         </div>
 
         <!-- SUB-CONTAINER 1B: MATRIX TABLE -->
-        <div id="vaultTableContainer" class="hidden bg-[#10141D] border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse font-mono text-xs">
-                    <thead>
-                        <tr class="bg-[#0B0F17] text-slate-400 border-b border-slate-800 text-[11px] uppercase tracking-wider">
-                            <th class="py-3 px-3.5 w-10 text-center">
-                                <input type="checkbox" id="headerCheckbox" onchange="toggleSelectAllDecks()" class="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0">
-                            </th>
-                            <th class="py-3 px-4 cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('commander')" data-tooltip-key="commander_deck">Commander & Deck <span class="text-[10px] text-cyan-400">ⓘ</span></th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('colors')" data-tooltip-key="color_identity">Colors <span class="text-[10px] text-cyan-400">ⓘ</span></th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('power')" data-tooltip-key="power_level">Power <span class="text-[10px] text-cyan-400">ⓘ</span></th>
-                            <th class="py-3 px-4 text-right cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('value')" data-tooltip-key="tcg_value">TCG Value <span class="text-[10px] text-emerald-400">ⓘ</span></th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('cmc')" data-tooltip-key="amv">Avg CMC <span class="text-[10px] text-amber-400">ⓘ</span></th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('speed')" data-tooltip-key="speed_pacing">Speed & Pacing <span class="text-[10px] text-cyan-400">ⓘ</span></th>
-                            <th class="py-3 px-3 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('wincon')" data-tooltip-key="win_conditions">Win Path <span class="text-[10px] text-purple-400">ⓘ</span></th>
-                            <th class="py-3 px-4 text-center cursor-pointer hover:text-cyan-400" onclick="sortMatrixBy('composition')" data-tooltip-key="card_types">Lands / Spells <span class="text-[10px] text-blue-400">ⓘ</span></th>
-                            <th class="py-3 px-3 text-center" data-tooltip-key="ai_intel">AI Intel <span class="text-[10px] text-amber-400">ⓘ</span></th>
-                            <th class="py-3 px-4 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="matrixTableBody" class="divide-y divide-slate-800/60 text-slate-300">
-                        <!-- Injected dynamically by renderMatrixTable() -->
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Empty Matrix State -->
-            <div id="matrixEmptyState" class="hidden text-center py-16 px-4 bg-[#10141D]/40">
-                <div class="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-3">
-                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                </div>
-                <h4 class="text-base font-bold text-white font-mono uppercase tracking-wider">No Decks Match Filter Criteria</h4>
-                <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">Try clearing filters or search query to view your saved Commander decks.</p>
-                <button onclick="clearMatrixFilters()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-xs uppercase font-semibold rounded-lg transition">Clear Filters</button>
-            </div>
-        </div>
-
         <!-- Empty Vault State (Zero decks in database) -->
         <div id="vaultEmptyState" class="hidden text-center py-16 px-4 bg-[#10141D]/40 border border-slate-800/80 rounded-2xl">
             <div class="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-4">
@@ -358,7 +272,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const fleetStats = {{ fleet_stats|tojson|safe if fleet_stats else 'null' }};
     if (fleetStats && fleetStats.color_frequencies) {
         new Chart(document.getElementById('hubColorChart'), {
-            type: 'doughnut',
+            type: 'bar',
             data: {
                 labels: ['White', 'Blue', 'Black', 'Red', 'Green'],
                 datasets: [{
@@ -374,17 +288,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     borderWidth: 2
                 }]
             },
-            options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } } }
+            options: { responsive: true, plugins: { legend: { display: false } } }
         });
     }
     if (fleetStats && fleetStats.power_brackets) {
-        new Chart(document.getElementById('hubPowerChart'), {
-            type: 'bar',
-            data: {
-                labels: Object.keys(fleetStats.power_brackets),
-                datasets: [{
-                    label: 'Decks',
-                    data: Object.values(fleetStats.power_brackets),
+        let powerLabels = Object.keys(fleetStats.power_brackets).sort((a, b) => {
+                  let numA = parseInt(a.replace(/\D/g, '')) || 0;
+                  let numB = parseInt(b.replace(/\D/g, '')) || 0;
+                  return numA - numB;
+              });
+              let powerData = powerLabels.map(l => fleetStats.power_brackets[l]);
+              new Chart(document.getElementById('hubPowerChart'), {
+                  type: 'bar',
+                  data: {
+                      labels: powerLabels,
+                      datasets: [{
+                          label: 'Decks',
+                          data: powerData,
                     backgroundColor: '#22d3ee',
                     borderRadius: 4
                 }]
