@@ -257,16 +257,6 @@
                     </select>
                 </div>
 
-                <!-- View Mode Switcher: Grid vs Table -->
-                <div class="bg-[#1B2230] p-0.5 rounded-lg border border-slate-700 flex items-center flex-shrink-0">
-                    <button id="vaultModeGridBtn" type="button" onclick="switchVaultMode('grid')" class="px-2.5 py-1 text-xs font-mono rounded bg-cyan-500 text-slate-950 font-bold transition shadow-sm" title="Card Grid View">
-                        ⊞ Grid
-                    </button>
-                    <button id="vaultModeTableBtn" type="button" onclick="switchVaultMode('table')" class="px-2.5 py-1 text-xs font-mono rounded text-slate-400 hover:text-white transition" title="Comparative Matrix Table View">
-                        ☰ Table
-                    </button>
-                </div>
-
                 <!-- Table Specific Actions (shown when in Table mode) -->
                 <div id="tableActionControls" class="hidden flex items-center gap-1.5">
                     <button type="button" onclick="toggleSelectAllDecks()" id="selectAllBtn" class="px-2 py-1 rounded-lg bg-[#1B2230] hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono transition">
@@ -3178,21 +3168,15 @@ function renderVaultGrid(decks) {
                 </div>
 
                 <!-- Card Actions Footer -->
-                <div class="p-3 sm:p-4 pt-0 flex items-center justify-between gap-2 border-t border-slate-800/60 mt-2">
-                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="flex-1 px-3 py-2 bg-cyan-500/10 group-hover:bg-cyan-500 text-cyan-400 group-hover:text-slate-950 font-mono text-xs font-bold uppercase rounded-lg border border-cyan-500/30 group-hover:border-cyan-500 transition text-center flex items-center justify-center gap-1.5 cursor-pointer">
-                        <span>Select &amp; Inspect</span>
-                        <span>&rarr;</span>
+                <div class="p-3 sm:p-4 pt-0 grid grid-cols-3 gap-1.5 sm:gap-2 border-t border-slate-800/60 mt-2">
+                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="px-2 py-2 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-mono text-[11px] font-bold uppercase rounded-lg border border-cyan-500/30 hover:border-cyan-500 transition text-center flex items-center justify-center cursor-pointer" title="Deep-dive deck analysis">
+                        Analyze
                     </button>
-                    <button onclick="event.stopPropagation(); quickCompareWithFirst(${d.id})" title="Quick compare against Slot 1" class="hidden sm:inline-flex px-2.5 py-2 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded-lg border border-slate-700 transition cursor-pointer text-xs font-mono font-bold">
-                        VS
+                    <button onclick="event.stopPropagation(); quickCompareWithFirst(${d.id})" class="px-2 py-2 bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-slate-950 font-mono text-[11px] font-bold uppercase rounded-lg border border-purple-500/30 hover:border-purple-500 transition text-center flex items-center justify-center cursor-pointer" title="Head-to-head matchup comparison">
+                        Compare
                     </button>
-                    ${d.source_url ? `
-                    <button onclick="event.stopPropagation(); syncSavedDeck(${d.id})" title="Sync from ManaBox link" class="hidden sm:inline-flex p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition cursor-pointer">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    </button>
-                    ` : ''}
-                    <button onclick="event.stopPropagation(); handleDeleteDeckClick(${d.id})" title="Delete from vault" class="hidden sm:inline-flex p-2 bg-slate-800/60 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 rounded-lg border border-slate-800 transition cursor-pointer">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id}, 'upgrades')" class="px-2 py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 font-mono text-[11px] font-bold uppercase rounded-lg border border-emerald-500/30 hover:border-emerald-500 transition text-center flex items-center justify-center cursor-pointer" title="View deck upgrades & binder swaps">
+                        Upgrade
                     </button>
                 </div>
             </div>
