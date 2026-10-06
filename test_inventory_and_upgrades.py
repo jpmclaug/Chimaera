@@ -1314,6 +1314,78 @@ class InventoryAndUpgradeTestSuite(unittest.TestCase):
         res2 = classifier.classify(card_data)
         self.assertEqual(res1, res2)
 
+    def test_api_deck_upgrades_caching(self):
+        """Verifies that api_deck_upgrades caches results to entry.upgrades_json and returns cached response unless refresh=1."""
+        user = self.login_as()
+        with self.app.app_context():
+            deck = DeckAnalysis(
+                user_id=user.id,
+                deck_name="Cache Test Deck",
+                commander_name="Urza, Lord High Artificer",
+                cards_data=json.dumps([
+                    {"name": "Urza, Lord High Artificer", "section": "commander", "color_identity": ["U"]},
+                    {"name": "Island", "quantity": 99, "type_line": "Basic Land", "cmc": 0.0},
+                ]),
+                total_cards=100,
+            )
+            db.session.add(deck)
+            db.session.commit()
+            deck_id = deck.id
+
+        # First request without cached data generates and caches
+        resp1 = self.client.get(f"/api/deck/{deck_id}/upgrades")
+        self.assertEqual(resp1.status_code, 200)
+        data1 = resp1.get_json()
+        self.assertFalse(data1.get("cached"))
+
+        # Check DB has stored upgrades
+        with self.app.app_context():
+            saved_deck = db.session.get(DeckAnalysis, deck_id)
+            self.assertTrue(saved_deck.has_upgrades)
+            self.assertIsNotNone(saved_deck.upgrades_json)
+
+        # Second request without refresh returns cached payload
+        resp2 = self.client.get(f"/api/deck/{deck_id}/upgrades")
+        self.assertEqual(resp2.status_code, 200)
+        data2 = resp2.get_json()
+        self.assertTrue(data2.get("cached"))
+
+        # Request with refresh=1 forces regeneration
+        resp3 = self.client.get(f"/api/deck/{deck_id}/upgrades?refresh=1")
+        self.assertEqual(resp3.status_code, 200)
+        data3 = resp3.get_json()
+        self.assertFalse(data3.get("cached"))
+
+    def test_cut_recommendation_distribution(self):
+        """Verifies that _find_best_cut distributes cut suggestions across multiple cards rather than repeatedly cutting the same card."""
+        engine = DualTierUpgradeEngine()
+        deck_cards = [
+            {"name": "Bad Creature A", "type_line": "Creature", "cmc": 3.0, "section": "mainboard"},
+            {"name": "Bad Creature B", "type_line": "Creature", "cmc": 3.0, "section": "mainboard"},
+            {"name": "Bad Creature C", "type_line": "Creature", "cmc": 3.0, "section": "mainboard"},
+            {"name": "Island", "type_line": "Basic Land", "cmc": 0.0, "section": "mainboard"},
+        ]
+        used_cuts = {}
+
+        cut_candidates = engine._identify_cut_candidates(deck_cards)
+        cut1 = engine._find_best_cut(cut_candidates, "Creature", used_cuts=used_cuts)
+        self.assertIsNotNone(cut1)
+        used_cuts[cut1["name"].lower()] = used_cuts.get(cut1["name"].lower(), 0) + 1
+
+        cut2 = engine._find_best_cut(cut_candidates, "Creature", used_cuts=used_cuts)
+        self.assertIsNotNone(cut2)
+        used_cuts[cut2["name"].lower()] = used_cuts.get(cut2["name"].lower(), 0) + 1
+
+        cut3 = engine._find_best_cut(cut_candidates, "Creature", used_cuts=used_cuts)
+        self.assertIsNotNone(cut3)
+
+        # All 3 cuts should be distinct cards rather than repeating cut1 3 times
+        cuts = [cut1["name"], cut2["name"], cut3["name"]]
+        self.assertEqual(len(set(cuts)), 3)
+        self.assertIn("Bad Creature A", cuts)
+        self.assertIn("Bad Creature B", cuts)
+        self.assertIn("Bad Creature C", cuts)
+
 
 if __name__ == "__main__":
     unittest.main()

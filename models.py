@@ -1065,6 +1065,7 @@ class DeckAnalysis(db.Model):
     cards_data = db.Column(db.Text, nullable=True)  # JSON string of parsed cards + scryfall metadata
     stats_json = db.Column(db.Text, nullable=True)  # JSON string of pre-computed stats (curve, types, value)
     analysis_json = db.Column(db.Text, nullable=True)  # JSON string of Gemini analysis (nullable if pre-AI)
+    upgrades_json = db.Column(db.Text, nullable=True)  # JSON string of dual-tier upgrade recommendations & cuts
     model_used = db.Column(db.String(100), default="gemini-3.8-flash")
     power_level = db.Column(db.Float, nullable=True)
     power_bracket = db.Column(db.String(50), nullable=True)
@@ -1087,6 +1088,21 @@ class DeckAnalysis(db.Model):
     def has_ai_analysis(self) -> bool:
         """Returns True if Gemini analysis has been generated for this deck."""
         return bool(self.analysis_json and self.analysis_json.strip() and self.analysis_json.strip() != "{}")
+
+    @property
+    def has_upgrades(self) -> bool:
+        """Returns True if tactical upgrades evaluation has been stored for this deck."""
+        return bool(self.upgrades_json and self.upgrades_json.strip() and self.upgrades_json.strip() != "{}")
+
+    def get_upgrades(self) -> dict:
+        """Returns deserialized upgrades dict."""
+        if not self.upgrades_json:
+            return {}
+        try:
+            import json
+            return json.loads(self.upgrades_json)
+        except Exception:
+            return {}
 
     @property
     def status(self) -> str:
@@ -1232,6 +1248,7 @@ class DeckAnalysis(db.Model):
             "is_pauper": self.is_pauper_commander,
             "deck_format": "pauper_commander" if self.is_pauper_commander else (self.deck_format or "commander"),
             "has_ai_analysis": self.has_ai_analysis,
+            "has_upgrades": self.has_upgrades,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -1242,6 +1259,7 @@ class DeckAnalysis(db.Model):
             data["raw_decklist"] = self.raw_decklist
             data["cards_data"] = self.get_parsed_cards()
             data["analysis"] = self.get_analysis()
+            data["upgrades"] = self.get_upgrades()
         return data
 
 

@@ -276,6 +276,8 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN is_pauper BOOLEAN DEFAULT 0 NOT NULL"))
                     if "deck_format" not in da_cols:
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
+                    if "upgrades_json" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN upgrades_json TEXT"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS user_inventory_card (
                             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -478,6 +480,7 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS is_pauper BOOLEAN DEFAULT FALSE NOT NULL"))
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS upgrades_json TEXT"))
                         conn.execute(db.text("""
                             CREATE TABLE IF NOT EXISTS user_inventory_card (
                                 id SERIAL PRIMARY KEY,
@@ -3653,6 +3656,7 @@ def create_app(test_config=None):
             entry.archetype = analysis_result.get("archetype") or stats.get("archetype")
             entry.total_value = stats.get("total_value", entry.total_value)
             entry.avg_cmc = stats.get("avg_cmc", entry.avg_cmc)
+            entry.upgrades_json = None  # Invalidate cached tactical upgrades so recommendations reflect new card ratings
             entry.updated_at = utc_now()
             db.session.commit()
 
@@ -4840,10 +4844,22 @@ def create_app(test_config=None):
 
         theme = request.args.get("theme", "").strip() or None
         anti_salt = request.args.get("anti_salt", "0").strip().lower() in ("1", "true", "yes", "on")
+        force_refresh = request.args.get("refresh", "0").strip().lower() in ("1", "true", "yes", "on")
         is_pauper_arg = request.args.get("is_pauper")
         is_pauper_override = None
         if is_pauper_arg is not None:
             is_pauper_override = is_pauper_arg.strip().lower() in ("1", "true", "yes", "on")
+
+        # If not explicitly refreshed and using standard baseline parameters, check if stored upgrades exist
+        if not force_refresh and not theme and not anti_salt and is_pauper_override is None:
+            cached_upgrades = entry.get_upgrades()
+            if cached_upgrades and isinstance(cached_upgrades, dict) and cached_upgrades.get("owned_swaps") is not None:
+                payload = dict(cached_upgrades)
+                payload["success"] = True
+                payload["deck_id"] = deck_id
+                payload["deck_name"] = entry.deck_name
+                payload["cached"] = True
+                return jsonify(payload)
 
         user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
         allocations = inventory_manager.get_user_card_allocations(user.id, current_deck_id=deck_id)
@@ -4891,14 +4907,26 @@ def create_app(test_config=None):
                 "articles": edhrec_data.get("articles", []),
             }
 
-        return jsonify({
+        response_payload = {
             "success": True,
             "deck_id": deck_id,
             "deck_name": entry.deck_name,
+            "cached": False,
             "edhrec": edhrec_summary,
             "enrichment": enrich_status,
             **results,
-        })
+        }
+
+        # Persist standard evaluation results to avoid redundant external calls
+        if not theme and not anti_salt and is_pauper_override is None:
+            try:
+                import json
+                entry.upgrades_json = json.dumps(response_payload)
+                db.session.commit()
+            except Exception as e:
+                logger.warning(f"Failed to persist upgrades_json for deck {deck_id}: {e}")
+
+        return jsonify(response_payload)
 
     @app.route("/api/deck/<int:deck_id>/edhrec", methods=["GET"])
     @login_required
@@ -5095,6 +5123,7 @@ def create_app(test_config=None):
         entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
         entry.total_value = new_stats.get("total_value")
         entry.avg_cmc = new_stats.get("avg_cmc")
+        entry.upgrades_json = None  # Invalidate cached upgrades after card swap
         entry.updated_at = utc_now()
         db.session.commit()
 
@@ -5193,6 +5222,7 @@ def create_app(test_config=None):
         entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
         entry.total_value = new_stats.get("total_value")
         entry.avg_cmc = new_stats.get("avg_cmc")
+        entry.upgrades_json = None  # Invalidate cached upgrades after card add
         entry.updated_at = utc_now()
         db.session.commit()
 
@@ -5258,6 +5288,7 @@ def create_app(test_config=None):
         entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
         entry.total_value = new_stats.get("total_value")
         entry.avg_cmc = new_stats.get("avg_cmc")
+        entry.upgrades_json = None  # Invalidate cached upgrades after card remove
         entry.updated_at = utc_now()
         db.session.commit()
 

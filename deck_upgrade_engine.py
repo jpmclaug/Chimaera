@@ -613,7 +613,7 @@ class DualTierUpgradeEngine:
 
         owned_swaps: List[Dict[str, Any]] = []
         applied_card_in_names: Set[str] = set()
-        assigned_cuts: Set[str] = set()
+        assigned_cuts: Dict[str, int] = {}
 
         def _get_edhrec_info(card_name: str) -> Tuple[float, float, float, Optional[float]]:
             c_low = card_name.lower().strip()
@@ -649,7 +649,7 @@ class DualTierUpgradeEngine:
                         other_allocated = alloc_info.get("other_allocated", 0)
                         avail = max(0, total_owned - other_allocated)
 
-                        if card_out and self._is_card_in_deck(card_out, deck_cards_set) and card_out.lower() not in assigned_cuts:
+                        if card_out and self._is_card_in_deck(card_out, deck_cards_set) and assigned_cuts.get(card_out.lower(), 0) == 0:
                             cand_match = next((c for c in cut_candidates if c.get("name", "").strip().lower() == card_out.lower()), None)
                             if not cand_match:
                                 deck_card_match = next((c for c in cards if c.get("name", "").strip().lower() == card_out.lower()), None)
@@ -662,7 +662,7 @@ class DualTierUpgradeEngine:
                                 else:
                                     cand_match = {"name": card_out, "cmc": None, "type_line": "Card"}
                             matched_cut = cand_match
-                            assigned_cuts.add(card_out.lower())
+                            assigned_cuts[card_out.lower()] = assigned_cuts.get(card_out.lower(), 0) + 1
                         else:
                             matched_cut = self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=assigned_cuts)
 
@@ -915,6 +915,7 @@ class DualTierUpgradeEngine:
         # 3. Build Shopping List ("To Buy / Wishlist")
         shopping_list_raw: List[Dict[str, Any]] = []
         shopping_names_applied: Set[str] = set()
+        shopping_assigned_cuts: Dict[str, int] = {}
 
         # A) Add unowned AI upgrades
         if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
@@ -925,21 +926,20 @@ class DualTierUpgradeEngine:
 
                 if self._is_color_legal(card_in, color_identity, u.get("color_identity"), cid_cache=cid_cache, mana_cost=u.get("card_in_mana")) and self._is_format_legal(card_in, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                     matched_cut = u.get("card_out")
-                    cut_name = matched_cut
+                    cut_name = None
                     cut_cmc_val = None
                     cut_type_val = None
-                    if isinstance(matched_cut, dict):
-                        cut_name = matched_cut.get("name")
-                        cut_cmc_val = matched_cut.get("cmc")
-                        cut_type_val = matched_cut.get("type_line")
-                    elif isinstance(matched_cut, str) and matched_cut.strip():
-                        cut_name = matched_cut.strip()
-                        c_match = next((c for c in cards if c.get("name", "").strip().lower() == cut_name.lower()), None)
+                    card_out_str = matched_cut.get("name") if isinstance(matched_cut, dict) else (matched_cut if isinstance(matched_cut, str) else None)
+
+                    if card_out_str and self._is_card_in_deck(card_out_str, deck_cards_set) and shopping_assigned_cuts.get(card_out_str.lower(), 0) == 0:
+                        c_match = next((c for c in cards if c.get("name", "").strip().lower() == card_out_str.lower()), None)
+                        cut_name = card_out_str
                         if c_match:
                             cut_cmc_val = c_match.get("cmc")
                             cut_type_val = c_match.get("type_line")
+                        shopping_assigned_cuts[card_out_str.lower()] = 1
                     else:
-                        matched_obj = self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=None)
+                        matched_obj = self._find_best_cut(cut_candidates, u.get("category", "General"), used_cuts=shopping_assigned_cuts)
                         if isinstance(matched_obj, dict):
                             cut_name = matched_obj.get("name")
                             cut_cmc_val = matched_obj.get("cmc")
@@ -997,7 +997,7 @@ class DualTierUpgradeEngine:
             if anti_salt and salt is not None and salt >= max_salt:
                 continue
 
-            matched_cut = self._find_best_cut(cut_candidates, "Synergy Card", used_cuts=None)
+            matched_cut = self._find_best_cut(cut_candidates, "Synergy Card", used_cuts=shopping_assigned_cuts)
             cat = "Signature Card" if syn >= 0.50 else ("High Synergy" if syn >= 0.25 else "EDHREC Recommendation")
             cut_name = matched_cut.get("name") if isinstance(matched_cut, dict) else matched_cut
             cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
@@ -1043,7 +1043,7 @@ class DualTierUpgradeEngine:
             if anti_salt and salt is not None and salt >= max_salt:
                 continue
 
-            matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=None)
+            matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=shopping_assigned_cuts)
             cut_name = matched_cut.get("name") if isinstance(matched_cut, dict) else matched_cut
             cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
             cut_type_val = matched_cut.get("type_line") if isinstance(matched_cut, dict) else None
@@ -1926,98 +1926,101 @@ class DualTierUpgradeEngine:
         self,
         cut_candidates: List[Dict[str, Any]],
         target_role_or_category: str,
-        used_cuts: Optional[Set[str]] = None,
+        used_cuts: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Finds matching card to cut based on role or picks lowest rated candidate not yet assigned."""
+        """Finds matching card to cut based on role or picks lowest rated candidate not yet assigned,
+        distributing cut recommendations across the candidate pool and avoiding repeating the same card."""
         if not cut_candidates:
             return {"name": "Suboptimal Slotted Card", "cmc": 3, "type_line": "Card"}
 
         record_used = used_cuts is not None
-        check_set = used_cuts if record_used else set()
 
-        def _available(cand):
-            return cand.get("name", "").strip().lower() not in check_set
+        def _get_usage(cand_name: str) -> int:
+            if not record_used:
+                return 0
+            low = (cand_name or "").strip().lower()
+            if isinstance(used_cuts, dict):
+                return used_cuts.get(low, 0)
+            elif isinstance(used_cuts, (set, list, tuple)):
+                return 1 if low in used_cuts else 0
+            return 0
 
         def _mark(cand):
             if record_used:
-                used_cuts.add(cand.get("name", "").strip().lower())
+                low = cand.get("name", "").strip().lower()
+                if isinstance(used_cuts, dict):
+                    used_cuts[low] = used_cuts.get(low, 0) + 1
+                elif isinstance(used_cuts, set):
+                    used_cuts.add(low)
             return cand
 
         target_lower = (target_role_or_category or "").lower()
 
-        # 1. Lands
-        if "land" in target_lower or "mana base" in target_lower:
-            for c in cut_candidates:
-                if _available(c) and "land" in (c.get("type_line") or "").lower():
-                    return _mark(c)
-
-        # 2. Ramp / Rocks
-        elif any(k in target_lower for k in ["ramp", "rock", "velocity"]):
-            for c in cut_candidates:
-                if _available(c) and not c.get("is_basic") and (
-                    (c.get("cmc", 0) >= 3 and "artifact" in (c.get("type_line") or "").lower())
-                    or c.get("rating", 7.0) <= 6.0
-                ):
-                    return _mark(c)
-
-        # 3. Card Draw / Advantage
-        elif any(k in target_lower for k in ["draw", "card advantage", "cantrip"]):
-            for c in cut_candidates:
-                if _available(c) and not c.get("is_basic") and (
-                    c.get("rating", 7.0) <= 6.0 or (c.get("cmc", 0) >= 4 and "creature" in (c.get("type_line") or "").lower())
-                ):
-                    return _mark(c)
-
-        # 4. Removal / Interaction
-        elif any(k in target_lower for k in ["removal", "interaction", "counterspell", "protection"]):
-            for c in cut_candidates:
-                if _available(c) and not c.get("is_basic") and (
-                    (c.get("cmc", 0) >= 3 and c.get("rating", 7.0) <= 6.5) or c.get("rating", 7.0) <= 5.5
-                ):
-                    return _mark(c)
-
-        # 5. Finishers / High Impact
-        elif any(k in target_lower for k in ["finisher", "win-con", "overrun"]):
-            for c in cut_candidates:
-                if _available(c) and not c.get("is_basic") and c.get("cmc", 0) >= 4 and c.get("rating", 7.0) <= 6.5:
-                    return _mark(c)
-
-        # Next check any non-basic candidate not yet assigned
-        for c in cut_candidates:
-            if _available(c) and not c.get("is_basic"):
-                return _mark(c)
-
-        # If only basics left, check any candidate
-        for c in cut_candidates:
-            if _available(c):
-                return _mark(c)
-
-        # Fallback if all cut candidates have been allocated at least once:
-        # Match by role across all candidates, otherwise pick lowest rated non-basic
-        if "land" in target_lower or "mana base" in target_lower:
-            for c in cut_candidates:
-                if "land" in (c.get("type_line") or "").lower():
-                    return _mark(c)
-        elif any(k in target_lower for k in ["ramp", "rock", "velocity"]):
-            for c in cut_candidates:
-                if not c.get("is_basic") and ((c.get("cmc", 0) >= 3 and "artifact" in (c.get("type_line") or "").lower()) or c.get("rating", 7.0) <= 6.0):
-                    return _mark(c)
-        elif any(k in target_lower for k in ["draw", "card advantage", "cantrip"]):
-            for c in cut_candidates:
-                if not c.get("is_basic") and (c.get("rating", 7.0) <= 6.0 or (c.get("cmc", 0) >= 4 and "creature" in (c.get("type_line") or "").lower())):
-                    return _mark(c)
-        elif any(k in target_lower for k in ["removal", "interaction", "counterspell", "protection"]):
-            for c in cut_candidates:
-                if not c.get("is_basic") and ((c.get("cmc", 0) >= 3 and c.get("rating", 7.0) <= 6.5) or c.get("rating", 7.0) <= 5.5):
-                    return _mark(c)
-
-        # Otherwise pick the lowest rated non-basic candidate
+        # Partition into non-basics and basics
         non_basics = [c for c in cut_candidates if not c.get("is_basic")]
-        if non_basics:
-            lowest = min(non_basics, key=lambda x: (x.get("rating", 7.0), -x.get("cmc", 0.0)))
-            return _mark(lowest)
+        primary_pool = non_basics if non_basics else cut_candidates
 
-        return _mark(cut_candidates[0])
+        # Find the minimum usage count in primary pool
+        min_usage = min((_get_usage(c.get("name", "")) for c in primary_pool), default=0)
+
+        def _is_eligible(c, target_usage: int) -> bool:
+            return _get_usage(c.get("name", "")) <= target_usage
+
+        # Try matching by role within the current minimum usage tier first, then expand if needed
+        for max_allowed_usage in (min_usage, min_usage + 1):
+            # 1. Lands
+            if "land" in target_lower or "mana base" in target_lower:
+                for c in cut_candidates:
+                    if _is_eligible(c, max_allowed_usage) and "land" in (c.get("type_line") or "").lower():
+                        return _mark(c)
+
+            # 2. Ramp / Rocks
+            elif any(k in target_lower for k in ["ramp", "rock", "velocity"]):
+                for c in cut_candidates:
+                    if _is_eligible(c, max_allowed_usage) and not c.get("is_basic") and (
+                        (c.get("cmc", 0) >= 3 and "artifact" in (c.get("type_line") or "").lower())
+                        or c.get("rating", 7.0) <= 6.0
+                    ):
+                        return _mark(c)
+
+            # 3. Card Draw / Advantage
+            elif any(k in target_lower for k in ["draw", "card advantage", "cantrip"]):
+                for c in cut_candidates:
+                    if _is_eligible(c, max_allowed_usage) and not c.get("is_basic") and (
+                        c.get("rating", 7.0) <= 6.0 or (c.get("cmc", 0) >= 4 and "creature" in (c.get("type_line") or "").lower())
+                    ):
+                        return _mark(c)
+
+            # 4. Removal / Interaction
+            elif any(k in target_lower for k in ["removal", "interaction", "counterspell", "protection"]):
+                for c in cut_candidates:
+                    if _is_eligible(c, max_allowed_usage) and not c.get("is_basic") and (
+                        (c.get("cmc", 0) >= 3 and c.get("rating", 7.0) <= 6.5) or c.get("rating", 7.0) <= 5.5
+                    ):
+                        return _mark(c)
+
+            # 5. Finishers / High Impact
+            elif any(k in target_lower for k in ["finisher", "win-con", "overrun"]):
+                for c in cut_candidates:
+                    if _is_eligible(c, max_allowed_usage) and not c.get("is_basic") and c.get("cmc", 0) >= 4 and c.get("rating", 7.0) <= 6.5:
+                        return _mark(c)
+
+            # Next check any non-basic candidate at this usage tier
+            for c in cut_candidates:
+                if _is_eligible(c, max_allowed_usage) and not c.get("is_basic"):
+                    return _mark(c)
+
+            # Check basics if only basics eligible
+            for c in cut_candidates:
+                if _is_eligible(c, max_allowed_usage):
+                    return _mark(c)
+
+        # Fallback: select candidate with absolute lowest usage count
+        least_used_cand = min(
+            primary_pool,
+            key=lambda x: (_get_usage(x.get("name", "")), x.get("rating", 7.0), -x.get("cmc", 0.0))
+        )
+        return _mark(least_used_cand)
 
     @staticmethod
     def generate_manabox_wishlist_export(acquisitions: List[Dict[str, Any]], format_type: str = "csv") -> str:

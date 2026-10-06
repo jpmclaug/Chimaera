@@ -1637,7 +1637,23 @@
 
             <!-- SUB-TAB 1: OWNED SWAPS ("IN YOUR BINDER") -->
             <div id="subtab-content-owned" class="space-y-4">
-                <div id="ownedSwapsLoading" class="py-12 text-center text-slate-400 font-mono text-xs">
+                <!-- If Deck NOT Evaluated Yet: Upgrades Trigger Banner -->
+                <div id="upgradesPromptBanner" class="hidden bg-[#10141D] border border-emerald-500/30 rounded-xl p-6 text-center space-y-4">
+                    <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto shadow-lg text-2xl font-black">
+                        ⚡
+                    </div>
+                    <div>
+                        <h3 class="text-base font-black text-white font-mono uppercase tracking-wider">Tactical Deck Upgrades Ready to Evaluate</h3>
+                        <p class="text-xs text-slate-400 max-w-lg mx-auto mt-1">Cross-reference this deck against your physical collection binder to discover zero-cost swaps, or scan EDHREC synergy to generate a prioritized shopping wishlist.</p>
+                    </div>
+                    <div class="pt-1">
+                        <button onclick="loadDualTierUpgrades(activeDeck ? activeDeck.id : null, { force: true })" class="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-lg shadow-lg transition inline-flex items-center gap-2 cursor-pointer">
+                            <span>⚡ Evaluate Upgrades</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="ownedSwapsLoading" class="hidden py-12 text-center text-slate-400 font-mono text-xs">
                     <span class="inline-block animate-spin mr-2">⟳</span> Scanning your collection binder for legal in-color upgrades...
                 </div>
 
@@ -3142,7 +3158,7 @@ function switchInspectorTab(tab, options = {}) {
     }
 
     if (currentInspectorTab === 'upgrades' && activeDeck && activeDeck.id) {
-        loadDualTierUpgrades(activeDeck.id);
+        loadDualTierUpgrades(activeDeck.id, { force: false });
     }
 }
 
@@ -5478,6 +5494,9 @@ function renderMatrixTable(decks) {
                         <button onclick="quickCompareWithFirst(${d.id})" title="Quick compare with Slot 1" class="px-2 py-1 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded text-[10px] font-bold border border-slate-700 transition cursor-pointer">
                             VS
                         </button>
+                        <button onclick="loadSavedDeckIntoInspector(${d.id}, 'upgrades')" title="View deck upgrades & binder swaps" class="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 rounded text-[10px] font-bold border border-emerald-500/30 transition cursor-pointer">
+                            Upgrades
+                        </button>
                         <button onclick="loadSavedDeckIntoInspector(${d.id})" title="Inspect Deck" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-[10px] font-bold border border-slate-700 transition cursor-pointer">
                             Inspect &rarr;
                         </button>
@@ -6564,9 +6583,59 @@ function trackCollectionEnrichment(status) {
     }
 }
 
-async function loadDualTierUpgrades(deckId) {
+function renderUpgradesFromData(data) {
+    const promptBanner = document.getElementById('upgradesPromptBanner');
+    if (promptBanner) promptBanner.classList.add('hidden');
+
+    safeSetText('ownedSwapsCountBadge', `${data.owned_count || 0} Swaps`);
+    safeSetText('shoppingCountBadge', `${data.shopping_count || 0} Cards`);
+
+    renderOwnedSwaps(data.owned_swaps || []);
+    renderShoppingList(data.shopping_list || {}, data.all_shopping_cards || []);
+
+    if (data.combos) {
+        renderCombos(data.combos);
+    }
+    if (data.edhrec) {
+        updateEdhrecBadgesAndArticles(data.edhrec);
+    }
+    if (data.enrichment) {
+        trackCollectionEnrichment(data.enrichment);
+    }
+}
+
+async function loadDualTierUpgrades(deckId, options = {}) {
+    const { force = false } = options;
     const targetId = deckId || (activeDeck ? activeDeck.id : null);
     if (!targetId) return;
+
+    const promptBanner = document.getElementById('upgradesPromptBanner');
+    const loadingElem = document.getElementById('ownedSwapsLoading');
+    const emptyElem = document.getElementById('ownedSwapsEmpty');
+    const ownedSwapsGrid = document.getElementById('ownedSwapsGrid');
+
+    // 1. If not forcing evaluation, check if stored upgrades exist on activeDeck
+    if (!force && !window.currentUpgradeTheme && !window.antiSaltFilterEnabled) {
+        if (activeDeck && activeDeck.id === targetId && activeDeck.has_upgrades && activeDeck.upgrades && activeDeck.upgrades.owned_swaps) {
+            if (promptBanner) promptBanner.classList.add('hidden');
+            if (loadingElem) loadingElem.classList.add('hidden');
+            renderUpgradesFromData(activeDeck.upgrades);
+            return;
+        }
+
+        // 2. If deck has never been evaluated and force is not set, prompt user
+        if (activeDeck && activeDeck.id === targetId && !activeDeck.has_upgrades) {
+            if (loadingElem) loadingElem.classList.add('hidden');
+            if (emptyElem) emptyElem.classList.add('hidden');
+            if (ownedSwapsGrid) ownedSwapsGrid.innerHTML = '';
+            if (promptBanner) promptBanner.classList.remove('hidden');
+            safeSetText('ownedSwapsCountBadge', '0 Swaps');
+            safeSetText('shoppingCountBadge', '0 Cards');
+            return;
+        }
+    }
+
+    if (promptBanner) promptBanner.classList.add('hidden');
 
     const btn = document.getElementById('refreshUpgradesBtn');
     const icon = document.getElementById('refreshUpgradesIcon');
@@ -6575,15 +6644,13 @@ async function loadDualTierUpgrades(deckId) {
     if (icon) icon.classList.add('animate-spin');
     if (text) text.textContent = 'Evaluating...';
 
-    const loadingElem = document.getElementById('ownedSwapsLoading');
-    const emptyElem = document.getElementById('ownedSwapsEmpty');
-
     if (loadingElem) loadingElem.classList.remove('hidden');
     if (emptyElem) emptyElem.classList.add('hidden');
 
     try {
         let url = `/api/deck/${targetId}/upgrades`;
         const params = [];
+        if (force) params.push(`refresh=1`);
         if (window.currentUpgradeTheme) params.push(`theme=${encodeURIComponent(window.currentUpgradeTheme)}`);
         if (window.antiSaltFilterEnabled) params.push(`anti_salt=1`);
         if (params.length > 0) url += `?${params.join('&')}`;
@@ -6594,26 +6661,20 @@ async function loadDualTierUpgrades(deckId) {
 
         if (loadingElem) loadingElem.classList.add('hidden');
 
-        // Update Badges
-        safeSetText('ownedSwapsCountBadge', `${data.owned_count || 0} Swaps`);
-        safeSetText('shoppingCountBadge', `${data.shopping_count || 0} Cards`);
+        // Store back into activeDeck so subsequent tab clicks use memory
+        if (activeDeck && activeDeck.id === targetId) {
+            activeDeck.has_upgrades = true;
+            activeDeck.upgrades = data;
+        }
 
-        renderOwnedSwaps(data.owned_swaps || []);
-        renderShoppingList(data.shopping_list || {}, data.all_shopping_cards || []);
-
-        if (data.combos) {
-            renderCombos(data.combos);
-        }
-        if (data.edhrec) {
-            updateEdhrecBadgesAndArticles(data.edhrec);
-        }
-        if (data.enrichment) {
-            trackCollectionEnrichment(data.enrichment);
-        }
+        renderUpgradesFromData(data);
 
         const ownedCount = data.owned_count || 0;
         const shopCount = data.shopping_count || 0;
-        showToast(`Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards`, "success");
+        const msg = data.cached
+            ? `Displaying stored upgrades: ${ownedCount} binder swaps, ${shopCount} shopping cards`
+            : `Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards`;
+        showToast(msg, "success");
 
     } catch (err) {
         if (loadingElem) loadingElem.classList.add('hidden');
@@ -6627,7 +6688,7 @@ async function loadDualTierUpgrades(deckId) {
 
 function refreshDualTierUpgrades() {
     if (activeDeck && activeDeck.id) {
-        loadDualTierUpgrades(activeDeck.id);
+        loadDualTierUpgrades(activeDeck.id, { force: true });
     }
 }
 
