@@ -30,26 +30,26 @@
             <!-- View Switcher & Action Controls -->
             <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
                 <div class="bg-[#1B2230] p-1 rounded-lg border border-slate-700 flex flex-wrap items-center gap-1 w-full sm:w-auto">
-                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-2.5 sm:px-3.5 py-1.5 rounded-md text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Deck Vault (Grid & Table)">
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-2 sm:px-3.5 py-1.5 rounded-md text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Deck Vault (Grid & Table)">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
                         <span>Vault</span>
-                        <span id="savedDecksCount" class="text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
+                        <span id="savedDecksCount" class="text-[8px] xs:text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
                     </button>
-                    <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="px-2.5 sm:px-3.5 py-1.5 rounded-md text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Inspect Selected Deck">
+                    <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="px-2 sm:px-3.5 py-1.5 rounded-md text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Inspect Selected Deck">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         <span>Inspector</span>
-                        <span id="inspectorActiveNameBadge" class="hidden text-[10px] text-cyan-300 font-normal truncate max-w-[85px]"></span>
+                        <span id="inspectorActiveNameBadge" class="hidden text-[9px] sm:text-[10px] text-cyan-300 font-normal truncate max-w-[85px]"></span>
                     </button>
-                    <button id="viewCompareBtn" onclick="switchMainView('compare')" class="px-2.5 sm:px-3.5 py-1.5 rounded-md text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Head-to-Head Comparison">
+                    <button id="viewCompareBtn" onclick="switchMainView('compare')" class="px-2 sm:px-3.5 py-1.5 rounded-md text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Head-to-Head Comparison">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                         <span>Compare</span>
-                        <span id="compareCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-400 text-[9px] sm:text-[10px] font-mono">0</span>
+                        <span id="compareCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-400 text-[8px] sm:text-[10px] font-mono">0</span>
                     </button>
-                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-2.5 sm:px-3.5 py-1.5 rounded-md text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Analytics & Distributions">
+                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-2 sm:px-3.5 py-1.5 rounded-md text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Analytics & Distributions">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                         <span>Analytics</span>
                     </button>
-                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-2.5 sm:px-3.5 py-1.5 rounded-md text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Import New Deck">
+                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-2 sm:px-3.5 py-1.5 rounded-md text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Import New Deck">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         <span>Import</span>
                     </button>
@@ -635,34 +635,34 @@
             <div class="flex items-center p-1 md:px-4 md:py-0 gap-1 md:gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory">
                 <!-- Tab 1: Mana Curve & Composition -->
                 <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-1 min-w-0 text-center whitespace-nowrap">
+                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                    <span class="block md:hidden text-[10px] tracking-tight">Curve</span>
+                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Curve</span>
                     <span class="hidden md:inline whitespace-nowrap">Mana Curve & Composition</span>
                 </button>
 
                 <!-- Tab 2: Full Card Registry -->
                 <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-0 text-center whitespace-nowrap">
+                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                    <span class="block md:hidden text-[10px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
+                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
                     <span class="hidden md:inline whitespace-nowrap">Full Card Registry (<span id="tabCardCount">100</span>)</span>
                 </button>
 
                 <!-- Tab 3: Gemini AI Strategic Intel -->
                 <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-0 text-center whitespace-nowrap">
+                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                    <span class="block md:hidden text-[10px] tracking-tight">AI Intel</span>
+                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">AI Intel</span>
                     <span class="hidden md:inline whitespace-nowrap">Gemini AI Strategic Intel</span>
                     <span id="aiTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Ready</span>
                 </button>
 
                 <!-- Tab 4: Tactical Upgrades -->
                 <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-0 text-center whitespace-nowrap">
+                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-lg md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-                    <span class="block md:hidden text-[10px] tracking-tight">Upgrades</span>
+                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Upgrades</span>
                     <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
                     <span id="upgradesTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
                 </button>
@@ -3034,7 +3034,7 @@ function switchMainView(viewName) {
     // Reset buttons to inactive styling
     Object.entries(buttons).forEach(([k, b]) => {
         if (!b) return;
-        b.className = "px-2.5 sm:px-3.5 py-1.5 rounded-md text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
+        b.className = "px-2 sm:px-3.5 py-1.5 rounded-md text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
     });
 
     // Activate the requested view
@@ -3043,7 +3043,7 @@ function switchMainView(viewName) {
 
     const targetBtn = buttons[viewName] || buttons.vault;
     if (targetBtn) {
-        targetBtn.className = "px-2.5 sm:px-3.5 py-1.5 rounded-md text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
+        targetBtn.className = "px-2 sm:px-3.5 py-1.5 rounded-md text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
     }
 
     if (viewName === 'vault') {
@@ -3225,19 +3225,19 @@ function renderVaultGrid(decks) {
 
                 <!-- Card Actions Footer -->
                 <div class="p-3 sm:p-4 pt-0 grid grid-cols-2 sm:grid-cols-4 gap-1.5 border-t border-slate-800/60 mt-2">
-                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="px-2 py-1.5 sm:py-2 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-mono text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-cyan-500/30 hover:border-cyan-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Deep-dive deck analysis">
+                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="px-2 py-1.5 sm:py-2 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-cyan-500/30 hover:border-cyan-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Deep-dive deck analysis">
                         <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         <span>Inspect</span>
                     </button>
-                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id}, 'upgrades')" class="px-2 py-1.5 sm:py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 font-mono text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-emerald-500/30 hover:border-emerald-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="View deck upgrades & binder swaps">
+                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id}, 'upgrades')" class="px-2 py-1.5 sm:py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-emerald-500/30 hover:border-emerald-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="View deck upgrades & binder swaps">
                         <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                         <span>Upgrade</span>
                     </button>
-                    <button onclick="event.stopPropagation(); syncSavedDeck(${d.id})" class="px-2 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-mono text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-slate-700 hover:border-slate-600 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Re-sync deck list from ManaBox">
+                    <button onclick="event.stopPropagation(); syncSavedDeck(${d.id})" class="px-2 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-slate-700 hover:border-slate-600 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Re-sync deck list from ManaBox">
                         <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         <span>Sync</span>
                     </button>
-                    <button onclick="event.stopPropagation(); handleDeleteDeckClick(${d.id})" class="px-2 py-1.5 sm:py-2 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-mono text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-rose-500/30 hover:border-rose-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Delete deck from Vault">
+                    <button onclick="event.stopPropagation(); handleDeleteDeckClick(${d.id})" class="px-2 py-1.5 sm:py-2 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-lg border border-rose-500/30 hover:border-rose-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Delete deck from Vault">
                         <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         <span>Delete</span>
                     </button>

@@ -24,6 +24,13 @@
     --accent-teal-bright: #00CED1;
 }
 
+html {
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     background-color: var(--bg-tactical);
     color: var(--text-data);
@@ -31,6 +38,39 @@ body {
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+/* Chrome Android Font Inflation & Button Sizing Prevention */
+html, body, button, input, select, textarea, .btn, [role="button"], a {
+    -webkit-text-size-adjust: 100% !important;
+    -moz-text-size-adjust: 100% !important;
+    -ms-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+}
+
+button, input, select, textarea, .btn, [role="button"] {
+    max-height: 999999px; /* Breaks Chrome Android Text Autosizing/Inflation algorithm */
+}
+
+/* Enforce proportional font sizing, bounded heights, and no-overflow on mobile buttons */
+@media screen and (max-width: 640px) {
+    button, [role="button"] {
+        line-height: 1.2 !important;
+    }
+    
+    /* Cap monospace button labels so Android/Chrome fonts don't blow past button bounds */
+    button.font-mono, [role="button"].font-mono {
+        letter-spacing: normal !important;
+    }
+
+    /* Keep button labels neat and contained */
+    button > span, [role="button"] > span {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 
 .font-heading {
