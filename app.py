@@ -5343,6 +5343,24 @@ def create_app(test_config=None):
 app = create_app()
 
 if __name__ == "__main__":
+    import threading
+    import time
+    import webbrowser
+
     port = int(os.getenv("PORT", 5050))
-    print(f"Starting Chimaera on http://localhost:{port}")
+    url = f"http://localhost:{port}"
+
+    def _open_browser():
+        time.sleep(1.2)
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+    # When Flask debug mode is active, Werkzeug spawns a child process.
+    # WERKZEUG_RUN_MAIN is set to "true" in the child process, so we only open the browser once.
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        threading.Thread(target=_open_browser, daemon=True).start()
+
+    print(f"Starting Chimaera on {url}")
     app.run(host="0.0.0.0", port=port, debug=True)

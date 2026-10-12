@@ -22,6 +22,7 @@ class ScryfallProvider:
         })
 
     _last_request_time: float = 0.0
+    _card_cache: dict[str, dict] = {}
 
     def _request(self, method: str, url: str, **kwargs):
         """Dispatches HTTP requests to Scryfall with 100ms pacing and automatic 429 backoff."""
@@ -241,6 +242,7 @@ class ScryfallProvider:
 
         for k in keys:
             found_map[k] = formatted
+            ScryfallProvider._card_cache[k] = formatted
 
     def get_card_named(self, card_name: str) -> dict | None:
         """Fetches canonical card object from Scryfall by card name with accent, DFC, and fuzzy fallbacks."""
@@ -322,10 +324,30 @@ class ScryfallProvider:
         found_map: dict[str, dict] = {}
         not_found_list: list[str] = []
 
+        # Check in-memory cache first to avoid redundant external network roundtrips
+        unresolved_names: list[str] = []
+        for raw_name in card_names:
+            if not raw_name or not str(raw_name).strip():
+                continue
+            clean = fix_mojibake(str(raw_name)).strip()
+            lookup_keys = get_card_match_keys(clean)
+            cached_meta = None
+            for k in lookup_keys:
+                if k in ScryfallProvider._card_cache:
+                    cached_meta = ScryfallProvider._card_cache[k]
+                    break
+            if cached_meta:
+                self._index_card_in_map(found_map, cached_meta, extra_names=[raw_name])
+            else:
+                unresolved_names.append(raw_name)
+
+        if not unresolved_names:
+            return found_map, []
+
         # Scryfall /cards/collection accepts at most 75 identifiers per request
         batch_size = 75
-        for i in range(0, len(card_names), batch_size):
-            chunk = card_names[i:i + batch_size]
+        for i in range(0, len(unresolved_names), batch_size):
+            chunk = unresolved_names[i:i + batch_size]
             identifiers = []
             ident_to_original: dict[str, list[str]] = {}
 

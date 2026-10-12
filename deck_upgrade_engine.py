@@ -382,6 +382,8 @@ class DualTierUpgradeEngine:
     2. Shopping List ('To Buy'): Market recommendations by budget bracket (<$3, $3-$15, >$15).
     """
 
+    _PAUPER_LEGALITY_CACHE: Dict[str, bool] = {}
+
     def __init__(self, scryfall_provider: Optional[ScryfallProvider] = None):
         self.scryfall_provider = scryfall_provider or ScryfallProvider()
         self.classifier = MTGCardClassifier()
@@ -439,7 +441,7 @@ class DualTierUpgradeEngine:
 
         # Build Color Identity cache (cid_cache) & Pauper Commander legality cache
         cid_cache: Dict[str, List[str]] = {}
-        pauper_legal_cache: Dict[str, bool] = {}
+        pauper_legal_cache: Dict[str, bool] = dict(DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE)
 
         # 1. Curated staples
         for staple in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES:
@@ -448,6 +450,7 @@ class DualTierUpgradeEngine:
                 cid_cache[k] = s_colors
                 if is_pauper and staple in CURATED_PAUPER_UPGRADES:
                     pauper_legal_cache[k] = True
+                    DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = True
 
         # 2. Basic lands
         basic_land_cids = {
@@ -463,12 +466,14 @@ class DualTierUpgradeEngine:
                 cid_cache[k] = b_cid
                 if is_pauper:
                     pauper_legal_cache[k] = True
+                    DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = True
 
         # 3. Known Commander / Pauper banned cards
         if is_pauper:
             for banned in PAUPER_COMMANDER_BANNED_CARDS.union(COMMANDER_BANNED_CARDS):
                 for k in get_card_match_keys(banned):
                     pauper_legal_cache[k] = False
+                    DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = False
 
         # 4. Cards in current deck
         for c in cards:
@@ -501,9 +506,20 @@ class DualTierUpgradeEngine:
                         for k in get_card_match_keys(ic.name):
                             if k not in pauper_legal_cache:
                                 pauper_legal_cache[k] = True
+                                DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = True
 
         # 6. Collect candidates needing Scryfall resolution
         candidates_to_validate: Set[str] = set()
+
+        # In Pauper Commander, prioritize curated in-color staples that lack metadata
+        if is_pauper:
+            for staple in CURATED_PAUPER_UPGRADES:
+                if self._is_staple_color_legal(staple.get("colors", []), color_identity):
+                    s_name = staple["name"]
+                    s_clean = strip_accents(s_name).lower()
+                    if not any(k in ScryfallProvider._card_cache for k in get_card_match_keys(s_name)):
+                        candidates_to_validate.add(s_name)
+
         if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
             for u in ai_analysis["upgrades"]:
                 c_in = u.get("card_in", "").strip()
@@ -520,6 +536,11 @@ class DualTierUpgradeEngine:
         for rec in edhrec_priority_pool:
             r_name = rec.get("name", "").strip()
             if r_name:
+                clean_r = strip_accents(r_name).strip().lower()
+                if is_pauper and (clean_r in PAUPER_COMMANDER_BANNED_CARDS or clean_r in COMMANDER_BANNED_CARDS):
+                    pauper_legal_cache[clean_r] = False
+                    DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[clean_r] = False
+                    continue
                 needs_pauper = is_pauper and not any(k in pauper_legal_cache for k in get_card_match_keys(r_name))
                 needs_cid = not any(k in cid_cache for k in get_card_match_keys(r_name))
                 if needs_pauper or needs_cid:
@@ -529,6 +550,11 @@ class DualTierUpgradeEngine:
             for piece in combo.get("pieces", []):
                 p_name = piece.strip() if isinstance(piece, str) else ""
                 if p_name:
+                    clean_p = strip_accents(p_name).strip().lower()
+                    if is_pauper and (clean_p in PAUPER_COMMANDER_BANNED_CARDS or clean_p in COMMANDER_BANNED_CARDS):
+                        pauper_legal_cache[clean_p] = False
+                        DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[clean_p] = False
+                        continue
                     needs_pauper = is_pauper and not any(k in pauper_legal_cache for k in get_card_match_keys(p_name))
                     needs_cid = not any(k in cid_cache for k in get_card_match_keys(p_name))
                     if needs_pauper or needs_cid:
@@ -547,10 +573,10 @@ class DualTierUpgradeEngine:
 
         session_scryfall_cache: Dict[str, Dict[str, Any]] = {}
         if candidates_to_validate:
-            # Strictly cap at 75 cards (exactly 1 Scryfall batch) to guarantee <300ms execution
+            # Strictly cap at 75 cards (exactly 1 Scryfall batch) and disable slow individual fallbacks
             candidates_list = list(candidates_to_validate)[:75]
             try:
-                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(candidates_list)
+                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(candidates_list, fallback_named=False)
                 session_scryfall_cache.update(scryfall_meta)
                 for name_query in candidates_list:
                     q_low = name_query.lower().strip()
@@ -560,10 +586,12 @@ class DualTierUpgradeEngine:
                         meta = scryfall_meta.get(clean_q)
                     if meta:
                         scry_cid = meta.get("color_identity", [])
+                        leg = ScryfallProvider.is_pauper_legal(meta) if is_pauper else True
                         for k in get_card_match_keys(meta.get("name", name_query)):
                             cid_cache[k] = scry_cid
                             if is_pauper:
-                                pauper_legal_cache[k] = ScryfallProvider.is_pauper_legal(meta)
+                                pauper_legal_cache[k] = leg
+                                DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = leg
 
                         # In-memory enrichment for matched inventory cards
                         for ic in user_inventory:
@@ -581,6 +609,7 @@ class DualTierUpgradeEngine:
                     else:
                         if is_pauper:
                             pauper_legal_cache[q_low] = False
+                            DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[q_low] = False
             except Exception as e:
                 logger.error(f"Error validating card metadata with Scryfall: {e}")
 
@@ -1098,7 +1127,7 @@ class DualTierUpgradeEngine:
         missing_meta_names = [s["name"] for s in shopping_list_raw if s.get("price_usd") is None or not s.get("image_uri")]
         if missing_meta_names:
             try:
-                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names[:75])
+                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names[:75], fallback_named=False)
                 for k, meta in scryfall_meta.items():
                     session_scryfall_cache[k] = meta
                 for s in shopping_list_raw:
@@ -1290,7 +1319,10 @@ class DualTierUpgradeEngine:
                 for k in get_card_match_keys(card_name):
                     if k in pauper_legal_cache:
                         return pauper_legal_cache[k]
-                return False
+            for k in get_card_match_keys(card_name):
+                if k in DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE:
+                    return DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k]
+            return False
         return True
 
     @staticmethod

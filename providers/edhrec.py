@@ -160,7 +160,7 @@ class EDHRECProvider:
         for attempt in range(max_retries):
             self._throttle()
             try:
-                resp = self.session.get(url, timeout=10)
+                resp = self.session.get(url, timeout=5)
                 if resp.status_code == 200:
                     return resp
                 if resp.status_code in (429, 503):
@@ -171,8 +171,8 @@ class EDHRECProvider:
                     time.sleep(backoff)
                     backoff *= 2.0
                     continue
-                if resp.status_code == 404:
-                    logger.info(f"EDHREC endpoint returned 404 for URL: {url}")
+                if resp.status_code in (403, 404):
+                    logger.info(f"EDHREC endpoint returned {resp.status_code} for URL: {url}")
                     return resp
                 logger.warning(f"EDHREC request to {url} failed with status {resp.status_code}")
                 return resp
@@ -205,6 +205,8 @@ class EDHRECProvider:
         if not force_refresh:
             cached = self._get_from_cache(cache_key)
             if cached:
+                if cached.get("_not_found"):
+                    return None
                 return cached
 
         # Construct EDHREC JSON URL
@@ -216,7 +218,7 @@ class EDHRECProvider:
         resp = self._request_with_backoff(url)
 
         # Fallback to primary commander if partner slug returned 404
-        if (not resp or resp.status_code == 404) and fallback_slug and fallback_slug != slug:
+        if (not resp or resp.status_code in (403, 404)) and fallback_slug and fallback_slug != slug:
             logger.info(f"EDHREC partner query '{slug}' not found. Falling back to primary '{fallback_slug}'...")
             fallback_url = (
                 f"{EDHREC_BASE_JSON_URL}/commanders/{fallback_slug}/{clean_theme}.json"
@@ -228,6 +230,8 @@ class EDHRECProvider:
                 slug = fallback_slug
 
         if not resp or resp.status_code != 200:
+            # Cache negative result so we do not repeatedly retry external network queries on 404/403
+            self._set_in_cache(cache_key, {"_not_found": True, "card_synergies": {}, "combos": [], "high_synergy_cards": [], "top_cards": []})
             return None
 
         try:

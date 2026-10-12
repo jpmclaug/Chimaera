@@ -48,26 +48,6 @@ $url = "http://localhost:$Port"
 $pidFile = Join-Path $PSScriptRoot ".chimaera.pid"
 $PID | Out-File -FilePath $pidFile -Encoding utf8
 
-# Schedule browser launch after server starts
-$browserJob = Start-Job -ScriptBlock {
-    param($targetUrl, $targetPort)
-    $attempts = 0
-    while ($attempts -lt 20) {
-        Start-Sleep -Milliseconds 500
-        $conn = Get-NetTCPConnection -LocalPort $targetPort -State Listen -ErrorAction SilentlyContinue
-        if ($conn) {
-            Start-Sleep -Milliseconds 400
-            Start-Process $targetUrl
-            break
-        }
-        $attempts++
-    }
-    if ($attempts -ge 20) {
-        # Fallback open
-        Start-Process $targetUrl
-    }
-} -ArgumentList $url, $Port
-
 Write-Host " [SYS:INIT] Starting Chimaera Server on $url..." -ForegroundColor Cyan
 Write-Host " [SYS:ONLINE] Opening default browser to $url" -ForegroundColor Green
 Write-Host " [*] Press Ctrl+C in this window or run .\stop_app.ps1 to shut down." -ForegroundColor DarkGray
@@ -81,6 +61,5 @@ finally {
     if (Test-Path $pidFile) {
         Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
     }
-    Stop-Job $browserJob -ErrorAction SilentlyContinue | Out-Null
-    Remove-Job $browserJob -Force -ErrorAction SilentlyContinue | Out-Null
 }
+
