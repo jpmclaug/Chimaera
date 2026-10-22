@@ -380,7 +380,7 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
 
     const finishSelect = document.getElementById("edit-target-finish-select");
     if (finishSelect) {
-        const domFinish = document.getElementById(`card-row-${id}`)?.dataset?.cardFinish;
+        const domFinish = (document.getElementById(`card-row-${id}`) || document.getElementById(`deal-card-${id}`))?.dataset?.cardFinish;
         const resolvedFinish = (currentFinish || domFinish || "any").toLowerCase().trim();
         finishSelect.value = resolvedFinish;
     }
@@ -605,11 +605,57 @@ document.addEventListener("DOMContentLoaded", () => {
             }, 250);
         });
 
+        let autocompleteHighlightIndex = -1;
+
+        function updateAutocompleteHighlight() {
+            if (!dropdown) return;
+            const items = Array.from(dropdown.querySelectorAll("[data-card-name], [data-action='search-direct']"));
+            items.forEach((el, idx) => {
+                if (idx === autocompleteHighlightIndex) {
+                    el.classList.add("bg-[#222B3D]", "text-[#00CED1]");
+                    el.scrollIntoView({ block: "nearest" });
+                } else {
+                    el.classList.remove("bg-[#222B3D]", "text-[#00CED1]");
+                }
+            });
+        }
+
+        searchInput.addEventListener("input", () => {
+            autocompleteHighlightIndex = -1;
+        });
+
         searchInput.addEventListener("keydown", (e) => {
+            const isDropdownVisible = dropdown && !dropdown.classList.contains("hidden");
+            const items = isDropdownVisible
+                ? Array.from(dropdown.querySelectorAll("[data-card-name], [data-action='search-direct']"))
+                : [];
+
+            if (e.key === "ArrowDown" && items.length > 0) {
+                e.preventDefault();
+                autocompleteHighlightIndex = (autocompleteHighlightIndex + 1) % items.length;
+                updateAutocompleteHighlight();
+                return;
+            }
+            if (e.key === "ArrowUp" && items.length > 0) {
+                e.preventDefault();
+                autocompleteHighlightIndex = (autocompleteHighlightIndex - 1 + items.length) % items.length;
+                updateAutocompleteHighlight();
+                return;
+            }
             if (e.key === "Enter") {
                 e.preventDefault();
+                if (isDropdownVisible && autocompleteHighlightIndex >= 0 && autocompleteHighlightIndex < items.length) {
+                    const activeEl = items[autocompleteHighlightIndex];
+                    const cardName = activeEl.getAttribute("data-card-name");
+                    if (cardName) {
+                        selectCardName(cardName);
+                    } else if (searchInput.value.trim().length >= 2) {
+                        selectCardName(searchInput.value.trim());
+                    }
+                    return;
+                }
                 const firstCardItem = dropdown.querySelector("[data-card-name]");
-                if (firstCardItem && !dropdown.classList.contains("hidden")) {
+                if (firstCardItem && isDropdownVisible) {
                     const cardName = firstCardItem.getAttribute("data-card-name");
                     if (cardName) selectCardName(cardName);
                 } else if (searchInput.value.trim().length >= 2) {
@@ -665,7 +711,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Close modals on backdrop click
-    const modalIds = ["modal-add-card", "modal-bulk-add", "modal-edit-target", "modal-cadence-settings", "modal-buylist-variants", "modal-card-image"];
+    const modalIds = ["modal-add-card", "modal-bulk-add", "modal-edit-target", "modal-cadence-settings", "modal-buylist-variants", "modal-card-image", "modal-command-palette"];
     modalIds.forEach(id => {
         const modal = document.getElementById(id);
         if (modal) {
@@ -677,19 +723,55 @@ document.addEventListener("DOMContentLoaded", () => {
                     else if (id === "modal-cadence-settings") closeCadenceModal();
                     else if (id === "modal-buylist-variants" && typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
                     else if (id === "modal-card-image") closeCardImageModal();
+                    else if (id === "modal-command-palette") closeCommandPalette();
                 }
             });
         }
     });
 
-    // Close modals on Escape key
+    // Close modals on Escape key & handle Ctrl+K / '/' global shortcuts
     document.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+            e.preventDefault();
+            const cpModal = document.getElementById("modal-command-palette");
+            if (cpModal && !cpModal.classList.contains("hidden")) {
+                closeCommandPalette();
+            } else {
+                openCommandPalette();
+            }
+            return;
+        }
+
+        if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const activeEl = document.activeElement;
+            const isTyping = activeEl && (
+                activeEl.tagName === "INPUT" ||
+                activeEl.tagName === "TEXTAREA" ||
+                activeEl.tagName === "SELECT" ||
+                activeEl.isContentEditable
+            );
+            if (!isTyping && window.openModalsCount === 0) {
+                const searchBox = document.getElementById("watchlist-search") ||
+                    document.getElementById("deals-search") ||
+                    document.getElementById("inventorySearch") ||
+                    document.getElementById("buylist-single-search") ||
+                    document.getElementById("single-card-search");
+                if (searchBox) {
+                    e.preventDefault();
+                    searchBox.focus();
+                    searchBox.select();
+                }
+            }
+            return;
+        }
+
         if (e.key === "Escape") {
             closeAddCardModal();
             closeBulkAddModal();
             closeEditTargetModal();
             closeCadenceModal();
             closeCardImageModal();
+            closeCommandPalette();
             if (typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
             closeMobileDrawer();
             const logoMenu = document.getElementById("logo-dropdown-menu");
@@ -1445,7 +1527,7 @@ function updateCardInRegistryDom(card) {
             }
         }
 
-        // Deal banner
+        // Deal banner & proximity bar
         const gridDealBanner = document.getElementById(`card-deal-banner-container-${cid}`);
         if (gridDealBanner) {
             if (card.is_deal) {
@@ -1457,18 +1539,49 @@ function updateCardInRegistryDom(card) {
                 </div>`;
             } else if (card.target_price && card.lowest_price) {
                 const diff = (card.lowest_price - card.target_price).toFixed(2);
-                gridDealBanner.innerHTML = `<div class="bg-[#10141D] text-[#94A3B8] text-xs px-2.5 py-1 border border-[#263245] text-right font-mono">
-                    +$${diff} above threshold
+                const proxRatio = Math.min(99, Math.max(8, Math.round((card.target_price / card.lowest_price) * 100)));
+                const barColor = proxRatio >= 85 ? "bg-[#F59E0B]" : "bg-[#00CED1]/60";
+                gridDealBanner.innerHTML = `<div class="bg-[#10141D] text-[#94A3B8] text-xs px-2.5 py-1.5 border border-[#263245] font-mono space-y-1">
+                    <div class="flex items-center justify-between text-[11px]">
+                        <span class="text-[#64748B] uppercase">Proximity (${proxRatio}%)</span>
+                        <span>+$${diff} above threshold</span>
+                    </div>
+                    <div class="w-full h-1 bg-[#1B2230] overflow-hidden">
+                        <div class="h-full ${barColor}" style="width: ${proxRatio}%"></div>
+                    </div>
                 </div>`;
             } else {
                 gridDealBanner.innerHTML = "";
             }
         }
 
+        // Update sort dataset attributes
+        gridRow.dataset.target = card.target_price || 0;
+        if (card.lowest_price !== undefined && card.lowest_price !== null) {
+            gridRow.dataset.price = card.lowest_price;
+        }
+        gridRow.dataset.savingsPct = card.savings_percent || 0;
+
         // Edit button onclick
         const gridEditBtn = document.getElementById(`card-edit-btn-${cid}`);
         if (gridEditBtn) gridEditBtn.setAttribute("onclick", editOnclickStr);
     }
+
+    // Also update Deal Card elements if on Deals page
+    const dealCard = document.getElementById(`deal-card-${cid}`);
+    if (dealCard) {
+        dealCard.dataset.tag = (card.tag || "").toLowerCase().trim();
+        dealCard.dataset.cardFinish = safeFinish;
+        dealCard.dataset.target = card.target_price || 0;
+        const finishBadge = dealCard.querySelector("[data-card-finish-badge]");
+        if (finishBadge) finishBadge.textContent = safeFinish.toUpperCase();
+    }
+    ["card-target-price-", "compact-target-price-", "swipe-target-price-"].forEach(prefix => {
+        const el = document.getElementById(`${prefix}${cid}`);
+        if (el && card.target_price !== null && card.target_price !== undefined) {
+            el.textContent = `$${card.target_price.toFixed(2)}`;
+        }
+    });
 
     // 2. COMPACT / LIST VIEW UPDATES
     const compactCard = document.getElementById(`compact-card-${cid}`);
@@ -1830,7 +1943,7 @@ async function deleteCard(itemId, cardName) {
         const data = await res.json();
         if (res.ok) {
             showToast(data.message || `Target ${cardName} de-registered`, "success");
-            const elem = document.getElementById(`card-row-${itemId}`);
+            const elem = document.getElementById(`card-row-${itemId}`) || document.getElementById(`deal-card-${itemId}`);
             if (elem) {
                 elem.style.transition = "opacity 0.25s, transform 0.25s";
                 elem.style.opacity = "0";
@@ -2293,10 +2406,86 @@ function updateSwipeDeckPosition(trackId) {
 }
 
 // =========================================================================
-// Filter & Search Watchlist Client-side (Grid, Compact, Swipe Deck)
+// Filter, Clear & Sort Watchlist Client-side (Grid, Compact, Swipe Deck)
 // =========================================================================
+function clearWatchlistSearch() {
+    const input = document.getElementById("watchlist-search");
+    if (input) {
+        input.value = "";
+        filterWatchlist();
+        input.focus();
+    }
+}
+
+function sortWatchlist(sortMode) {
+    const mode = sortMode || document.getElementById("watchlist-sort")?.value || "default";
+    const containers = [
+        document.getElementById("watchlist-grid"),
+        document.getElementById("watchlist-compact"),
+        document.getElementById("registry-swipe-track")
+    ];
+
+    containers.forEach(container => {
+        if (!container) return;
+        const items = Array.from(container.children).filter(el => el.classList.contains("watchlist-card"));
+        if (items.length <= 1) return;
+
+        items.sort((a, b) => {
+            const priceA = parseFloat(a.dataset.price ?? "999999");
+            const priceB = parseFloat(b.dataset.price ?? "999999");
+            const targetA = parseFloat(a.dataset.target ?? "0");
+            const targetB = parseFloat(b.dataset.target ?? "0");
+            const savPctA = parseFloat(a.dataset.savingsPct ?? "0");
+            const savPctB = parseFloat(b.dataset.savingsPct ?? "0");
+            const orderA = parseInt(a.dataset.order ?? "0", 10);
+            const orderB = parseInt(b.dataset.order ?? "0", 10);
+            const nameA = (a.dataset.name || "").toLowerCase();
+            const nameB = (b.dataset.name || "").toLowerCase();
+
+            if (mode === "price_asc") {
+                return priceA - priceB;
+            }
+            if (mode === "price_desc") {
+                const pA = priceA >= 999999 ? -1 : priceA;
+                const pB = priceB >= 999999 ? -1 : priceB;
+                return pB - pA;
+            }
+            if (mode === "target_desc") {
+                return targetB - targetA;
+            }
+            if (mode === "savings_pct") {
+                if (savPctB !== savPctA) return savPctB - savPctA;
+                return priceA - priceB;
+            }
+            if (mode === "proximity") {
+                // Ratio of price / target (lower is closer or better deal)
+                const ratioA = (targetA > 0 && priceA < 999999) ? (priceA / targetA) : 999999;
+                const ratioB = (targetB > 0 && priceB < 999999) ? (priceB / targetB) : 999999;
+                return ratioA - ratioB;
+            }
+            if (mode === "name_asc") {
+                return nameA.localeCompare(nameB);
+            }
+            return orderA - orderB;
+        });
+
+        items.forEach(item => container.appendChild(item));
+    });
+
+    if (swipeTrackState["registry-swipe-track"]) {
+        swipeTrackState["registry-swipe-track"].index = 0;
+    }
+    updateSwipeDeckPosition("registry-swipe-track");
+}
+
 function filterWatchlist() {
-    const searchVal = (document.getElementById("watchlist-search")?.value || "").toLowerCase().trim();
+    const rawSearch = document.getElementById("watchlist-search")?.value || "";
+    const searchVal = rawSearch.toLowerCase().trim();
+    const clearBtn = document.getElementById("btn-clear-watchlist-search");
+    if (clearBtn) {
+        if (rawSearch.length > 0) clearBtn.classList.remove("hidden");
+        else clearBtn.classList.add("hidden");
+    }
     const dealFilter = document.getElementById("watchlist-filter-deal")?.value || "all";
     const tagFilter = (document.getElementById("watchlist-filter-tag")?.value || "all").toLowerCase().trim();
     const cards = document.querySelectorAll(".watchlist-card");
@@ -2355,10 +2544,76 @@ function filterWatchlist() {
 }
 
 // =========================================================================
-// Filter & Search Deals Client-side (Grid, Compact, Swipe Deck)
+// Filter, Clear & Sort Deals Client-side (Grid, Compact, Swipe Deck)
 // =========================================================================
+function clearDealsSearch() {
+    const input = document.getElementById("deals-search");
+    if (input) {
+        input.value = "";
+        filterDeals();
+        input.focus();
+    }
+}
+
+function sortDeals(sortMode) {
+    const mode = sortMode || document.getElementById("deals-sort")?.value || "default";
+    const containers = [
+        document.getElementById("deals-grid"),
+        document.getElementById("deals-compact"),
+        document.getElementById("deals-swipe-track")
+    ];
+
+    containers.forEach(container => {
+        if (!container) return;
+        const items = Array.from(container.children).filter(el => el.classList.contains("deal-card"));
+        if (items.length <= 1) return;
+
+        items.sort((a, b) => {
+            const priceA = parseFloat(a.dataset.price ?? "999999");
+            const priceB = parseFloat(b.dataset.price ?? "999999");
+            const savPctA = parseFloat(a.dataset.savingsPct ?? "0");
+            const savPctB = parseFloat(b.dataset.savingsPct ?? "0");
+            const savAmtA = parseFloat(a.dataset.savingsAmt ?? "0");
+            const savAmtB = parseFloat(b.dataset.savingsAmt ?? "0");
+            const orderA = parseInt(a.dataset.order ?? "0", 10);
+            const orderB = parseInt(b.dataset.order ?? "0", 10);
+            const nameA = (a.dataset.name || "").toLowerCase();
+            const nameB = (b.dataset.name || "").toLowerCase();
+
+            if (mode === "savings_amt") {
+                return savAmtB - savAmtA;
+            }
+            if (mode === "price_asc") {
+                return priceA - priceB;
+            }
+            if (mode === "price_desc") {
+                return priceB - priceA;
+            }
+            if (mode === "name_asc") {
+                return nameA.localeCompare(nameB);
+            }
+            // default: biggest savings %
+            if (savPctB !== savPctA) return savPctB - savPctA;
+            return orderA - orderB;
+        });
+
+        items.forEach(item => container.appendChild(item));
+    });
+
+    if (swipeTrackState["deals-swipe-track"]) {
+        swipeTrackState["deals-swipe-track"].index = 0;
+    }
+    updateSwipeDeckPosition("deals-swipe-track");
+}
+
 function filterDeals() {
-    const searchVal = (document.getElementById("deals-search")?.value || "").toLowerCase().trim();
+    const rawSearch = document.getElementById("deals-search")?.value || "";
+    const searchVal = rawSearch.toLowerCase().trim();
+    const clearBtn = document.getElementById("btn-clear-deals-search");
+    if (clearBtn) {
+        if (rawSearch.length > 0) clearBtn.classList.remove("hidden");
+        else clearBtn.classList.add("hidden");
+    }
     const tagFilter = (document.getElementById("deals-filter-tag")?.value || "all").toLowerCase().trim();
     const dealCards = document.querySelectorAll(".deal-card");
 
@@ -3918,6 +4173,198 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+// =========================================================================
+// Global Tactical Command Palette (Ctrl+K / Cmd+K)
+// =========================================================================
+let commandPaletteActiveIdx = 0;
+let commandPaletteFilteredItems = [];
+
+function getCommandPaletteCatalog() {
+    const items = [
+        // Sector Navigation
+        { id: "nav-guide", category: "SECTOR NAVIGATION", title: "00 // Field Manual", subtitle: "System documentation & tactical operations guide", badge: "SECTOR 00", action: () => { window.location.href = "/guide"; } },
+        { id: "nav-registry", category: "SECTOR NAVIGATION", title: "01 // Registry Dashboard", subtitle: "Primary card watchlist & price surveillance", badge: "SECTOR 01", action: () => { window.location.href = "/"; } },
+        { id: "nav-deals", category: "SECTOR NAVIGATION", title: "02 // Priority Deals", subtitle: "Active target acquisitions at or below threshold", badge: "SECTOR 02", action: () => { window.location.href = "/deals"; } },
+        { id: "nav-buylist", category: "SECTOR NAVIGATION", title: "03 // Buylist Evaluator", subtitle: "Card Kingdom store credit & cash valuation engine", badge: "SECTOR 03", action: () => { window.location.href = "/buylist"; } },
+        { id: "nav-evaluator", category: "SECTOR NAVIGATION", title: "04 // Add Evaluator", subtitle: "Evaluate cards for collection & watchlist", badge: "SECTOR 04", action: () => { window.location.href = "/add-evaluator"; } },
+        { id: "nav-commander", category: "SECTOR NAVIGATION", title: "05 // Commander Hub", subtitle: "EDH decklist builder, salt analysis & mana telemetry", badge: "SECTOR 05", action: () => { window.location.href = "/commander-hub"; } },
+        { id: "nav-inventory", category: "SECTOR NAVIGATION", title: "06 // Collection Binder", subtitle: "Physical ManaBox collection & deck allocation vault", badge: "SECTOR 06", action: () => { window.location.href = "/inventory"; } },
+        { id: "nav-sealed", category: "SECTOR NAVIGATION", title: "08 // Sealed Product", subtitle: "Booster boxes, bundles & collector EV intelligence", badge: "SECTOR 08", action: () => { window.location.href = "/sealed"; } },
+        { id: "nav-bestbuy", category: "SECTOR NAVIGATION", title: "09 // Best Buy Drop Radar", subtitle: "Retail stock & MSRP drop surveillance", badge: "SECTOR 09", action: () => { window.location.href = "/bestbuy"; } },
+        { id: "nav-admin", category: "SECTOR NAVIGATION", title: "07 // Admin Console", subtitle: "User management & system telemetry controls", badge: "SECTOR 07", action: () => { window.location.href = "/admin/users"; } },
+
+        // Tactical Operations
+        { id: "act-add-card", category: "TACTICAL ACTIONS", title: "+ Add Target Card to Watchlist", subtitle: "Open Scryfall single-card surveillance modal", badge: "ACTION", action: () => { closeCommandPalette(); openAddCardModal(); } },
+        { id: "act-bulk-add", category: "TACTICAL ACTIONS", title: "+ Bulk Add Watchlist Targets", subtitle: "Import multiple cards separated by semicolons", badge: "ACTION", action: () => { closeCommandPalette(); openBulkAddModal(); } },
+        { id: "act-poll-all", category: "TACTICAL ACTIONS", title: "Poll All Watchlist Prices Now", subtitle: "Execute immediate multi-vendor price scan", badge: "ACTION", action: () => { closeCommandPalette(); triggerRefreshAll(); } },
+        { id: "act-cadence", category: "TACTICAL ACTIONS", title: "Configure Surveillance Cadence", subtitle: "Adjust background price polling frequency", badge: "CONFIG", action: () => { closeCommandPalette(); openCadenceModal(); } },
+        { id: "act-tcg-reconcile", category: "TACTICAL ACTIONS", title: "Reconcile TCGplayer Purchase", subtitle: "De-register purchased targets & sync to binder", badge: "ACTION", action: () => { closeCommandPalette(); if (document.getElementById("modal-tcgplayer-purchase")) { openTcgPurchaseModal(); } else { window.location.href = "/?action=reconcile"; } } },
+        { id: "act-view-grid", category: "TACTICAL ACTIONS", title: "Switch to Detailed Grid View", subtitle: "Set card display layout to Grid", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("grid"); } },
+        { id: "act-view-list", category: "TACTICAL ACTIONS", title: "Switch to High-Density List View", subtitle: "Set card display layout to Compact List", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("compact"); } },
+    ];
+
+    // Dynamically index cards currently on page (Registry or Deals)
+    const domCards = document.querySelectorAll("#watchlist-grid .watchlist-card, #deals-grid .deal-card");
+    domCards.forEach(c => {
+        const rawId = c.id.replace("card-row-", "").replace("deal-card-", "");
+        const titleEl = c.querySelector("h4");
+        const name = titleEl ? titleEl.textContent.trim() : (c.dataset.name || "");
+        const tag = c.dataset.tag ? `🏷️ ${c.dataset.tag.toUpperCase()}` : "WATCHLIST ASSET";
+        if (name) {
+            items.push({
+                id: `card-${rawId}`,
+                category: "MONITORED ASSETS ON PAGE",
+                title: name,
+                subtitle: `Jump to card & highlight in current view`,
+                badge: tag,
+                action: () => {
+                    closeCommandPalette();
+                    c.scrollIntoView({ behavior: "smooth", block: "center" });
+                    c.classList.add("ring-2", "ring-[#00CED1]");
+                    setTimeout(() => c.classList.remove("ring-2", "ring-[#00CED1]"), 2200);
+                }
+            });
+        }
+    });
+
+    return items;
+}
+
+function openCommandPalette() {
+    const modal = document.getElementById("modal-command-palette");
+    const input = document.getElementById("command-palette-input");
+    if (!modal) return;
+
+    modal.classList.remove("hidden");
+    lockBody();
+    if (input) {
+        input.value = "";
+        input.focus();
+    }
+    filterCommandPalette("");
+}
+
+function closeCommandPalette() {
+    const modal = document.getElementById("modal-command-palette");
+    if (modal && !modal.classList.contains("hidden")) {
+        modal.classList.add("hidden");
+        unlockBody();
+    }
+}
+
+function filterCommandPalette(query) {
+    const q = (query || "").toLowerCase().trim();
+    const catalog = getCommandPaletteCatalog();
+    commandPaletteFilteredItems = catalog.filter(item => {
+        if (!q) return true;
+        return item.title.toLowerCase().includes(q) ||
+            item.subtitle.toLowerCase().includes(q) ||
+            item.category.toLowerCase().includes(q) ||
+            item.badge.toLowerCase().includes(q);
+    });
+    commandPaletteActiveIdx = 0;
+    renderCommandPaletteItems();
+}
+
+function renderCommandPaletteItems() {
+    const resultsEl = document.getElementById("command-palette-results");
+    if (!resultsEl) return;
+
+    if (commandPaletteFilteredItems.length === 0) {
+        resultsEl.innerHTML = `
+            <div class="p-6 text-center font-mono text-xs text-[#64748B] uppercase">
+                [ NO MATCHING SECTORS OR COMMANDS IDENTIFIED ]
+            </div>
+        `;
+        return;
+    }
+
+    let html = "";
+    let lastCategory = "";
+    commandPaletteFilteredItems.forEach((item, idx) => {
+        if (item.category !== lastCategory) {
+            lastCategory = item.category;
+            html += `<div class="px-3 py-1.5 text-[10px] font-mono font-bold text-[#64748B] uppercase tracking-wider bg-[#10141D]/60 border-b border-[#263245]/50">${escapeHtml(lastCategory)}</div>`;
+        }
+        const isActive = idx === commandPaletteActiveIdx;
+        const activeClasses = isActive
+            ? "bg-[#222B3D] border-l-2 border-l-[#00CED1] text-white"
+            : "hover:bg-[#1B2230] text-[#F1F5F9]";
+        html += `
+            <div class="px-3.5 py-2.5 cursor-pointer transition flex items-center justify-between border-b border-[#263245]/40 ${activeClasses}"
+                 data-cp-index="${idx}"
+                 onclick="executeCommandPaletteItem(${idx})"
+                 onmouseenter="setCommandPaletteActive(${idx})">
+                <div class="min-w-0 pr-3">
+                    <div class="text-xs font-mono font-bold ${isActive ? 'text-[#00CED1]' : 'text-white'} truncate">${escapeHtml(item.title)}</div>
+                    <div class="text-[11px] font-sans text-[#94A3B8] truncate">${escapeHtml(item.subtitle)}</div>
+                </div>
+                <span class="text-[10px] font-mono px-2 py-0.5 border ${isActive ? 'border-[#00CED1] text-[#00CED1] bg-[#00CED1]/10' : 'border-[#263245] text-[#64748B] bg-[#10141D]'} flex-shrink-0 uppercase">${escapeHtml(item.badge)}</span>
+            </div>
+        `;
+    });
+
+    resultsEl.innerHTML = html;
+    const activeRow = resultsEl.querySelector(`[data-cp-index="${commandPaletteActiveIdx}"]`);
+    if (activeRow) {
+        activeRow.scrollIntoView({ block: "nearest" });
+    }
+}
+
+function setCommandPaletteActive(idx) {
+    commandPaletteActiveIdx = idx;
+    const resultsEl = document.getElementById("command-palette-results");
+    if (!resultsEl) return;
+    const rows = resultsEl.querySelectorAll("[data-cp-index]");
+    rows.forEach(r => {
+        const rIdx = parseInt(r.getAttribute("data-cp-index"), 10);
+        if (rIdx === idx) {
+            r.classList.add("bg-[#222B3D]", "border-l-2", "border-l-[#00CED1]");
+            r.classList.remove("hover:bg-[#1B2230]");
+        } else {
+            r.classList.remove("bg-[#222B3D]", "border-l-2", "border-l-[#00CED1]");
+            r.classList.add("hover:bg-[#1B2230]");
+        }
+    });
+}
+
+function executeCommandPaletteItem(idx) {
+    const item = commandPaletteFilteredItems[idx];
+    if (item && typeof item.action === "function") {
+        item.action();
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const cpInput = document.getElementById("command-palette-input");
+    if (cpInput) {
+        cpInput.addEventListener("input", (e) => {
+            filterCommandPalette(e.target.value);
+        });
+        cpInput.addEventListener("keydown", (e) => {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (commandPaletteFilteredItems.length > 0) {
+                    commandPaletteActiveIdx = (commandPaletteActiveIdx + 1) % commandPaletteFilteredItems.length;
+                    renderCommandPaletteItems();
+                }
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                if (commandPaletteFilteredItems.length > 0) {
+                    commandPaletteActiveIdx = (commandPaletteActiveIdx - 1 + commandPaletteFilteredItems.length) % commandPaletteFilteredItems.length;
+                    renderCommandPaletteItems();
+                }
+            } else if (e.key === "Enter") {
+                e.preventDefault();
+                if (commandPaletteFilteredItems.length > 0) {
+                    executeCommandPaletteItem(commandPaletteActiveIdx);
+                }
+            }
+        });
+    }
+});
+
 
 
 

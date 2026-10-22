@@ -564,7 +564,7 @@ REQUIRED SCHEMA:
 }}
 Respond with JSON only. Do not wrap with markdown code fences.
 """
-        gen_config = {"temperature": 0.1, "maxOutputTokens": 4096}
+        gen_config: dict = {"maxOutputTokens": 4096}
         if "gemini-3" in target_model:
             gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
 
@@ -709,10 +709,7 @@ class SecretLairGeminiAdvisor:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
         raw_model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
         self.requested_model = raw_model
-        if raw_model and str(raw_model).strip().lower() in ("auto", "default", "none", ""):
-            self.model = get_model_for_task("fleet_synergy")
-        else:
-            self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
+        self.model = get_model_for_task("fleet_synergy", preferred_model=raw_model)
 
     def analyze_fleet_synergy(
         self,
@@ -912,8 +909,7 @@ CRITICAL INSTRUCTION: Respond ONLY with a raw JSON object (no markdown surroundi
         target_model = get_model_for_task("fleet_synergy", preferred_model=self.model)
         url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={clean_key}"
 
-        gen_config = {
-            "temperature": 0.2,
+        gen_config: dict = {
             "maxOutputTokens": 8192,
         }
         if "gemini-3" in target_model:

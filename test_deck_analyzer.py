@@ -550,14 +550,15 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self.assertEqual(parsed["cards"][1]["section"], "mainboard")
 
     def test_gemini_models_and_selection(self):
-        """Verifies GeminiAnalyzer, get_model_for_task, and endpoints support Auto and curated models."""
+        """Verifies GeminiAnalyzer, get_model_for_task, and endpoints strictly support only 3.8 Flash and 3.5 Flash-Lite."""
         from gemini_analyzer import get_model_for_task
         self.assertEqual(get_model_for_task("deck_analysis"), "gemini-3.8-flash")
-        self.assertEqual(get_model_for_task("card_evaluation"), "gemini-3.7-flash")
+        self.assertEqual(get_model_for_task("card_evaluation"), "gemini-3.5-flash-lite")
         self.assertEqual(get_model_for_task("data_extraction"), "gemini-3.5-flash-lite")
         self.assertEqual(get_model_for_task("api_test"), "gemini-3.5-flash-lite")
-        self.assertEqual(get_model_for_task("deck_analysis", preferred_model="gemini-3.7-flash"), "gemini-3.7-flash")
-        self.assertEqual(get_model_for_task("card_evaluation", preferred_model="auto"), "gemini-3.7-flash")
+        self.assertEqual(get_model_for_task("deck_analysis", preferred_model="gemini-3.5-flash-lite"), "gemini-3.5-flash-lite")
+        self.assertEqual(get_model_for_task("deck_analysis", preferred_model="gemini-3.7-flash"), "gemini-3.8-flash")
+        self.assertEqual(get_model_for_task("card_evaluation", preferred_model="auto"), "gemini-3.5-flash-lite")
 
         analyzer_default = GeminiAnalyzer(api_key="test_key")
         self.assertEqual(analyzer_default.model, "gemini-3.8-flash")
@@ -572,29 +573,29 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         self.assertEqual(analyzer_38_alias.model, "gemini-3.8-flash")
 
         analyzer_37 = GeminiAnalyzer(api_key="test_key", model="gemini-3.7-flash")
-        self.assertEqual(analyzer_37.model, "gemini-3.7-flash")
+        self.assertEqual(analyzer_37.model, "gemini-3.8-flash")
 
         analyzer_36 = GeminiAnalyzer(api_key="test_key", model="gemini-3.6-flash")
-        self.assertEqual(analyzer_36.model, "gemini-3.6-flash")
+        self.assertEqual(analyzer_36.model, "gemini-3.8-flash")
 
         analyzer_35 = GeminiAnalyzer(api_key="test_key", model="gemini-3.5-flash")
-        self.assertEqual(analyzer_35.model, "gemini-3.5-flash")
+        self.assertEqual(analyzer_35.model, "gemini-3.5-flash-lite")
 
         analyzer_lite = GeminiAnalyzer(api_key="test_key", model="gemini-3.5-flash-lite")
         self.assertEqual(analyzer_lite.model, "gemini-3.5-flash-lite")
 
         models = GeminiAnalyzer.get_available_models("test_key")
         model_ids = [m["id"] for m in models]
-        self.assertEqual(len(model_ids), 6)
-        self.assertEqual(model_ids, ["auto", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"])
+        self.assertEqual(len(model_ids), 2)
+        self.assertEqual(model_ids, ["gemini-3.8-flash", "gemini-3.5-flash-lite"])
 
         self._login()
         resp = self.client.get("/api/deck/gemini-status")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
-        self.assertEqual(data["default_model"], "auto")
+        self.assertEqual(data["default_model"], "gemini-3.8-flash")
         resp_model_ids = [m["id"] for m in data["supported_models"]]
-        self.assertEqual(resp_model_ids, ["auto", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"])
+        self.assertEqual(resp_model_ids, ["gemini-3.8-flash", "gemini-3.5-flash-lite"])
 
     @patch("gemini_analyzer.time.sleep")
     @patch("gemini_analyzer.requests.post")
@@ -628,20 +629,20 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         # First call returns 503, second retry call on the SAME model returns 200
         mock_post.side_effect = [mock_503_resp, mock_200_resp]
 
-        analyzer = GeminiAnalyzer(api_key="test_key", model="gemini-3.7-flash")
+        analyzer = GeminiAnalyzer(api_key="test_key", model="gemini-3.5-flash-lite")
         deck_data = {
             "deck_name": "Retry Test Deck",
             "commander": ["Atraxa, Praetors' Voice"],
             "cards": [{"name": "Sol Ring", "quantity": 1}]
         }
         res = analyzer.analyze_deck(deck_data)
-        self.assertEqual(res["_model_used"], "gemini-3.7-flash")
-        self.assertEqual(analyzer.model, "gemini-3.7-flash")
+        self.assertEqual(res["_model_used"], "gemini-3.5-flash-lite")
+        self.assertEqual(analyzer.model, "gemini-3.5-flash-lite")
         self.assertEqual(mock_post.call_count, 2)
-        # Verify both requests targeted gemini-3.7-flash without downgrading
+        # Verify both requests targeted gemini-3.5-flash-lite without downgrading
         for call in mock_post.call_args_list:
             target_url = call[0][0]
-            self.assertIn("gemini-3.7-flash", target_url)
+            self.assertIn("gemini-3.5-flash-lite", target_url)
 
     @patch("gemini_analyzer.time.sleep")
     @patch("gemini_analyzer.requests.post")
@@ -655,7 +656,7 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
         # All 3 attempts (1 initial + 2 retries) fail on target model
         mock_post.return_value = mock_503_resp
 
-        analyzer = GeminiAnalyzer(api_key="test_key", model="gemini-3.7-flash")
+        analyzer = GeminiAnalyzer(api_key="test_key", model="gemini-3.5-flash-lite")
         deck_data = {
             "deck_name": "All Fail Deck",
             "commander": ["Atraxa, Praetors' Voice"],
@@ -666,13 +667,13 @@ class TestDeckAnalyzerRoutes(unittest.TestCase):
             analyzer.analyze_deck(deck_data)
 
         err_msg = str(ctx.exception)
-        self.assertIn("gemini-3.7-flash", err_msg)
+        self.assertIn("gemini-3.5-flash-lite", err_msg)
         self.assertIn("HTTP 503", err_msg)
-        # Verify it retried only on gemini-3.7-flash without trying other models
+        # Verify it retried only on gemini-3.5-flash-lite without trying other models
         self.assertEqual(mock_post.call_count, 3)
         for call in mock_post.call_args_list:
             target_url = call[0][0]
-            self.assertIn("gemini-3.7-flash", target_url)
+            self.assertIn("gemini-3.5-flash-lite", target_url)
 
     def test_deck_overview_page_authenticated(self):
         """Verifies /deck-overview page renders successfully with fleet stats and decks."""
@@ -1613,7 +1614,7 @@ class TestSecretLairAndCardEvaluatorModelRouting(unittest.TestCase):
 
     @patch("card_add_evaluator.time.sleep")
     @patch("card_add_evaluator.requests.post")
-    def test_card_add_evaluator_routes_small_batch_to_37_and_retries(self, mock_post, mock_sleep):
+    def test_card_add_evaluator_routes_small_batch_to_flash_lite_and_retries(self, mock_post, mock_sleep):
         from card_add_evaluator import CardAddEvaluator
         mock_503 = MagicMock()
         mock_503.status_code = 503
@@ -1633,10 +1634,10 @@ class TestSecretLairAndCardEvaluatorModelRouting(unittest.TestCase):
             api_key="test_key",
             model="auto",
         )
-        self.assertEqual(res["_model_used"], "gemini-3.7-flash")
+        self.assertEqual(res["_model_used"], "gemini-3.5-flash-lite")
         self.assertEqual(mock_post.call_count, 2)
         for call in mock_post.call_args_list:
-            self.assertIn("gemini-3.7-flash", call[0][0])
+            self.assertIn("gemini-3.5-flash-lite", call[0][0])
 
 
 class TestSecretLairDropParsing(unittest.TestCase):

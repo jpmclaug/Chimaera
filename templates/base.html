@@ -158,13 +158,6 @@
                                     </div>
                                     <span class="text-[#F59E0B]">&rarr;</span>
                                 </a>
-                                <a href="/bestbuy" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'bestbuy' %}border-[#3B82F6] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">09 // Best Buy Local Stock</span>
-                                        <span class="bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">NEARBY</span>
-                                    </div>
-                                    <span class="text-[#3B82F6]">&rarr;</span>
-                                </a>
                                 <a href="/commander" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                                     <div class="flex items-center space-x-2">
                                         <span class="font-bold">05 // Commander</span>
@@ -185,6 +178,13 @@
                                         <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">SUITE</span>
                                     </div>
                                     <span class="text-[#00CED1]">&rarr;</span>
+                                </a>
+                                <a href="/bestbuy" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'bestbuy' %}border-[#3B82F6] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">09 // Best Buy Local Stock</span>
+                                        <span class="bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">NEARBY</span>
+                                    </div>
+                                    <span class="text-[#3B82F6]">&rarr;</span>
                                 </a>
                                 {% if current_user.is_admin %}
                                 <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
@@ -280,8 +280,18 @@
                 </div>
             </div>
 
-            <!-- Right Actions: Refresh, Acquire & Mobile Menu -->
+            <!-- Right Actions: Command Palette, Refresh, Acquire & Mobile Menu -->
             <div class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink-0">
+                {% if current_user %}
+                <button type="button" onclick="openCommandPalette()" id="btn-command-palette" class="btn-bridge h-9 px-2.5 text-xs hidden sm:flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1]" title="Open Tactical Command Palette (Ctrl+K)">
+                    <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <span class="font-mono tracking-wider uppercase font-semibold hidden lg:inline">Cmd</span>
+                    <kbd class="text-[10px] font-mono bg-[#10141D] border border-[#263245] px-1 py-0.2 text-[#64748B] font-bold">^K</kbd>
+                </button>
+                {% endif %}
+
                 <a href="/system-overview" class="btn-bridge h-9 px-2.5 text-xs hidden sm:flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1]" title="Open Tactical Field Manual & System Overview">
                     <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
@@ -402,14 +412,7 @@
                     </div>
                     <span class="text-[#F59E0B]">&rarr;</span>
                 </a>
-                <a href="/bestbuy" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'bestbuy' %}border-[#3B82F6] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">09 // Best Buy Local Stock</span>
-                        <span class="bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/50 text-[9px] px-1 py-0.2 font-bold uppercase">NEARBY</span>
-                    </div>
-                    <span class="text-[#3B82F6]">&rarr;</span>
-                </a>
-                <a href="/commander" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                <a href="/deck-analyzer" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                     <div class="flex items-center space-x-2">
                         <span class="font-bold">05 // Commander Hub</span>
                         <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">HUB</span>
@@ -429,6 +432,13 @@
                         <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">SUITE</span>
                     </div>
                     <span class="text-[#00CED1]">&rarr;</span>
+                </a>
+                <a href="/bestbuy" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'bestbuy' %}border-[#3B82F6] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                    <div class="flex items-center space-x-2">
+                        <span class="font-bold">09 // Best Buy Local Stock</span>
+                        <span class="bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/50 text-[9px] px-1 py-0.2 font-bold uppercase">NEARBY</span>
+                    </div>
+                    <span class="text-[#3B82F6]">&rarr;</span>
                 </a>
                 {% if current_user.is_admin %}
                 <a href="/admin" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
@@ -538,6 +548,10 @@
                 <span>08 // Add Evaluator</span>
                 <span class="text-[9px] text-[#00CED1] font-bold">SUITE</span>
             </a>
+            <a href="/bestbuy" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'bestbuy' %}bg-[#10141D] text-[#60A5FA] border-[#3B82F6] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+                <span>09 // Best Buy</span>
+                <span class="text-[9px] text-[#60A5FA] font-bold">NEARBY</span>
+            </a>
             {% if current_user.is_admin %}
             <a href="/admin" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/80 border-transparent{% endif %} whitespace-nowrap">
                 07 // Admin
@@ -552,7 +566,7 @@
         const fade = document.getElementById('tabBarFadeRight');
         if (!bar) return;
         // Auto-scroll active tab into view
-        const activeTab = bar.querySelector('[class*="border-[#00CED1]"], [class*="border-[#DC143C]"], [class*="border-[#2DD4BF]"], [class*="border-[#F59E0B]"], [class*="border-[#10B981]"]');
+        const activeTab = bar.querySelector('[class*="border-[#00CED1]"], [class*="border-[#DC143C]"], [class*="border-[#2DD4BF]"], [class*="border-[#F59E0B]"], [class*="border-[#10B981]"], [class*="border-[#3B82F6]"]');
         if (activeTab) {
             setTimeout(() => activeTab.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }), 100);
         }
@@ -1293,6 +1307,37 @@
                 <button type="button" onclick="closeCardImageModal()" class="btn-bridge px-3 py-1.5 text-xs text-[#94A3B8] hover:text-white uppercase font-bold">
                     Close
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Tactical Command Palette Modal (Ctrl+K) -->
+    <div id="modal-command-palette" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-start justify-center pt-16 sm:pt-24 p-3 sm:p-4 overflow-y-auto" onclick="if(event.target === this) closeCommandPalette()">
+        <div class="bg-[#1B2230] border-2 border-[#00CED1] max-w-lg w-full shadow-2xl tactical-corners flex flex-col max-h-[80vh]" onclick="event.stopPropagation()">
+            <!-- Search Input Header -->
+            <div class="p-3 bg-[#10141D] border-b border-[#263245] flex items-center space-x-2.5">
+                <svg class="w-4 h-4 text-[#00CED1] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <input type="text" id="command-palette-input" placeholder="JUMP TO SECTOR OR EXECUTE PROTOCOL (TYPE TO FILTER)..."
+                    class="w-full bg-transparent border-none text-xs font-mono text-white placeholder-[#64748B] focus:outline-none focus:ring-0 uppercase tracking-wider"
+                    autocomplete="off">
+                <button type="button" onclick="closeCommandPalette()" class="text-[10px] font-mono bg-[#1B2230] border border-[#263245] px-1.5 py-0.5 text-[#94A3B8] hover:text-white">ESC</button>
+            </div>
+
+            <!-- Command Results List -->
+            <div id="command-palette-results" class="overflow-y-auto p-2 space-y-1 font-mono text-xs modal-scrollable divide-y divide-[#263245]/40">
+                <!-- Populated dynamically by app.js -->
+            </div>
+
+            <!-- Footer Hints -->
+            <div class="px-3 py-2 bg-[#10141D] border-t border-[#263245] flex items-center justify-between text-[10px] font-mono text-[#64748B]">
+                <div class="flex items-center space-x-3">
+                    <span><strong class="text-[#00CED1]">&uarr;&darr;</strong> Navigate</span>
+                    <span><strong class="text-[#00CED1]">ENTER</strong> Execute</span>
+                    <span><strong class="text-[#00CED1]">/</strong> Focus Page Search</span>
+                </div>
+                <span class="uppercase tracking-wider">CHIMAERA CMD // v1.0</span>
             </div>
         </div>
     </div>

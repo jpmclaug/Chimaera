@@ -673,7 +673,7 @@ class CardAddEvaluator:
         clean_key = effective_key.strip()
         target_model = target_model_base
         url = f"{GEMINI_API_BASE}/{target_model}:generateContent?key={clean_key}"
-        gen_config = {"temperature": 0.2, "maxOutputTokens": 8192, "responseMimeType": "application/json"}
+        gen_config = {"maxOutputTokens": 8192, "responseMimeType": "application/json"}
         if "gemini-3" in target_model:
             gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
 

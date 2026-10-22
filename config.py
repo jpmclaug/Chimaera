@@ -94,7 +94,7 @@ class Config:
 
     # Google Gemini AI Commander Deck Analyzer Configuration
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-    GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_DEFAULT_MODEL", "auto").strip()
+    GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_DEFAULT_MODEL", "gemini-3.8-flash").strip()
 
     # Best Buy Local Store Stock & Price Surveillance Configuration
     BESTBUY_API_KEY = os.getenv("BESTBUY_API_KEY", "").strip()

@@ -593,18 +593,12 @@ def _migrate_db_schema(app):
                         db.session.commit()
                         logger.info(f"Assigned {len(orphans)} legacy watchlist items to admin ({admin_email}).")
 
-                # Ensure default AI model is set to 'auto' (prompt-optimized) if unset or legacy default
+                # Ensure default AI model is one of the two supported models (gemini-3.8-flash or gemini-3.5-flash-lite)
                 try:
                     current_model = SystemSetting.get_val("gemini_default_model")
-                    if not current_model or current_model in (
-                        "gemini-3.8-flash",
-                        "gemini-3.7-flash",
-                        "gemini-3.6-flash",
-                        "gemini-3.5-flash-lite",
-                        "gemini-3.5-flash",
-                    ):
-                        SystemSetting.set_val("gemini_default_model", "auto")
-                        logger.info("Migrated default AI model in SystemSetting to auto (prompt-optimized).")
+                    if not current_model or current_model not in ("gemini-3.8-flash", "gemini-3.5-flash-lite"):
+                        SystemSetting.set_val("gemini_default_model", "gemini-3.8-flash")
+                        logger.info("Migrated default AI model in SystemSetting to gemini-3.8-flash.")
                 except Exception as model_mig_err:
                     logger.debug(f"Gemini default model migration check skipped: {model_mig_err}")
 
@@ -3869,7 +3863,8 @@ def create_app(test_config=None):
         data = request.get_json(silent=True) or {}
         api_key = str(data.get("api_key", "")).strip()
         default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
-        model = str(data.get("model") or default_model).strip()
+        raw_model = str(data.get("model") or default_model).strip()
+        model = raw_model if raw_model in ("gemini-3.8-flash", "gemini-3.5-flash-lite") else GEMINI_DEFAULT_MODEL
 
         if not api_key:
             return jsonify({"error": "API key cannot be blank."}), 400
@@ -3879,8 +3874,7 @@ def create_app(test_config=None):
             return jsonify({"error": msg}), 400
 
         SystemSetting.set_val("gemini_api_key", api_key)
-        if model:
-            SystemSetting.set_val("gemini_default_model", model)
+        SystemSetting.set_val("gemini_default_model", model)
 
         return jsonify({
             "success": True,
@@ -3896,7 +3890,8 @@ def create_app(test_config=None):
         has_db = bool(db_key and db_key.strip())
 
         key_source = "env" if has_env else ("database" if has_db else "none")
-        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        raw_default = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        default_model = raw_default if raw_default in ("gemini-3.8-flash", "gemini-3.5-flash-lite") else GEMINI_DEFAULT_MODEL
         effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
         models = GeminiAnalyzer.get_available_models(effective_key) if (has_env or has_db) else GEMINI_SUPPORTED_MODELS
 

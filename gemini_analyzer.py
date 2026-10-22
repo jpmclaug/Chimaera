@@ -32,29 +32,32 @@ def get_est_timestamp_str(dt_val: datetime | None = None) -> str:
 logger = logging.getLogger(__name__)
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-DEFAULT_MODEL = "auto"
+DEFAULT_MODEL = "gemini-3.8-flash"
 
 SUPPORTED_MODELS = [
-    {"id": "auto", "name": "Auto (Cost & Value Optimized)", "description": "Automatically routes each prompt to the most cost-effective Gemini model for that task."},
-    {"id": "gemini-3.8-flash", "name": "Gemini 3.8 Flash (Deep Intel)", "description": "Next-generation ultra-high accuracy and speed tactical MTG evaluations."},
-    {"id": "gemini-3.7-flash", "name": "Gemini 3.7 Flash (Balanced)", "description": "High speed, high accuracy tactical MTG evaluations."},
-    {"id": "gemini-3.6-flash", "name": "Gemini 3.6 Flash", "description": "High performance low latency MTG analysis."},
-    {"id": "gemini-3.5-flash", "name": "Gemini 3.5 Flash", "description": "Fast tactical Commander evaluations."},
-    {"id": "gemini-3.5-flash-lite", "name": "Gemini 3.5 Flash-Lite (Fast / Lowest Cost)", "description": "Ultra lightweight, low latency model for utility tasks."},
+    {
+        "id": "gemini-3.8-flash",
+        "name": "Gemini 3.8 Flash (Deeper Guidance)",
+        "description": "1M context flagship Flash model for deeper strategic guidance, deck analysis, and fleet synergy.",
+    },
+    {
+        "id": "gemini-3.5-flash-lite",
+        "name": "Gemini 3.5 Flash-Lite (Quick Analysis)",
+        "description": "Fastest, lowest-cost 3.5 model for quick tactical analysis and high-throughput evaluations.",
+    },
 ]
 
 MODEL_TIER_SEQUENCE = [
     "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
 ]
+
+ALLOWED_MODEL_IDS = {m["id"] for m in SUPPORTED_MODELS}
 
 TASK_MODEL_MAP = {
     "deck_analysis": "gemini-3.8-flash",
     "fleet_synergy": "gemini-3.8-flash",
-    "card_evaluation": "gemini-3.7-flash",
+    "card_evaluation": "gemini-3.5-flash-lite",
     "data_extraction": "gemini-3.5-flash-lite",
     "api_test": "gemini-3.5-flash-lite",
 }
@@ -63,28 +66,41 @@ MODEL_FALLBACK_MAP = {
     "gemini-3.8": "gemini-3.8-flash",
     "gemini-3.8-pro": "gemini-3.8-flash",
     "3.8": "gemini-3.8-flash",
-    "gemini-3.7": "gemini-3.7-flash",
-    "3.7": "gemini-3.7-flash",
-    "gemini-2.5-pro": "gemini-3.7-flash",
-    "gemini-3.1-pro-preview": "gemini-3.7-flash",
-    "gemini-2.5-flash": "gemini-3.5-flash",
-    "gemini-2.0-flash": "gemini-3.6-flash",
-    "gemini-1.5-pro": "gemini-3.5-flash",
+    "gemini-3.7-flash": "gemini-3.8-flash",
+    "gemini-3.7": "gemini-3.8-flash",
+    "3.7": "gemini-3.8-flash",
+    "gemini-3.6-flash": "gemini-3.8-flash",
+    "gemini-3.6": "gemini-3.8-flash",
+    "gemini-3.5-flash": "gemini-3.5-flash-lite",
+    "gemini-3.5": "gemini-3.5-flash-lite",
+    "3.5": "gemini-3.5-flash-lite",
+    "3.5-lite": "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-2.5-pro": "gemini-3.8-flash",
+    "gemini-3.1-pro-preview": "gemini-3.8-flash",
+    "gemini-2.5-flash": "gemini-3.8-flash",
+    "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-2.0-flash": "gemini-3.8-flash",
+    "gemini-2.0-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-1.5-pro": "gemini-3.8-flash",
     "gemini-1.5-flash": "gemini-3.5-flash-lite",
-    "gemini-pro": "gemini-3.5-flash",
+    "gemini-pro": "gemini-3.8-flash",
 }
 
 
 def get_model_for_task(task_type: str, preferred_model: str | None = None) -> str:
     """
-    Resolves the most cost-effective and appropriate Gemini model for a given task.
+    Resolves the appropriate Gemini model (strictly one of the two supported models:
+    gemini-3.8-flash for deeper guidance or gemini-3.5-flash-lite for quick analysis).
     - If preferred_model is 'auto', None, or empty, routes to the task-optimized model.
-    - Otherwise, honors explicit user model selection (mapping legacy aliases if needed).
+    - Otherwise, honors explicit user model selection (mapping legacy aliases to supported models).
     """
     if preferred_model and str(preferred_model).strip().lower() not in ("auto", "default", "none", ""):
         clean_pref = str(preferred_model).strip()
-        return MODEL_FALLBACK_MAP.get(clean_pref, clean_pref)
-    return TASK_MODEL_MAP.get(task_type, "gemini-3.8-flash")
+        resolved = MODEL_FALLBACK_MAP.get(clean_pref, clean_pref)
+        if resolved in ALLOWED_MODEL_IDS:
+            return resolved
+    return TASK_MODEL_MAP.get(task_type, DEFAULT_MODEL)
 
 
 class GeminiAnalysisError(Exception):
@@ -99,10 +115,7 @@ class GeminiAnalyzer:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
         raw_model = model or os.getenv("GEMINI_DEFAULT_MODEL", DEFAULT_MODEL)
         self.requested_model = raw_model
-        if raw_model and str(raw_model).strip().lower() in ("auto", "default", "none", ""):
-            self.model = TASK_MODEL_MAP.get("deck_analysis", "gemini-3.8-flash")
-        else:
-            self.model = MODEL_FALLBACK_MAP.get(raw_model, raw_model)
+        self.model = get_model_for_task("deck_analysis", preferred_model=raw_model)
 
     @staticmethod
     def get_available_models(api_key: str | None = None) -> list[dict]:
@@ -110,19 +123,18 @@ class GeminiAnalyzer:
         return list(SUPPORTED_MODELS)
 
     @staticmethod
-    def test_api_key(api_key: str, model: str = DEFAULT_MODEL) -> tuple[bool, str]:
-        """Tests whether a Gemini API key is valid using the most cost-effective model."""
+    def test_api_key(api_key: str, model: str | None = None) -> tuple[bool, str]:
+        """Tests whether a Gemini API key is valid using the quick analysis model by default."""
         if not api_key or not str(api_key).strip():
             return False, "Gemini API key is required."
 
         clean_key = str(api_key).strip()
-        # For health check / ping, use lightweight model (gemini-3.5-flash-lite) if auto/default,
+        # For health check / ping, use lightweight model (gemini-3.5-flash-lite) by default,
         # or the explicitly requested model if specified
         test_model = get_model_for_task("api_test", preferred_model=model)
         url = f"{GEMINI_API_BASE}/{test_model}:generateContent?key={clean_key}"
-        gen_config = {
+        gen_config: dict = {
             "maxOutputTokens": 10,
-            "temperature": 0.1,
         }
         if "gemini-3" in test_model:
             gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
@@ -330,7 +342,6 @@ CRITICAL INSTRUCTION: You must respond ONLY with a raw JSON object (no markdown 
 
         # Base generation config
         base_gen_config = {
-            "temperature": 0.2,
             "maxOutputTokens": 16384,
             "responseMimeType": "application/json",
         }

@@ -104,8 +104,14 @@
     <div class="bg-[#1B2230] border border-[#263245] p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div class="flex-1 w-full sm:w-auto relative">
             <input type="text" id="inventorySearch" oninput="handleSearchInput()" placeholder="Search cards by name, set code, type line, or binder..."
-                   class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs font-mono text-white placeholder-[#64748B] focus:border-[#10B981] focus:outline-none transition">
-            <span class="absolute right-3 top-2.5 text-[#64748B] font-mono text-xs">/</span>
+                   class="w-full bg-[#10141D] border border-[#263245] pl-3 pr-12 py-2 text-xs font-mono text-white placeholder-[#64748B] focus:border-[#10B981] focus:outline-none transition">
+            <div class="absolute inset-y-0 right-2.5 flex items-center space-x-1">
+                <button type="button" id="btnClearInventorySearch" onclick="clearInventorySearch()"
+                        class="hidden text-[#64748B] hover:text-white px-1 py-0.5 text-xs font-mono" title="Clear Search">
+                    &times;
+                </button>
+                <span class="text-[#64748B] font-mono text-xs border border-[#263245] bg-[#161C28] px-1.5 py-0.5 pointer-events-none">/</span>
+            </div>
         </div>
 
         <div class="flex items-center space-x-2 w-full sm:w-auto overflow-x-auto">
@@ -374,6 +380,32 @@
     </div>
 </div>
 
+<!-- ========================================================================= -->
+<!-- Tactical Destructive Action Confirmation Modal                             -->
+<!-- ========================================================================= -->
+<div id="inventoryConfirmModal" class="hidden fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div class="bg-[#1B2230] border-2 border-[#DC143C] max-w-md w-full p-5 space-y-4 shadow-2xl relative">
+        <div class="flex items-start justify-between border-b border-[#263245] pb-3">
+            <div>
+                <div class="text-[10px] font-mono text-[#FF3358] uppercase tracking-wider font-bold">// TACTICAL CONFIRMATION REQUIRED</div>
+                <h3 id="inventoryConfirmTitle" class="font-heading font-bold text-base text-white uppercase mt-0.5">
+                    Confirm Vault Operation
+                </h3>
+            </div>
+            <button onclick="closeInventoryConfirmModal()" class="text-[#64748B] hover:text-white font-mono text-lg leading-none">&times;</button>
+        </div>
+        <p id="inventoryConfirmMessage" class="text-xs text-[#F1F5F9] font-mono leading-relaxed bg-[#10141D] p-3 border border-[#263245]"></p>
+        <div class="flex justify-end space-x-2.5 pt-2 border-t border-[#263245]">
+            <button onclick="closeInventoryConfirmModal()" class="px-4 py-2 bg-[#10141D] hover:bg-[#222B3D] text-[#94A3B8] hover:text-white text-xs font-mono uppercase font-bold border border-[#263245] transition">
+                Abort
+            </button>
+            <button id="btnInventoryConfirmExecute" class="px-4 py-2 bg-[#DC143C] hover:bg-[#B30F30] text-white text-xs font-mono uppercase font-bold transition">
+                Confirm Execution
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 let currentUploadTab = 'gdrive';
 let selectedFile = null;
@@ -503,7 +535,7 @@ function handleFileSelect(e) {
 
 function processSelectedFile(file) {
     if (!file.name.toLowerCase().endsWith('.csv')) {
-        alert("Please select a valid .CSV file.");
+        showToast("Please select a valid .CSV file.", "error");
         return;
     }
     selectedFile = file;
@@ -543,7 +575,7 @@ async function submitUpload() {
         if (currentUploadTab === 'gdrive') {
             const gdriveUrl = document.getElementById('gdriveUrlInput').value.trim();
             if (!gdriveUrl) {
-                alert("Please provide a Google Drive share link.");
+                showToast("Please provide a Google Drive share link.", "error");
                 btn.removeAttribute('disabled');
                 progressContainer.classList.add('hidden');
                 return;
@@ -561,7 +593,7 @@ async function submitUpload() {
 
         } else {
             if (!selectedFile) {
-                alert("Please select a .CSV file to upload.");
+                showToast("Please select a .CSV file to upload.", "error");
                 btn.removeAttribute('disabled');
                 progressContainer.classList.add('hidden');
                 return;
@@ -591,12 +623,13 @@ async function submitUpload() {
             if (data.errors && data.errors.length > 0) {
                 openErrorModal(data.errors, `Ingestion Warning: ${data.error}`);
             } else {
-                alert(`Sync Failed: ${data.error || 'Server error'}`);
+                showToast(`Sync Failed: ${data.error || 'Server error'}`, "error");
             }
             return;
         }
 
         closeUploadModal();
+        showToast(`Synced ${data.added_count + data.updated_count} cards into collection vault.`, "success");
 
         if (data.errors && data.errors.length > 0) {
             window.needsReloadOnModalClose = true;
@@ -609,44 +642,85 @@ async function submitUpload() {
         }
 
     } catch (err) {
-        alert(`Ingestion error: ${err.message}`);
+        showToast(`Ingestion error: ${err.message}`, "error");
         btn.removeAttribute('disabled');
         progressContainer.classList.add('hidden');
     }
 }
 
-// Card Deletion
-async function deleteCard(cardId, cardName) {
-    if (!confirm(`Are you sure you want to delete '${cardName}' from your collection?`)) return;
+// Tactical Confirmation Modal Helper
+let pendingInventoryConfirmAction = null;
 
-    try {
-        const resp = await fetch(`/api/inventory/card/${cardId}`, { method: "DELETE" });
-        const data = await resp.json();
-        if (data.success) {
-            window.location.reload();
-        } else {
-            alert(data.error || "Failed to remove card.");
-        }
-    } catch (err) {
-        alert(`Error deleting card: ${err.message}`);
+function openInventoryConfirmModal(title, message, onConfirm) {
+    const modal = document.getElementById('inventoryConfirmModal');
+    const titleEl = document.getElementById('inventoryConfirmTitle');
+    const msgEl = document.getElementById('inventoryConfirmMessage');
+    const execBtn = document.getElementById('btnInventoryConfirmExecute');
+    if (!modal) return;
+
+    if (titleEl) titleEl.innerText = title;
+    if (msgEl) msgEl.innerText = message;
+    pendingInventoryConfirmAction = onConfirm;
+
+    if (execBtn) {
+        execBtn.onclick = async () => {
+            const fn = pendingInventoryConfirmAction;
+            closeInventoryConfirmModal();
+            if (typeof fn === 'function') await fn();
+        };
     }
+
+    modal.classList.remove('hidden');
+}
+
+function closeInventoryConfirmModal() {
+    const modal = document.getElementById('inventoryConfirmModal');
+    if (modal) modal.classList.add('hidden');
+    pendingInventoryConfirmAction = null;
+}
+
+// Card Deletion
+function deleteCard(cardId, cardName) {
+    openInventoryConfirmModal(
+        "Remove Card From Collection",
+        `Permanently remove '${cardName}' from your collection binder?`,
+        async () => {
+            try {
+                const resp = await fetch(`/api/inventory/card/${cardId}`, { method: "DELETE" });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast(`Removed '${cardName}' from collection.`, "success");
+                    loadCardsPage(currentPage);
+                } else {
+                    showToast(data.error || "Failed to remove card.", "error");
+                }
+            } catch (err) {
+                showToast(`Error deleting card: ${err.message}`, "error");
+            }
+        }
+    );
 }
 
 // Clear Inventory
-async function confirmClearInventory() {
-    if (!confirm("WARNING: This will permanently delete ALL cards from your collection inventory. Continue?")) return;
-
-    try {
-        const resp = await fetch("/api/inventory/clear", { method: "POST" });
-        const data = await resp.json();
-        if (data.success) {
-            window.location.reload();
-        } else {
-            alert(data.error || "Failed to clear collection.");
+function confirmClearInventory() {
+    openInventoryConfirmModal(
+        "Purge Entire Collection Vault",
+        "WARNING: This will permanently delete ALL cards from your collection inventory. Do you wish to proceed?",
+        async () => {
+            try {
+                const resp = await fetch("/api/inventory/clear", { method: "POST" });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast("Collection vault purged.", "success");
+                    setTimeout(() => window.location.reload(), 400);
+                } else {
+                    showToast(data.error || "Failed to clear collection.", "error");
+                }
+            } catch (err) {
+                showToast(`Error clearing inventory: ${err.message}`, "error");
+            }
         }
-    } catch (err) {
-        alert(`Error clearing inventory: ${err.message}`);
-    }
+    );
 }
 
 // =========================================================================
@@ -660,11 +734,26 @@ let searchDebounceTimer = null;
 let isLoadingCards = false;
 
 function handleSearchInput() {
+    const val = document.getElementById('inventorySearch')?.value || '';
+    const clearBtn = document.getElementById('btnClearInventorySearch');
+    if (clearBtn) {
+        if (val.length > 0) clearBtn.classList.remove('hidden');
+        else clearBtn.classList.add('hidden');
+    }
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(() => {
         currentPage = 1;
         loadCardsPage(1);
     }, 300);
+}
+
+function clearInventorySearch() {
+    const input = document.getElementById('inventorySearch');
+    if (input) {
+        input.value = '';
+        handleSearchInput();
+        input.focus();
+    }
 }
 
 function onFilterChanged() {
@@ -858,9 +947,25 @@ function renderCardRow(card) {
         `;
     }
 
+    const previewAttrs = card.image_uri ? `
+        onclick="openCardImageOverlay(this)"
+        data-card-image="${escapeHtml(card.image_uri)}"
+        data-card-name="${escapeHtml(card.name)}"
+        data-card-set="${escapeHtml((card.set_code || '').toUpperCase())}"
+        data-card-number="${escapeHtml(card.collector_number || '')}"
+        data-card-finish="${escapeHtml(card.foil || 'nonfoil')}"
+    ` : '';
+
     const imgHtml = card.image_uri ? `
-        <div class="w-9 h-12 bg-black border border-[#263245] overflow-hidden flex-shrink-0 group relative">
-            <img src="${escapeHtml(card.image_uri)}" alt="${escapeHtml(card.name)}" class="w-full h-full object-cover" loading="lazy">
+        <div class="w-9 h-12 bg-black border border-[#263245] overflow-hidden flex-shrink-0 group relative cursor-pointer"
+             ${previewAttrs}
+             title="Click to inspect ${escapeHtml(card.name)}">
+            <img src="${escapeHtml(card.image_uri)}" alt="${escapeHtml(card.name)}" class="w-full h-full object-cover card-thumbnail-interactive" loading="lazy">
+            <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                <svg class="w-3.5 h-3.5 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
+                </svg>
+            </div>
         </div>
     ` : '';
 
@@ -880,7 +985,7 @@ function renderCardRow(card) {
                 <div class="flex items-center space-x-3">
                     ${imgHtml}
                     <div>
-                        <div class="font-bold text-white hover:text-[#00CED1] transition cursor-pointer">
+                        <div class="font-bold text-white hover:text-[#00CED1] transition ${card.image_uri ? 'cursor-pointer' : ''}" ${previewAttrs}>
                             ${escapeHtml(card.name)}
                         </div>
                         <div class="text-[10px] text-[#64748B] flex items-center gap-2 mt-0.5">
