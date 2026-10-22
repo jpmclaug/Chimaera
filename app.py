@@ -639,8 +639,28 @@ def create_app(test_config=None):
     """Application factory for Chimaera MTG Market Tracker."""
     app = Flask(__name__)
     app.config.from_object(Config)
+    app.config.setdefault("SEND_FILE_MAX_AGE_DEFAULT", 31536000)
+    app.config.setdefault(
+        "COMPRESS_MIMETYPES",
+        [
+            "text/html",
+            "text/css",
+            "text/xml",
+            "application/json",
+            "application/javascript",
+            "text/javascript",
+            "image/svg+xml",
+        ],
+    )
     if test_config:
         app.config.update(test_config)
+
+    # Enable Gzip / Brotli HTTP response compression when available
+    try:
+        from flask_compress import Compress
+        Compress(app)
+    except ImportError:
+        logger.debug("Flask-Compress not installed; skipping response compression.")
 
     # Initialize Database
     db.init_app(app)
@@ -836,6 +856,45 @@ def create_app(test_config=None):
     @app.template_filter("est")
     def est_filter(dt_val, fmt="%Y-%m-%d %H:%M:%S EST"):
         return eastern_filter(dt_val, fmt=fmt)
+
+    @app.template_filter("scryfall_thumb")
+    def scryfall_thumb_filter(url: str | None) -> str:
+        """Converts a Scryfall /normal/ or /large/ card image URL into a lightweight /small/ thumbnail (~14KB) for mobile/compact lists."""
+        if not url or not isinstance(url, str):
+            return url or ""
+        if "cards.scryfall.io/normal/" in url:
+            return url.replace("cards.scryfall.io/normal/", "cards.scryfall.io/small/")
+        if "cards.scryfall.io/large/" in url:
+            return url.replace("cards.scryfall.io/large/", "cards.scryfall.io/small/")
+        return url
+
+    _static_mtime_cache: dict[str, int] = {}
+
+    @app.url_defaults
+    def add_static_cache_buster(endpoint, values):
+        """Appends file modification timestamp (?v=...) to static file URLs for long-lived mobile caching."""
+        if endpoint == "static":
+            filename = values.get("filename")
+            if filename and "v" not in values:
+                mtime = _static_mtime_cache.get(filename)
+                if mtime is None:
+                    file_path = os.path.join(app.static_folder, filename)
+                    try:
+                        mtime = int(os.path.getmtime(file_path))
+                    except OSError:
+                        mtime = 0
+                    if mtime:
+                        _static_mtime_cache[filename] = mtime
+                if mtime:
+                    values["v"] = mtime
+
+    @app.route("/sw.js")
+    def service_worker():
+        """Serves the PWA Service Worker from root scope with no-cache headers."""
+        response = send_from_directory(app.static_folder, "sw.js", mimetype="application/javascript")
+        response.headers["Service-Worker-Allowed"] = "/"
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
 
     # ---------------------------------------------------------
     # In-Process Background Scheduler (Optional / Monolithic Mode)
@@ -2583,6 +2642,7 @@ def create_app(test_config=None):
         return jsonify({
             "message": f"Updated tag to {tag_label} for {len(items)} target(s).",
             "updated_ids": [item.id for item in items],
+            "cards": [item.to_dict() for item in items],
             "tag": new_tag,
             "count": len(items),
         })
@@ -2925,6 +2985,30 @@ def create_app(test_config=None):
     # ---------------------------------------------------------
     # Commander Deck Intelligence & Gemini AI Analysis Routes
     # ---------------------------------------------------------
+    _gemini_models_cache: dict[str, tuple[float, list]] = {}
+
+    def _get_cached_gemini_models(effective_key: str) -> list:
+        """Caches Gemini model availability list for 5 minutes to avoid blocking page navigations."""
+        if not effective_key:
+            return GEMINI_SUPPORTED_MODELS
+        import time
+        now_ts = time.time()
+        cached = _gemini_models_cache.get(effective_key)
+        if cached and (now_ts - cached[0]) < 300:
+            return cached[1]
+        models = GeminiAnalyzer.get_available_models(effective_key)
+        _gemini_models_cache[effective_key] = (now_ts, models)
+        return models
+
+    def _query_user_recent_decks(user):
+        """Queries user's Commander decks while deferring heavy raw_decklist column."""
+        if not user:
+            return []
+        query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(
+            db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None)
+        )
+        return query.options(db.defer(DeckAnalysis.raw_decklist)).order_by(DeckAnalysis.created_at.desc()).all()
+
     def _compute_fleet_stats(recent_decks):
         """Helper to aggregate high-level Commander fleet portfolio metrics."""
         fleet_count = len(recent_decks)
@@ -2941,13 +3025,13 @@ def create_app(test_config=None):
             d_dict = d.to_dict(include_full=False)
             deck_dicts.append(d_dict)
 
-            # Value
-            val = d.total_value if d.total_value is not None else (d.get_stats().get("total_value", 0.0) if hasattr(d, "get_stats") else 0.0)
+            # Value (already resolved in d_dict)
+            val = d_dict.get("total_value")
             if val is not None:
                 total_portfolio_value += float(val)
 
-            # CMC
-            cmc = d.avg_cmc if d.avg_cmc is not None else (d.get_stats().get("avg_cmc") if hasattr(d, "get_stats") else None)
+            # CMC (already resolved in d_dict)
+            cmc = d_dict.get("avg_cmc")
             if cmc is not None and float(cmc) > 0:
                 cmc_sum += float(cmc)
                 cmc_count += 1
@@ -2968,8 +3052,8 @@ def create_app(test_config=None):
             else:
                 power_brackets["Pre-AI Ready"] += 1
 
-            # Colors
-            cols = d.get_color_identity_list() if hasattr(d, "get_color_identity_list") else []
+            # Colors (already resolved in d_dict)
+            cols = d_dict.get("color_identity") or []
             if not cols:
                 color_freq["C"] += 1
             else:
@@ -2998,18 +3082,12 @@ def create_app(test_config=None):
     def commander_hub_page():
         """Commander Hub - Fleet Overview & Strategic Command Station."""
         user = get_current_user()
-        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
         effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
         has_gemini_key = bool(effective_key)
 
-        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
-
-        recent_decks = []
-        if user:
-            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
-
+        available_models = _get_cached_gemini_models(effective_key)
+        recent_decks = _query_user_recent_decks(user)
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
 
         log_activity("PAGE_VIEW", details="Accessed Commander Deck Hub", user=user)
@@ -3038,16 +3116,11 @@ def create_app(test_config=None):
     def commander_analyzer_page(deck_id=None):
         """Direct route to Deck Inspector / Analyzer view."""
         user = get_current_user()
-        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
         effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
         has_gemini_key = bool(effective_key)
-        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
-
-        recent_decks = []
-        if user:
-            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+        available_models = _get_cached_gemini_models(effective_key)
+        recent_decks = _query_user_recent_decks(user)
 
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
         target_id = deck_id or request.args.get("deck_id")
@@ -3073,16 +3146,11 @@ def create_app(test_config=None):
     def commander_compare_page():
         """Commander Deck Overview & Head-to-Head Comparison Station."""
         user = get_current_user()
-        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
         effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
         has_gemini_key = bool(effective_key)
-        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
-
-        recent_decks = []
-        if user:
-            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+        available_models = _get_cached_gemini_models(effective_key)
+        recent_decks = _query_user_recent_decks(user)
 
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
         log_activity("PAGE_VIEW", details="Accessed Commander Compare", user=user)
@@ -3104,16 +3172,11 @@ def create_app(test_config=None):
     def commander_upgrades_page(deck_id):
         """Direct route to Deck Upgrades tab."""
         user = get_current_user()
-        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
         effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
         has_gemini_key = bool(effective_key)
-        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
-
-        recent_decks = []
-        if user:
-            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+        available_models = _get_cached_gemini_models(effective_key)
+        recent_decks = _query_user_recent_decks(user)
 
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
         log_activity("PAGE_VIEW", details=f"Accessed Commander Upgrades for Deck {deck_id}", user=user)
@@ -3137,16 +3200,11 @@ def create_app(test_config=None):
     def commander_import_page():
         """Direct route to Deck Ingestion / Import Station."""
         user = get_current_user()
-        has_env_key = bool(app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip())
         db_key = SystemSetting.get_val("gemini_api_key")
         effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
         has_gemini_key = bool(effective_key)
-        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
-
-        recent_decks = []
-        if user:
-            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+        available_models = _get_cached_gemini_models(effective_key)
+        recent_decks = _query_user_recent_decks(user)
 
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
         log_activity("PAGE_VIEW", details="Accessed Commander Import Station", user=user)

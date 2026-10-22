@@ -1149,8 +1149,19 @@ class DeckAnalysis(db.Model):
             if computed_stats:
                 try:
                     self.stats_json = json.dumps(computed_stats)
+                    if self.total_value is None and computed_stats.get("total_value") is not None:
+                        self.total_value = float(computed_stats["total_value"])
+                    if self.avg_cmc is None and computed_stats.get("avg_cmc") is not None:
+                        self.avg_cmc = float(computed_stats["avg_cmc"])
+                    if not self.color_identity and computed_stats.get("color_identity"):
+                        self.color_identity = ",".join(computed_stats["color_identity"])
+                    if self.id is not None:
+                        db.session.commit()
                 except Exception:
-                    pass
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
             return computed_stats
         except Exception:
             # Fallback basic calculation

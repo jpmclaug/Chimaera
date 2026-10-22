@@ -24,56 +24,16 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16.png') }}">
     <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='img/icon-192.png') }}">
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        tactical: {
-                            DEFAULT: '#10141D',
-                            900: '#0C0F17',
-                            950: '#070A0F',
-                        },
-                        bridge: {
-                            DEFAULT: '#1B2230',
-                            surface: '#1B2230',
-                            elevated: '#222B3D',
-                            border: '#263245',
-                            bright: '#3D4F6B',
-                        },
-                        crimson: {
-                            DEFAULT: '#DC143C',
-                            hover: '#B30F30',
-                            light: '#FF3358',
-                            dark: '#2A080E',
-                            muted: 'rgba(220, 20, 60, 0.15)',
-                        },
-                        teal: {
-                            DEFAULT: '#00CED1',
-                            hover: '#00A3A3',
-                            light: '#2DD4BF',
-                            dark: '#082222',
-                            muted: 'rgba(0, 206, 209, 0.15)',
-                        },
-                        data: {
-                            DEFAULT: '#F1F5F9',
-                            muted: '#94A3B8',
-                            subtle: '#64748B',
-                            dark: '#475569',
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        heading: ['Montserrat', 'Inter', 'sans-serif'],
-                        mono: ['Fira Code', 'Roboto Mono', 'monospace'],
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Resource Preconnect Hints for Mobile Network Latency Reduction -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cards.scryfall.io" crossorigin>
+
+    <!-- Google Fonts (Non-Blocking Link instead of CSS @import) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@600;700;800;900&display=swap">
+
+    <!-- Pre-Compiled Minified Tailwind CSS & Tactical Theme Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
 </head>
 <body class="bg-[#10141D] text-[#F1F5F9] min-h-screen flex flex-col font-sans text-sm antialiased selection:bg-[#DC143C] selection:text-white overflow-x-hidden">
@@ -1342,7 +1302,14 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+            });
+        }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

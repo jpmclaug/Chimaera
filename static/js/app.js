@@ -1892,7 +1892,11 @@ async function triggerRefreshCard(itemId) {
         const data = await res.json();
         if (res.ok) {
             showToast(data.message || "Target price intel refreshed", "success");
-            setTimeout(() => window.location.reload(), 450);
+            if (data.card && document.getElementById(`card-row-${itemId}`)) {
+                updateCardInRegistryDom(data.card);
+            } else {
+                setTimeout(() => window.location.reload(), 350);
+            }
         } else {
             showToast(data.error || "Failed to refresh target intel", "error");
         }
@@ -1933,6 +1937,41 @@ async function triggerRefreshAll() {
 // =========================================================================
 // Delete Card Action
 // =========================================================================
+function removeCardsFromDomInPlace(cardIds) {
+    cardIds.forEach(id => {
+        selectedCardIds.delete(Number(id));
+        const idsToRemove = [
+            `card-row-${id}`,
+            `compact-card-${id}`,
+            `swipe-card-slide-${id}`,
+            `deal-card-${id}`,
+            `compact-deal-${id}`,
+            `swipe-deal-${id}`
+        ];
+        idsToRemove.forEach(domId => {
+            const el = document.getElementById(domId);
+            if (el) el.remove();
+        });
+    });
+
+    const remainingRegistry = document.querySelectorAll("#watchlist-grid .watchlist-card").length;
+    const remainingDeals = document.querySelectorAll("#deals-grid .deal-card").length;
+    if ((document.getElementById("watchlist-grid") && remainingRegistry === 0) ||
+        (document.getElementById("deals-grid") && remainingDeals === 0)) {
+        window.location.reload();
+        return;
+    }
+
+    if (document.getElementById("watchlist-grid")) {
+        updateRegistryKpis();
+        refreshRegistryTagsDom();
+        filterWatchlist();
+    }
+    if (document.getElementById("deals-grid")) {
+        filterDeals();
+    }
+}
+
 async function deleteCard(itemId, cardName) {
     if (!confirm(`CONFIRM TARGET DE-REGISTRATION:\nRemove "${cardName}" from surveillance registry?`)) {
         return;
@@ -1944,14 +1983,15 @@ async function deleteCard(itemId, cardName) {
         if (res.ok) {
             showToast(data.message || `Target ${cardName} de-registered`, "success");
             const elem = document.getElementById(`card-row-${itemId}`) || document.getElementById(`deal-card-${itemId}`);
-            if (elem) {
-                elem.style.transition = "opacity 0.25s, transform 0.25s";
-                elem.style.opacity = "0";
-                elem.style.transform = "scale(0.96)";
-                setTimeout(() => window.location.reload(), 300);
-            } else {
-                window.location.reload();
-            }
+            const compactElem = document.getElementById(`compact-card-${itemId}`) || document.getElementById(`compact-deal-${itemId}`);
+            [elem, compactElem].forEach(el => {
+                if (el) {
+                    el.style.transition = "opacity 0.2s, transform 0.2s";
+                    el.style.opacity = "0";
+                    el.style.transform = "scale(0.96)";
+                }
+            });
+            setTimeout(() => removeCardsFromDomInPlace([itemId]), 220);
         } else {
             showToast(data.error || "Failed to remove target", "error");
         }
@@ -2138,14 +2178,14 @@ async function executeBulkTerminate() {
                 const compactElem = document.getElementById(`compact-card-${id}`);
                 [elem, compactElem].forEach(el => {
                     if (el) {
-                        el.style.transition = "opacity 0.25s, transform 0.25s";
+                        el.style.transition = "opacity 0.2s, transform 0.2s";
                         el.style.opacity = "0";
                         el.style.transform = "scale(0.96)";
                     }
                 });
             });
             clearCardSelection();
-            setTimeout(() => window.location.reload(), 350);
+            setTimeout(() => removeCardsFromDomInPlace(cardIds), 220);
         } else {
             showToast(data.error || "Failed to remove targets.", "error");
         }
@@ -2221,9 +2261,15 @@ async function submitBulkTag() {
         const data = await res.json();
         if (res.ok) {
             showToast(data.message || `Updated tags for ${count} targets.`, "success");
+            if (Array.isArray(data.cards)) {
+                data.cards.forEach(c => updateCardInRegistryDom(c));
+            }
             closeBulkTagModal();
             clearCardSelection();
-            setTimeout(() => window.location.reload(), 350);
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Apply Tags";
+            }
         } else {
             showToast(data.error || "Failed to update tags.", "error");
             if (submitBtn) {
@@ -2244,9 +2290,33 @@ async function submitBulkTag() {
 // =========================================================================
 // View Mode Switching & Swipe Deck Touch Engine
 // =========================================================================
+function hydrateSwipeTemplatesIfNeeded() {
+    const regTpl = document.getElementById("registry-swipe-template");
+    const regTrack = document.getElementById("registry-swipe-track");
+    if (regTpl && regTrack) {
+        regTrack.appendChild(regTpl.content.cloneNode(true));
+        regTpl.remove();
+        filterWatchlist();
+        sortWatchlist();
+    }
+
+    const dealsTpl = document.getElementById("deals-swipe-template");
+    const dealsTrack = document.getElementById("deals-swipe-track");
+    if (dealsTpl && dealsTrack) {
+        dealsTrack.appendChild(dealsTpl.content.cloneNode(true));
+        dealsTpl.remove();
+        filterDeals();
+        sortDeals();
+    }
+}
+
 function setViewMode(mode) {
     activeViewMode = mode;
     localStorage.setItem("chimaera_view_mode", mode);
+
+    if (mode === "swipe") {
+        hydrateSwipeTemplatesIfNeeded();
+    }
 
     // Update buttons
     const btns = {
@@ -2382,6 +2452,7 @@ function updateSwipeDeckPosition(trackId) {
 
     if (visibleSlides.length === 0) {
         if (indicator) indicator.textContent = "00 / 00";
+        track.style.transform = "translateX(0%)";
         return;
     }
 
@@ -2391,12 +2462,9 @@ function updateSwipeDeckPosition(trackId) {
     }
 
     const activeIndex = swipeTrackState[trackId].index;
-    const activeSlide = visibleSlides[activeIndex];
-
-    const allSlides = Array.from(track.querySelectorAll(".swipe-card-slide"));
-    const realIndex = allSlides.indexOf(activeSlide);
-
-    track.style.transform = `translateX(-${realIndex * 100}%)`;
+    // Hidden slides use display: none and occupy 0 width in the flex track,
+    // so activeIndex directly corresponds to the visible slide offset.
+    track.style.transform = `translateX(-${activeIndex * 100}%)`;
 
     if (indicator) {
         const curStr = String(activeIndex + 1).padStart(2, "0");
@@ -2408,6 +2476,18 @@ function updateSwipeDeckPosition(trackId) {
 // =========================================================================
 // Filter, Clear & Sort Watchlist Client-side (Grid, Compact, Swipe Deck)
 // =========================================================================
+let _watchlistFilterTimer = null;
+function debouncedFilterWatchlist() {
+    clearTimeout(_watchlistFilterTimer);
+    _watchlistFilterTimer = setTimeout(filterWatchlist, 120);
+}
+
+let _dealsFilterTimer = null;
+function debouncedFilterDeals() {
+    clearTimeout(_dealsFilterTimer);
+    _dealsFilterTimer = setTimeout(filterDeals, 120);
+}
+
 function clearWatchlistSearch() {
     const input = document.getElementById("watchlist-search");
     if (input) {
@@ -2929,7 +3009,7 @@ async function triggerManualSweepFromModal() {
 // Global Initialization & Keyboard Navigation
 // =========================================================================
 document.addEventListener("DOMContentLoaded", () => {
-    fetchCadenceTelemetry();
+    // Note: Telemetry (/api/settings/telemetry) is fetched lazily when openCadenceModal() is opened
 
     // Initialize Swipe Decks for touch gestures
     initSwipeDeck("registry-swipe-track", "registry-swipe-wrapper");

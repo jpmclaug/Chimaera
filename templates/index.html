@@ -62,7 +62,7 @@
             <div class="flex-1 relative min-w-0">
                 <input type="text" id="watchlist-search" placeholder="FILTER BY NAME, SET, OR TAG..."
                     class="w-full bg-[#10141D] border border-[#263245] pl-3 pr-14 py-2 text-xs text-white uppercase placeholder-[#64748B] focus:border-[#00CED1] font-mono tracking-wide h-9"
-                    oninput="filterWatchlist()" onkeyup="filterWatchlist()">
+                    oninput="debouncedFilterWatchlist()">
                 <button type="button" id="btn-clear-watchlist-search" onclick="clearWatchlistSearch()" class="hidden absolute right-7 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-white font-mono text-xs px-1" title="Clear search">✕</button>
                 <span class="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-[#64748B] border border-[#263245] bg-[#1B2230] px-1 leading-tight">/</span>
             </div>
@@ -264,7 +264,7 @@
                          data-card-number="{{ item.collector_number or '' }}"
                          data-card-finish="{{ item.finish or '' }}"
                          title="Click to enlarge {{ item.name }}">
-                        <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
+                        <img src="{{ item.image_uri }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
                         <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                             <svg class="w-4 h-4 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
@@ -509,7 +509,7 @@
                      data-card-number="{{ item.collector_number or '' }}"
                      data-card-finish="{{ item.finish or '' }}"
                      title="Click to enlarge {{ item.name }}">
-                    <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-10 h-14 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
+                    <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-10 h-14 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
                     <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                         <svg class="w-3 h-3 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
@@ -611,6 +611,7 @@
         <!-- Swipe Track Container -->
         <div class="swipe-deck-wrapper" id="registry-swipe-wrapper">
             <div class="swipe-track" id="registry-swipe-track">
+                <template id="registry-swipe-template">
                 {% for item in items %}
                 <div class="swipe-card-slide watchlist-card"
                     id="swipe-card-slide-{{ item.id }}"
@@ -641,7 +642,7 @@
                                      data-card-number="{{ item.collector_number or '' }}"
                                      data-card-finish="{{ item.finish or '' }}"
                                      title="Click to enlarge {{ item.name }}">
-                                    <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-20 h-28 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
+                                    <img src="{{ item.image_uri }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-20 h-28 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
                                     <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                                         <svg class="w-5 h-5 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
@@ -775,6 +776,7 @@
                     </div>
                 </div>
                 {% endfor %}
+                </template>
             </div>
         </div>
 

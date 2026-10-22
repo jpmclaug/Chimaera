@@ -141,9 +141,20 @@
         </div>
     </div>
 
-    <!-- Cards Table -->
+    <!-- Cards Table & Mobile Responsive Card List -->
     <div class="bg-[#1B2230] border border-[#263245] overflow-hidden">
-        <div class="overflow-x-auto">
+        <!-- Mobile Compact Card List (< 640px) -->
+        <div id="inventoryMobileList" class="sm:hidden divide-y divide-[#263245]/60 font-mono text-xs">
+            <div class="py-10 text-center text-[#94A3B8]">
+                <div class="flex items-center justify-center space-x-2 text-xs font-mono text-[#10B981]">
+                    <span class="inline-block animate-spin text-base">⟳</span>
+                    <span>Accessing collection vault...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Desktop Table (>= 640px) -->
+        <div class="hidden sm:block overflow-x-auto">
             <table class="w-full text-left border-collapse font-mono text-xs">
                 <thead>
                     <tr class="bg-[#10141D] text-[#94A3B8] border-b border-[#263245] text-[11px] uppercase tracking-wider">
@@ -781,12 +792,20 @@ function resetInventoryFilters() {
     loadCardsPage(1);
 }
 
+function toScryfallThumb(url) {
+    if (!url || typeof url !== 'string') return url || '';
+    if (url.includes('cards.scryfall.io/normal/')) return url.replace('cards.scryfall.io/normal/', 'cards.scryfall.io/small/');
+    if (url.includes('cards.scryfall.io/large/')) return url.replace('cards.scryfall.io/large/', 'cards.scryfall.io/small/');
+    return url;
+}
+
 async function loadCardsPage(page = 1) {
     if (isLoadingCards) return;
     isLoadingCards = true;
     currentPage = page;
 
     const tbody = document.getElementById('inventoryTableBody');
+    const mobileList = document.getElementById('inventoryMobileList');
     const resultsText = document.getElementById('resultsCountText');
     const prevBtn = document.getElementById('btnPrevPage');
     const nextBtn = document.getElementById('btnNextPage');
@@ -808,6 +827,16 @@ async function loadCardsPage(page = 1) {
             </td>
         </tr>
     `;
+    if (mobileList) {
+        mobileList.innerHTML = `
+            <div class="py-10 text-center text-[#94A3B8]">
+                <div class="flex items-center justify-center space-x-2 text-xs font-mono text-[#10B981]">
+                    <span class="inline-block animate-spin text-base">⟳</span>
+                    <span>Accessing collection vault...</span>
+                </div>
+            </div>
+        `;
+    }
 
     try {
         const params = new URLSearchParams({
@@ -834,21 +863,19 @@ async function loadCardsPage(page = 1) {
         currentPage = data.page || 1;
 
         if (!data.cards || data.cards.length === 0) {
-            tbody.innerHTML = `
-                <tr id="emptyTablePlaceholder">
-                    <td colspan="9" class="py-12 text-center text-[#94A3B8]">
-                        <div class="max-w-md mx-auto space-y-3">
-                            <div class="text-3xl">📦</div>
-                            <div class="font-heading font-bold text-white text-base">${q || allocation !== 'all' || foil !== 'all' ? 'No Matching Cards' : 'Your Inventory Vault is Empty'}</div>
-                            <p class="text-xs text-[#64748B]">${q || allocation !== 'all' || foil !== 'all' ? 'No cards match your filter criteria.' : 'Upload your ManaBox collection CSV export to track physical inventory and power zero-cost swaps.'}</p>
-                            ${q || allocation !== 'all' || foil !== 'all' 
-                                ? '<button onclick="resetInventoryFilters()" class="mt-2 px-4 py-2 bg-[#1B2230] hover:bg-[#222B3D] border border-[#263245] text-white text-xs font-mono font-bold uppercase transition">Reset Filters</button>' 
-                                : '<button onclick="openUploadModal()" class="mt-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition">Upload ManaBox CSV</button>'
-                            }
-                        </div>
-                    </td>
-                </tr>
+            const emptyHtml = `
+                <div class="max-w-md mx-auto space-y-3 py-10 px-4 text-center text-[#94A3B8]">
+                    <div class="text-3xl">📦</div>
+                    <div class="font-heading font-bold text-white text-base">${q || allocation !== 'all' || foil !== 'all' ? 'No Matching Cards' : 'Your Inventory Vault is Empty'}</div>
+                    <p class="text-xs text-[#64748B]">${q || allocation !== 'all' || foil !== 'all' ? 'No cards match your filter criteria.' : 'Upload your ManaBox collection CSV export to track physical inventory and power zero-cost swaps.'}</p>
+                    ${q || allocation !== 'all' || foil !== 'all' 
+                        ? '<button onclick="resetInventoryFilters()" class="mt-2 px-4 py-2 bg-[#1B2230] hover:bg-[#222B3D] border border-[#263245] text-white text-xs font-mono font-bold uppercase transition">Reset Filters</button>' 
+                        : '<button onclick="openUploadModal()" class="mt-2 px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition">Upload ManaBox CSV</button>'
+                    }
+                </div>
             `;
+            tbody.innerHTML = `<tr id="emptyTablePlaceholder"><td colspan="9">${emptyHtml}</td></tr>`;
+            if (mobileList) mobileList.innerHTML = emptyHtml;
             resultsText.innerText = 'Showing 0 of 0 cards';
             prevBtn.disabled = true;
             nextBtn.disabled = true;
@@ -856,9 +883,11 @@ async function loadCardsPage(page = 1) {
             return;
         }
 
-        // Render card rows
-        const rowsHtml = data.cards.map(card => renderCardRow(card)).join('');
-        tbody.innerHTML = rowsHtml;
+        // Render card rows for Desktop Table and Mobile Compact Card List
+        tbody.innerHTML = data.cards.map(card => renderCardRow(card)).join('');
+        if (mobileList) {
+            mobileList.innerHTML = data.cards.map(card => renderMobileCardRow(card)).join('');
+        }
 
         // Update result text & buttons
         const startIdx = (currentPage - 1) * currentPerPage + 1;
@@ -871,14 +900,14 @@ async function loadCardsPage(page = 1) {
         renderPaginationButtons(currentPage, currentTotalPages);
 
     } catch (err) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="py-8 text-center text-[#FF3358] font-mono text-xs">
-                    Failed to load cards: ${escapeHtml(err.message)}
-                    <button onclick="loadCardsPage(currentPage)" class="ml-2 underline text-[#10B981]">Retry</button>
-                </td>
-            </tr>
+        const errMsg = `
+            <div class="py-8 text-center text-[#FF3358] font-mono text-xs">
+                Failed to load cards: ${escapeHtml(err.message)}
+                <button onclick="loadCardsPage(currentPage)" class="ml-2 underline text-[#10B981]">Retry</button>
+            </div>
         `;
+        tbody.innerHTML = `<tr><td colspan="9">${errMsg}</td></tr>`;
+        if (mobileList) mobileList.innerHTML = errMsg;
     } finally {
         isLoadingCards = false;
     }
@@ -915,11 +944,76 @@ function renderPaginationButtons(current, total) {
     }).join('');
 }
 
+function renderMobileCardRow(card) {
+    const effectivePrice = card.effective_price ? `$${card.effective_price.toFixed(2)}` : '--';
+    const totalVal = card.total_value ? `$${card.total_value.toFixed(2)}` : '$0.00';
+    const isAllocated = !!card.is_allocated;
+    const allocatedDecks = card.allocated_decks || [];
+    const thumbUri = toScryfallThumb(card.image_uri);
+
+    let finishBadge = '';
+    if (card.foil && (card.foil.toLowerCase() === 'foil' || card.foil.toLowerCase() === 'etched')) {
+        finishBadge = `<span class="px-1 py-0.2 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] font-bold uppercase">★ ${escapeHtml(card.foil)}</span>`;
+    }
+
+    const allocBadge = isAllocated
+        ? `<span class="text-[9px] px-1.5 py-0.2 bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/40 uppercase font-bold">In ${allocatedDecks.length} Deck${allocatedDecks.length > 1 ? 's' : ''}</span>`
+        : `<span class="text-[9px] px-1.5 py-0.2 bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold uppercase">Free</span>`;
+
+    const previewAttrs = card.image_uri ? `
+        onclick="openCardImageOverlay(this)"
+        data-card-image="${escapeHtml(card.image_uri)}"
+        data-card-name="${escapeHtml(card.name)}"
+        data-card-set="${escapeHtml((card.set_code || '').toUpperCase())}"
+        data-card-number="${escapeHtml(card.collector_number || '')}"
+        data-card-finish="${escapeHtml(card.foil || 'nonfoil')}"
+    ` : '';
+
+    return `
+        <div class="p-3 flex items-center justify-between gap-2.5 hover:bg-[#222B3D]/60 transition compact-card">
+            <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                ${card.image_uri ? `
+                    <div class="w-10 h-14 bg-black border border-[#263245] overflow-hidden flex-shrink-0 cursor-pointer" ${previewAttrs}>
+                        <img src="${escapeHtml(thumbUri)}" alt="${escapeHtml(card.name)}" loading="lazy" decoding="async" class="w-full h-full object-cover card-thumbnail-interactive">
+                    </div>
+                ` : `
+                    <div class="w-10 h-14 bg-[#10141D] border border-[#263245] flex items-center justify-center text-[9px] text-[#64748B] flex-shrink-0">NO ART</div>
+                `}
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span class="bg-[#10141D] border border-[#263245] px-1.5 py-0.2 text-[10px] font-bold text-[#10B981] flex-shrink-0">${card.quantity}x</span>
+                        <span class="font-bold text-white text-xs truncate ${card.image_uri ? 'cursor-pointer hover:text-[#00CED1]' : ''}" ${previewAttrs}>${escapeHtml(card.name)}</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[10px]">
+                        <span class="px-1 py-0.2 bg-[#10141D] border border-[#263245] text-[#00CED1] font-bold uppercase">${escapeHtml(card.set_code || '---')}</span>
+                        <span class="text-[#64748B]">#${escapeHtml(card.collector_number || '?')}</span>
+                        ${finishBadge}
+                        ${allocBadge}
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <div class="text-right">
+                    <div class="text-xs font-bold text-[#10B981]">${totalVal}</div>
+                    <div class="text-[10px] text-[#64748B]">${effectivePrice} ea</div>
+                </div>
+                <button onclick="deleteCard(${card.id}, '${escapeHtml(card.name)}')" 
+                        class="p-1.5 hover:bg-[#DC143C]/20 text-[#64748B] hover:text-[#FF3358] border border-transparent hover:border-[#DC143C]/50 transition" title="Delete card">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
 function renderCardRow(card) {
     const effectivePrice = card.effective_price ? `$${card.effective_price.toFixed(2)}` : '--';
     const totalVal = card.total_value ? `$${card.total_value.toFixed(2)}` : '$0.00';
     const isAllocated = !!card.is_allocated;
     const allocatedDecks = card.allocated_decks || [];
+    const thumbUri = toScryfallThumb(card.image_uri);
 
     let finishHtml = '<span class="text-[#64748B] text-[10px]">Nonfoil</span>';
     if (card.foil && (card.foil.toLowerCase() === 'foil' || card.foil.toLowerCase() === 'etched')) {
@@ -960,7 +1054,7 @@ function renderCardRow(card) {
         <div class="w-9 h-12 bg-black border border-[#263245] overflow-hidden flex-shrink-0 group relative cursor-pointer"
              ${previewAttrs}
              title="Click to inspect ${escapeHtml(card.name)}">
-            <img src="${escapeHtml(card.image_uri)}" alt="${escapeHtml(card.name)}" class="w-full h-full object-cover card-thumbnail-interactive" loading="lazy">
+            <img src="${escapeHtml(thumbUri)}" alt="${escapeHtml(card.name)}" class="w-full h-full object-cover card-thumbnail-interactive" loading="lazy" decoding="async">
             <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                 <svg class="w-3.5 h-3.5 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
@@ -1039,8 +1133,13 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
-// Initial load on page ready
+// Initial load on page ready (default to 25 per page on mobile viewports for faster initial render)
 document.addEventListener('DOMContentLoaded', () => {
+    if (window.innerWidth < 640) {
+        currentPerPage = 25;
+        const sel = document.getElementById('selectPerPage');
+        if (sel) sel.value = '25';
+    }
     loadCardsPage(1);
 });
 </script>
