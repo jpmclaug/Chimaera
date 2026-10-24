@@ -819,7 +819,7 @@ let currentInspectorTab = 'stats';
 function switchInspectorTab(tab, options = {}) {
     const { skipScroll = false } = options;
     currentInspectorTab = tab || 'stats';
-    const tabs = ['stats', 'cards', 'ai', 'upgrades'];
+    const tabs = ['stats', 'cards', 'ai', 'upgrades', 'tactics'];
     tabs.forEach(t => {
         const btn = document.getElementById(`insp-tab-${t}`);
         const content = document.getElementById(`inspectorTabContent${t.charAt(0).toUpperCase() + t.slice(1)}`);
@@ -855,6 +855,10 @@ function switchInspectorTab(tab, options = {}) {
 
     if (currentInspectorTab === 'upgrades' && activeDeck && activeDeck.id) {
         loadDualTierUpgrades(activeDeck.id, { force: false });
+    }
+
+    if (currentInspectorTab === 'tactics' && activeDeck && activeDeck.id) {
+        loadDeckTactics(activeDeck.id);
     }
 }
 
@@ -1014,7 +1018,8 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
         document.getElementById('inspectorTabContentStats'),
         document.getElementById('inspectorTabContentCards'),
         document.getElementById('inspectorTabContentAi'),
-        document.getElementById('inspectorTabContentUpgrades')
+        document.getElementById('inspectorTabContentUpgrades'),
+        document.getElementById('inspectorTabContentTactics')
     ];
 
     if (!deck) {
@@ -1227,6 +1232,9 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
 
     // Load EDHREC Metadata, Primers & Combos
     loadEdhrecMetadataForDeck(deck);
+
+    // Render Commander Tactics badge & stale telemetry
+    updateTacticsBadgeAndBanner(deck);
 
     if (!keepCurrentTab) {
         switchInspectorTab('stats', { skipScroll: true });
@@ -4946,4 +4954,623 @@ function escapeHtml(str) {
 function escapeJs(str) {
     if (!str) return '';
     return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+
+// =========================================================================
+// COMMANDER TACTICS // SITUATIONAL GUIDANCE MODULE
+// =========================================================================
+
+let currentDeckTactics = null;
+let currentTacticsStatus = null;
+
+const TACTICS_META = {
+    'opening_hand': { title: 'Opening Hand & Mulligan Guide', icon: '✋' },
+    'game_plan': { title: 'Game Plan by Phase', icon: '🗺️' },
+    'combos': { title: 'Combos & Synergy Lines', icon: '⚡' },
+    'threats': { title: 'Threats & Interaction', icon: '🎯' },
+    'commander_usage': { title: 'Commander Usage & Timing', icon: '👑' }
+};
+
+function getTacticsTitle(sec) {
+    return (TACTICS_META[sec] && TACTICS_META[sec].title) || sec;
+}
+
+function getTacticsIcon(sec) {
+    return (TACTICS_META[sec] && TACTICS_META[sec].icon) || '⚡';
+}
+
+function updateTacticsBadgeAndBanner(deck) {
+    const badge = document.getElementById('tacticsTabBadge');
+    const staleBanner = document.getElementById('tacticsStaleBanner');
+    const deckBadge = document.getElementById('tacticsActiveDeckBadge');
+    
+    if (deckBadge) {
+        deckBadge.innerText = deck ? (deck.deck_name || 'Active Deck') : '';
+    }
+
+    if (!deck) {
+        if (badge) badge.classList.add('hidden');
+        if (staleBanner) staleBanner.classList.add('hidden');
+        return;
+    }
+
+    const hasTactics = Boolean(deck.has_tactics);
+    const isStale = Boolean(deck.tactics_stale);
+
+    if (badge) {
+        if (hasTactics) {
+            badge.classList.remove('hidden');
+            if (isStale) {
+                badge.innerText = 'Stale';
+                badge.className = 'hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold';
+            } else {
+                badge.innerText = 'Ready';
+                badge.className = 'hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold';
+            }
+        } else {
+            badge.classList.remove('hidden');
+            badge.innerText = '5 Intel';
+            badge.className = 'hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-slate-800 text-slate-400 border border-[#263245] font-mono';
+        }
+    }
+}
+
+async function loadDeckTactics(deckId) {
+    if (!deckId) return;
+    try {
+        const resp = await fetch(`/api/deck/${deckId}/tactics`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (data.success) {
+            currentDeckTactics = data.tactics || {};
+            currentTacticsStatus = data.status || {};
+            renderTacticsTab(currentDeckTactics, currentTacticsStatus);
+        }
+    } catch (e) {
+        console.warn("Failed to load tactics:", e);
+    }
+}
+
+function renderTacticsTab(tactics, status) {
+    const emptyState = document.getElementById('tacticsEmptyState');
+    const cardsGrid = document.getElementById('tacticsCardsGrid');
+    const staleBanner = document.getElementById('tacticsStaleBanner');
+    const staleCountBadge = document.getElementById('tacticsStaleCountBadge');
+    const sections = (tactics && tactics.sections) || {};
+
+    const hasAnySection = Object.keys(sections).length > 0;
+    if (!hasAnySection) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (cardsGrid) cardsGrid.classList.add('hidden');
+        if (staleBanner) staleBanner.classList.add('hidden');
+        return;
+    }
+
+    if (emptyState) emptyState.classList.add('hidden');
+    if (cardsGrid) cardsGrid.classList.remove('hidden');
+
+    const staleList = (status && status.stale_sections) || [];
+    const isStale = Boolean(status && status.stale);
+    if (staleBanner) {
+        if (isStale) {
+            staleBanner.classList.remove('hidden');
+            if (staleCountBadge) {
+                staleCountBadge.innerText = `${staleList.length} of ${Object.keys(sections).length} Stale`;
+            }
+        } else {
+            staleBanner.classList.add('hidden');
+        }
+    }
+
+    const sectionKeys = ['opening_hand', 'game_plan', 'combos', 'threats', 'commander_usage'];
+    sectionKeys.forEach(secKey => {
+        const secEntry = sections[secKey];
+        const isCardStale = staleList.includes(secKey);
+        renderTacticsCard(secKey, secEntry, isCardStale);
+    });
+}
+
+function renderTacticsCard(secKey, entry, isStale) {
+    const cardEl = document.getElementById(`tactic-card-${secKey}`);
+    if (!cardEl) return;
+
+    if (!entry || !entry.data) {
+        cardEl.innerHTML = `
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-base">${getTacticsIcon(secKey)}</span>
+                    <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider">${escapeHtml(getTacticsTitle(secKey))}</h4>
+                </div>
+                <button onclick="generateTacticsSection('${secKey}')" class="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-[10px] font-mono font-bold uppercase transition rounded-none cursor-pointer">
+                    ⚡ Generate
+                </button>
+            </div>
+            <div class="py-6 text-center text-xs font-mono text-slate-500 italic">
+                Card not yet generated. Click Generate to run situational AI analysis.
+            </div>
+        `;
+        return;
+    }
+
+    const data = entry.data;
+    const modelUsed = entry.model_used || 'gemini-3.8-flash';
+    const genDate = entry.generated_at ? formatRelativeDate(entry.generated_at) : 'Recent';
+
+    const headerHtml = `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+            <div class="flex items-center gap-2">
+                <span class="text-base">${getTacticsIcon(secKey)}</span>
+                <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider">${escapeHtml(getTacticsTitle(secKey))}</h4>
+                ${isStale ? `<span class="text-[9px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold uppercase">Stale</span>` : `<span class="text-[9px] px-1.5 py-0.2 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">Synced</span>`}
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] font-mono text-slate-500">${escapeHtml(genDate)} &bull; ${escapeHtml(modelUsed)}</span>
+                <button onclick="generateTacticsSection('${secKey}')" id="btn-regen-${secKey}" title="Regenerate this advice card" class="p-1 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 border border-[#263245] rounded-none transition cursor-pointer">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
+            </div>
+        </div>
+    `;
+
+    let bodyHtml = '';
+    if (secKey === 'opening_hand') {
+        bodyHtml = renderOpeningHandBody(data);
+    } else if (secKey === 'game_plan') {
+        bodyHtml = renderGamePlanBody(data);
+    } else if (secKey === 'combos') {
+        bodyHtml = renderCombosBody(data);
+    } else if (secKey === 'threats') {
+        bodyHtml = renderThreatsBody(data);
+    } else if (secKey === 'commander_usage') {
+        bodyHtml = renderCommanderUsageBody(data);
+    }
+
+    cardEl.innerHTML = headerHtml + bodyHtml;
+}
+
+function renderCardNamePill(cardName, inDeck = true) {
+    const isOut = (inDeck === false);
+    const cls = isOut
+        ? "inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-none bg-slate-800/80 text-slate-500 line-through border border-slate-700"
+        : "inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-none bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 hover:text-white transition cursor-default";
+    return `<span class="${cls}" title="${isOut ? 'Not in current deck list' : 'Present in deck'}">${escapeHtml(cardName)}${isOut ? ' (off-list)' : ''}</span>`;
+}
+
+function renderOpeningHandBody(data) {
+    const summary = data.summary ? `<p class="text-xs text-slate-300 font-sans leading-relaxed">${escapeHtml(data.summary)}</p>` : '';
+    
+    // Ideal land count badge
+    const landCountHtml = data.ideal_land_count ? `
+        <div class="flex items-center gap-2 text-xs font-mono bg-cyan-500/10 border border-cyan-500/30 p-2 rounded-none text-cyan-300">
+            <span class="font-bold">🎯 Target Land Count:</span>
+            <span>${escapeHtml(data.ideal_land_count)}</span>
+        </div>
+    ` : '';
+
+    // Keep criteria
+    const criteria = (data.keep_criteria || []).map(c => `
+        <li class="flex items-start gap-1.5 text-xs text-slate-300 font-sans">
+            <span class="text-emerald-400 font-bold flex-shrink-0">✓</span>
+            <span>${escapeHtml(c)}</span>
+        </li>
+    `).join('');
+
+    // Priority Cards
+    const priority = (data.priority_cards || []).map(pc => `
+        <div class="bg-[#0B0F17] p-2 rounded-none border border-[#263245] space-y-1">
+            <div>${renderCardNamePill(pc.card_name, pc.in_deck)}</div>
+            <p class="text-[11px] text-slate-400 font-sans leading-tight">${escapeHtml(pc.why || '')}</p>
+        </div>
+    `).join('');
+
+    // Red Flags
+    const redFlags = (data.red_flags || []).map(rf => `
+        <li class="flex items-start gap-1.5 text-xs text-rose-300 font-sans">
+            <span class="text-rose-400 font-bold flex-shrink-0">✗</span>
+            <span>${escapeHtml(rf)}</span>
+        </li>
+    `).join('');
+
+    // Example keeps
+    const examples = (data.example_keeps || []).map(ex => {
+        const isKeep = (ex.verdict || '').toLowerCase().includes('keep');
+        const vCls = isKeep ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+        const cardsHtml = (ex.hand_detail || (ex.hand || []).map(c => ({ name: c, in_deck: true }))).map(c => renderCardNamePill(c.name, c.in_deck)).join(' ');
+        return `
+            <div class="bg-[#0B0F17] p-2.5 rounded-none border border-[#263245] space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-mono text-slate-400 uppercase font-bold">Sample Opening 7</span>
+                    <span class="text-[9px] font-mono px-2 py-0.5 rounded-none border font-bold ${vCls}">${escapeHtml(ex.verdict || 'Keep')}</span>
+                </div>
+                <div class="flex flex-wrap gap-1">${cardsHtml}</div>
+                <p class="text-[11px] text-slate-400 font-sans italic border-t border-[#263245] pt-1.5">${escapeHtml(ex.reason || '')}</p>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="space-y-4 pt-1">
+            ${summary}
+            ${landCountHtml}
+            ${criteria ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-emerald-400 uppercase">Keep Criteria:</h5>
+                    <ul class="space-y-1">${criteria}</ul>
+                </div>
+            ` : ''}
+            ${priority ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-cyan-400 uppercase">Priority Opening Pieces:</h5>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${priority}</div>
+                </div>
+            ` : ''}
+            ${redFlags ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-rose-400 uppercase">Red Flags & Mulligan Triggers:</h5>
+                    <ul class="space-y-1">${redFlags}</ul>
+                </div>
+            ` : ''}
+            ${examples ? `
+                <div class="space-y-2">
+                    <h5 class="text-[11px] font-mono font-bold text-slate-300 uppercase">Sample Mulligan Scenarios:</h5>
+                    <div class="space-y-2">${examples}</div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderGamePlanBody(data) {
+    const summary = data.summary ? `<p class="text-xs text-slate-300 font-sans leading-relaxed">${escapeHtml(data.summary)}</p>` : '';
+
+    const phases = (data.phases || []).map(p => {
+        const goalsHtml = (p.goals || []).map(g => `<li class="text-slate-300 font-sans text-xs flex items-start gap-1"><span class="text-cyan-400 font-bold">&bull;</span><span>${escapeHtml(g)}</span></li>`).join('');
+        const playsHtml = (p.key_plays || []).map(kp => `<li class="text-slate-300 font-sans text-xs flex items-start gap-1"><span class="text-emerald-400 font-bold">&rsaquo;</span><span>${escapeHtml(kp)}</span></li>`).join('');
+        const avoidHtml = (p.avoid || []).map(a => `<li class="text-rose-300 font-sans text-xs flex items-start gap-1"><span class="text-rose-400 font-bold">&times;</span><span>${escapeHtml(a)}</span></li>`).join('');
+
+        return `
+            <div class="bg-[#0B0F17] p-3 rounded-none border border-[#263245] space-y-2.5">
+                <div class="flex items-center justify-between border-b border-[#263245] pb-1.5">
+                    <span class="text-xs font-mono font-bold text-cyan-400 uppercase">${escapeHtml(p.phase || 'Phase')}</span>
+                </div>
+                ${goalsHtml ? `<div class="space-y-1"><span class="text-[10px] font-mono uppercase text-slate-400 font-bold">Objectives:</span><ul class="space-y-0.5">${goalsHtml}</ul></div>` : ''}
+                ${playsHtml ? `<div class="space-y-1"><span class="text-[10px] font-mono uppercase text-emerald-400 font-bold">Key Sequences:</span><ul class="space-y-0.5">${playsHtml}</ul></div>` : ''}
+                ${avoidHtml ? `<div class="space-y-1"><span class="text-[10px] font-mono uppercase text-rose-400 font-bold">Traps to Avoid:</span><ul class="space-y-0.5">${avoidHtml}</ul></div>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    const pivots = (data.pivot_signals || []).map(ps => `
+        <li class="flex items-start gap-1.5 text-xs text-amber-200 font-sans">
+            <span class="text-amber-400 font-bold">⚡</span>
+            <span>${escapeHtml(ps)}</span>
+        </li>
+    `).join('');
+
+    return `
+        <div class="space-y-4 pt-1">
+            ${summary}
+            <div class="space-y-2.5">${phases}</div>
+            ${pivots ? `
+                <div class="bg-amber-950/20 border border-amber-500/30 p-2.5 rounded-none space-y-1.5">
+                    <span class="text-[10px] font-mono uppercase font-bold text-amber-400">Pacing Pivot Signals:</span>
+                    <ul class="space-y-1">${pivots}</ul>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderCombosBody(data) {
+    const summary = data.summary ? `<p class="text-xs text-slate-300 font-sans leading-relaxed">${escapeHtml(data.summary)}</p>` : '';
+
+    const combos = (data.combos || []).map(c => {
+        const cardsHtml = (c.cards_detail || (c.cards || []).map(card => ({ name: card, in_deck: true }))).map(card => renderCardNamePill(card.name, card.in_deck)).join(' ');
+        const stepsHtml = (c.steps || []).map((s, idx) => `
+            <li class="flex items-start gap-1.5 text-xs text-slate-300 font-sans">
+                <span class="text-purple-400 font-bold font-mono text-[10px]">${idx + 1}.</span>
+                <span>${escapeHtml(s)}</span>
+            </li>
+        `).join('');
+
+        return `
+            <div class="bg-[#0B0F17] p-3.5 rounded-none border border-purple-500/30 hover:border-purple-500/60 transition space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-[#263245] pb-2">
+                    <h5 class="text-xs font-mono font-bold text-white uppercase tracking-wide flex items-center gap-1.5">
+                        <span class="text-purple-400">⚡</span>
+                        <span>${escapeHtml(c.name || 'Combo Line')}</span>
+                    </h5>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-mono px-2 py-0.5 rounded-none bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">${escapeHtml(c.type || 'Combo')}</span>
+                        ${c.result ? `<span class="text-[9px] font-mono px-2 py-0.5 rounded-none bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">${escapeHtml(c.result)}</span>` : ''}
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <span class="text-[10px] font-mono uppercase text-slate-400 font-bold">Required Pieces:</span>
+                    <div class="flex flex-wrap gap-1">${cardsHtml}</div>
+                </div>
+
+                ${stepsHtml ? `
+                    <div class="space-y-1">
+                        <span class="text-[10px] font-mono uppercase text-slate-400 font-bold">Execution Steps:</span>
+                        <ul class="space-y-1 bg-[#10141D] p-2.5 rounded-none border border-[#263245]">${stepsHtml}</ul>
+                    </div>
+                ` : ''}
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono pt-1 border-t border-[#263245]">
+                    ${c.tutors_or_redundancy ? `<div><span class="text-slate-500 block text-[9px] uppercase">Tutors & Redundancy:</span><span class="text-slate-300 font-sans text-[11px]">${escapeHtml(Array.isArray(c.tutors_or_redundancy) ? c.tutors_or_redundancy.join(', ') : c.tutors_or_redundancy)}</span></div>` : ''}
+                    ${c.vulnerabilities ? `<div><span class="text-rose-400 block text-[9px] uppercase">Vulnerabilities:</span><span class="text-rose-200/80 font-sans text-[11px]">${escapeHtml(c.vulnerabilities)}</span></div>` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const near = (data.near_combos || []).map(nc => {
+        const inDeckHtml = (nc.cards_in_deck || []).map(c => renderCardNamePill(c, true)).join(' ');
+        return `
+            <div class="bg-[#0B0F17] p-2.5 rounded-none border border-amber-500/30 space-y-1.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-amber-300 uppercase">${escapeHtml(nc.name || 'Near Combo')}</span>
+                    <span class="text-[9px] font-mono px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40">Missing 1 Card</span>
+                </div>
+                <div class="text-[11px] font-mono text-slate-400">
+                    <span>Already in Deck:</span>
+                    <div class="flex flex-wrap gap-1 mt-0.5">${inDeckHtml}</div>
+                </div>
+                <div class="text-[11px] font-mono text-amber-300 pt-1 border-t border-[#263245] flex items-center justify-between">
+                    <span>Missing Piece: <strong class="text-white">${escapeHtml(nc.missing || '')}</strong></span>
+                    <span class="text-[10px] text-slate-400">${escapeHtml(nc.result || '')}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="space-y-4 pt-1">
+            ${summary}
+            <div class="space-y-3">${combos || '<div class="text-xs font-mono text-slate-500 italic p-3 bg-[#0B0F17] border border-[#263245]">No complete infinite combos identified in current deck list.</div>'}</div>
+            ${near ? `
+                <div class="space-y-2 pt-2">
+                    <h5 class="text-xs font-mono font-bold text-amber-400 uppercase flex items-center gap-1.5">
+                        <span>⚡</span>
+                        <span>Near Combos (Missing 1 Card):</span>
+                    </h5>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">${near}</div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderThreatsBody(data) {
+    const summary = data.summary ? `<p class="text-xs text-slate-300 font-sans leading-relaxed">${escapeHtml(data.summary)}</p>` : '';
+
+    const removal = (data.removal_priorities || []).map(rp => {
+        const answersHtml = (rp.answers_detail || (rp.answers_in_deck || []).map(c => ({ name: c, in_deck: true }))).map(c => renderCardNamePill(c.name, c.in_deck)).join(' ');
+        return `
+            <div class="bg-[#0B0F17] p-2.5 rounded-none border border-[#263245] space-y-1.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-mono font-bold text-rose-400 uppercase">${escapeHtml(rp.threat || 'Threat')}</span>
+                </div>
+                <p class="text-[11px] text-slate-300 font-sans">${escapeHtml(rp.why || '')}</p>
+                <div class="pt-1 border-t border-[#263245]">
+                    <span class="text-[9px] font-mono uppercase text-cyan-400 block mb-0.5">Your Answers in Deck:</span>
+                    <div class="flex flex-wrap gap-1">${answersHtml || '<span class="text-[10px] text-slate-500 font-mono italic">None</span>'}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const matchups = (data.bad_matchups || []).map(bm => `
+        <div class="bg-[#0B0F17] p-2.5 rounded-none border border-[#263245] space-y-1">
+            <span class="text-xs font-mono font-bold text-amber-300 uppercase">${escapeHtml(bm.archetype || 'Archetype')}</span>
+            <p class="text-[11px] text-slate-300 font-sans">${escapeHtml(bm.why || '')}</p>
+            <p class="text-[11px] text-emerald-300 font-sans italic border-t border-[#263245] pt-1">Adaptation: ${escapeHtml(bm.how_to_adapt || '')}</p>
+        </div>
+    `).join('');
+
+    const wipePlan = data.board_wipe_plan ? `
+        <div class="bg-[#0B0F17] p-3 rounded-none border border-cyan-500/30 space-y-1">
+            <span class="text-[10px] font-mono uppercase font-bold text-cyan-400 flex items-center gap-1">
+                <span>🛡️</span>
+                <span>Board Wipe Recovery & Navigation Plan:</span>
+            </span>
+            <p class="text-xs text-slate-300 font-sans leading-relaxed">${escapeHtml(data.board_wipe_plan)}</p>
+        </div>
+    ` : '';
+
+    return `
+        <div class="space-y-4 pt-1">
+            ${summary}
+            ${removal ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-rose-400 uppercase">Priority Removal Targets:</h5>
+                    <div class="space-y-2">${removal}</div>
+                </div>
+            ` : ''}
+            ${wipePlan}
+            ${matchups ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-amber-400 uppercase">Challenging Matchups:</h5>
+                    <div class="space-y-2">${matchups}</div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+function renderCommanderUsageBody(data) {
+    const summary = data.summary ? `<p class="text-xs text-slate-300 font-sans leading-relaxed">${escapeHtml(data.summary)}</p>` : '';
+
+    const badgesHtml = `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+            <div class="bg-[#0B0F17] p-2.5 rounded-none border border-purple-500/30">
+                <span class="text-purple-400 block text-[9px] uppercase font-bold">Ideal Deployment Window:</span>
+                <span class="text-white font-bold text-xs">${escapeHtml(data.ideal_cast_turn || 'Turn 3-4')}</span>
+            </div>
+            <div class="bg-[#0B0F17] p-2.5 rounded-none border border-[#263245]">
+                <span class="text-amber-400 block text-[9px] uppercase font-bold">Recast / Tax Threshold:</span>
+                <span class="text-slate-300 text-[11px]">${escapeHtml(data.recast_threshold || 'Standard')}</span>
+            </div>
+        </div>
+    `;
+
+    const timingTips = (data.cast_timing_tips || []).map(ct => `
+        <li class="flex items-start gap-1.5 text-xs text-slate-300 font-sans">
+            <span class="text-purple-400 font-bold">👑</span>
+            <span>${escapeHtml(ct)}</span>
+        </li>
+    `).join('');
+
+    const protection = (data.protection_options || []).map(po => `
+        <div class="bg-[#0B0F17] p-2 rounded-none border border-[#263245] space-y-0.5">
+            <div>${renderCardNamePill(po.card_name, po.in_deck)}</div>
+            <p class="text-[11px] text-slate-400 font-sans">${escapeHtml(po.how || '')}</p>
+        </div>
+    `).join('');
+
+    const whenNot = (data.when_not_to_cast || []).map(wn => `
+        <li class="flex items-start gap-1.5 text-xs text-rose-300 font-sans">
+            <span class="text-rose-400 font-bold">&times;</span>
+            <span>${escapeHtml(wn)}</span>
+        </li>
+    `).join('');
+
+    return `
+        <div class="space-y-4 pt-1">
+            ${summary}
+            ${badgesHtml}
+            ${timingTips ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-purple-400 uppercase">Deployment Guidelines:</h5>
+                    <ul class="space-y-1">${timingTips}</ul>
+                </div>
+            ` : ''}
+            ${protection ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-emerald-400 uppercase">Commander Protection in Deck:</h5>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${protection}</div>
+                </div>
+            ` : ''}
+            ${whenNot ? `
+                <div class="space-y-1.5">
+                    <h5 class="text-[11px] font-mono font-bold text-rose-400 uppercase">When NOT to Cast:</h5>
+                    <ul class="space-y-1">${whenNot}</ul>
+                </div>
+            ` : ''}
+        </div>
+    `;
+}
+
+async function generateTacticsSection(secKey) {
+    if (!activeDeck || !activeDeck.id) return;
+    const modelSelect = document.getElementById('tacticsAiModel');
+    const model = (modelSelect && modelSelect.value) || 'gemini-3.8-flash';
+
+    const cardEl = document.getElementById(`tactic-card-${secKey}`);
+    if (cardEl) {
+        cardEl.innerHTML = `
+            <div class="flex items-center justify-between border-b border-[#263245] pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-base">${getTacticsIcon(secKey)}</span>
+                    <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider">${escapeHtml(getTacticsTitle(secKey))}</h4>
+                </div>
+                <span class="text-[10px] font-mono text-cyan-400 animate-pulse">Analyzing...</span>
+            </div>
+            <div class="py-10 text-center space-y-3 font-mono text-xs text-slate-400">
+                <div class="inline-block animate-spin text-cyan-400 text-xl">&#x27F3;</div>
+                <p>Consulting Gemini ${escapeHtml(model)} for ${escapeHtml(getTacticsTitle(secKey))}...</p>
+            </div>
+        `;
+    }
+
+    try {
+        const resp = await fetch(`/api/deck/${activeDeck.id}/tactics/${secKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || `Server returned HTTP ${resp.status}`);
+        }
+
+        if (!currentDeckTactics) currentDeckTactics = {};
+        if (!currentDeckTactics.sections) currentDeckTactics.sections = {};
+        currentDeckTactics.sections[secKey] = data.entry;
+        currentTacticsStatus = data.status || {};
+
+        activeDeck.has_tactics = true;
+        activeDeck.tactics_stale = Boolean(currentTacticsStatus.stale);
+
+        renderTacticsTab(currentDeckTactics, currentTacticsStatus);
+        updateTacticsBadgeAndBanner(activeDeck);
+        showToast(`${getTacticsTitle(secKey)} generated successfully!`, 'success');
+        return true;
+    } catch (e) {
+        if (cardEl) {
+            cardEl.innerHTML = `
+                <div class="flex items-center justify-between border-b border-[#263245] pb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">${getTacticsIcon(secKey)}</span>
+                        <h4 class="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">${escapeHtml(getTacticsTitle(secKey))}</h4>
+                    </div>
+                </div>
+                <div class="py-6 text-center space-y-2 font-mono text-xs">
+                    <p class="text-rose-400">Failed: ${escapeHtml(e.message)}</p>
+                    <button onclick="generateTacticsSection('${secKey}')" class="px-3 py-1 bg-rose-500/20 text-rose-300 border border-rose-500/40 uppercase rounded-none hover:bg-rose-500 hover:text-white transition">
+                        Retry
+                    </button>
+                </div>
+            `;
+        }
+        showToast(`Tactics error (${secKey}): ${e.message}`, 'error');
+        return false;
+    }
+}
+
+async function generateAllTactics(options = {}) {
+    if (!activeDeck || !activeDeck.id) return;
+    const { onlyStale = false } = options;
+
+    const allKeys = ['opening_hand', 'game_plan', 'combos', 'threats', 'commander_usage'];
+    const targetKeys = onlyStale
+        ? (currentTacticsStatus && currentTacticsStatus.stale_sections && currentTacticsStatus.stale_sections.length > 0 ? currentTacticsStatus.stale_sections : allKeys)
+        : allKeys;
+
+    const btnAll = document.getElementById('btnGenerateAllTactics');
+    const btnStale = document.getElementById('btnRegenerateStaleTactics');
+    const origAllText = btnAll ? btnAll.innerHTML : '';
+    const origStaleText = btnStale ? btnStale.innerHTML : '';
+
+    if (btnAll) {
+        btnAll.disabled = true;
+        btnAll.innerHTML = `<span class="inline-block animate-spin mr-1">&#x27F3;</span> Generating ${targetKeys.length} Cards...`;
+    }
+    if (btnStale) {
+        btnStale.disabled = true;
+        btnStale.innerHTML = `<span class="inline-block animate-spin mr-1">&#x27F3;</span> Updating...`;
+    }
+
+    try {
+        const promises = targetKeys.map(k => generateTacticsSection(k));
+        const results = await Promise.allSettled(promises);
+        const successes = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+        showToast(`Commander Tactics: ${successes} of ${targetKeys.length} cards updated.`, successes === targetKeys.length ? 'success' : 'info');
+        await loadDeckTactics(activeDeck.id);
+        if (activeDeck) {
+            updateTacticsBadgeAndBanner(activeDeck);
+        }
+    } finally {
+        if (btnAll) {
+            btnAll.disabled = false;
+            btnAll.innerHTML = origAllText;
+        }
+        if (btnStale) {
+            btnStale.disabled = false;
+            btnStale.innerHTML = origStaleText;
+        }
+    }
 }

@@ -3,6 +3,8 @@ import logging
 import os
 import re
 import secrets
+import threading
+from collections import defaultdict
 from functools import wraps
 from datetime import datetime, timezone
 from flask import (
@@ -51,6 +53,7 @@ from card_utils import fix_mojibake, strip_accents, get_card_match_keys, normali
 from gemini_analyzer import (
     GeminiAnalyzer,
     GeminiAnalysisError,
+    TACTICS_SECTIONS,
     SUPPORTED_MODELS as GEMINI_SUPPORTED_MODELS,
     DEFAULT_MODEL as GEMINI_DEFAULT_MODEL,
 )
@@ -68,6 +71,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+_deck_tactics_locks = defaultdict(threading.Lock)
 
 
 def _migrate_db_schema(app):
@@ -278,6 +283,8 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
                     if "upgrades_json" not in da_cols:
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN upgrades_json TEXT"))
+                    if "tactics_json" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN tactics_json TEXT"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS user_inventory_card (
                             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -481,6 +488,7 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS is_pauper BOOLEAN DEFAULT FALSE NOT NULL"))
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS upgrades_json TEXT"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS tactics_json TEXT"))
                         conn.execute(db.text("""
                             CREATE TABLE IF NOT EXISTS user_inventory_card (
                                 id SERIAL PRIMARY KEY,
@@ -5035,6 +5043,169 @@ def create_app(test_config=None):
             return jsonify({"success": True, "salt_cards": salt_cards})
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/deck/<int:deck_id>/tactics", methods=["GET"])
+    @login_required
+    def api_deck_tactics(deck_id: int):
+        """Fetches stored Commander Tactics sections and current staleness telemetry."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Saved deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized access to deck."}), 403
+
+        status = entry.get_tactics_status()
+        tactics = entry.get_tactics()
+        return jsonify({
+            "success": True,
+            "deck_id": deck_id,
+            "tactics": tactics,
+            "status": status,
+            "available_sections": TACTICS_SECTIONS,
+        })
+
+    @app.route("/api/deck/<int:deck_id>/tactics/<section>", methods=["POST"])
+    @login_required
+    def api_deck_generate_tactics_section(deck_id: int, section: str):
+        """Generates or regenerates a specific Commander Tactics section using Gemini AI."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Saved deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized access to deck."}), 403
+
+        if section not in TACTICS_SECTIONS:
+            return jsonify({"error": f"Invalid tactics section '{section}'."}), 400
+
+        data = request.get_json(silent=True) or {}
+        default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
+        model = data.get("model") or default_model
+        user_api_key = data.get("api_key", "").strip()
+
+        effective_key = user_api_key or SystemSetting.get_val("gemini_api_key") or app.config.get("GEMINI_API_KEY")
+        if not effective_key:
+            return jsonify({
+                "error": "Gemini API key is required. Please set GEMINI_API_KEY or configure your key in the settings modal."
+            }), 400
+
+        cards = entry.get_parsed_cards()
+        if not cards:
+            return jsonify({"error": "Saved deck contains no card entries."}), 400
+
+        cmdrs = [c.strip() for c in (entry.commander_name or "").split(",") if c.strip()]
+        deck_payload = {
+            "deck_name": entry.deck_name,
+            "commander": cmdrs,
+            "cards": cards,
+            "color_identity": entry.get_color_identity_list(),
+            "is_pauper": entry.is_pauper_commander,
+            "deck_format": entry.deck_format or ("pauper_commander" if entry.is_pauper_commander else "commander"),
+        }
+
+        # Scryfall metadata enrichment
+        try:
+            card_names = [c["name"] for c in cards]
+            scryfall_map, _ = scryfall_provider.get_cards_collection(card_names)
+        except Exception as e:
+            logger.warning(f"Failed to fetch Scryfall metadata for tactics generation: {e}")
+            scryfall_map = {}
+
+        # If combos section, look up EDHREC known combos for grounding if commander exists
+        extra_context = ""
+        if section == "combos" and entry.commander_name:
+            try:
+                current_edhrec_provider = getattr(app, "edhrec_provider", edhrec_provider)
+                current_upgrade_engine = getattr(app, "upgrade_engine", upgrade_engine)
+                edh_data = current_edhrec_provider.get_commander_data(entry.commander_name)
+                if edh_data and edh_data.get("combos"):
+                    eval_res = current_upgrade_engine.evaluate_combos(
+                        combos=edh_data.get("combos", []),
+                        deck_cards=cards,
+                        user_inventory=[],
+                    )
+                    assembled = eval_res.get("assembled", [])
+                    near = eval_res.get("near_combos", [])
+                    if assembled:
+                        as_lines = [f"- {c.get('name', 'Combo')}: cards [{', '.join(c.get('cards', []))}] -> {c.get('results', '')}" for c in assembled[:5]]
+                        extra_context += "Known 100% assembled combos in deck from Commander Spellbook:\n" + "\n".join(as_lines) + "\n"
+                    if near:
+                        nr_lines = [f"- {c.get('name', 'Near Combo')}: has [{', '.join(c.get('cards_in_deck', []))}], needs [{', '.join(c.get('cards_missing', []))}] -> {c.get('results', '')}" for c in near[:5]]
+                        extra_context += "Known near combos missing 1 card from Commander Spellbook:\n" + "\n".join(nr_lines) + "\n"
+            except Exception as e:
+                logger.info(f"Skipping EDHREC combo grounding for tactics: {e}")
+
+        try:
+            analyzer = GeminiAnalyzer(api_key=effective_key, model=model)
+            section_result = analyzer.generate_tactics_section(
+                section=section,
+                deck_data=deck_payload,
+                scryfall_metadata=scryfall_map,
+                extra_context=extra_context,
+                preferred_model=model,
+            )
+
+            actual_model = section_result.get("_model_used") or model
+
+            # Safe concurrency merge per deck_id
+            lock = _deck_tactics_locks[deck_id]
+            with lock:
+                db.session.refresh(entry)
+                current_tactics = entry.get_tactics() or {}
+                if "sections" not in current_tactics or not isinstance(current_tactics["sections"], dict):
+                    current_tactics["sections"] = {}
+                current_tactics["version"] = 1
+
+                fp = entry.compute_decklist_fingerprint()
+                section_record = {
+                    "data": section_result,
+                    "deck_fingerprint": fp,
+                    "model_used": actual_model,
+                    "generated_at": utc_now().isoformat(),
+                }
+                current_tactics["sections"][section] = section_record
+                entry.tactics_json = json.dumps(current_tactics)
+                entry.updated_at = utc_now()
+                db.session.commit()
+
+            log_activity("DECK_TACTICS", details=f"Generated tactics section '{section}' for deck '{entry.deck_name}' via {actual_model}", user=user)
+
+            return jsonify({
+                "success": True,
+                "deck_id": deck_id,
+                "section": section,
+                "entry": section_record,
+                "status": entry.get_tactics_status(),
+            })
+
+        except GeminiAnalysisError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error generating tactics for deck {deck_id} section {section}: {e}", exc_info=True)
+            return jsonify({"error": f"Tactics generation failed: {str(e)}"}), 500
+
+    @app.route("/api/deck/<int:deck_id>/tactics", methods=["DELETE"])
+    @login_required
+    def api_deck_clear_tactics(deck_id: int):
+        """Clears all stored Commander Tactics for a deck."""
+        user = get_current_user()
+        entry = db.session.get(DeckAnalysis, deck_id)
+        if not entry:
+            return jsonify({"error": "Saved deck not found."}), 404
+        if not user.is_admin and entry.user_id and entry.user_id != user.id:
+            return jsonify({"error": "Unauthorized access to deck."}), 403
+
+        entry.tactics_json = None
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        log_activity("DECK_TACTICS_CLEAR", details=f"Cleared tactics for deck '{entry.deck_name}'", user=user)
+        return jsonify({
+            "success": True,
+            "message": f"Tactics cleared for '{entry.deck_name}'.",
+            "status": entry.get_tactics_status(),
+        })
 
     @app.route("/api/deck/<int:deck_id>/apply-swap", methods=["POST"])
     @login_required

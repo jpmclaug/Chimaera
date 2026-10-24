@@ -1791,6 +1791,208 @@ Price : $239.92 USD
         self.assertEqual(bundle["price_nonfoil"], 239.92)
 
 
+
+
+class TestCommanderTactics(unittest.TestCase):
+    """Tests Commander Tactics generation, fingerprinting, staleness detection, and API endpoints."""
+
+    def setUp(self):
+        self.app = create_app({
+            "TESTING": True,
+            "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+            "SECRET_KEY": "test-secret-key",
+            "GEMINI_API_KEY": "test-gemini-key",
+        })
+        self.client = self.app.test_client()
+
+        with self.app.app_context():
+            db.create_all()
+            user = User(
+                email="tactics_commander@chimera.local",
+                name="Tactics Tester",
+                is_admin=True,
+                is_active=True,
+            )
+            db.session.add(user)
+            db.session.commit()
+            self.user_id = user.id
+
+            sample_cards = [
+                {"name": "Sol Ring", "quantity": 1, "type_line": "Artifact", "cmc": 1},
+                {"name": "Arcane Signet", "quantity": 1, "type_line": "Artifact", "cmc": 2},
+                {"name": "Command Tower", "quantity": 1, "type_line": "Land", "cmc": 0},
+                {"name": "Forest", "quantity": 1, "type_line": "Basic Land", "cmc": 0},
+                {"name": "Island", "quantity": 1, "type_line": "Basic Land", "cmc": 0},
+                {"name": "Counterspell", "quantity": 1, "type_line": "Instant", "cmc": 2},
+                {"name": "Beast Within", "quantity": 1, "type_line": "Instant", "cmc": 3},
+            ]
+
+            deck = DeckAnalysis(
+                user_id=self.user_id,
+                deck_name="Simic Tactics Fleet",
+                commander_name="Arixmethes, Slumbering Isle",
+                total_cards=7,
+                cards_data=json.dumps(sample_cards),
+                color_identity="G,U",
+                is_pauper=False,
+            )
+            db.session.add(deck)
+            db.session.commit()
+            self.deck_id = deck.id
+
+    def _login(self):
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = self.user_id
+
+    def test_decklist_fingerprint_consistency_and_staleness(self):
+        """Verifies fingerprint is invariant to order/metadata and changes on card list modifications."""
+        with self.app.app_context():
+            deck = db.session.get(DeckAnalysis, self.deck_id)
+            fp_orig = deck.compute_decklist_fingerprint()
+            self.assertTrue(bool(fp_orig))
+            self.assertEqual(len(fp_orig), 64)
+
+            # Reordering cards must NOT alter fingerprint
+            cards = deck.get_parsed_cards()
+            deck.cards_data = json.dumps(list(reversed(cards)))
+            db.session.commit()
+            self.assertEqual(deck.compute_decklist_fingerprint(), fp_orig)
+
+            # Metadata (e.g. price change) must NOT alter fingerprint
+            cards_with_price = [dict(c, price_usd=99.99) for c in cards]
+            deck.cards_data = json.dumps(cards_with_price)
+            db.session.commit()
+            self.assertEqual(deck.compute_decklist_fingerprint(), fp_orig)
+
+            # Changing quantity must change fingerprint
+            cards_mod = [dict(c) for c in cards]
+            cards_mod[0]["quantity"] = 2
+            deck.cards_data = json.dumps(cards_mod)
+            db.session.commit()
+            fp_qty_change = deck.compute_decklist_fingerprint()
+            self.assertNotEqual(fp_qty_change, fp_orig)
+
+            # Adding a card must change fingerprint
+            cards_add = list(cards) + [{"name": "Cultivate", "quantity": 1}]
+            deck.cards_data = json.dumps(cards_add)
+            db.session.commit()
+            fp_add_change = deck.compute_decklist_fingerprint()
+            self.assertNotEqual(fp_add_change, fp_orig)
+
+    def test_generate_tactics_section_unknown_raises(self):
+        """Verifies GeminiAnalyzer raises error on invalid section name."""
+        analyzer = GeminiAnalyzer(api_key="valid_key")
+        with self.assertRaises(GeminiAnalysisError):
+            analyzer.generate_tactics_section("nonexistent_section", {"cards": [{"name": "Sol Ring"}]})
+
+    @patch("gemini_analyzer.GeminiAnalyzer._call_gemini_json")
+    def test_generate_tactics_section_validation(self, mock_call):
+        """Verifies in_deck hallucination flag accurately marks cards present vs hallucinated."""
+        mock_call.return_value = ({
+            "summary": "Great opening hand guide.",
+            "keep_criteria": ["2+ lands", "1 ramp piece"],
+            "priority_cards": [
+                {"card_name": "Sol Ring", "why": "Turn 1 velocity"},
+                {"card_name": "Mana Crypt", "why": "Hallucinated card not in deck"},
+            ],
+            "red_flags": ["No lands"],
+            "ideal_land_count": "3-4",
+            "example_keeps": [
+                {"hand": ["Sol Ring", "Forest", "Mana Crypt"], "verdict": "Keep", "reason": "Fast mana"}
+            ],
+        }, "gemini-3.8-flash")
+
+        analyzer = GeminiAnalyzer(api_key="valid_key")
+        res = analyzer.generate_tactics_section(
+            section="opening_hand",
+            deck_data={
+                "deck_name": "Test",
+                "commander": ["Arixmethes, Slumbering Isle"],
+                "cards": [
+                    {"name": "Sol Ring", "quantity": 1},
+                    {"name": "Forest", "quantity": 1},
+                ],
+            }
+        )
+
+        self.assertEqual(res["_section"], "opening_hand")
+        self.assertEqual(res["_model_used"], "gemini-3.8-flash")
+
+        # Sol Ring is in deck -> in_deck is True
+        # Mana Crypt is NOT in deck -> in_deck is False
+        p_cards = {p["card_name"]: p["in_deck"] for p in res["priority_cards"]}
+        self.assertTrue(p_cards["Sol Ring"])
+        self.assertFalse(p_cards["Mana Crypt"])
+
+    @patch("gemini_analyzer.GeminiAnalyzer.generate_tactics_section")
+    def test_api_tactics_endpoints_and_staleness_cycle(self, mock_gen):
+        """Tests GET, POST, DELETE /api/deck/<id>/tactics and dynamic staleness marking."""
+        self._login()
+
+        # 1. GET tactics initially empty
+        resp = self.client.get(f"/api/deck/{self.deck_id}/tactics")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertFalse(data["status"]["has_tactics"])
+        self.assertFalse(data["status"]["stale"])
+        self.assertIn("opening_hand", data["available_sections"])
+
+        # 2. Mock generation for opening_hand
+        mock_gen.return_value = {
+            "summary": "Solid curve with counter backup.",
+            "keep_criteria": ["Ramp + Interaction"],
+            "_model_used": "gemini-3.8-flash",
+        }
+
+        resp_post = self.client.post(
+            f"/api/deck/{self.deck_id}/tactics/opening_hand",
+            json={"model": "gemini-3.8-flash"},
+        )
+        self.assertEqual(resp_post.status_code, 200)
+        post_data = resp_post.get_json()
+        self.assertTrue(post_data["success"])
+        self.assertEqual(post_data["section"], "opening_hand")
+        self.assertFalse(post_data["status"]["stale"])
+        self.assertTrue(post_data["status"]["has_tactics"])
+
+        # 3. GET reflects stored tactics
+        resp_get2 = self.client.get(f"/api/deck/{self.deck_id}/tactics")
+        data2 = resp_get2.get_json()
+        self.assertTrue(data2["status"]["has_tactics"])
+        self.assertFalse(data2["status"]["stale"])
+        self.assertIn("opening_hand", data2["tactics"]["sections"])
+
+        # 4. Modify deck (cut a card) -> Tactics automatically becomes STALE without deleting stored advice
+        with self.app.app_context():
+            deck = db.session.get(DeckAnalysis, self.deck_id)
+            cards = deck.get_parsed_cards()
+            deck.cards_data = json.dumps([c for c in cards if c["name"] != "Beast Within"])
+            db.session.commit()
+
+        resp_stale = self.client.get(f"/api/deck/{self.deck_id}/tactics")
+        stale_data = resp_stale.get_json()
+        self.assertTrue(stale_data["status"]["has_tactics"])
+        self.assertTrue(stale_data["status"]["stale"])
+        self.assertIn("opening_hand", stale_data["status"]["stale_sections"])
+        # Advice remains readable
+        self.assertIn("opening_hand", stale_data["tactics"]["sections"])
+
+        # 5. Regenerate opening_hand -> staleness cleared
+        resp_post2 = self.client.post(
+            f"/api/deck/{self.deck_id}/tactics/opening_hand",
+            json={"model": "gemini-3.8-flash"},
+        )
+        self.assertEqual(resp_post2.status_code, 200)
+        self.assertFalse(resp_post2.get_json()["status"]["stale"])
+
+        # 6. DELETE /api/deck/<id>/tactics clears stored sections
+        resp_del = self.client.delete(f"/api/deck/{self.deck_id}/tactics")
+        self.assertEqual(resp_del.status_code, 200)
+        del_data = resp_del.get_json()
+        self.assertFalse(del_data["status"]["has_tactics"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

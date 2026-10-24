@@ -666,6 +666,15 @@
                     <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
                     <span id="upgradesTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
                 </button>
+                <!-- Tab 5: Commander Tactics -->
+                <button type="button" onclick="switchInspectorTab('tactics')" id="insp-tab-tactics" 
+                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
+                    <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Tactics</span>
+                    <span class="hidden md:inline whitespace-nowrap">Commander Tactics</span>
+                    <span id="tacticsTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono">5 Intel</span>
+                </button>
+
             </div>
         </div>
 
@@ -1793,6 +1802,112 @@
             </div>
         </div>
     </div>
+
+    
+        <!-- ========================================================================= -->
+        <!-- INSPECTOR TAB 5: COMMANDER TACTICS (5 SEPARATE AI INTEL ADVICE CARDS) -->
+        <!-- ========================================================================= -->
+        <div id="inspectorTabContentTactics" class="hidden space-y-6">
+            
+            <!-- Stale Indicator Alert Banner -->
+            <div id="tacticsStaleBanner" class="hidden bg-amber-950/40 border border-amber-500/50 rounded-none p-4 text-amber-200 font-mono shadow-xl">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-start sm:items-center gap-2.5">
+                        <span class="text-amber-400 text-base">⚠️</span>
+                        <div>
+                            <div class="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                                <span>Tactical Advice Outdated</span>
+                                <span id="tacticsStaleCountBadge" class="text-[9px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40">5 of 5 Stale</span>
+                            </div>
+                            <p class="text-[11px] text-amber-200/80 mt-0.5 font-sans">
+                                The deck list was edited after these tactics were generated. You can regenerate outdated cards to align with your current deck.
+                            </p>
+                        </div>
+                    </div>
+                    <button onclick="generateAllTactics({ onlyStale: true })" id="btnRegenerateStaleTactics" 
+                            class="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-mono font-black uppercase tracking-wider rounded-none shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap">
+                        <span>↻ Regenerate Stale</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tactics Header / Action Control Bar -->
+            <div class="bg-[#10141D] border border-[#263245] rounded-none p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2 text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider mb-1">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                        Strategic Command // Tactical Guidance Station
+                    </div>
+                    <h3 class="font-heading font-black text-lg text-white uppercase flex items-center gap-2">
+                        <span>Commander Tactics</span>
+                        <span id="tacticsActiveDeckBadge" class="text-[10px] px-2 py-0.5 rounded-none bg-slate-800 text-cyan-300 border border-[#263245] font-mono font-bold normal-case"></span>
+                    </h3>
+                    <p class="text-xs text-slate-400 font-sans mt-0.5 max-w-2xl">
+                        AI-coached situational guides for opening hand evaluation, combo line execution, phased game pacing, threat navigation, and commander deployment.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2.5">
+                    <select id="tacticsAiModel" class="bg-[#1B2230] border border-[#263245] rounded-none px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                        {% for m in supported_models %}
+                        <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
+                        {% endfor %}
+                    </select>
+
+                    <button onclick="generateAllTactics({ onlyStale: false })" id="btnGenerateAllTactics"
+                            class="px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-none shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                        <span>⚡ Generate All Tactics</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Empty State (if no tactics yet) -->
+            <div id="tacticsEmptyState" class="hidden bg-[#10141D] border border-cyan-500/30 rounded-none p-8 text-center space-y-4">
+                <div class="w-14 h-14 rounded-none bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto shadow-lg text-2xl font-black">
+                    🎯
+                </div>
+                <div>
+                    <h4 class="text-base font-black text-white font-mono uppercase tracking-wider">No Tactical Guidance Generated Yet</h4>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto mt-1">
+                        Generate actionable Commander advice for opening hands, combo lines, phased game pacing, threat prioritization, and commander deployment.
+                    </p>
+                </div>
+                <div class="pt-2">
+                    <button onclick="generateAllTactics({ onlyStale: false })" class="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-none shadow-lg transition inline-flex items-center gap-2 cursor-pointer">
+                        <span>⚡ Generate All 5 Tactics Cards</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tactics Cards Grid (5 Distinct Cards) -->
+            <div id="tacticsCardsGrid" class="space-y-6">
+                <!-- Row 1: Opening Hand & Game Plan -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div id="tactic-card-opening_hand" class="bg-[#10141D] border border-[#263245] rounded-none p-5 shadow-xl flex flex-col justify-between space-y-4">
+                        <!-- Injected by renderOpeningHandCard -->
+                    </div>
+                    <div id="tactic-card-game_plan" class="bg-[#10141D] border border-[#263245] rounded-none p-5 shadow-xl flex flex-col justify-between space-y-4">
+                        <!-- Injected by renderGamePlanCard -->
+                    </div>
+                </div>
+
+                <!-- Row 2: Combos & Synergy Lines (Full Width) -->
+                <div id="tactic-card-combos" class="bg-[#10141D] border border-[#263245] rounded-none p-5 shadow-xl space-y-4">
+                    <!-- Injected by renderCombosCard -->
+                </div>
+
+                <!-- Row 3: Threats & Commander Usage -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div id="tactic-card-threats" class="bg-[#10141D] border border-[#263245] rounded-none p-5 shadow-xl flex flex-col justify-between space-y-4">
+                        <!-- Injected by renderThreatsCard -->
+                    </div>
+                    <div id="tactic-card-commander_usage" class="bg-[#10141D] border border-[#263245] rounded-none p-5 shadow-xl flex flex-col justify-between space-y-4">
+                        <!-- Injected by renderCommanderUsageCard -->
+                    </div>
+                </div>
+            </div>
+
+        </div>
 
     <!-- ========================================================================= -->
     <!-- VIEW 4: HEAD-TO-HEAD SIDE-BY-SIDE COMPARE STATION -->

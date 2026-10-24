@@ -1066,6 +1066,7 @@ class DeckAnalysis(db.Model):
     stats_json = db.Column(db.Text, nullable=True)  # JSON string of pre-computed stats (curve, types, value)
     analysis_json = db.Column(db.Text, nullable=True)  # JSON string of Gemini analysis (nullable if pre-AI)
     upgrades_json = db.Column(db.Text, nullable=True)  # JSON string of dual-tier upgrade recommendations & cuts
+    tactics_json = db.Column(db.Text, nullable=True)  # JSON string of per-section Gemini Commander Tactics & fingerprints
     model_used = db.Column(db.String(100), default="gemini-3.8-flash")
     power_level = db.Column(db.Float, nullable=True)
     power_bracket = db.Column(db.String(50), nullable=True)
@@ -1093,6 +1094,66 @@ class DeckAnalysis(db.Model):
     def has_upgrades(self) -> bool:
         """Returns True if tactical upgrades evaluation has been stored for this deck."""
         return bool(self.upgrades_json and self.upgrades_json.strip() and self.upgrades_json.strip() != "{}")
+
+    @property
+    def has_tactics(self) -> bool:
+        """Returns True if tactical guidance sections are stored for this deck."""
+        if not self.tactics_json or not self.tactics_json.strip():
+            return False
+        try:
+            import json
+            data = json.loads(self.tactics_json)
+            return bool(data.get("sections"))
+        except Exception:
+            return False
+
+    def compute_decklist_fingerprint(self) -> str:
+        """SHA-256 of sorted (card_name, quantity) pairs and commander(s). Ignores prices/metadata."""
+        import hashlib
+        import json
+        counts: dict[str, int] = {}
+        for c in self.get_parsed_cards():
+            name = (c.get("name") or "").strip().lower()
+            if name:
+                counts[name] = counts.get(name, 0) + int(c.get("quantity", 1) or 1)
+        cmdrs = sorted(n.strip().lower() for n in (self.commander_name or "").split(",") if n.strip())
+        payload = json.dumps({"cards": sorted(counts.items()), "commanders": cmdrs}, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def get_tactics(self) -> dict:
+        """Returns deserialized tactics dict."""
+        if not self.tactics_json:
+            return {}
+        try:
+            import json
+            return json.loads(self.tactics_json)
+        except Exception:
+            return {}
+
+    def get_tactics_status(self) -> dict:
+        """Returns status of stored tactics including staleness against current decklist fingerprint."""
+        tactics = self.get_tactics()
+        sections = tactics.get("sections", {})
+        current_fp = self.compute_decklist_fingerprint()
+        if not sections:
+            return {
+                "has_tactics": False,
+                "stale": False,
+                "stale_sections": [],
+                "current_fingerprint": current_fp,
+                "total_sections": 0,
+            }
+        stale_sections = [
+            sec_name for sec_name, sec_val in sections.items()
+            if sec_val.get("deck_fingerprint") != current_fp
+        ]
+        return {
+            "has_tactics": True,
+            "stale": bool(stale_sections),
+            "stale_sections": stale_sections,
+            "current_fingerprint": current_fp,
+            "total_sections": len(sections),
+        }
 
     def get_upgrades(self) -> dict:
         """Returns deserialized upgrades dict."""
@@ -1260,6 +1321,8 @@ class DeckAnalysis(db.Model):
             "deck_format": "pauper_commander" if self.is_pauper_commander else (self.deck_format or "commander"),
             "has_ai_analysis": self.has_ai_analysis,
             "has_upgrades": self.has_upgrades,
+            "has_tactics": self.has_tactics,
+            "tactics_stale": self.get_tactics_status()["stale"],
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -1271,6 +1334,8 @@ class DeckAnalysis(db.Model):
             data["cards_data"] = self.get_parsed_cards()
             data["analysis"] = self.get_analysis()
             data["upgrades"] = self.get_upgrades()
+            data["tactics"] = self.get_tactics()
+            data["tactics_status"] = self.get_tactics_status()
         return data
 
 
