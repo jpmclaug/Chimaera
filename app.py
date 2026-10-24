@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -7,6 +9,7 @@ import threading
 from collections import defaultdict
 from functools import wraps
 from datetime import datetime, timezone
+from typing import Optional, Dict, Any, List, Union, Tuple, Set
 from flask import (
     Flask,
     render_template,
