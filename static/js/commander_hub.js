@@ -1,6 +1,7 @@
 // State Management
 const _hubInit = window.__COMMANDER_HUB_INIT__ || {};
 const allDecks = Array.isArray(_hubInit.decks) ? _hubInit.decks : [];
+const initialFleetStats = _hubInit.fleetStats || {};
 let currentVaultDecks = [...allDecks];
 
 function toScryfallThumb(url) {
@@ -21,9 +22,55 @@ let activeDeck = null;
 let currentIngestTab = 'url';
 let currentCardTypeFilter = 'all';
 let currentDeckCards = [];
+let currentFilteredCards = [];
 let currentCardSortKey = 'rating_desc';
 let currentCardRatingFilter = 'all';
-let currentCardViewMode = 'auto'; // 'auto', 'tiles', or 'table'
+let currentCardViewMode = 'auto'; // 'auto', 'tiles', 'table', or 'stacks'
+let currentStackGroupBy = 'cmc'; // 'cmc', 'role', or 'type'
+let currentCardOwnershipFilter = 'all'; // 'all', 'owned', 'unowned', 'shared', or 'conflict'
+let currentCardDrilldownFilter = null; // { type: 'cmc'|'type'|'role', value: string, label: string }
+let currentFleetChartMetric = 'power'; // 'power', 'value', or 'synergy'
+let fleetPositioningChartInstance = null;
+
+// Universal Card Image Resolver with Scryfall Direct Fallback
+function resolveCardImageUri(cardName) {
+    if (!cardName) return '';
+    const clean = stripDiacritics(cardName).trim().toLowerCase();
+    const cleanFront = clean.includes(' // ') ? clean.split(' // ')[0].trim() : clean;
+
+    // 1. Check activeDeck cards_data
+    if (activeDeck && Array.isArray(activeDeck.cards_data)) {
+        for (const c of activeDeck.cards_data) {
+            const cName = stripDiacritics(c.name || '').trim().toLowerCase();
+            const cFront = cName.includes(' // ') ? cName.split(' // ')[0].trim() : cName;
+            if (cName === clean || cFront === cleanFront) {
+                const img = c.image_uri || c.small_image_uri || c.art_crop_uri;
+                if (img) return img;
+            }
+        }
+    }
+
+    // 2. Check activeDeck upgrades (owned and market)
+    if (activeDeck && activeDeck.upgrades) {
+        const up = activeDeck.upgrades;
+        const pools = [
+            ...(up.owned_upgrades || []),
+            ...(up.market_upgrades || []),
+            ...(up.budget_swaps || []),
+            ...(up.high_impact_swaps || [])
+        ];
+        for (const u of pools) {
+            const inName = stripDiacritics(u.card_in || '').trim().toLowerCase();
+            const inFront = inName.includes(' // ') ? inName.split(' // ')[0].trim() : inName;
+            if (inName === clean || inFront === cleanFront) {
+                if (u.card_in_image) return u.card_in_image;
+            }
+        }
+    }
+
+    // 3. Fallback to Scryfall named image redirect endpoint
+    return `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cleanFront)}&format=image&version=normal`;
+}
 
 // Relative Date Formatter
 function formatRelativeDate(isoStr) {
@@ -778,6 +825,8 @@ function switchMainView(viewName) {
         if (!currentComparison && selectedDeckIds.size >= 2) {
             runActiveComparison();
         }
+    } else if (viewName === 'analytics') {
+        renderFleetPositioningChart(allDecks, currentFleetChartMetric);
     }
 }
 
@@ -1152,6 +1201,28 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     safeSetText('caBurstCantrip', `${stats.draw_burst_count || 0} burst / ${stats.draw_cantrip_count || 0} cantrip`);
     safeSetText('caTutorGen', stats.tutor_general_count || 0);
     safeSetText('caTutorLand', stats.tutor_land_count || 0);
+
+    // Make Telemetry Counters Clickable for Drilldown into Card Registry
+    const attachDrilldown = (elemId, type, val, label) => {
+        const el = document.getElementById(elemId);
+        if (el) {
+            el.classList.add('cursor-pointer', 'hover:underline', 'transition');
+            el.title = `Click to filter Card Registry by ${label}`;
+            el.onclick = (e) => {
+                e.stopPropagation();
+                drillDownToCardRegistry(type, val, label);
+            };
+        }
+    };
+    attachDrilldown('inspectorFastRamp', 'role', 'fast_ramp', 'Fast Mana / Ramp');
+    attachDrilldown('velFastRamp', 'role', 'fast_ramp', 'Fast Mana / Ramp');
+    attachDrilldown('velStdRamp', 'role', 'std_ramp', 'Standard Ramp');
+    attachDrilldown('inspectorEngineDraw', 'role', 'engine_draw', 'Engine Draw');
+    attachDrilldown('caEngine', 'role', 'engine_draw', 'Engine Draw');
+    attachDrilldown('intTargeted', 'role', 'targeted_removal', 'Targeted Removal');
+    attachDrilldown('intWipes', 'role', 'board_wipe', 'Board Wipes');
+    attachDrilldown('caBurstCantrip', 'role', 'cantrip', 'Burst / Cantrips');
+    attachDrilldown('caTutorGen', 'role', 'tutor', 'Tutors');
     
     // Commander Art & Background
     const art = deck.commander_art || (cards[0] && cards[0].image_uri) || 'https://cards.scryfall.io/art_crop/front/b/4/b43e23b4-e699-4524-b6a5-30b14c330f60.jpg';
@@ -1476,7 +1547,14 @@ function renderEndgameAndWinconTelemetry(stats) {
     if (sinkList) {
         if (ms.top_sinks && ms.top_sinks.length > 0) {
             sinkList.innerHTML = ms.top_sinks.map(s => 
-                `<span class="text-[10px] font-mono px-2 py-0.5 rounded-none bg-slate-800 text-slate-300 border border-[#263245]" title="${s.type} (${s.cmc} CMC)">${s.name} <span class="text-cyan-400 text-[9px]">${s.type}</span></span>`
+                `<span class="text-[10px] font-mono px-2 py-0.5 rounded-none bg-slate-800 text-slate-300 border border-[#263245] cursor-pointer hover:border-cyan-400 hover:text-white transition"
+                       data-img="${escapeHtml(resolveCardImageUri(s.name))}"
+                       data-card-name="${escapeHtml(s.name)}"
+                       onmouseenter="showCardHover(event, this)"
+                       onmousemove="moveCardHover(event)"
+                       onmouseleave="hideCardHover()"
+                       onclick="showCardHover(event, this)"
+                       title="${s.type} (${s.cmc} CMC)">${escapeHtml(s.name)} <span class="text-cyan-400 text-[9px]">${escapeHtml(s.type)}</span></span>`
             ).join('');
         } else {
             sinkList.innerHTML = `<span class="text-[10px] font-mono text-slate-500 italic">No repeatable mana sinks detected.</span>`;
@@ -1815,9 +1893,10 @@ async function toggleActiveDeckFormat() {
     }
 }
 
-// Render Mana Curve Bar Chart
+// Render Mana Curve Bar Chart with Click Drilldown
 function renderManaCurve(curve) {
     const container = document.getElementById('manaCurveContainer');
+    if (!container) return;
     const maxVal = Math.max(1, ...Object.values(curve));
     const keys = ["0", "1", "2", "3", "4", "5", "6", "7+"];
 
@@ -1825,26 +1904,31 @@ function renderManaCurve(curve) {
         const count = curve[k] || 0;
         const heightPct = Math.max(8, Math.round((count / maxVal) * 100));
         return `
-            <div class="flex-1 flex flex-col items-center h-full justify-end group">
+            <div class="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer"
+                 title="Filter cards by CMC ${k}"
+                 onclick="drillDownToCardRegistry('cmc', '${k}', 'CMC ${k}')">
                 <span class="text-[10px] font-mono text-cyan-400 font-bold mb-1 opacity-0 group-hover:opacity-100 transition">${count}</span>
-                <div class="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 hover:from-cyan-500 hover:to-cyan-300 rounded-t transition-all duration-300 shadow-lg shadow-cyan-500/10"
+                <div class="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 group-hover:from-cyan-400 group-hover:to-cyan-200 rounded-t transition-all duration-300 shadow-lg shadow-cyan-500/10"
                      style="height: ${heightPct}%;"></div>
             </div>
         `;
     }).join('');
 }
 
-// Render Card Type Breakdown List
+// Render Card Type Breakdown List with Click Drilldown
 function renderTypeBreakdown(types, totalCards) {
     const container = document.getElementById('typeBreakdownList');
+    if (!container) return;
     const total = totalCards || 100;
 
     container.innerHTML = Object.entries(types).map(([typeName, count]) => {
         const pct = Math.round((count / total) * 100);
         return `
-            <div>
+            <div class="cursor-pointer hover:bg-slate-800/40 p-1 rounded-none transition"
+                 title="Filter cards by type ${escapeHtml(typeName)}"
+                 onclick="drillDownToCardRegistry('type', '${escapeHtml(typeName.toLowerCase())}', 'Type: ${escapeHtml(typeName)}')">
                 <div class="flex justify-between text-xs font-mono mb-1">
-                    <span class="text-slate-300">${typeName}</span>
+                    <span class="text-slate-300">${escapeHtml(typeName)}</span>
                     <span class="text-cyan-400 font-bold">${count} <span class="text-slate-500 font-normal">(${pct}%)</span></span>
                 </div>
                 <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -1981,8 +2065,55 @@ function sortAndFilterCardRegistry() {
             }
         }
 
+        // Ownership & Multi-Deck Allocation filter check
+        if (currentCardOwnershipFilter !== 'all') {
+            const isOwned = Boolean(c.is_owned || (c.owned_qty !== undefined && c.owned_qty > 0));
+            const hasOtherDecks = Boolean(c.other_deck_count > 0 || (c.other_decks && c.other_decks.length > 0));
+            const hasConflict = Boolean(c.copy_deficit && c.copy_deficit > 0);
+
+            if (currentCardOwnershipFilter === 'owned' && !isOwned) return false;
+            if (currentCardOwnershipFilter === 'unowned' && isOwned) return false;
+            if (currentCardOwnershipFilter === 'shared' && !hasOtherDecks) return false;
+            if (currentCardOwnershipFilter === 'conflict' && !hasConflict) return false;
+        }
+
+        // Active Telemetry Drilldown check
+        if (currentCardDrilldownFilter) {
+            const { type: drillType, value: drillVal } = currentCardDrilldownFilter;
+            const isLand = type.includes('land');
+            if (drillType === 'cmc') {
+                if (drillVal === '7+') {
+                    if (isLand || (c.cmc === undefined || c.cmc < 7)) return false;
+                } else {
+                    const cmcTarget = parseInt(drillVal, 10);
+                    if (isLand || Math.floor(c.cmc || 0) !== cmcTarget) return false;
+                }
+            } else if (drillType === 'type') {
+                if (!type.includes(drillVal.toLowerCase())) return false;
+            } else if (drillType === 'role') {
+                const cls = c.classification || {};
+                if (drillVal === 'fast_ramp') {
+                    if (!(cls.is_ramp && (cls.ramp_tier === 'fast' || c.cmc <= 2))) return false;
+                } else if (drillVal === 'std_ramp') {
+                    if (!(cls.is_ramp && !(cls.ramp_tier === 'fast' || c.cmc <= 2))) return false;
+                } else if (drillVal === 'targeted_removal') {
+                    if (!cls.is_targeted_removal) return false;
+                } else if (drillVal === 'board_wipe') {
+                    if (!cls.is_board_wipe) return false;
+                } else if (drillVal === 'engine_draw') {
+                    if (!(cls.is_draw && cls.draw_type === 'engine')) return false;
+                } else if (drillVal === 'cantrip') {
+                    if (!(cls.is_draw && cls.draw_type !== 'engine')) return false;
+                } else if (drillVal === 'tutor') {
+                    if (!cls.is_tutor) return false;
+                }
+            }
+        }
+
         return true;
     });
+
+    currentFilteredCards = filtered;
 
     // Update Counter & Reset Button
     const countEl = document.getElementById('cardRegistryFilteredCount');
@@ -1991,7 +2122,7 @@ function sortAndFilterCardRegistry() {
     if (countEl) countEl.innerText = filtered.length;
     if (totalEl) totalEl.innerText = cards.length;
     if (resetBtn) {
-        const isFiltered = Boolean(query || currentCardTypeFilter !== 'all' || currentCardRatingFilter !== 'all');
+        const isFiltered = Boolean(query || currentCardTypeFilter !== 'all' || currentCardRatingFilter !== 'all' || currentCardOwnershipFilter !== 'all' || currentCardDrilldownFilter);
         if (isFiltered) resetBtn.classList.remove('hidden');
         else resetBtn.classList.add('hidden');
     }
@@ -2047,11 +2178,19 @@ function sortAndFilterCardRegistry() {
     // Update column sort indicators
     updateTableSortIndicators();
 
+    // Render Stacks (Archidekt / Moxfield cascading columns)
+    renderCardStacks(filtered, ratingsMap);
+
     // Render Table Rows (Desktop)
     renderDesktopTable(filtered, ratingsMap);
 
     // Render Mobile Tiles
     renderMobileTiles(filtered, ratingsMap);
+
+    // Update Ownership Summary Bar
+    if (activeDeck) {
+        renderOwnershipSummaryStrip(activeDeck);
+    }
 
     // Ensure correct view mode is displayed
     applyCardViewMode();
@@ -2075,6 +2214,28 @@ function renderDesktopTable(cards, ratingsMap) {
         const r = getRatingForCard(c, ratingsMap);
         const score = r ? (parseFloat(r.rating) || 7.0) : null;
         const tier = getRatingTierMeta(score);
+
+        // Ownership and Multi-Deck Allocation Badges
+        const isOwned = c.is_owned === true || (c.owned_qty !== undefined && c.owned_qty > 0);
+        const ownedQty = c.owned_qty || 0;
+        const copyDeficit = c.copy_deficit || 0;
+        const otherDecks = c.other_decks || [];
+
+        let ownBadge = '';
+        if (isOwned) {
+            ownBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 whitespace-nowrap" title="Owned in Collection: ${ownedQty} physical copies">🎴 Owned (${ownedQty})</span>`;
+        } else {
+            ownBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-slate-800 text-slate-400 border border-[#263245] whitespace-nowrap" title="Not logged in user collection">🛒 Unowned</span>`;
+        }
+
+        let sharedBadge = '';
+        if (otherDecks.length > 0) {
+            if (copyDeficit > 0) {
+                sharedBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 cursor-help whitespace-nowrap" title="Slotted in ${otherDecks.length + 1} decks (${otherDecks.join(', ')}). Copy Deficit: need ${copyDeficit} more copy!">⚠️ Shared (${otherDecks.length + 1} decks, -${copyDeficit})</span>`;
+            } else {
+                sharedBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 cursor-help whitespace-nowrap" title="Also slotted in: ${otherDecks.join(', ')}">🔗 Shared (${otherDecks.length + 1} decks)</span>`;
+            }
+        }
 
         let ratingCellHtml = '';
         if (score !== null) {
@@ -2104,12 +2265,17 @@ function renderDesktopTable(cards, ratingsMap) {
                     <div class="flex flex-col gap-0.5">
                         <span class="cursor-pointer hover:text-cyan-300 hover:underline inline-flex items-center gap-1.5"
                               data-img="${escapeHtml(img)}"
+                              data-card-name="${escapeHtml(name)}"
                               onclick="showCardHover(event, this)"
                               onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                             ${escapeHtml(name)}
                             ${c.section === 'commander' ? '<span class="text-[9px] px-1.5 py-0.2 rounded-none bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-mono font-bold uppercase">Commander</span>' : ''}
                         </span>
-                        ${roleBadges ? `<div class="flex flex-wrap items-center gap-1 mt-0.5">${roleBadges}</div>` : ''}
+                        <div class="flex flex-wrap items-center gap-1 mt-0.5">
+                            ${ownBadge}
+                            ${sharedBadge}
+                            ${roleBadges ? roleBadges : ''}
+                        </div>
                     </div>
                 </td>
                 <td class="py-2.5 px-3 text-slate-400 text-[11px] truncate max-w-[170px]">${escapeHtml(c.type_line || 'Card')}</td>
@@ -2161,6 +2327,28 @@ function renderMobileTiles(cards, ratingsMap) {
         const score = r ? (parseFloat(r.rating) || 7.0) : null;
         const tier = getRatingTierMeta(score);
 
+        // Ownership & Shared
+        const isOwned = c.is_owned === true || (c.owned_qty !== undefined && c.owned_qty > 0);
+        const ownedQty = c.owned_qty || 0;
+        const copyDeficit = c.copy_deficit || 0;
+        const otherDecks = c.other_decks || [];
+
+        let ownBadge = '';
+        if (isOwned) {
+            ownBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 whitespace-nowrap">🎴 Owned (${ownedQty})</span>`;
+        } else {
+            ownBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-slate-800 text-slate-400 border border-[#263245] whitespace-nowrap">🛒 Unowned</span>`;
+        }
+
+        let sharedBadge = '';
+        if (otherDecks.length > 0) {
+            if (copyDeficit > 0) {
+                sharedBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 whitespace-nowrap">⚠️ Shared (${otherDecks.length + 1} decks, -${copyDeficit})</span>`;
+            } else {
+                sharedBadge = `<span class="px-1.5 py-0.2 rounded-none text-[9px] font-mono font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 whitespace-nowrap">🔗 Shared (${otherDecks.length + 1} decks)</span>`;
+            }
+        }
+
         let ratingHtml = '';
         if (score !== null) {
             ratingHtml = `
@@ -2200,6 +2388,7 @@ function renderMobileTiles(cards, ratingsMap) {
                         <div class="min-w-0 flex-1">
                             <span class="cursor-pointer font-bold text-sm text-white hover:text-cyan-300 leading-snug break-words block"
                                   data-img="${escapeHtml(img)}"
+                                  data-card-name="${escapeHtml(name)}"
                                   onclick="showCardHover(event, this)">
                                 ${escapeHtml(name)}
                             </span>
@@ -2225,9 +2414,11 @@ function renderMobileTiles(cards, ratingsMap) {
                 <!-- AI Tactical Rationale -->
                 ${rationaleHtml}
 
-                <!-- Footer: Classification Badges & Actions -->
+                <!-- Footer: Classification Badges, Ownership Badges & Actions -->
                 <div class="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-[#263245]">
                     <div class="flex flex-wrap items-center gap-1 min-w-0">
+                        ${ownBadge}
+                        ${sharedBadge}
                         ${roleBadges}
                     </div>
                     <div class="flex items-center gap-1.5 flex-shrink-0 ml-auto">
@@ -2254,6 +2445,182 @@ function renderMobileTiles(cards, ratingsMap) {
     }).join('');
 }
 
+function renderOwnershipSummaryStrip(deck) {
+    if (!deck) return;
+    const summary = deck.ownership_summary || {};
+    const owned = summary.owned_cards || 0;
+    const total = summary.total_cards || (deck.cards_data ? deck.cards_data.length : 0);
+    const pct = summary.owned_pct !== undefined ? summary.owned_pct : (total > 0 ? Math.round((owned / total) * 100) : 0);
+    const cost = summary.unowned_est_cost !== undefined ? `$${summary.unowned_est_cost.toFixed(2)}` : '$0.00';
+    const shared = summary.shared_cards || 0;
+    const conflicts = summary.deficit_conflicts || 0;
+
+    safeSetText('ownSummaryOwned', `${owned} / ${total} (${pct}%)`);
+    safeSetText('ownSummaryCost', cost);
+    safeSetText('ownSummaryShared', `${shared} Cards`);
+
+    const conflictBadge = document.getElementById('ownSummaryConflictBadge');
+    const conflictCount = document.getElementById('ownSummaryConflictCount');
+    if (conflictBadge && conflictCount) {
+        if (conflicts > 0) {
+            conflictCount.innerText = conflicts;
+            conflictBadge.classList.remove('hidden');
+        } else {
+            conflictBadge.classList.add('hidden');
+        }
+    }
+}
+
+function renderCardStacks(cards, ratingsMap) {
+    const container = document.getElementById('cardStacksColumnsContainer');
+    if (!container) return;
+
+    if (!cards || cards.length === 0) {
+        container.innerHTML = `<div class="p-8 text-center w-full bg-[#10141D] border border-[#263245] text-slate-500 font-mono text-xs">No matching cards found. Try adjusting filters or search.</div>`;
+        return;
+    }
+
+    // Grouping strategies
+    const groups = {};
+
+    if (currentStackGroupBy === 'role') {
+        const roleOrder = ['Fast Mana / Ramp', 'Card Draw & Engines', 'Targeted Removal', 'Board Wipes', 'Protection & Counters', 'Tutors', 'Win Conditions', 'Lands', 'Other Support'];
+        roleOrder.forEach(r => { groups[r] = []; });
+
+        cards.forEach(c => {
+            const cls = c.classification || {};
+            const type = (c.type_line || '').toLowerCase();
+            if (type.includes('land')) {
+                groups['Lands'].push(c);
+            } else if (cls.is_ramp) {
+                groups['Fast Mana / Ramp'].push(c);
+            } else if (cls.is_draw) {
+                groups['Card Draw & Engines'].push(c);
+            } else if (cls.is_targeted_removal) {
+                groups['Targeted Removal'].push(c);
+            } else if (cls.is_board_wipe) {
+                groups['Board Wipes'].push(c);
+            } else if (cls.is_counterspell || cls.is_protection) {
+                groups['Protection & Counters'].push(c);
+            } else if (cls.is_tutor) {
+                groups['Tutors'].push(c);
+            } else if (cls.is_wincon) {
+                groups['Win Conditions'].push(c);
+            } else {
+                groups['Other Support'].push(c);
+            }
+        });
+    } else if (currentStackGroupBy === 'type') {
+        const typeOrder = ['Creatures', 'Instants', 'Sorceries', 'Artifacts', 'Enchantments', 'Planeswalkers', 'Lands', 'Other'];
+        typeOrder.forEach(t => { groups[t] = []; });
+
+        cards.forEach(c => {
+            const type = (c.type_line || '').toLowerCase();
+            if (type.includes('creature')) groups['Creatures'].push(c);
+            else if (type.includes('instant')) groups['Instants'].push(c);
+            else if (type.includes('sorcery')) groups['Sorceries'].push(c);
+            else if (type.includes('artifact')) groups['Artifacts'].push(c);
+            else if (type.includes('enchantment')) groups['Enchantments'].push(c);
+            else if (type.includes('planeswalker')) groups['Planeswalkers'].push(c);
+            else if (type.includes('land')) groups['Lands'].push(c);
+            else groups['Other'].push(c);
+        });
+    } else {
+        // Default: CMC
+        const cmcOrder = ['0 CMC', '1 CMC', '2 CMC', '3 CMC', '4 CMC', '5 CMC', '6 CMC', '7+ CMC', 'Lands'];
+        cmcOrder.forEach(k => { groups[k] = []; });
+
+        cards.forEach(c => {
+            const type = (c.type_line || '').toLowerCase();
+            if (type.includes('land')) {
+                groups['Lands'].push(c);
+            } else {
+                const cmc = Math.floor(c.cmc || 0);
+                if (cmc >= 7) groups['7+ CMC'].push(c);
+                else groups[`${cmc} CMC`].push(c);
+            }
+        });
+    }
+
+    container.innerHTML = Object.entries(groups).map(([groupName, groupCards]) => {
+        if (!groupCards || groupCards.length === 0) return '';
+
+        const groupVal = groupCards.reduce((acc, c) => acc + (c.price_usd ? parseFloat(c.price_usd) : 0), 0);
+
+        const cardsHtml = groupCards.map(c => {
+            const price = c.price_usd ? `$${parseFloat(c.price_usd).toFixed(2)}` : '--';
+            const img = c.image_uri || c.small_image_uri || '';
+            const name = c.name || '';
+            const r = getRatingForCard(c, ratingsMap);
+            const score = r ? (parseFloat(r.rating) || 7.0) : null;
+            const tier = getRatingTierMeta(score);
+
+            const isOwned = c.is_owned === true || (c.owned_qty !== undefined && c.owned_qty > 0);
+            const ownedQty = c.owned_qty || 0;
+            const copyDeficit = c.copy_deficit || 0;
+            const otherDecks = c.other_decks || [];
+
+            let ownBadge = isOwned ? 
+                `<span class="text-[9px] font-mono font-bold text-emerald-400" title="Owned: ${ownedQty}">🎴 ${ownedQty}</span>` : 
+                `<span class="text-[9px] font-mono font-bold text-slate-500" title="Unowned">🛒</span>`;
+
+            let sharedBadge = '';
+            if (otherDecks.length > 0) {
+                if (copyDeficit > 0) {
+                    sharedBadge = `<span class="text-[9px] font-mono font-bold text-amber-400 cursor-help" title="Slotted in ${otherDecks.length + 1} decks (${otherDecks.join(', ')}). Deficit: -${copyDeficit}">⚠️ ${otherDecks.length + 1}</span>`;
+                } else {
+                    sharedBadge = `<span class="text-[9px] font-mono font-bold text-cyan-400 cursor-help" title="Slotted in ${otherDecks.length + 1} decks (${otherDecks.join(', ')})">🔗 ${otherDecks.length + 1}</span>`;
+                }
+            }
+
+            return `
+                <div class="group/stack bg-[#141A24] hover:bg-[#1B2230] border border-[#263245] hover:border-cyan-500/60 p-2 transition rounded-none shadow-sm flex flex-col gap-1 cursor-pointer"
+                     data-img="${escapeHtml(img)}"
+                     data-card-name="${escapeHtml(name)}"
+                     onclick="showCardHover(event, this)"
+                     onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                    <div class="flex items-start justify-between gap-1.5">
+                        <div class="flex items-start gap-1.5 min-w-0 flex-1">
+                            <span class="text-cyan-400 font-mono font-bold text-xs flex-shrink-0">${c.quantity || 1}x</span>
+                            <span class="text-xs font-bold text-white group-hover/stack:text-cyan-300 truncate">${escapeHtml(name)}</span>
+                        </div>
+                        <span class="text-emerald-400 font-mono font-bold text-xs flex-shrink-0">${price}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                        <span class="truncate max-w-[130px]">${escapeHtml(c.type_line || '')}</span>
+                        ${c.mana_cost ? `<span class="font-sans text-slate-300">${escapeHtml(c.mana_cost)}</span>` : `<span class="text-amber-400">CMC ${c.cmc || 0}</span>`}
+                    </div>
+                    <div class="flex items-center justify-between pt-1 border-t border-[#263245]/60">
+                        <div class="flex items-center gap-1.5">
+                            ${ownBadge}
+                            ${sharedBadge}
+                        </div>
+                        ${score !== null ? `<span class="px-1 py-0.2 rounded-none text-[9px] font-mono font-black ${tier.badgeClass}">★ ${score.toFixed(1)}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="min-w-[240px] max-w-[280px] flex-1 bg-[#10141D] border border-[#263245] p-3 rounded-none flex flex-col gap-2.5 shadow-md flex-shrink-0">
+                <div class="flex items-center justify-between border-b border-[#263245] pb-2">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0"></span>
+                        <span class="text-xs font-mono font-bold text-white uppercase truncate">${groupName}</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <span class="text-[10px] font-mono text-emerald-400 font-bold">$${groupVal.toFixed(2)}</span>
+                        <span class="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.2">${groupCards.length}</span>
+                    </div>
+                </div>
+                <div class="space-y-1.5 max-h-[680px] overflow-y-auto pr-1">
+                    ${cardsHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 function setCardViewMode(mode) {
     currentCardViewMode = mode;
     applyCardViewMode();
@@ -2262,30 +2629,109 @@ function setCardViewMode(mode) {
 function applyCardViewMode() {
     const tilesBtn = document.getElementById('cardViewBtnTiles');
     const tableBtn = document.getElementById('cardViewBtnTable');
+    const stacksBtn = document.getElementById('cardViewBtnStacks');
     const mobileList = document.getElementById('mobileCardRegistryList');
     const desktopTable = document.getElementById('desktopCardRegistryTableContainer');
+    const stacksView = document.getElementById('cardViewStacks');
+    const stackGroupByContainer = document.getElementById('stackGroupByContainer');
 
-    const useTiles = (currentCardViewMode === 'tiles') || (currentCardViewMode === 'auto' && window.innerWidth < 768);
+    const mode = currentCardViewMode;
 
-    if (useTiles) {
+    if (mode === 'stacks') {
+        if (mobileList) mobileList.classList.add('hidden');
+        if (desktopTable) desktopTable.classList.add('hidden');
+        if (stacksView) stacksView.classList.remove('hidden');
+        if (stackGroupByContainer) {
+            stackGroupByContainer.classList.remove('hidden');
+            stackGroupByContainer.classList.add('flex');
+        }
+        if (tilesBtn) tilesBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
+        if (tableBtn) tableBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
+        if (stacksBtn) stacksBtn.className = "px-2.5 py-1 rounded-none text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1";
+    } else if (mode === 'tiles' || (mode === 'auto' && window.innerWidth < 768)) {
         if (mobileList) mobileList.classList.remove('hidden');
         if (desktopTable) desktopTable.classList.add('hidden');
-        if (tilesBtn) {
-            tilesBtn.className = "px-2.5 py-1 rounded-none text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1";
+        if (stacksView) stacksView.classList.add('hidden');
+        if (stackGroupByContainer) {
+            stackGroupByContainer.classList.add('hidden');
+            stackGroupByContainer.classList.remove('flex');
         }
-        if (tableBtn) {
-            tableBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
-        }
+        if (tilesBtn) tilesBtn.className = "px-2.5 py-1 rounded-none text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1";
+        if (tableBtn) tableBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
+        if (stacksBtn) stacksBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
     } else {
         if (mobileList) mobileList.classList.add('hidden');
         if (desktopTable) desktopTable.classList.remove('hidden');
-        if (tilesBtn) {
-            tilesBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
+        if (stacksView) stacksView.classList.add('hidden');
+        if (stackGroupByContainer) {
+            stackGroupByContainer.classList.add('hidden');
+            stackGroupByContainer.classList.remove('flex');
         }
-        if (tableBtn) {
-            tableBtn.className = "px-2.5 py-1 rounded-none text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1";
-        }
+        if (tilesBtn) tilesBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
+        if (tableBtn) tableBtn.className = "px-2.5 py-1 rounded-none text-cyan-400 bg-cyan-500/20 font-bold transition flex items-center gap-1";
+        if (stacksBtn) stacksBtn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition flex items-center gap-1";
     }
+}
+
+function setStackGroupBy(groupBy) {
+    currentStackGroupBy = groupBy;
+    const select = document.getElementById('stackGroupBySelect');
+    if (select) select.value = groupBy;
+    sortAndFilterCardRegistry();
+}
+
+function setCardOwnershipFilter(filter) {
+    currentCardOwnershipFilter = filter;
+    document.querySelectorAll('.card-ownership-filter-btn').forEach(btn => {
+        const f = btn.getAttribute('data-filter');
+        if (f === filter) {
+            btn.className = "card-ownership-filter-btn px-2 py-0.5 rounded-none bg-cyan-500 text-slate-950 font-bold transition";
+        } else {
+            let textColor = 'text-slate-400';
+            let borderColor = 'border-[#263245]';
+            if (f === 'owned') { textColor = 'text-emerald-400'; borderColor = 'border-emerald-500/30'; }
+            else if (f === 'unowned') { textColor = 'text-amber-400'; borderColor = 'border-amber-500/30'; }
+            else if (f === 'shared') { textColor = 'text-cyan-400'; borderColor = 'border-cyan-500/30'; }
+            else if (f === 'conflict') { textColor = 'text-rose-400'; borderColor = 'border-rose-500/30'; }
+            btn.className = `card-ownership-filter-btn px-2 py-0.5 rounded-none bg-[#1B2230] ${textColor} hover:text-white border ${borderColor} font-bold transition`;
+        }
+    });
+    sortAndFilterCardRegistry();
+}
+
+function drillDownToCardRegistry(type, value, label) {
+    currentCardDrilldownFilter = { type, value, label };
+    
+    // Switch to Cards tab in Inspector
+    switchInspectorTab('cards');
+
+    // Update indicator pill in UI
+    const container = document.getElementById('cardDrilldownFilterContainer');
+    const labelEl = document.getElementById('cardDrilldownFilterLabel');
+    if (container) {
+        container.classList.remove('hidden');
+        container.classList.add('flex');
+    }
+    if (labelEl) labelEl.innerText = label || `${type}: ${value}`;
+
+    // Filter registry
+    sortAndFilterCardRegistry();
+
+    // Smooth scroll down to card registry container if needed
+    const registrySection = document.getElementById('cardOwnershipSummaryStrip') || document.getElementById('cardTableSearchInput');
+    if (registrySection) {
+        registrySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function clearCardDrilldownFilter() {
+    currentCardDrilldownFilter = null;
+    const container = document.getElementById('cardDrilldownFilterContainer');
+    if (container) {
+        container.classList.add('hidden');
+        container.classList.remove('flex');
+    }
+    sortAndFilterCardRegistry();
 }
 
 function setCardSort(sortKey) {
@@ -2346,14 +2792,201 @@ function resetCardFilters() {
     if (ratingSelect) ratingSelect.value = 'all';
     currentCardRatingFilter = 'all';
     currentCardTypeFilter = 'all';
+    currentCardOwnershipFilter = 'all';
+    currentCardDrilldownFilter = null;
+
+    const drilldownContainer = document.getElementById('cardDrilldownFilterContainer');
+    if (drilldownContainer) {
+        drilldownContainer.classList.add('hidden');
+        drilldownContainer.classList.remove('flex');
+    }
+
     document.querySelectorAll('.card-type-filter-btn').forEach(btn => {
         if (btn.getAttribute('data-filter') === 'all') {
-            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 flex-shrink-0 transition";
+            btn.className = "card-type-filter-btn px-2 sm:px-2.5 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 flex-shrink-0 transition";
         } else {
-            btn.className = "card-type-filter-btn px-2.5 py-1 text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition";
+            btn.className = "card-type-filter-btn px-2 sm:px-2.5 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-400 hover:text-white flex-shrink-0 transition";
         }
     });
+
+    document.querySelectorAll('.card-ownership-filter-btn').forEach(btn => {
+        const f = btn.getAttribute('data-filter');
+        if (f === 'all') {
+            btn.className = "card-ownership-filter-btn px-2 py-0.5 rounded-none bg-cyan-500 text-slate-950 font-bold transition";
+        } else {
+            let textColor = 'text-slate-400';
+            let borderColor = 'border-[#263245]';
+            if (f === 'owned') { textColor = 'text-emerald-400'; borderColor = 'border-emerald-500/30'; }
+            else if (f === 'unowned') { textColor = 'text-amber-400'; borderColor = 'border-amber-500/30'; }
+            else if (f === 'shared') { textColor = 'text-cyan-400'; borderColor = 'border-cyan-500/30'; }
+            else if (f === 'conflict') { textColor = 'text-rose-400'; borderColor = 'border-rose-500/30'; }
+            btn.className = `card-ownership-filter-btn px-2 py-0.5 rounded-none bg-[#1B2230] ${textColor} hover:text-white border ${borderColor} font-bold transition`;
+        }
+    });
+
     sortAndFilterCardRegistry();
+}
+
+function renderFleetPositioningChart(decks, metric = 'power') {
+    const canvas = document.getElementById('fleetPositioningChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    const ctx = canvas.getContext('2d');
+    if (fleetPositioningChartInstance) {
+        fleetPositioningChartInstance.destroy();
+    }
+
+    const availableDecks = (decks && decks.length > 0) ? decks : (allDecks || []);
+    if (!availableDecks || availableDecks.length === 0) return;
+
+    const getColorForIdentity = (colorId) => {
+        if (!colorId || colorId.length === 0) return 'rgba(148, 163, 184, 0.85)';
+        if (colorId.length > 1) return 'rgba(234, 179, 8, 0.85)';
+        const c = colorId[0];
+        if (c === 'W') return 'rgba(255, 251, 213, 0.9)';
+        if (c === 'U') return 'rgba(14, 165, 233, 0.85)';
+        if (c === 'B') return 'rgba(168, 85, 247, 0.85)';
+        if (c === 'R') return 'rgba(239, 68, 68, 0.85)';
+        if (c === 'G') return 'rgba(34, 197, 94, 0.85)';
+        return 'rgba(6, 182, 212, 0.85)';
+    };
+
+    const dataPoints = availableDecks.map(d => {
+        const stats = d.stats || {};
+        const analysis = d.analysis || {};
+        
+        const x = parseFloat(d.avg_cmc || stats.nonland_amv || stats.avg_cmc || 3.2);
+
+        let y = 6.5;
+        if (metric === 'power') {
+            y = parseFloat(d.power_level !== undefined && d.power_level !== null ? d.power_level : (analysis.estimated_power_level || 7.0)) || 7.0;
+        } else if (metric === 'value') {
+            y = parseFloat(d.total_value || stats.total_value || 0);
+        } else if (metric === 'synergy') {
+            y = parseFloat(d.synergy_score || stats.synergy_score || analysis.synergy_score || 75);
+        }
+
+        const val = parseFloat(d.total_value || stats.total_value || 100);
+        const r = Math.max(7, Math.min(22, Math.round(Math.sqrt(val) * 0.75)));
+        const colorId = d.color_identity || stats.color_identity || [];
+        const color = getColorForIdentity(colorId);
+
+        return {
+            x: Math.round(x * 100) / 100,
+            y: Math.round(y * 100) / 100,
+            r: r,
+            deck: d,
+            rawVal: val,
+            color: color
+        };
+    });
+
+    const dataset = {
+        label: 'Fleet Decks',
+        data: dataPoints,
+        backgroundColor: dataPoints.map(p => p.color),
+        borderColor: '#0f172a',
+        borderWidth: 1.5,
+        hoverBorderColor: '#38bdf8',
+        hoverBorderWidth: 3
+    };
+
+    let yAxisConfig = {
+        title: {
+            display: true,
+            text: metric === 'power' ? 'Estimated Power Level (1 - 10)' : (metric === 'value' ? 'Deck Market Value ($)' : 'Synergy Score (0 - 100)'),
+            color: '#94a3b8',
+            font: { family: 'monospace', size: 11, weight: 'bold' }
+        },
+        grid: { color: 'rgba(38, 50, 69, 0.4)' },
+        ticks: { color: '#94a3b8', font: { family: 'monospace', size: 10 } }
+    };
+    if (metric === 'power') {
+        yAxisConfig.min = 2;
+        yAxisConfig.max = 10;
+    } else if (metric === 'synergy') {
+        yAxisConfig.min = 40;
+        yAxisConfig.max = 100;
+    } else {
+        yAxisConfig.beginAtZero = true;
+    }
+
+    fleetPositioningChartInstance = new Chart(ctx, {
+        type: 'bubble',
+        data: { datasets: [dataset] },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    titleColor: '#38bdf8',
+                    bodyColor: '#e2e8f0',
+                    borderColor: '#0284c7',
+                    borderWidth: 1,
+                    padding: 10,
+                    titleFont: { family: 'monospace', weight: 'bold', size: 12 },
+                    bodyFont: { family: 'monospace', size: 11 },
+                    callbacks: {
+                        title: function(items) {
+                            if (!items.length) return '';
+                            const d = items[0].raw.deck;
+                            return d.deck_name || 'Commander Deck';
+                        },
+                        label: function(context) {
+                            const raw = context.raw;
+                            const d = raw.deck;
+                            const cmdr = d.commander_name || (Array.isArray(d.commander) ? d.commander.join(', ') : d.commander) || 'Commander';
+                            const lines = [
+                                `Commander: ${cmdr}`,
+                                `Speed (Avg Nonland CMC): ${raw.x.toFixed(2)}`,
+                                `${metric === 'power' ? 'Power' : (metric === 'value' ? 'Value' : 'Synergy')}: ${metric === 'value' ? '$' + raw.y.toFixed(2) : raw.y}`,
+                                `Total Value: $${raw.rawVal.toFixed(2)}`,
+                                `⚡ Click bubble to inspect deck`
+                            ];
+                            return lines;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Deck Speed: Avg Nonland CMC (← Faster / Lower Curve)',
+                        color: '#94a3b8',
+                        font: { family: 'monospace', size: 11, weight: 'bold' }
+                    },
+                    grid: { color: 'rgba(38, 50, 69, 0.4)' },
+                    ticks: { color: '#94a3b8', font: { family: 'monospace', size: 10 } }
+                },
+                y: yAxisConfig
+            },
+            onClick: function(event, elements) {
+                if (elements && elements.length > 0) {
+                    const idx = elements[0].index;
+                    const point = dataPoints[idx];
+                    if (point && point.deck && point.deck.id) {
+                        loadSavedDeckIntoInspector(point.deck.id);
+                    }
+                }
+            }
+        }
+    });
+}
+
+function setFleetChartMetric(metric) {
+    currentFleetChartMetric = metric;
+    ['power', 'value', 'synergy'].forEach(m => {
+        const btn = document.getElementById(`btnFleetMetric${m.charAt(0).toUpperCase() + m.slice(1)}`);
+        if (!btn) return;
+        if (m === metric) {
+            btn.className = "px-2.5 py-1 rounded-none text-cyan-400 bg-cyan-500/20 font-bold transition";
+        } else {
+            btn.className = "px-2.5 py-1 rounded-none text-slate-400 hover:text-white transition";
+        }
+    });
+    renderFleetPositioningChart(allDecks, metric);
 }
 
 // Watchlist Button Handler for single cards
@@ -4021,14 +4654,17 @@ function hideOverviewToast() {
     hideToast();
 }
 
-// Hover Zoom Image Tooltip
+// Hover Zoom Image Tooltip with automatic Scryfall resolution
 function showCardHover(e, elem) {
-    const imgUrl = elem.getAttribute('data-img');
+    let imgUrl = elem.getAttribute('data-img');
+    if (!imgUrl && elem.getAttribute('data-card-name')) {
+        imgUrl = resolveCardImageUri(elem.getAttribute('data-card-name'));
+    }
     if (!imgUrl) return;
     const preview = document.getElementById('cardHoverPreview');
     const img = document.getElementById('cardHoverImg');
-    img.src = imgUrl;
-    preview.classList.remove('hidden');
+    if (img) img.src = imgUrl;
+    if (preview) preview.classList.remove('hidden');
     moveCardHover(e);
 }
 function moveCardHover(e) {
@@ -4557,7 +5193,13 @@ function renderCombos(combosEval) {
                     <div class="font-bold text-white text-xs">${escapeHtml(c.name)}</div>
                     <div class="flex flex-wrap gap-1 pt-1">
                         ${(c.pieces || []).map(p => `
-                            <span class="text-[10px] px-1.5 py-0.5 rounded-none bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-mono">
+                            <span class="text-[10px] px-1.5 py-0.5 rounded-none bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-mono cursor-pointer hover:border-emerald-400"
+                                  data-img="${escapeHtml(resolveCardImageUri(p))}"
+                                  data-card-name="${escapeHtml(p)}"
+                                  onmouseenter="showCardHover(event, this)"
+                                  onmousemove="moveCardHover(event)"
+                                  onmouseleave="hideCardHover()"
+                                  onclick="showCardHover(event, this)">
                                 ✔ ${escapeHtml(p)}
                             </span>
                         `).join('')}
@@ -4588,19 +5230,99 @@ function renderCombos(combosEval) {
                     <div class="font-bold text-white text-xs">${escapeHtml(c.name)}</div>
                     <div class="flex flex-wrap gap-1.5 pt-1 text-[10px] font-mono">
                         ${(c.in_deck_pieces || []).map(p => `
-                            <span class="px-1.5 py-0.5 rounded-none bg-emerald-950/40 border border-emerald-500/30 text-emerald-300">
+                            <span class="px-1.5 py-0.5 rounded-none bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 cursor-pointer hover:border-emerald-400"
+                                  data-img="${escapeHtml(resolveCardImageUri(p))}"
+                                  data-card-name="${escapeHtml(p)}"
+                                  onmouseenter="showCardHover(event, this)"
+                                  onmousemove="moveCardHover(event)"
+                                  onmouseleave="hideCardHover()"
+                                  onclick="showCardHover(event, this)">
                                 ✔ In Deck: ${escapeHtml(p)}
                             </span>
                         `).join('')}
                         ${(c.missing_pieces || []).map(m => `
-                            <span class="px-1.5 py-0.5 rounded-none ${m.in_binder ? 'bg-purple-950/40 border border-purple-500/40 text-purple-300 font-bold' : 'bg-rose-950/40 border border-rose-500/40 text-rose-300'}">
+                            <span class="px-1.5 py-0.5 rounded-none ${m.in_binder ? 'bg-purple-950/40 border border-purple-500/40 text-purple-300 font-bold' : 'bg-rose-950/40 border border-rose-500/40 text-rose-300'} cursor-pointer hover:border-white"
+                                  data-img="${escapeHtml(resolveCardImageUri(m.name))}"
+                                  data-card-name="${escapeHtml(m.name)}"
+                                  onmouseenter="showCardHover(event, this)"
+                                  onmousemove="moveCardHover(event)"
+                                  onmouseleave="hideCardHover()"
+                                  onclick="showCardHover(event, this)">
                                 ✖ Missing: ${escapeHtml(m.name)} ${m.in_binder ? '(🎴 In Binder)' : ''}
                             </span>
+                        `).join('')}
+                    </div>
+
+                    <!-- 1-Click Action Footer for Missing Pieces -->
+                    <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-[#263245]">
+                        ${(c.missing_pieces || []).map(m => `
+                            <div class="flex items-center gap-1.5 bg-[#0B0F17] p-1.5 rounded-none border border-[#263245]">
+                                <span class="text-[10px] font-mono text-slate-300 font-bold truncate max-w-[120px]">${escapeHtml(m.name)}:</span>
+                                <button type="button" onclick="handleSlotComboPiece(this)"
+                                        data-card-in="${escapeHtml(m.name)}"
+                                        data-card-out="${escapeHtml(m.suggested_cut || c.suggested_cut || '')}"
+                                        class="px-2 py-0.5 rounded-none text-[9px] font-mono font-bold uppercase transition flex items-center gap-1 cursor-pointer ${m.in_binder ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-sm' : 'bg-cyan-600 hover:bg-cyan-500 text-slate-950'}">
+                                    <span>⚡ ${m.in_binder ? 'Slot (Binder)' : (m.suggested_cut || c.suggested_cut ? `Swap for ${escapeHtml(m.suggested_cut || c.suggested_cut)}` : '+ Add')}</span>
+                                </button>
+                                <button type="button" onclick="handleUpgradeWatchClick(this)"
+                                        data-name="${escapeHtml(m.name)}"
+                                        class="px-2 py-0.5 rounded-none text-[9px] font-mono font-bold uppercase transition bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-[#263245] flex items-center gap-1 cursor-pointer">
+                                    <span>+ Watch</span>
+                                </button>
+                            </div>
                         `).join('')}
                     </div>
                 </div>
             `).join('');
         }
+    }
+}
+
+// 1-Click Action Handler for Missing Combo Pieces
+async function handleSlotComboPiece(btn) {
+    if (!activeDeck || !activeDeck.id) {
+        showToast("Select or open a deck in Inspector first", "warning");
+        return;
+    }
+    const cardIn = btn.getAttribute('data-card-in');
+    const cardOut = btn.getAttribute('data-card-out');
+    if (!cardIn) return;
+
+    btn.disabled = true;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<span>Slotting...</span>';
+
+    try {
+        let resp;
+        if (cardOut) {
+            resp = await fetch(`/api/deck/${activeDeck.id}/apply-swap`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ card_in: cardIn, card_out: cardOut })
+            });
+        } else {
+            resp = await fetch(`/api/deck/${activeDeck.id}/add-card`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ card_name: cardIn })
+            });
+        }
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || 'Failed to slot card');
+        }
+        showToast(data.message || `Slotted ${cardIn} into deck!`, "success");
+        if (data.deck) {
+            displayDeckInInspector(data.deck, true);
+        } else {
+            await loadSavedDeckIntoInspector(activeDeck.id, currentInspectorTab);
+        }
+        await refreshVaultList();
+    } catch (err) {
+        showToast(err.message || 'Error slotting combo piece', "error");
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
     }
 }
 
@@ -5131,10 +5853,11 @@ function renderTacticsCard(secKey, entry, isStale) {
 
 function renderCardNamePill(cardName, inDeck = true) {
     const isOut = (inDeck === false);
+    const imgUri = resolveCardImageUri(cardName);
     const cls = isOut
-        ? "inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-none bg-slate-800/80 text-slate-500 line-through border border-slate-700"
-        : "inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-none bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 hover:text-white transition cursor-default";
-    return `<span class="${cls}" title="${isOut ? 'Not in current deck list' : 'Present in deck'}">${escapeHtml(cardName)}${isOut ? ' (off-list)' : ''}</span>`;
+        ? "inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-none bg-slate-800/80 text-slate-500 line-through border border-slate-700 cursor-pointer hover:border-slate-500 hover:text-slate-300 transition"
+        : "inline-block text-[10px] font-mono px-1.5 py-0.5 rounded-none bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 hover:border-cyan-400 hover:text-white transition cursor-pointer";
+    return `<span class="${cls}" data-img="${escapeHtml(imgUri)}" data-card-name="${escapeHtml(cardName)}" onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()" onclick="showCardHover(event, this)" title="${isOut ? 'Not in current deck list' : 'Present in deck'}">${escapeHtml(cardName)}${isOut ? ' (off-list)' : ''}</span>`;
 }
 
 function renderOpeningHandBody(data) {
@@ -5309,8 +6032,9 @@ function renderCombosBody(data) {
 
     const near = (data.near_combos || []).map(nc => {
         const inDeckHtml = (nc.cards_in_deck || []).map(c => renderCardNamePill(c, true)).join(' ');
+        const missingName = nc.missing || '';
         return `
-            <div class="bg-[#0B0F17] p-2.5 rounded-none border border-amber-500/30 space-y-1.5">
+            <div class="bg-[#0B0F17] p-3 rounded-none border border-amber-500/30 space-y-2">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-mono font-bold text-amber-300 uppercase">${escapeHtml(nc.name || 'Near Combo')}</span>
                     <span class="text-[9px] font-mono px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40">Missing 1 Card</span>
@@ -5320,9 +6044,27 @@ function renderCombosBody(data) {
                     <div class="flex flex-wrap gap-1 mt-0.5">${inDeckHtml}</div>
                 </div>
                 <div class="text-[11px] font-mono text-amber-300 pt-1 border-t border-[#263245] flex items-center justify-between">
-                    <span>Missing Piece: <strong class="text-white">${escapeHtml(nc.missing || '')}</strong></span>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span>Missing Piece:</span>
+                        ${missingName ? renderCardNamePill(missingName, false) : '<span class="text-slate-500">None</span>'}
+                    </div>
                     <span class="text-[10px] text-slate-400">${escapeHtml(nc.result || '')}</span>
                 </div>
+                ${missingName ? `
+                <div class="flex items-center gap-2 pt-1 border-t border-[#263245]/60">
+                    <button type="button" onclick="handleSlotComboPiece(this)"
+                            data-card-in="${escapeHtml(missingName)}"
+                            data-card-out=""
+                            class="px-2 py-0.5 rounded-none text-[9px] font-mono font-bold uppercase transition bg-cyan-600 hover:bg-cyan-500 text-slate-950 flex items-center gap-1 cursor-pointer">
+                        <span>⚡ + Add to Deck</span>
+                    </button>
+                    <button type="button" onclick="handleUpgradeWatchClick(this)"
+                            data-name="${escapeHtml(missingName)}"
+                            class="px-2 py-0.5 rounded-none text-[9px] font-mono font-bold uppercase transition bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 border border-[#263245] flex items-center gap-1 cursor-pointer">
+                        <span>+ Watch</span>
+                    </button>
+                </div>
+                ` : ''}
             </div>
         `;
     }).join('');

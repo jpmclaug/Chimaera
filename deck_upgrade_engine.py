@@ -620,6 +620,7 @@ class DualTierUpgradeEngine:
             user_inventory=user_inventory,
             is_pauper=is_pauper,
             pauper_legal_cache=pauper_legal_cache,
+            cut_candidates=cut_candidates,
         )
         binder_combo_pieces: Set[str] = set()
         for cb in combo_results.get("near", []):
@@ -1213,12 +1214,13 @@ class DualTierUpgradeEngine:
         user_inventory: List[UserInventoryCard],
         is_pauper: bool = False,
         pauper_legal_cache: Optional[Dict[str, bool]] = None,
+        cut_candidates: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Evaluates EDHREC / Commander Spellbook combos against active deck cards and user inventory.
         Categorizes combos into:
         - active: 100% of pieces present in active deck.
-        - near: missing 1 or 2 pieces, flagging if missing piece is in user's binder!
+        - near: missing 1 or 2 pieces, flagging if missing piece is in user's binder, and proposing cut candidate.
         """
         if not combos:
             return {"active": [], "near": []}
@@ -1240,6 +1242,7 @@ class DualTierUpgradeEngine:
 
         active_combos: List[Dict[str, Any]] = []
         near_combos: List[Dict[str, Any]] = []
+        suggested_cut_name = cut_candidates[0].get("name") if (cut_candidates and len(cut_candidates) > 0) else None
 
         for combo in combos:
             pieces = combo.get("pieces") or combo.get("card_names") or combo.get("cards", [])
@@ -1262,6 +1265,7 @@ class DualTierUpgradeEngine:
                     missing.append({
                         "name": p,
                         "in_binder": is_in_binder,
+                        "suggested_cut": suggested_cut_name,
                     })
 
             combo_name_val = combo.get("name") or combo.get("combo_name") or " + ".join(pieces)
@@ -1272,6 +1276,8 @@ class DualTierUpgradeEngine:
                 "in_deck_pieces": in_deck,
                 "missing_pieces": missing,
                 "missing_count": len(missing),
+                "missing_owned_in_binder": any(m.get("in_binder") for m in missing),
+                "suggested_cut": suggested_cut_name,
             }
 
             if len(missing) == 0:

@@ -1993,6 +1993,192 @@ class TestCommanderTactics(unittest.TestCase):
         self.assertFalse(del_data["status"]["has_tactics"])
 
 
+class TestCommanderHubUpgrades(unittest.TestCase):
+    """Verifies Fleet Analytics staples/conflicts, Card Registry ownership attachments, and Combo binder enrichments."""
+
+    def setUp(self):
+        self.app = create_app({
+            "TESTING": True,
+            "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+            "SECRET_KEY": "test-secret-key",
+            "WTF_CSRF_ENABLED": False,
+        })
+        self.app_context = self.app.app_context()
+        self.app_context.push()
+        db.create_all()
+
+        from models import User
+        self.user = User(
+            email="ch_test@example.com",
+            name="Commander Hub Tester",
+            is_active=True
+        )
+        db.session.add(self.user)
+        db.session.commit()
+        self.user_id = self.user.id
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.app_context.pop()
+
+    def test_compute_fleet_stats_shared_staples_and_archetypes(self):
+        _compute_fleet_stats = self.app._compute_fleet_stats
+        from models import DeckAnalysis, UserInventoryCard
+
+        # Add 1 copy of Sol Ring to user's inventory
+        inv_card = UserInventoryCard(
+            user_id=self.user_id,
+            name="Sol Ring",
+            quantity=1
+        )
+        db.session.add(inv_card)
+
+        # Deck 1: Contains Sol Ring and Forest (basic land)
+        deck1 = DeckAnalysis(
+            user_id=self.user_id,
+            deck_name="Deck Alpha",
+            commander_name="Llanowar Elves",
+            archetype="Ramp / Stompy",
+            cards_data=json.dumps([
+                {"name": "Sol Ring", "quantity": 1, "cmc": 1, "type_line": "Artifact", "price_usd": "2.50"},
+                {"name": "Forest", "quantity": 10, "cmc": 0, "type_line": "Basic Land — Forest"}
+            ])
+        )
+        # Deck 2: Also contains Sol Ring and Forest
+        deck2 = DeckAnalysis(
+            user_id=self.user_id,
+            deck_name="Deck Beta",
+            commander_name="Urza",
+            archetype="Artifacts / Combo",
+            cards_data=json.dumps([
+                {"name": "Sol Ring", "quantity": 1, "cmc": 1, "type_line": "Artifact", "price_usd": "2.50"},
+                {"name": "Forest", "quantity": 5, "cmc": 0, "type_line": "Basic Land — Forest"}
+            ])
+        )
+        db.session.add_all([deck1, deck2])
+        db.session.commit()
+
+        recent_decks = [deck1, deck2]
+        deck_dicts, stats = _compute_fleet_stats(recent_decks, user_id=self.user_id)
+
+        # Archetype distribution
+        self.assertIn("archetype_distribution", stats)
+        arch_dict = {item["archetype"]: item["count"] for item in stats["archetype_distribution"]}
+        self.assertEqual(arch_dict.get("Ramp / Stompy"), 1)
+        self.assertEqual(arch_dict.get("Artifacts / Combo"), 1)
+
+        # Shared staples
+        self.assertIn("shared_staples", stats)
+        staples = stats["shared_staples"]
+        # Basic lands must NOT be in shared staples
+        self.assertFalse(any(s["name"] == "Forest" for s in staples))
+        # Sol Ring must be present with deck_count 2 and deficit 1 (owned 1, slotted 2)
+        sol = next((s for s in staples if s["name"] == "Sol Ring"), None)
+        self.assertIsNotNone(sol)
+        self.assertEqual(sol["deck_count"], 2)
+        self.assertEqual(sol["owned_qty"], 1)
+        self.assertEqual(sol["deficit"], 1)
+
+    def test_attach_ownership_and_allocations(self):
+        _attach_ownership_and_allocations = self.app._attach_ownership_and_allocations
+        from models import DeckAnalysis, UserInventoryCard
+
+        inv_card = UserInventoryCard(
+            user_id=self.user_id,
+            name="Counterspell",
+            quantity=1
+        )
+        db.session.add(inv_card)
+
+        # Pre-existing other deck using Counterspell
+        other_deck = DeckAnalysis(
+            user_id=self.user_id,
+            deck_name="Control Fleet",
+            commander_name="Baral",
+            cards_data=json.dumps([
+                {"name": "Counterspell", "quantity": 1, "cmc": 2, "type_line": "Instant"}
+            ])
+        )
+        db.session.add(other_deck)
+        db.session.commit()
+
+        # Active deck being inspected
+        active_deck_dict = {
+            "id": 99999,
+            "deck_name": "Combo Test",
+            "cards_data": [
+                {"name": "Counterspell", "quantity": 1, "cmc": 2, "type_line": "Instant", "price_usd": "1.50"},
+                {"name": "Mana Crypt", "quantity": 1, "cmc": 0, "type_line": "Artifact", "price_usd": "180.00"}
+            ]
+        }
+
+        enriched = _attach_ownership_and_allocations(active_deck_dict, user_id=self.user_id)
+        cards = enriched["cards_data"]
+        cs = next(c for c in cards if c["name"] == "Counterspell")
+        mc = next(c for c in cards if c["name"] == "Mana Crypt")
+
+        # Counterspell checks
+        self.assertTrue(cs["is_owned"])
+        self.assertEqual(cs["owned_qty"], 1)
+        self.assertTrue(any(d["deck_name"] == "Control Fleet" for d in cs["other_decks"]))
+        self.assertEqual(cs["allocated_total"], 2)
+        self.assertEqual(cs["copy_deficit"], 1)
+
+        # Mana Crypt checks (unowned)
+        self.assertFalse(mc["is_owned"])
+        self.assertEqual(mc["owned_qty"], 0)
+        self.assertEqual(mc["copy_deficit"], 0)
+
+        # Ownership Summary checks
+        summary = enriched["ownership_summary"]
+        self.assertEqual(summary["total_cards"], 2)
+        self.assertEqual(summary["owned_cards"], 1)
+        self.assertEqual(summary["unowned_cards"], 1)
+        self.assertEqual(summary["unowned_est_cost"], 180.0)
+        self.assertEqual(summary["shared_cards"], 1)
+        self.assertEqual(summary["deficit_conflicts"], 1)
+
+    def test_evaluate_combos_binder_and_cut_enrichment(self):
+        from deck_upgrade_engine import DualTierUpgradeEngine
+        from models import UserInventoryCard
+
+        engine = DualTierUpgradeEngine()
+        test_combos = [
+            {
+                "id": "combo-1",
+                "cards": ["Kiki-Jiki, Mirror Breaker", "Zealous Conscripts"],
+                "result": "Infinite haste creature tokens"
+            }
+        ]
+        deck_cards = [
+            {"name": "Kiki-Jiki, Mirror Breaker", "quantity": 1, "type_line": "Legendary Creature"}
+        ]
+        binder_cards = [
+            UserInventoryCard(user_id=self.user_id, name="Zealous Conscripts", quantity=1)
+        ]
+        cut_candidates = [
+            {"name": "Hill Giant", "cmc": 4, "type_line": "Creature"}
+        ]
+
+        combos_eval = engine.evaluate_combos(
+            combos=test_combos,
+            deck_cards=deck_cards,
+            user_inventory=binder_cards,
+            cut_candidates=cut_candidates
+        )
+
+        self.assertIn("near", combos_eval)
+        near = combos_eval["near"]
+        self.assertTrue(len(near) > 0)
+        kiki_combo = near[0]
+        self.assertIn("missing_pieces", kiki_combo)
+        zc_detail = next(p for p in kiki_combo["missing_pieces"] if p["name"] == "Zealous Conscripts")
+        self.assertTrue(zc_detail["in_binder"])
+        self.assertTrue(kiki_combo.get("missing_owned_in_binder"))
+        self.assertEqual(kiki_combo.get("suggested_cut"), "Hill Giant")
+
+
 if __name__ == "__main__":
     unittest.main()
 

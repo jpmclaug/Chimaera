@@ -3017,7 +3017,121 @@ def create_app(test_config=None):
         )
         return query.options(db.defer(DeckAnalysis.raw_decklist)).order_by(DeckAnalysis.created_at.desc()).all()
 
-    def _compute_fleet_stats(recent_decks):
+    BASIC_LAND_NAMES = {
+        "plains", "island", "swamp", "mountain", "forest", "wastes",
+        "snow-covered plains", "snow-covered island", "snow-covered swamp",
+        "snow-covered mountain", "snow-covered forest"
+    }
+
+    def _attach_ownership_and_allocations(deck_dict: dict, user_id: Optional[int]) -> dict:
+        """Enriches deck cards_data with collection binder ownership, other deck allocations,
+        and copy deficit conflict warnings, plus an overall ownership_summary."""
+        if not deck_dict or not user_id:
+            return deck_dict
+
+        cards_data = deck_dict.get("cards_data")
+        if not cards_data or not isinstance(cards_data, list):
+            return deck_dict
+
+        try:
+            # 1. Fetch user inventory cards
+            inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
+            owned_map: Dict[str, int] = defaultdict(int)
+            for ic in inv_cards:
+                qty = max(1, int(ic.quantity or 1))
+                for k in get_card_match_keys(ic.name):
+                    owned_map[k] += qty
+
+            # 2. Fetch user watchlist items
+            watched_items = WatchlistItem.query.filter_by(user_id=user_id).all()
+            watched_map: Dict[str, bool] = {}
+            for wi in watched_items:
+                for k in get_card_match_keys(wi.name):
+                    watched_map[k] = bool(wi.is_deal)
+
+            # 3. Cross-deck card allocations
+            allocations = InventoryManager.get_user_card_allocations(user_id, current_deck_id=deck_dict.get("id"))
+
+            # 4. Enrich each card in deck_dict
+            total_deck_cards = 0
+            owned_card_count = 0
+            unowned_card_count = 0
+            shared_card_count = 0
+            conflict_card_count = 0
+            cost_to_complete = 0.0
+
+            for c in cards_data:
+                c_name = c.get("name", "").strip()
+                if not c_name:
+                    continue
+                qty = max(1, int(c.get("quantity", 1)))
+                total_deck_cards += qty
+                clean_name = c_name.lower()
+                clean_front = clean_name.split(" // ")[0].strip() if " // " in clean_name else clean_name
+                type_line = (c.get("type_line") or "").lower()
+                is_basic = (clean_name in BASIC_LAND_NAMES or clean_front in BASIC_LAND_NAMES or ("basic" in type_line and "land" in type_line))
+
+                keys = get_card_match_keys(c_name)
+                owned_qty = max((owned_map.get(k, 0) for k in keys), default=0)
+
+                # Match allocation
+                alloc_info = next((allocations[k] for k in keys if k in allocations), None)
+                other_decks = []
+                allocated_total = qty
+                if alloc_info:
+                    other_decks = [d for d in alloc_info.get("decks", []) if not d.get("is_current")]
+                    has_current = any(d.get("is_current") for d in alloc_info.get("decks", []))
+                    if has_current:
+                        allocated_total = alloc_info.get("total_allocated", qty)
+                    else:
+                        allocated_total = alloc_info.get("total_allocated", 0) + qty
+
+                deficit = 0 if is_basic else (max(0, allocated_total - owned_qty) if other_decks else 0)
+                is_watched = any(k in watched_map for k in keys)
+                is_deal = any(watched_map.get(k, False) for k in keys)
+
+                is_owned = (owned_qty > 0) or is_basic
+                if is_owned:
+                    owned_card_count += qty
+                else:
+                    unowned_card_count += qty
+                    card_price = float(c.get("price") or c.get("price_usd") or 0.0)
+                    cost_to_complete += card_price * qty
+
+                if other_decks:
+                    shared_card_count += 1
+                if other_decks and deficit > 0:
+                    conflict_card_count += 1
+
+                c["owned_qty"] = owned_qty
+                c["is_owned"] = is_owned
+                c["other_decks"] = other_decks
+                c["other_deck_count"] = len(other_decks)
+                c["allocated_total"] = allocated_total
+                c["copy_deficit"] = deficit
+                c["is_watched"] = is_watched
+                c["is_deal"] = is_deal
+
+            deck_dict["ownership_summary"] = {
+                "total_cards": total_deck_cards,
+                "owned_count": owned_card_count,
+                "owned_cards": owned_card_count,
+                "unowned_count": unowned_card_count,
+                "unowned_cards": unowned_card_count,
+                "shared_count": shared_card_count,
+                "shared_cards": shared_card_count,
+                "conflict_count": conflict_card_count,
+                "deficit_conflicts": conflict_card_count,
+                "cost_to_complete": round(cost_to_complete, 2),
+                "unowned_est_cost": round(cost_to_complete, 2),
+                "owned_pct": round((owned_card_count / total_deck_cards * 100.0), 1) if total_deck_cards > 0 else 100.0,
+            }
+        except Exception as e:
+            logger.error(f"Error enriching deck ownership and allocations: {e}", exc_info=True)
+
+        return deck_dict
+
+    def _compute_fleet_stats(recent_decks, user_id=None):
         """Helper to aggregate high-level Commander fleet portfolio metrics."""
         fleet_count = len(recent_decks)
         total_portfolio_value = 0.0
@@ -3027,11 +3141,33 @@ def create_app(test_config=None):
         power_count = 0
         color_freq = {"W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0}
         power_brackets = {"Casual (1-4)": 0, "Focused (5-6)": 0, "Optimized (7-8)": 0, "High Power / cEDH (9-10)": 0, "Pre-AI Ready": 0}
+        archetype_freq: Dict[str, int] = defaultdict(int)
+
+        # Inventory owned copy lookup for deficit calculation
+        owned_map: Dict[str, int] = defaultdict(int)
+        if user_id:
+            try:
+                inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
+                for ic in inv_cards:
+                    qty = max(1, int(ic.quantity or 1))
+                    for k in get_card_match_keys(ic.name):
+                        owned_map[k] += qty
+            except Exception as e:
+                logger.error(f"Error loading inventory for fleet stats: {e}")
+
+        # Card usage aggregation across fleet
+        staple_tracker: Dict[str, Dict[str, Any]] = {}
 
         deck_dicts = []
         for d in recent_decks:
             d_dict = d.to_dict(include_full=False)
+            d_dict["archetype"] = d.archetype or d_dict.get("archetype") or "Midrange"
+            d_dict["synergy_score"] = (d.get_stats().get("rule_evaluation") or {}).get("synergy_score", 0)
             deck_dicts.append(d_dict)
+
+            # Archetype breakdown
+            arch = d.archetype or "Midrange"
+            archetype_freq[arch] += 1
 
             # Value (already resolved in d_dict)
             val = d_dict.get("total_value")
@@ -3069,6 +3205,71 @@ def create_app(test_config=None):
                     if c in color_freq:
                         color_freq[c] += 1
 
+            # Staple tracking across parsed cards
+            try:
+                parsed_cards = d.get_parsed_cards()
+                for c in parsed_cards:
+                    c_name = c.get("name", "").strip()
+                    if not c_name:
+                        continue
+                    clean_name = c_name.lower()
+                    clean_front = clean_name.split(" // ")[0].strip() if " // " in clean_name else clean_name
+                    type_line = (c.get("type_line") or "").lower()
+                    if clean_name in BASIC_LAND_NAMES or clean_front in BASIC_LAND_NAMES or ("basic" in type_line and "land" in type_line):
+                        continue
+
+                    primary_key = clean_front
+                    qty = max(1, int(c.get("quantity", 1)))
+                    price_val = float(c.get("price") or c.get("price_usd") or 0.0)
+
+                    if primary_key not in staple_tracker:
+                        staple_tracker[primary_key] = {
+                            "name": c_name,
+                            "type_line": c.get("type_line", "Card"),
+                            "mana_cost": c.get("mana_cost", ""),
+                            "cmc": c.get("cmc", 0),
+                            "image_uri": c.get("image_uri") or c.get("small_image_uri") or "",
+                            "price": price_val,
+                            "deck_count": 0,
+                            "total_allocated": 0,
+                            "decks": [],
+                        }
+
+                    entry = staple_tracker[primary_key]
+                    entry["deck_count"] += 1
+                    entry["total_allocated"] += qty
+                    entry["decks"].append({
+                        "id": d.id,
+                        "name": d.deck_name,
+                        "commander_name": d.commander_name,
+                        "quantity": qty,
+                    })
+                    if not entry["image_uri"] and (c.get("image_uri") or c.get("small_image_uri")):
+                        entry["image_uri"] = c.get("image_uri") or c.get("small_image_uri")
+                    if price_val > 0 and entry["price"] == 0:
+                        entry["price"] = price_val
+            except Exception as e:
+                logger.error(f"Error parsing cards for fleet staples in deck {d.id}: {e}")
+
+        # Compute owned and copy deficits for shared staples (present in >= 2 decks)
+        shared_staples = []
+        for primary_key, st in staple_tracker.items():
+            if st["deck_count"] >= 2:
+                keys = get_card_match_keys(st["name"])
+                owned_qty = max((owned_map.get(k, 0) for k in keys), default=0) if user_id else 0
+                deficit = max(0, st["total_allocated"] - owned_qty)
+                st["owned_qty"] = owned_qty
+                st["deficit"] = deficit
+                shared_staples.append(st)
+
+        shared_staples.sort(key=lambda s: (s["deck_count"], s["deficit"], s["total_allocated"]), reverse=True)
+        shared_staples = shared_staples[:50]
+
+        archetype_distribution = [
+            {"archetype": arch, "count": count, "percent": round((count / fleet_count * 100.0), 1) if fleet_count > 0 else 0}
+            for arch, count in sorted(archetype_freq.items(), key=lambda x: x[1], reverse=True)
+        ]
+
         avg_fleet_cmc = round(cmc_sum / cmc_count, 2) if cmc_count > 0 else 0.0
         avg_fleet_power = round(power_sum / power_count, 1) if power_count > 0 else None
         avg_deck_value = round(total_portfolio_value / fleet_count, 2) if fleet_count > 0 else 0.0
@@ -3081,6 +3282,8 @@ def create_app(test_config=None):
             "avg_fleet_power": avg_fleet_power,
             "color_frequencies": color_freq,
             "power_brackets": power_brackets,
+            "archetype_distribution": archetype_distribution,
+            "shared_staples": shared_staples,
         }
         return deck_dicts, fleet_stats
 
@@ -3096,7 +3299,7 @@ def create_app(test_config=None):
 
         available_models = _get_cached_gemini_models(effective_key)
         recent_decks = _query_user_recent_decks(user)
-        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
+        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks, user_id=user.id if user else None)
 
         log_activity("PAGE_VIEW", details="Accessed Commander Deck Hub", user=user)
 
@@ -3130,7 +3333,7 @@ def create_app(test_config=None):
         available_models = _get_cached_gemini_models(effective_key)
         recent_decks = _query_user_recent_decks(user)
 
-        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
+        deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks, user_id=user.id if user else None)
         target_id = deck_id or request.args.get("deck_id")
         log_activity("PAGE_VIEW", details=f"Accessed Commander Analyzer for Deck {target_id or 'New'}", user=user)
 
@@ -3903,7 +4106,9 @@ def create_app(test_config=None):
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
             return jsonify({"error": "Access denied."}), 403
 
-        return jsonify(entry.to_dict(include_full=True))
+        deck_dict = entry.to_dict(include_full=True)
+        _attach_ownership_and_allocations(deck_dict, user.id if user else None)
+        return jsonify(deck_dict)
 
     @app.route("/api/deck/history/<int:analysis_id>", methods=["DELETE", "POST"])
     @login_required
@@ -5361,10 +5566,13 @@ def create_app(test_config=None):
         if found_idx >= 0:
             msg = f"Successfully replaced {actual_cut_name} with {card_in_name}!"
 
+        deck_dict = entry.to_dict(include_full=True)
+        _attach_ownership_and_allocations(deck_dict, user.id if user else None)
+
         return jsonify({
             "success": True,
             "message": msg,
-            "deck": entry.to_dict(include_full=True),
+            "deck": deck_dict,
             "swapped": {
                 "card_out": actual_cut_name,
                 "card_in": card_in_name,
@@ -5452,10 +5660,13 @@ def create_app(test_config=None):
 
         log_activity("DECK_CARD_ADD", details=f"Added '{card_name}' to deck '{entry.deck_name}'", user=user)
 
+        deck_dict = entry.to_dict(include_full=True)
+        _attach_ownership_and_allocations(deck_dict, user.id if user else None)
+
         return jsonify({
             "success": True,
             "message": f"Successfully added '{card_name}' to {entry.deck_name}!",
-            "deck": entry.to_dict(include_full=True),
+            "deck": deck_dict,
         })
 
     @app.route("/api/deck/<int:deck_id>/remove-card", methods=["POST"])
@@ -5518,10 +5729,13 @@ def create_app(test_config=None):
 
         log_activity("DECK_CARD_REMOVE", details=f"Removed '{card_name}' from deck '{entry.deck_name}'", user=user)
 
+        deck_dict = entry.to_dict(include_full=True)
+        _attach_ownership_and_allocations(deck_dict, user.id if user else None)
+
         return jsonify({
             "success": True,
             "message": f"Successfully removed '{card_name}' from {entry.deck_name}.",
-            "deck": entry.to_dict(include_full=True),
+            "deck": deck_dict,
         })
 
     @app.route("/api/deck/<int:deck_id>/wishlist/export", methods=["POST", "GET"])
@@ -5561,10 +5775,15 @@ def create_app(test_config=None):
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
+    app._attach_ownership_and_allocations = _attach_ownership_and_allocations
+    app._compute_fleet_stats = _compute_fleet_stats
+
     return app
 
 
 app = create_app()
+_attach_ownership_and_allocations = getattr(app, "_attach_ownership_and_allocations", None)
+_compute_fleet_stats = getattr(app, "_compute_fleet_stats", None)
 
 if __name__ == "__main__":
     import threading
