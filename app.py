@@ -4071,10 +4071,20 @@ def create_app(test_config=None):
                 saved_id = deck_entry.id
                 log_activity("DECK_ANALYSIS", details=f"Analyzed Commander deck '{deck_entry.deck_name}' via {actual_model}", user=user)
 
+            saved_deck_dict = deck_data
+            if save_result and deck_entry:
+                try:
+                    saved_deck_dict = deck_entry.to_dict(include_full=True)
+                    _attach_ownership_and_allocations(saved_deck_dict, user.id if user else None)
+                except Exception:
+                    saved_deck_dict = deck_data
+                    if saved_id:
+                        saved_deck_dict["id"] = saved_id
+
             return jsonify({
                 "success": True,
                 "analysis_id": saved_id,
-                "deck": deck_data,
+                "deck": saved_deck_dict,
                 "analysis": analysis_result,
             })
 
@@ -5119,16 +5129,19 @@ def create_app(test_config=None):
         if is_pauper_arg is not None:
             is_pauper_override = is_pauper_arg.strip().lower() in ("1", "true", "yes", "on")
 
-        # If not explicitly refreshed and using standard baseline parameters, check if stored upgrades exist
-        if not force_refresh and not theme and not anti_salt and is_pauper_override is None:
+        # If not explicitly refreshed, check if stored upgrades match the requested filters
+        if not force_refresh:
             cached_upgrades = entry.get_upgrades()
             if cached_upgrades and isinstance(cached_upgrades, dict) and cached_upgrades.get("owned_swaps") is not None:
-                payload = dict(cached_upgrades)
-                payload["success"] = True
-                payload["deck_id"] = deck_id
-                payload["deck_name"] = entry.deck_name
-                payload["cached"] = True
-                return jsonify(payload)
+                cached_theme = cached_upgrades.get("theme_applied")
+                cached_anti_salt = bool(cached_upgrades.get("anti_salt_applied", False))
+                if cached_theme == theme and cached_anti_salt == anti_salt:
+                    payload = dict(cached_upgrades)
+                    payload["success"] = True
+                    payload["deck_id"] = deck_id
+                    payload["deck_name"] = entry.deck_name
+                    payload["cached"] = True
+                    return jsonify(payload)
 
         user_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
         allocations = inventory_manager.get_user_card_allocations(user.id, current_deck_id=deck_id)
@@ -5186,14 +5199,17 @@ def create_app(test_config=None):
             **results,
         }
 
-        # Persist standard evaluation results to avoid redundant external calls
-        if not theme and not anti_salt and is_pauper_override is None:
+        # Persist evaluation results to avoid redundant external calls and preserve has_upgrades status
+        try:
+            import json
+            entry.upgrades_json = json.dumps(response_payload)
+            db.session.commit()
+        except Exception as e:
+            logger.warning(f"Failed to persist upgrades_json for deck {deck_id}: {e}")
             try:
-                import json
-                entry.upgrades_json = json.dumps(response_payload)
-                db.session.commit()
-            except Exception as e:
-                logger.warning(f"Failed to persist upgrades_json for deck {deck_id}: {e}")
+                db.session.rollback()
+            except Exception:
+                pass
 
         return jsonify(response_payload)
 
@@ -5415,6 +5431,57 @@ def create_app(test_config=None):
             "status": entry.get_tactics_status(),
         })
 
+    def _update_cached_upgrades_after_modification(
+        entry: DeckAnalysis,
+        added_card: Optional[str] = None,
+        removed_card: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Updates cached upgrades_json in-place after adding, cutting, or swapping a card,
+        preventing recommendations from being wiped out.
+        """
+        cached = entry.get_upgrades()
+        if not cached or not isinstance(cached, dict):
+            return None
+        try:
+            def _match(n1: str, n2: str) -> bool:
+                a = (n1 or "").strip().lower()
+                b = (n2 or "").strip().lower()
+                if a == b:
+                    return True
+                a_front = a.split(" // ")[0].strip() if " // " in a else a
+                b_front = b.split(" // ")[0].strip() if " // " in b else b
+                return a_front == b_front
+
+            if added_card:
+                if "owned_swaps" in cached and isinstance(cached["owned_swaps"], list):
+                    prev_len = len(cached["owned_swaps"])
+                    cached["owned_swaps"] = [s for s in cached["owned_swaps"] if not _match(s.get("card_in", ""), added_card)]
+                    if len(cached["owned_swaps"]) != prev_len:
+                        cached["owned_count"] = len(cached["owned_swaps"])
+
+                if "shopping_list" in cached and isinstance(cached["shopping_list"], dict):
+                    for bracket in ("budget", "moderate", "high_impact"):
+                        if bracket in cached["shopping_list"] and isinstance(cached["shopping_list"][bracket], list):
+                            cached["shopping_list"][bracket] = [s for s in cached["shopping_list"][bracket] if not _match(s.get("name", ""), added_card)]
+
+                if "all_shopping_cards" in cached and isinstance(cached["all_shopping_cards"], list):
+                    cached["all_shopping_cards"] = [s for s in cached["all_shopping_cards"] if not _match(s.get("name", ""), added_card)]
+                    cached["shopping_count"] = len(cached["all_shopping_cards"])
+
+            if removed_card:
+                if "owned_swaps" in cached and isinstance(cached["owned_swaps"], list):
+                    for s in cached["owned_swaps"]:
+                        if _match(s.get("card_out", ""), removed_card):
+                            s["card_out"] = "Flexible Slot"
+
+            import json
+            entry.upgrades_json = json.dumps(cached)
+            return cached
+        except Exception as e:
+            logger.warning(f"Error updating cached upgrades for deck {entry.id}: {e}")
+            return None
+
     @app.route("/api/deck/<int:deck_id>/apply-swap", methods=["POST"])
     @login_required
     def api_deck_apply_swap(deck_id: int):
@@ -5555,7 +5622,7 @@ def create_app(test_config=None):
         entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
         entry.total_value = new_stats.get("total_value")
         entry.avg_cmc = new_stats.get("avg_cmc")
-        entry.upgrades_json = None  # Invalidate cached upgrades after card swap
+        updated_upgrades = _update_cached_upgrades_after_modification(entry, added_card=card_in_name, removed_card=actual_cut_name)
         entry.updated_at = utc_now()
         db.session.commit()
 
@@ -5576,6 +5643,7 @@ def create_app(test_config=None):
             "success": True,
             "message": msg,
             "deck": deck_dict,
+            "upgrades": updated_upgrades,
             "swapped": {
                 "card_out": actual_cut_name,
                 "card_in": card_in_name,
@@ -5657,7 +5725,7 @@ def create_app(test_config=None):
         entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
         entry.total_value = new_stats.get("total_value")
         entry.avg_cmc = new_stats.get("avg_cmc")
-        entry.upgrades_json = None  # Invalidate cached upgrades after card add
+        _update_cached_upgrades_after_modification(entry, added_card=card_name)
         entry.updated_at = utc_now()
         db.session.commit()
 
@@ -5726,7 +5794,7 @@ def create_app(test_config=None):
         entry.total_cards = sum(c.get("quantity", 1) for c in current_cards)
         entry.total_value = new_stats.get("total_value")
         entry.avg_cmc = new_stats.get("avg_cmc")
-        entry.upgrades_json = None  # Invalidate cached upgrades after card remove
+        _update_cached_upgrades_after_modification(entry, removed_card=card_name)
         entry.updated_at = utc_now()
         db.session.commit()
 

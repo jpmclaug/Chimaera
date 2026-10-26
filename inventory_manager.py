@@ -317,7 +317,9 @@ class InventoryManager:
         if not user_id:
             return allocations
 
-        decks = DeckAnalysis.query.filter_by(user_id=user_id).all()
+        decks = DeckAnalysis.query.filter_by(user_id=user_id).options(
+            db.load_only(DeckAnalysis.id, DeckAnalysis.deck_name, DeckAnalysis.cards_data)
+        ).all()
         for d in decks:
             cards = d.get_parsed_cards()
             is_current = (current_deck_id is not None and d.id == current_deck_id)
@@ -352,10 +354,45 @@ class InventoryManager:
         return allocations
 
     @classmethod
+    def backfill_colorless_inventory(cls, user_id: Optional[int] = None) -> int:
+        """One-shot fast backfill for colorless cards, lands, and tokens whose color_identity is NULL."""
+        try:
+            q = UserInventoryCard.query
+            if user_id:
+                q = q.filter(UserInventoryCard.user_id == user_id)
+            updated = q.filter(
+                UserInventoryCard.color_identity.is_(None),
+                or_(
+                    UserInventoryCard.type_line.ilike("%Artifact%"),
+                    UserInventoryCard.type_line.ilike("%Land%"),
+                    UserInventoryCard.type_line.ilike("%Token%"),
+                    UserInventoryCard.name.in_([
+                        "Treasure", "Food", "Clue", "Blood", "Map", "Powerstone", "Incubator",
+                        "Role", "Myr", "Dragon", "Saproling", "Soldier", "Hero", "Drone",
+                        "Spirit", "Lander", "Zombie", "Goblin", "Knight", "Human"
+                    ]),
+                ),
+            ).update({"color_identity": ""}, synchronize_session=False)
+            db.session.commit()
+            if updated > 0:
+                logger.info(f"Backfilled color_identity='' for {updated} colorless/token inventory cards.")
+            return updated
+        except Exception as e:
+            logger.warning(f"Could not backfill colorless inventory: {e}")
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return 0
+
+    @classmethod
     def get_enrichment_status(cls, user_id: int) -> Dict[str, Any]:
         """Returns live telemetry on collection enrichment progress and unresolved counts."""
         if not user_id:
             return {"is_running": False, "total_inventory": 0, "unresolved_count": 0, "enriched_count": 0, "percent": 100.0}
+
+        # Backfill any colorless cards/lands/tokens that have color_identity IS NULL
+        cls.backfill_colorless_inventory(user_id)
 
         total_cards = db.session.query(func.count(UserInventoryCard.id)).filter(UserInventoryCard.user_id == user_id).scalar() or 0
         unresolved_count = db.session.query(func.count(UserInventoryCard.id)).filter(
@@ -485,17 +522,21 @@ class InventoryManager:
                         chunk = names_to_enrich[i:i + batch_size]
                         try:
                             found_map, _ = scryfall.get_cards_collection(chunk, fallback_named=False)
-                            if found_map:
+                            chunk_lower = [n.lower() for n in chunk]
+                            matched_cards = UserInventoryCard.query.filter(
+                                UserInventoryCard.user_id == user_id,
+                                func.lower(UserInventoryCard.name).in_(chunk_lower),
+                            ).all()
+
+                            if matched_cards:
                                 chunk_updated = 0
-                                for name_key, meta in found_map.items():
-                                    if not meta or not isinstance(meta, dict):
-                                        continue
-                                    matched_cards = UserInventoryCard.query.filter(
-                                        UserInventoryCard.user_id == user_id,
-                                        func.lower(UserInventoryCard.name) == name_key.lower(),
-                                    ).all()
-                                    for c in matched_cards:
-                                        changed = False
+                                # Build lookup map from lower-cased name to meta
+                                lower_found_map = {k.lower(): v for k, v in found_map.items()} if found_map else {}
+                                for c in matched_cards:
+                                    c_lower = (c.name or "").strip().lower()
+                                    meta = lower_found_map.get(c_lower)
+                                    changed = False
+                                    if meta and isinstance(meta, dict):
                                         if not c.image_uri and (meta.get("image_uri") or meta.get("small_image_uri")):
                                             c.image_uri = meta.get("image_uri") or meta.get("small_image_uri")
                                             changed = True
@@ -508,9 +549,9 @@ class InventoryManager:
                                         if (c.cmc is None or c.cmc == 0) and meta.get("cmc") is not None:
                                             c.cmc = float(meta["cmc"])
                                             changed = True
-                                        if not c.color_identity and meta.get("color_identity"):
-                                            cid = meta["color_identity"]
-                                            c.color_identity = ",".join(cid) if isinstance(cid, list) else str(cid)
+                                        if c.color_identity is None:
+                                            cid = meta.get("color_identity")
+                                            c.color_identity = ",".join(cid) if isinstance(cid, list) else (str(cid) if cid is not None else "")
                                             changed = True
                                         if not c.oracle_text and meta.get("oracle_text"):
                                             c.oracle_text = meta.get("oracle_text")
@@ -527,8 +568,13 @@ class InventoryManager:
                                                 changed = True
                                             except Exception:
                                                 pass
-                                        if changed:
-                                            chunk_updated += 1
+                                    else:
+                                        # Not returned by Scryfall (token/custom/typo); mark color_identity to prevent perpetual re-enrichment
+                                        if c.color_identity is None:
+                                            c.color_identity = ""
+                                            changed = True
+                                    if changed:
+                                        chunk_updated += 1
                                 db.session.commit()
                                 total_updated += chunk_updated
                         except Exception as batch_err:
@@ -627,7 +673,9 @@ class InventoryManager:
         """Counts how many inventory cards for this user are currently allocated to any saved deck."""
         if not user_id:
             return 0
-        decks = DeckAnalysis.query.filter_by(user_id=user_id).all()
+        decks = DeckAnalysis.query.filter_by(user_id=user_id).options(
+            db.load_only(DeckAnalysis.id, DeckAnalysis.deck_name, DeckAnalysis.cards_data)
+        ).all()
         names = set()
         for d in decks:
             for c in d.get_parsed_cards():
@@ -689,7 +737,9 @@ class InventoryManager:
 
         # 3. Allocation Filter
         if allocation in ("allocated", "free"):
-            decks = DeckAnalysis.query.filter_by(user_id=user_id).all()
+            decks = DeckAnalysis.query.filter_by(user_id=user_id).options(
+            db.load_only(DeckAnalysis.id, DeckAnalysis.deck_name, DeckAnalysis.cards_data)
+        ).all()
             allocated_names = set()
             for d in decks:
                 for c in d.get_parsed_cards():

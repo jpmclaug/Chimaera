@@ -383,10 +383,20 @@ class DualTierUpgradeEngine:
     """
 
     _PAUPER_LEGALITY_CACHE: Dict[str, bool] = {}
+    _CLASSIFICATION_CACHE: Dict[str, Dict[str, Any]] = {}
 
     def __init__(self, scryfall_provider: Optional[ScryfallProvider] = None):
         self.scryfall_provider = scryfall_provider or ScryfallProvider()
         self.classifier = MTGCardClassifier()
+
+    def _get_classification(self, card_dict: Dict[str, Any]) -> Dict[str, Any]:
+        cname = (card_dict.get("name") or "").strip().lower()
+        if cname and cname in DualTierUpgradeEngine._CLASSIFICATION_CACHE:
+            return DualTierUpgradeEngine._CLASSIFICATION_CACHE[cname]
+        res = self.classifier.classify(card_dict)
+        if cname:
+            DualTierUpgradeEngine._CLASSIFICATION_CACHE[cname] = res
+        return res
 
     def generate_upgrades(
         self,
@@ -593,19 +603,9 @@ class DualTierUpgradeEngine:
                                 pauper_legal_cache[k] = leg
                                 DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = leg
 
-                        # In-memory enrichment for matched inventory cards
-                        for ic in user_inventory:
-                            if ic.name.lower() == q_low or strip_accents(ic.name).lower() == q_low:
-                                if not getattr(ic, "color_identity", None) and scry_cid:
-                                    ic.color_identity = ",".join(scry_cid)
-                                if not getattr(ic, "type_line", None) and meta.get("type_line"):
-                                    ic.type_line = meta.get("type_line")
-                                if not getattr(ic, "mana_cost", None) and meta.get("mana_cost"):
-                                    ic.mana_cost = meta.get("mana_cost")
-                                if (getattr(ic, "cmc", None) is None or ic.cmc == 0) and meta.get("cmc") is not None:
-                                    ic.cmc = float(meta["cmc"])
-                                if not getattr(ic, "image_uri", None) and (meta.get("image_uri") or meta.get("small_image_uri")):
-                                    ic.image_uri = meta.get("image_uri") or meta.get("small_image_uri")
+                        # Metadata cached in session_scryfall_cache and cid_cache
+                        # Note: Do NOT mutate UserInventoryCard ORM objects directly in db.session
+                        # to prevent blocking locks during background enrichment and avoid dirty commits.
                     else:
                         if is_pauper:
                             pauper_legal_cache[q_low] = False
@@ -658,6 +658,14 @@ class DualTierUpgradeEngine:
                 salt = top_salt_map.get(c_low.split(" // ")[0].strip())
             return syn, syn_pct, inc_pct, salt
 
+        def _get_copy_attrs(ic: UserInventoryCard) -> Tuple[Optional[str], str, float, str]:
+            c_meta = session_scryfall_cache.get(ic.name.lower()) or session_scryfall_cache.get(strip_accents(ic.name).lower()) or {}
+            img = ic.image_uri or c_meta.get("image_uri") or c_meta.get("small_image_uri")
+            mana = ic.mana_cost or c_meta.get("mana_cost") or ""
+            cmc = ic.cmc if (ic.cmc is not None and ic.cmc != 0) else float(c_meta.get("cmc") or 0)
+            tline = ic.type_line or c_meta.get("type_line") or "Card"
+            return img, mana, cmc, tline
+
         # A) Check AI suggested upgrades first if present
         if ai_analysis and "upgrades" in ai_analysis and isinstance(ai_analysis["upgrades"], list):
             for u in ai_analysis["upgrades"]:
@@ -699,6 +707,7 @@ class DualTierUpgradeEngine:
                         syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
                         is_combo = bool(primary_copy.name.lower() in binder_combo_pieces or strip_accents(primary_copy.name).lower() in binder_combo_pieces)
                         cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+                        img_uri, mana_str, cmc_num, type_str = _get_copy_attrs(primary_copy)
                         score, reasons = self._calculate_strategic_score(
                             card_name=primary_copy.name,
                             classification=None,
@@ -709,7 +718,7 @@ class DualTierUpgradeEngine:
                             staple_rating=None,
                             is_combo_piece=is_combo,
                             price_usd=primary_copy.price_usd,
-                            cmc=primary_copy.cmc or 0,
+                            cmc=cmc_num,
                             cut_cmc=cut_cmc_val,
                         )
 
@@ -719,10 +728,10 @@ class DualTierUpgradeEngine:
 
                         owned_swaps.append({
                             "card_in": primary_copy.name,
-                            "card_in_image": primary_copy.image_uri,
-                            "card_in_mana": primary_copy.mana_cost or "",
-                            "card_in_cmc": primary_copy.cmc or 0,
-                            "card_in_type": primary_copy.type_line or "",
+                            "card_in_image": img_uri,
+                            "card_in_mana": mana_str,
+                            "card_in_cmc": cmc_num,
+                            "card_in_type": type_str,
                             "card_in_set": primary_copy.set_code or "",
                             "card_in_foil": primary_copy.foil or "normal",
                             "card_in_condition": primary_copy.condition or "Near Mint",
@@ -769,7 +778,8 @@ class DualTierUpgradeEngine:
                 other_allocated = alloc_info.get("other_allocated", 0)
                 avail = max(0, total_owned - other_allocated)
 
-                matched_cut = self._find_best_cut(cut_candidates, primary_copy.type_line or "Synergy", used_cuts=assigned_cuts)
+                img_uri, mana_str, cmc_num, type_str = _get_copy_attrs(primary_copy)
+                matched_cut = self._find_best_cut(cut_candidates, type_str or "Synergy", used_cuts=assigned_cuts)
                 syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
                 is_combo = bool(primary_copy.name.lower() in binder_combo_pieces or strip_accents(primary_copy.name).lower() in binder_combo_pieces)
                 cut_cmc_val = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
@@ -783,7 +793,7 @@ class DualTierUpgradeEngine:
                     staple_rating=None,
                     is_combo_piece=is_combo,
                     price_usd=primary_copy.price_usd,
-                    cmc=primary_copy.cmc or 0,
+                    cmc=cmc_num,
                     cut_cmc=cut_cmc_val,
                 )
 
@@ -791,10 +801,10 @@ class DualTierUpgradeEngine:
 
                 owned_swaps.append({
                     "card_in": primary_copy.name,
-                    "card_in_image": primary_copy.image_uri,
-                    "card_in_mana": primary_copy.mana_cost or "",
-                    "card_in_cmc": primary_copy.cmc or 0,
-                    "card_in_type": primary_copy.type_line or "Card",
+                    "card_in_image": img_uri,
+                    "card_in_mana": mana_str,
+                    "card_in_cmc": cmc_num,
+                    "card_in_type": type_str,
                     "card_in_set": primary_copy.set_code or "",
                     "card_in_foil": primary_copy.foil or "normal",
                     "card_in_condition": primary_copy.condition or "Near Mint",
@@ -844,6 +854,14 @@ class DualTierUpgradeEngine:
                 other_allocated = alloc_info.get("other_allocated", 0)
                 avail = max(0, total_owned - other_allocated)
 
+                img_uri, mana_str, cmc_num, type_str = _get_copy_attrs(primary_copy)
+                if not mana_str:
+                    mana_str = staple.get("cmc") or ""
+                if cmc_num == 0 and staple.get("cmc") is not None:
+                    cmc_num = staple.get("cmc", 0)
+                if not type_str or type_str == "Card":
+                    type_str = staple.get("role", "Card")
+
                 matched_cut = self._find_best_cut(cut_candidates, staple.get("role", "Utility"), used_cuts=assigned_cuts)
                 syn, syn_pct, inc_pct, salt = _get_edhrec_info(primary_copy.name)
                 is_combo = bool(primary_copy.name.lower() in binder_combo_pieces or strip_accents(primary_copy.name).lower() in binder_combo_pieces)
@@ -859,7 +877,7 @@ class DualTierUpgradeEngine:
                     is_curated_staple=True,
                     is_combo_piece=is_combo,
                     price_usd=primary_copy.price_usd,
-                    cmc=primary_copy.cmc if primary_copy.cmc is not None else staple.get("cmc", 0),
+                    cmc=cmc_num,
                     cut_cmc=cut_cmc_val,
                 )
 
@@ -867,10 +885,10 @@ class DualTierUpgradeEngine:
 
                 owned_swaps.append({
                     "card_in": primary_copy.name,
-                    "card_in_image": primary_copy.image_uri,
-                    "card_in_mana": primary_copy.mana_cost or staple.get("cmc"),
-                    "card_in_cmc": primary_copy.cmc if primary_copy.cmc is not None else staple.get("cmc", 0),
-                    "card_in_type": primary_copy.type_line or staple.get("role", "Card"),
+                    "card_in_image": img_uri,
+                    "card_in_mana": mana_str,
+                    "card_in_cmc": cmc_num,
+                    "card_in_type": type_str,
                     "card_in_set": primary_copy.set_code or "",
                     "card_in_foil": primary_copy.foil or "normal",
                     "card_in_condition": primary_copy.condition or "Near Mint",
@@ -912,6 +930,7 @@ class DualTierUpgradeEngine:
             cid_cache=cid_cache,
             binder_combo_pieces=binder_combo_pieces,
             max_salt=max_salt,
+            scryfall_cache=session_scryfall_cache,
         )
         owned_swaps.extend(binder_recommendations)
 
@@ -941,6 +960,10 @@ class DualTierUpgradeEngine:
             ),
             reverse=True,
         )
+
+        total_owned_count = len(owned_swaps)
+        # Cap owned swaps to top 100 entries to prevent oversized response payloads and DOM thrashing
+        owned_swaps = owned_swaps[:100]
 
         # 3. Build Shopping List ("To Buy / Wishlist")
         shopping_list_raw: List[Dict[str, Any]] = []
@@ -1198,7 +1221,7 @@ class DualTierUpgradeEngine:
             "combos": combo_results,
             "all_shopping_cards": sorted(shopping_list_raw, key=lambda x: (-(x.get("synergy") or 0.0), x.get("price_usd") or 0)),
             "deck_color_identity": sorted(list(color_identity)),
-            "owned_count": len(owned_swaps),
+            "owned_count": total_owned_count,
             "shopping_count": len(shopping_list_raw),
             "theme_applied": theme,
             "anti_salt_applied": anti_salt,
@@ -1645,7 +1668,7 @@ class DualTierUpgradeEngine:
 
             classification = c.get("classification")
             if not classification:
-                classification = self.classifier.classify(c)
+                classification = self._get_classification(c)
 
             for en in classification.get("engine_enabler", []):
                 if en in engine_counts:
@@ -1737,6 +1760,7 @@ class DualTierUpgradeEngine:
         cid_cache: Optional[Dict[str, List[str]]] = None,
         binder_combo_pieces: Optional[Set[str]] = None,
         max_salt: float = 1.5,
+        scryfall_cache: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Scans the user's entire inventory to discover the strongest buff candidates matching
@@ -1763,6 +1787,14 @@ class DualTierUpgradeEngine:
             if not self._is_format_legal(card_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
                 continue
 
+            # Fallback metadata from cache if not already enriched in DB
+            c_meta = (scryfall_cache.get(clean_name) or scryfall_cache.get(card_name.lower())) if scryfall_cache else None
+            p_img = primary_copy.image_uri or (c_meta.get("image_uri") or c_meta.get("small_image_uri") if c_meta else None)
+            p_mana = primary_copy.mana_cost or (c_meta.get("mana_cost") if c_meta else "") or ""
+            p_cmc = primary_copy.cmc if (primary_copy.cmc is not None and primary_copy.cmc != 0) else (float(c_meta.get("cmc") or 0) if c_meta else (primary_copy.cmc or 0))
+            p_type = primary_copy.type_line or (c_meta.get("type_line") if c_meta else "") or ""
+            p_oracle = primary_copy.oracle_text or (c_meta.get("oracle_text") if c_meta else "") or ""
+
             ic_cid = None
             if hasattr(primary_copy, "color_identity") and primary_copy.color_identity is not None:
                 if isinstance(primary_copy.color_identity, list):
@@ -1772,21 +1804,21 @@ class DualTierUpgradeEngine:
             elif hasattr(primary_copy, "get_color_identity_list") and getattr(primary_copy, "color_identity", None) is not None:
                 ic_cid = primary_copy.get_color_identity_list()
 
-            if not self._is_color_legal(card_name, color_identity, card_cid=ic_cid, cid_cache=cid_cache, mana_cost=primary_copy.mana_cost):
+            if not self._is_color_legal(card_name, color_identity, card_cid=ic_cid, cid_cache=cid_cache, mana_cost=p_mana):
                 continue
 
-            type_line_lower = (primary_copy.type_line or "").lower()
+            type_line_lower = p_type.lower()
             if "basic" in type_line_lower and "land" in type_line_lower:
                 continue
 
             card_dict = {
                 "name": card_name,
-                "type_line": primary_copy.type_line or "",
-                "oracle_text": primary_copy.oracle_text or "",
-                "cmc": primary_copy.cmc or 0,
-                "mana_cost": primary_copy.mana_cost or "",
+                "type_line": p_type,
+                "oracle_text": p_oracle,
+                "cmc": p_cmc,
+                "mana_cost": p_mana,
             }
-            classification = self.classifier.classify(card_dict)
+            classification = self._get_classification(card_dict)
 
             # EDHREC synergy and inclusion
             syn_info = edhrec_synergies.get(clean_name)
@@ -1867,7 +1899,7 @@ class DualTierUpgradeEngine:
                 is_curated_staple=(clean_name in curated_names_set),
                 is_combo_piece=is_combo,
                 price_usd=primary_copy.price_usd,
-                cmc=primary_copy.cmc or 0,
+                cmc=p_cmc,
                 cut_cmc=cut_cmc_val,
                 is_binder_scan=True,
             )
@@ -1881,10 +1913,10 @@ class DualTierUpgradeEngine:
 
             binder_swaps.append({
                 "card_in": card_name,
-                "card_in_image": primary_copy.image_uri,
-                "card_in_mana": primary_copy.mana_cost or "",
-                "card_in_cmc": primary_copy.cmc or 0,
-                "card_in_type": primary_copy.type_line or "Card",
+                "card_in_image": p_img,
+                "card_in_mana": p_mana,
+                "card_in_cmc": p_cmc,
+                "card_in_type": p_type or "Card",
                 "card_in_set": primary_copy.set_code or "",
                 "card_in_foil": primary_copy.foil or "normal",
                 "card_in_condition": primary_copy.condition or "Near Mint",

@@ -1085,6 +1085,9 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     if (banner) banner.classList.remove('hidden');
     if (tabBar) tabBar.classList.remove('hidden');
 
+    if (activeDeck && deck && activeDeck.id !== deck.id) {
+        window.currentUpgradeTheme = '';
+    }
     activeDeck = deck;
     switchMainView('inspector');
 
@@ -1870,6 +1873,10 @@ async function toggleActiveDeckFormat() {
         }
 
         activeDeck = data.deck;
+        if (data.upgrades) {
+            activeDeck.has_upgrades = true;
+            activeDeck.upgrades = data.upgrades;
+        }
         if (data.rule_evaluation) {
             activeDeck.rule_evaluation = data.rule_evaluation;
             if (!activeDeck.stats) activeDeck.stats = {};
@@ -3068,6 +3075,10 @@ async function executeQuickAddCard() {
 
         input.value = '';
         activeDeck = data.deck;
+        if (data.upgrades) {
+            activeDeck.has_upgrades = true;
+            activeDeck.upgrades = data.upgrades;
+        }
         displayDeckInInspector(activeDeck, true);
         showToast(data.message || `Added '${cardName}' to deck!`, "success");
 
@@ -3106,6 +3117,10 @@ async function executeRemoveCard(cardName, removeAll = false) {
         }
 
         activeDeck = data.deck;
+        if (data.upgrades) {
+            activeDeck.has_upgrades = true;
+            activeDeck.upgrades = data.upgrades;
+        }
 
         // Keep local vault cache synchronized
         if (Array.isArray(currentVaultDecks)) {
@@ -5001,10 +5016,17 @@ async function loadDualTierUpgrades(deckId, options = {}) {
 
         if (loadingElem) loadingElem.classList.add('hidden');
 
-        // Store back into activeDeck so subsequent tab clicks use memory
+        // Store back into activeDeck and vault so subsequent tab clicks use memory
         if (activeDeck && activeDeck.id === targetId) {
             activeDeck.has_upgrades = true;
             activeDeck.upgrades = data;
+        }
+        if (window.currentVaultDecks && Array.isArray(window.currentVaultDecks)) {
+            const vaultEntry = window.currentVaultDecks.find(d => d.id === targetId);
+            if (vaultEntry) {
+                vaultEntry.has_upgrades = true;
+                vaultEntry.upgrades = data;
+            }
         }
 
         renderUpgradesFromData(data);
@@ -5469,6 +5491,10 @@ async function applyDeckSwap(btn, cardOut, cardIn) {
         }
 
         activeDeck = data.deck;
+        if (data.upgrades) {
+            activeDeck.has_upgrades = true;
+            activeDeck.upgrades = data.upgrades;
+        }
         displayDeckInInspector(activeDeck, true);
 
         showToast(data.message || `Successfully swapped ${cardOut} for ${cardIn}!`, "success");
