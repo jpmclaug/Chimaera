@@ -132,6 +132,13 @@
                                     </div>
                                     <span class="text-[#10B981]">&rarr;</span>
                                 </a>
+                                <a href="/commander/playtest" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'playtest' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">07 // Playtest Arena</span>
+                                        <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">POD</span>
+                                    </div>
+                                    <span class="text-[#00CED1]">&rarr;</span>
+                                </a>
                                 <a href="/add-evaluator" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab in ['add_evaluator', 'secret_lair'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                                     <div class="flex items-center space-x-2">
                                         <span class="font-bold">08 // Add Evaluator</span>
@@ -385,6 +392,13 @@
                         <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[9px] px-1 py-0.2 font-bold uppercase">BINDER</span>
                     </div>
                     <span class="text-[#10B981]">&rarr;</span>
+                </a>
+                <a href="/commander/playtest" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'playtest' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                    <div class="flex items-center space-x-2">
+                        <span class="font-bold">07 // Playtest Arena</span>
+                        <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[9px] px-1 py-0.2 font-bold uppercase">POD</span>
+                    </div>
+                    <span class="text-[#00CED1]">&rarr;</span>
                 </a>
                 <a href="/add-evaluator" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab in ['add_evaluator', 'secret_lair'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                     <div class="flex items-center space-x-2">

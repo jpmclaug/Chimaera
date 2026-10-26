@@ -4142,6 +4142,14 @@ function launchCompareFromActiveDeck() {
     runActiveComparison();
 }
 
+function launchPlaytestFromActiveDeck() {
+    if (activeDeck && activeDeck.id) {
+        window.location.href = '/commander/playtest?deck_id=' + activeDeck.id;
+    } else {
+        window.location.href = '/commander/playtest';
+    }
+}
+
 // Run Active Comparison Request to Server
 async function runActiveComparison() {
     const deckIds = Array.from(selectedDeckIds);

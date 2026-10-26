@@ -63,6 +63,13 @@ class User(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+    playtest_sessions = db.relationship(
+        "CommanderPlaytestSession",
+        backref=db.backref("user", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+    )
 
 
     DISCORD_WEBHOOK_REGEX = re.compile(
@@ -1600,3 +1607,73 @@ class CardAddAnalysis(db.Model):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
+
+
+
+class CommanderPlaytestSession(db.Model):
+    """Stores full persistent state for an active or archived Commander playtesting session."""
+
+    __tablename__ = "commander_playtest_session"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    title = db.Column(db.String(255), nullable=False, default="Commander Playtest")
+    deck_ids = db.Column(db.Text, nullable=False)  # JSON list of deck IDs in seat order
+    num_players = db.Column(db.Integer, nullable=False, default=1)
+    status = db.Column(
+        db.String(20), nullable=False, default="active", index=True
+    )  # active | finished | archived
+    state_json = db.Column(db.Text, nullable=False)  # Full JSON game state
+    state_version = db.Column(db.Integer, nullable=False, default=1)
+    checkpoints_json = db.Column(db.Text, nullable=True)  # Named snapshots (JSON list)
+    turn_number = db.Column(db.Integer, default=1, index=True)  # Denormalized for listing
+    created_at = db.Column(db.DateTime, default=utc_now, index=True)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, index=True)
+
+    def get_deck_ids(self) -> list[int]:
+        if not self.deck_ids:
+            return []
+        try:
+            return json.loads(self.deck_ids)
+        except Exception:
+            return []
+
+    def get_state(self) -> dict:
+        if not self.state_json:
+            return {}
+        try:
+            return json.loads(self.state_json)
+        except Exception:
+            return {}
+
+    def get_checkpoints(self) -> list[dict]:
+        if not self.checkpoints_json:
+            return []
+        try:
+            return json.loads(self.checkpoints_json)
+        except Exception:
+            return []
+
+    def to_dict(self, include_state: bool = True) -> dict:
+        data = {
+            "id": self.id,
+            "user_id": self.user_id,
+            "title": self.title,
+            "deck_ids": self.get_deck_ids(),
+            "num_players": self.num_players,
+            "status": self.status,
+            "state_version": self.state_version,
+            "turn_number": self.turn_number,
+            "checkpoints_count": len(self.get_checkpoints()),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+        if include_state:
+            data["state"] = self.get_state()
+            data["checkpoints"] = self.get_checkpoints()
+        return data

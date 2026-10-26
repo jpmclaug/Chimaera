@@ -41,8 +41,10 @@ from models import (
     UserInventoryCard,
     SecretLairAnalysis,
     CardAddAnalysis,
+    CommanderPlaytestSession,
     utc_now,
 )
+from playtest_engine import PlaytestEngine
 from deal_engine import DealEngine
 from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider, BestBuyProvider, EDHRECProvider
 from deck_parser import DeckParser, DeckParseError
@@ -5845,6 +5847,253 @@ def create_app(test_config=None):
             mimetype=mimetype,
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
+
+    # =========================================================================
+    # Playtest Arena & Multiplayer Commander Routes
+    # =========================================================================
+
+    @app.route("/commander/playtest")
+    @app.route("/commander/playtest/<int:session_id>")
+    @login_required
+    def commander_playtest_page(session_id=None):
+        """Dedicated full-screen Commander Playtest Arena."""
+        user = get_current_user()
+        active_session = None
+        if session_id:
+            active_session = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+            if not active_session:
+                flash("Requested playtest session was not found.", "warning")
+                return redirect(url_for("commander_playtest_page"))
+
+        saved_sessions = CommanderPlaytestSession.query.filter_by(user_id=user.id).order_by(CommanderPlaytestSession.updated_at.desc()).limit(20).all()
+        user_decks = _query_user_recent_decks(user)
+        deck_dicts, _ = _compute_fleet_stats(user_decks, user_id=user.id if user else None)
+
+        log_activity("PAGE_VIEW", details=f"Accessed Playtest Arena (Session: {session_id or 'Lobby'})", user=user)
+
+        return render_template(
+            "playtest.html",
+            active_session=active_session.to_dict() if active_session else None,
+            saved_sessions=[s.to_dict(include_state=False) for s in saved_sessions],
+            decks=deck_dicts,
+            preselect_deck_id=request.args.get("deck_id", type=int),
+            active_tab="deck_analyzer",
+        )
+
+    @app.route("/api/playtest", methods=["POST"])
+    @login_required
+    def api_playtest_create():
+        """Creates a new Commander playtest session from 1 to 4 uploaded decks."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        deck_ids = data.get("deck_ids") or []
+
+        single_deck = data.get("deck_id")
+        if single_deck and not deck_ids:
+            deck_ids = [int(single_deck)]
+
+        if not deck_ids:
+            return jsonify({"error": "At least one deck ID is required."}), 400
+
+        try:
+            deck_ids = [int(d) for d in deck_ids]
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid deck ID list."}), 400
+
+        title = data.get("title")
+        settings = data.get("settings") or {}
+
+        try:
+            built = PlaytestEngine.build_session(
+                user_id=user.id,
+                deck_ids=deck_ids,
+                title=title,
+                settings=settings,
+            )
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            logger.exception("Error building playtest session")
+            return jsonify({"error": f"Failed to build session: {str(e)}"}), 500
+
+        session_entry = CommanderPlaytestSession(
+            user_id=user.id,
+            title=built["title"],
+            deck_ids=json.dumps(built["deck_ids"]),
+            num_players=built["num_players"],
+            status="active",
+            state_json=json.dumps(built["state"]),
+            state_version=1,
+            turn_number=1,
+        )
+        db.session.add(session_entry)
+        db.session.commit()
+
+        log_activity("PLAYTEST_CREATE", details=f"Created Playtest Session {session_entry.id} ({built['title']})", user=user)
+
+        return jsonify({
+            "success": True,
+            "session": session_entry.to_dict(),
+        }), 201
+
+    @app.route("/api/playtest/<int:session_id>", methods=["GET"])
+    @login_required
+    def api_playtest_get(session_id: int):
+        """Fetches full state for a playtest session."""
+        user = get_current_user()
+        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        if not entry:
+            return jsonify({"error": "Playtest session not found."}), 404
+
+        return jsonify({
+            "success": True,
+            "session": entry.to_dict(),
+        })
+
+    @app.route("/api/playtest/<int:session_id>/state", methods=["PUT"])
+    @login_required
+    def api_playtest_save_state(session_id: int):
+        """
+        Saves updated game state snapshot with optimistic concurrency check.
+        Returns 409 if base_version does not match current state_version.
+        """
+        user = get_current_user()
+        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        if not entry:
+            return jsonify({"error": "Playtest session not found."}), 404
+
+        data = request.get_json(silent=True) or {}
+        new_state = data.get("state")
+        base_version = data.get("base_version")
+
+        if new_state is None:
+            return jsonify({"error": "Missing 'state' in payload."}), 400
+
+        if base_version is not None and int(base_version) != entry.state_version:
+            return jsonify({
+                "error": "Conflict: Session was updated elsewhere.",
+                "conflict": True,
+                "current_version": entry.state_version,
+                "session": entry.to_dict(),
+            }), 409
+
+        is_valid, err_msg = PlaytestEngine.validate_state(new_state)
+        if not is_valid:
+            return jsonify({"error": f"Invalid state payload: {err_msg}"}), 400
+
+        entry.state_json = json.dumps(new_state)
+        entry.state_version += 1
+        entry.turn_number = int(new_state.get("turn", entry.turn_number))
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "state_version": entry.state_version,
+            "updated_at": entry.updated_at.isoformat(),
+        })
+
+    @app.route("/api/playtest/<int:session_id>/checkpoints", methods=["POST"])
+    @login_required
+    def api_playtest_save_checkpoint(session_id: int):
+        """Saves a named checkpoint snapshot (max 10)."""
+        user = get_current_user()
+        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        if not entry:
+            return jsonify({"error": "Playtest session not found."}), 404
+
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip() or f"Turn {entry.turn_number}"
+
+        checkpoints = entry.get_checkpoints()
+        if len(checkpoints) >= 10:
+            checkpoints.pop(0)
+
+        checkpoints.append({
+            "name": name,
+            "turn": entry.turn_number,
+            "timestamp": utc_now().isoformat(),
+            "state": entry.get_state(),
+        })
+
+        entry.checkpoints_json = json.dumps(checkpoints)
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "checkpoints": checkpoints,
+        })
+
+    @app.route("/api/playtest/<int:session_id>/restart", methods=["POST"])
+    @login_required
+    def api_playtest_restart(session_id: int):
+        """Restarts the session with the same decks (Run It Back)."""
+        user = get_current_user()
+        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        if not entry:
+            return jsonify({"error": "Playtest session not found."}), 404
+
+        try:
+            restarted = PlaytestEngine.restart_session(entry)
+            log_activity("PLAYTEST_RESTART", details=f"Restarted Playtest Session {entry.id}", user=user)
+            return jsonify({
+                "success": True,
+                "session": restarted,
+            })
+        except Exception as e:
+            logger.exception("Error restarting playtest session")
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/playtest/<int:session_id>/finish", methods=["POST"])
+    @login_required
+    def api_playtest_finish(session_id: int):
+        """Marks playtest session as completed/finished."""
+        user = get_current_user()
+        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        if not entry:
+            return jsonify({"error": "Playtest session not found."}), 404
+
+        entry.status = "finished"
+        entry.updated_at = utc_now()
+        db.session.commit()
+
+        log_activity("PLAYTEST_FINISH", details=f"Finished Playtest Session {entry.id}", user=user)
+
+        return jsonify({
+            "success": True,
+            "session": entry.to_dict(),
+        })
+
+    @app.route("/api/playtest/<int:session_id>", methods=["DELETE"])
+    @login_required
+    def api_playtest_delete(session_id: int):
+        """Deletes a playtest session."""
+        user = get_current_user()
+        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        if not entry:
+            return jsonify({"error": "Playtest session not found."}), 404
+
+        db.session.delete(entry)
+        db.session.commit()
+
+        log_activity("PLAYTEST_DELETE", details=f"Deleted Playtest Session {session_id}", user=user)
+
+        return jsonify({
+            "success": True,
+            "message": "Playtest session deleted successfully.",
+        })
+
+    @app.route("/api/playtest/sessions", methods=["GET"])
+    @login_required
+    def api_playtest_list_sessions():
+        """Lists playtest sessions for the active user."""
+        user = get_current_user()
+        sessions = CommanderPlaytestSession.query.filter_by(user_id=user.id).order_by(CommanderPlaytestSession.updated_at.desc()).all()
+        return jsonify({
+            "success": True,
+            "sessions": [s.to_dict(include_state=False) for s in sessions],
+        })
 
     app._attach_ownership_and_allocations = _attach_ownership_and_allocations
     app._compute_fleet_stats = _compute_fleet_stats

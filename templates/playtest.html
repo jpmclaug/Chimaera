@@ -1,0 +1,463 @@
+{% if not active_session %}
+{% extends "base.html" %}
+
+{% block title %}Commander Playtest Arena // Chimaera{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Hero / Title -->
+    <div class="bg-[#1B2230] border-2 border-[#263245] p-4 sm:p-6 shadow-xl relative overflow-hidden">
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center space-x-2 text-[11px] font-mono text-cyan-400 font-bold uppercase tracking-widest mb-1">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                    <span>Commander Tactical Simulation</span>
+                </div>
+                <h1 class="text-xl sm:text-2xl md:text-3xl font-heading font-black text-white uppercase tracking-wider">
+                    Playtest Arena
+                </h1>
+                <p class="text-xs sm:text-sm text-slate-400 max-w-2xl mt-1">
+                    Test your uploaded Commander decks in a single-player sandbox. Play solo goldfish or pilot up to 4 decks simultaneously, switching perspective at any time with persistent state auto-saved to the database.
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="/commander" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-[#263245] font-mono text-xs uppercase font-bold transition">
+                    &larr; Deck Vault
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Launch Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- 1. Solo Goldfish (1 Deck) -->
+        <div class="bg-[#1B2230] border border-[#263245] p-5 shadow-lg flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base font-mono font-bold text-white uppercase flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                        Solo Goldfish (1 Seat)
+                    </h2>
+                    <span class="text-[10px] px-2 py-0.5 bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 font-mono font-bold uppercase">Quick Test</span>
+                </div>
+                <p class="text-xs text-slate-400 mb-4">
+                    Fast turn-by-turn testing against an imaginary opponent. Test your mana curve, ramp speed, opening hand consistency, and commander deployment.
+                </p>
+                <div class="space-y-2">
+                    <label class="block text-xs font-mono text-slate-300 uppercase font-semibold">Select Deck</label>
+                    <select id="goldfishDeckSelect" class="w-full bg-[#10141D] border border-[#263245] text-cyan-300 font-mono text-xs p-2.5 rounded-none focus:border-cyan-400">
+                        {% for d in decks %}
+                        <option value="{{ d.id }}" {% if preselect_deck_id == d.id %}selected{% endif %}>
+                            {{ d.deck_name }}{% if d.commander_name %} ({{ d.commander_name }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mt-6">
+                <button type="button" onclick="startGoldfishGame()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-mono font-bold text-xs uppercase tracking-wider transition shadow-md">
+                    ⚡ Launch Solo Goldfish
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. Multiplayer Commander Pod (2 to 4 Decks) -->
+        <div class="bg-[#1B2230] border border-[#263245] p-5 shadow-lg flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base font-mono font-bold text-white uppercase flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                        Multiplayer Pod (2 - 4 Decks)
+                    </h2>
+                    <span class="text-[10px] px-2 py-0.5 bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 font-mono font-bold uppercase">Full Pod</span>
+                </div>
+                <p class="text-xs text-slate-400 mb-4">
+                    Pilot multiple decks against each other. Switch perspective between players at any time, execute combat steps, and test deck interactions.
+                </p>
+                <div class="space-y-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[11px] font-mono text-slate-400 uppercase">Seat 1 (You)</label>
+                            <select id="podSeat1Select" class="w-full bg-[#10141D] border border-[#263245] text-cyan-300 font-mono text-xs p-2 focus:border-cyan-400">
+                                {% for d in decks %}
+                                <option value="{{ d.id }}">{{ d.deck_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-mono text-slate-400 uppercase">Seat 2</label>
+                            <select id="podSeat2Select" class="w-full bg-[#10141D] border border-[#263245] text-cyan-300 font-mono text-xs p-2 focus:border-cyan-400">
+                                {% for d in decks %}
+                                <option value="{{ d.id }}" {% if loop.index == 2 %}selected{% endif %}>{{ d.deck_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-[11px] font-mono text-slate-400 uppercase">Seat 3 (Optional)</label>
+                            <select id="podSeat3Select" class="w-full bg-[#10141D] border border-[#263245] text-cyan-300 font-mono text-xs p-2 focus:border-cyan-400">
+                                <option value="">-- None --</option>
+                                {% for d in decks %}
+                                <option value="{{ d.id }}" {% if loop.index == 3 %}selected{% endif %}>{{ d.deck_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-mono text-slate-400 uppercase">Seat 4 (Optional)</label>
+                            <select id="podSeat4Select" class="w-full bg-[#10141D] border border-[#263245] text-cyan-300 font-mono text-xs p-2 focus:border-cyan-400">
+                                <option value="">-- None --</option>
+                                {% for d in decks %}
+                                <option value="{{ d.id }}" {% if loop.index == 4 %}selected{% endif %}>{{ d.deck_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6">
+                <button type="button" onclick="startPodGame()" class="w-full py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase tracking-wider transition shadow-md">
+                    ⚔ Launch Commander Pod
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Saved Games Section -->
+    <div class="bg-[#1B2230] border border-[#263245] p-5 shadow-lg">
+        <h2 class="text-sm font-mono font-bold text-white uppercase flex items-center gap-2 mb-4">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            Saved & Active Playtest Games
+        </h2>
+        {% if saved_sessions and saved_sessions|length > 0 %}
+        <div class="divide-y divide-[#263245] border border-[#263245]">
+            {% for s in saved_sessions %}
+            <div class="p-3 bg-[#141B26] hover:bg-[#18202F] flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="font-mono font-bold text-white text-xs sm:text-sm truncate">{{ s.title }}</span>
+                        <span class="px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-mono text-[10px]">
+                            Turn {{ s.turn_number }}
+                        </span>
+                        <span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">
+                            {{ s.num_players }} Player{% if s.num_players > 1 %}s{% endif %}
+                        </span>
+                    </div>
+                    <div class="text-[11px] font-mono text-slate-400 mt-1">
+                        Last updated: {{ s.updated_at[:16] if s.updated_at else 'Recently' }}
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <a href="/commander/playtest/{{ s.id }}" class="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase transition">
+                        Resume &rarr;
+                    </a>
+                    <button type="button" onclick="deleteSession({{ s.id }})" class="p-1.5 text-slate-400 hover:text-red-400 transition" title="Delete Game">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-slate-500 font-mono text-xs">
+            No active saved games found. Start a Solo Goldfish or Multiplayer Pod above to begin playtesting.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function startGoldfishGame() {
+    var deckId = document.getElementById('goldfishDeckSelect').value;
+    if (!deckId) {
+        alert('Please select a deck.');
+        return;
+    }
+    fetch('/api/playtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deck_id: parseInt(deckId, 10) })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success && data.session) {
+            window.location.href = '/commander/playtest/' + data.session.id;
+        } else {
+            alert(data.error || 'Failed to start game.');
+        }
+    })
+    .catch(function(e) { alert('Error: ' + e); });
+}
+
+function startPodGame() {
+    var ids = [];
+    var s1 = document.getElementById('podSeat1Select').value;
+    var s2 = document.getElementById('podSeat2Select').value;
+    var s3 = document.getElementById('podSeat3Select').value;
+    var s4 = document.getElementById('podSeat4Select').value;
+
+    if (s1) ids.push(parseInt(s1, 10));
+    if (s2) ids.push(parseInt(s2, 10));
+    if (s3) ids.push(parseInt(s3, 10));
+    if (s4) ids.push(parseInt(s4, 10));
+
+    if (ids.length < 2) {
+        alert('Please select at least 2 decks for a pod.');
+        return;
+    }
+
+    fetch('/api/playtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deck_ids: ids })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success && data.session) {
+            window.location.href = '/commander/playtest/' + data.session.id;
+        } else {
+            alert(data.error || 'Failed to start game.');
+        }
+    })
+    .catch(function(e) { alert('Error: ' + e); });
+}
+
+function deleteSession(id) {
+    if (!confirm('Are you sure you want to delete this saved playtest session?')) return;
+    fetch('/api/playtest/' + id, { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) window.location.reload();
+            else alert(data.error || 'Failed to delete.');
+        });
+}
+</script>
+
+{% endblock %}
+
+{% else %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>{{ active_session.title }} // Playtest Arena</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@400;600;800&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <style>
+        body {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-[#0D1117] text-slate-100 font-sans min-h-screen flex flex-col antialiased overflow-x-hidden pb-32">
+
+    <!-- Sticky Top Command Bar -->
+    <header class="bg-[#141B26] border-b border-[#232F42] sticky top-0 z-40 px-3 py-2 flex items-center justify-between text-xs font-mono shadow-md">
+        <div class="flex items-center gap-2 min-w-0">
+            <a href="/commander/playtest" class="text-slate-400 hover:text-white transition" title="Back to Lobby">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+            </a>
+            <span id="headerTurnBadge" class="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/40 text-cyan-300 font-bold uppercase">Turn 1</span>
+            <span id="headerPhaseBadge" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold uppercase">MAIN 1</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <span id="saveStatusIndicator" class="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Saved
+            </span>
+            <button type="button" id="btnUndoAction" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-bold transition flex items-center gap-1" title="Undo Last Action">
+                <span>↶</span> Undo
+            </button>
+            <button type="button" id="btnOpenUtility" class="p-1 text-slate-400 hover:text-white" title="Tools & Log">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Sticky Seat Selector Bar -->
+    <div class="bg-[#10141D] border-b border-[#232F42] px-2 py-1.5 overflow-x-auto flex items-center gap-2 sticky top-10 z-30 modal-scrollable" id="seatPillsContainer">
+        <!-- Injected dynamically via JS -->
+    </div>
+
+    <!-- Opponent Pod Strip (Collapsed view of other seats) -->
+    <div id="opponentStripContainer" class="px-2 py-1.5 bg-[#0A0D14] border-b border-[#1E2738] flex items-center gap-2 overflow-x-auto modal-scrollable">
+        <!-- Injected dynamically via JS -->
+    </div>
+
+    <!-- Main Battlefield Area -->
+    <main class="flex-1 px-3 py-3 space-y-4 max-w-7xl mx-auto w-full">
+        <!-- Non-land Permanents (Creatures, Artifacts, Enchantments) -->
+        <div>
+            <div class="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider mb-1.5 flex items-center justify-between">
+                <span>// CREATURES & PERMANENTS</span>
+                <span class="text-slate-500">Tap to toggle tapped / Long-press for actions</span>
+            </div>
+            <div id="battlefieldNonlandsRow" class="flex flex-wrap gap-2.5 min-h-[110px] p-2 bg-[#10141D] border border-[#232F42] rounded">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+
+        <!-- Lands Row (Smart Land Stacks) -->
+        <div>
+            <div class="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider mb-1.5">
+                // MANA BASE & LANDS
+            </div>
+            <div id="battlefieldLandsRow" class="flex flex-wrap gap-2 p-2 bg-[#10141D] border border-[#232F42] rounded">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Fixed Bottom Controls Dock -->
+    <div class="fixed bottom-0 left-0 right-0 z-40 bg-[#141B26] border-t-2 border-[#232F42] shadow-2xl safe-area-bottom">
+        <!-- Zone Shortcuts & Quick Life Bar -->
+        <div class="px-3 py-2 border-b border-[#232F42] flex items-center justify-between gap-2 text-xs font-mono">
+            <!-- Zone Drawer Buttons -->
+            <div class="flex items-center gap-1.5 overflow-x-auto modal-scrollable flex-shrink-0">
+                <button type="button" id="zoneCommandBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded font-bold whitespace-nowrap">
+                    ⚔ Cmd
+                </button>
+                <button type="button" id="zoneLibraryBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded font-bold whitespace-nowrap">
+                    🂠 Lib
+                </button>
+                <button type="button" id="zoneGraveyardBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-bold whitespace-nowrap">
+                    💀 GY
+                </button>
+                <button type="button" id="zoneExileBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-purple-300 rounded font-bold whitespace-nowrap">
+                    ✨ Exile
+                </button>
+            </div>
+
+            <!-- Life Counter & Adjusters -->
+            <div class="flex items-center gap-1 bg-[#10141D] border border-[#263245] px-2 py-0.5 rounded">
+                <button type="button" id="btnLifeMinus1" class="px-2 py-1 text-red-400 hover:text-white font-black text-sm active:scale-95 transition">-</button>
+                <div id="hudLifeContainer" class="cursor-pointer text-center px-1" title="Tap to open Commander Damage & Life Pad">
+                    <span id="hudLifeValue" class="text-sm sm:text-base font-black text-emerald-400 font-mono">40</span>
+                </div>
+                <button type="button" id="btnLifePlus1" class="px-2 py-1 text-emerald-400 hover:text-white font-black text-sm active:scale-95 transition">+</button>
+            </div>
+
+            <!-- Primary Phase Action Button -->
+            <button type="button" id="primaryStepButton" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black rounded uppercase text-xs transition">
+                ⚔ Combat
+            </button>
+        </div>
+
+        <!-- Hand Tray / Pass-Device Privacy Shield -->
+        <div id="handDockContainer" class="p-2 bg-[#10141D]">
+            <!-- Pass-Device Privacy Shield -->
+            <div id="handPrivacyCover" class="hidden p-3 bg-slate-900 border border-cyan-500/40 rounded flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+                <div class="flex items-center gap-2">
+                    <span class="text-cyan-400 font-mono text-base">🔒</span>
+                    <div>
+                        <div class="font-mono font-bold text-white text-xs">Pass device to <span id="passDeviceSeatName" class="text-cyan-300">Player</span></div>
+                        <div class="text-[10px] font-mono text-slate-400">Hand is hidden for player privacy.</div>
+                    </div>
+                </div>
+                <button type="button" id="btnRevealHand" class="w-full sm:w-auto px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-black text-xs uppercase rounded shadow transition">
+                    👁️ Reveal Hand
+                </button>
+            </div>
+
+            <!-- Revealed Hand Cards Carousel -->
+            <div id="handCardsCarousel" class="flex gap-2 overflow-x-auto pb-1 modal-scrollable">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Guided Step-by-Step Combat Stepper Sheet -->
+    <div id="combatStepperSheet" class="hidden fixed bottom-32 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-50 bg-[#141B26] border-2 border-red-500/60 p-3 rounded shadow-2xl">
+        <div id="combatStepperContent">
+            <!-- Injected via JS -->
+        </div>
+    </div>
+
+    <!-- Generic Card Action Bottom Sheet -->
+    <div id="genericActionSheet" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+        <div class="bg-[#141B26] border-2 border-[#263245] w-full max-w-md p-4 rounded-t-lg sm:rounded-lg shadow-2xl space-y-3">
+            <div class="flex items-center justify-between border-b border-[#232F42] pb-2">
+                <h3 id="actionSheetTitle" class="font-mono font-bold text-sm text-white truncate">Card Actions</h3>
+                <button type="button" id="closeActionSheetBtn" class="text-slate-400 hover:text-white p-1">&times;</button>
+            </div>
+            <div id="actionSheetBody" class="space-y-2">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Zone Inspection Modal (Library / Graveyard / Exile / Command) -->
+    <div id="zoneInspectionSheet" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+        <div class="bg-[#141B26] border-2 border-[#263245] w-full max-w-lg p-4 rounded-t-lg sm:rounded-lg shadow-2xl space-y-3 max-h-[85vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-[#232F42] pb-2 flex-shrink-0">
+                <h3 id="zoneSheetTitle" class="font-mono font-bold text-sm text-white">Zone Inspection</h3>
+                <button type="button" id="closeZoneSheetBtn" class="text-slate-400 hover:text-white text-lg font-bold p-1">&times;</button>
+            </div>
+            <div id="zoneCardsList" class="flex-1 overflow-y-auto space-y-2 modal-scrollable pr-1">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Life Pad & Commander Damage Matrix Sheet -->
+    <div id="lifeCounterSheet" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+        <div class="bg-[#141B26] border-2 border-[#263245] w-full max-w-md p-4 rounded-t-lg sm:rounded-lg shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-[#232F42] pb-2">
+                <h3 class="font-mono font-bold text-sm text-white">Life & Commander Damage</h3>
+                <button type="button" id="closeLifeSheetBtn" class="text-slate-400 hover:text-white p-1 text-lg font-bold">&times;</button>
+            </div>
+            <div class="text-center py-2">
+                <div class="text-[11px] font-mono text-slate-400 uppercase">Current Life</div>
+                <div id="lifePadTotal" class="text-4xl font-black text-emerald-400 font-mono">40</div>
+            </div>
+            <div>
+                <div class="text-[11px] font-mono text-slate-400 uppercase mb-1">Commander Damage Received (21 Lethal)</div>
+                <div id="commanderDamageMatrix" class="space-y-1.5 max-h-48 overflow-y-auto modal-scrollable">
+                    <!-- Injected via JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Utility & Combat Tools Drawer -->
+    <div id="utilityDrawer" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+        <div class="bg-[#141B26] border-2 border-[#263245] w-full max-w-md p-4 rounded-t-lg sm:rounded-lg shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-[#232F42] pb-2">
+                <h3 class="font-mono font-bold text-sm text-white">Arena Tools</h3>
+                <button type="button" id="closeUtilityBtn" class="text-slate-400 hover:text-white text-lg font-bold p-1">&times;</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+                <button type="button" id="btnRollD20" class="p-3 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold rounded uppercase">
+                    🎲 Roll D20
+                </button>
+                <button type="button" id="btnFlipCoin" class="p-3 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded uppercase">
+                    🪙 Flip Coin
+                </button>
+            </div>
+            <div class="border-t border-[#232F42] pt-3">
+                <button type="button" id="btnRestartGame" class="w-full py-2.5 bg-red-950/40 hover:bg-red-900 border border-red-800/60 text-red-300 font-mono text-xs uppercase font-bold rounded">
+                    🔄 Run It Back (Reshuffle & Restart)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Banner -->
+    <div id="playtestToast" class="hidden fixed top-12 left-1/2 -translate-x-1/2 z-50 bg-[#1B2230] border border-cyan-400 text-cyan-300 px-4 py-2 rounded shadow-2xl font-mono text-xs flex items-center gap-3">
+        <span id="toastMsg">Action completed</span>
+        <button type="button" id="toastUndo" class="hidden underline font-bold text-amber-400 hover:text-white">Undo</button>
+    </div>
+
+    <!-- Scripts -->
+    <script src="{{ url_for('static', filename='js/playtest/engine.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/playtest/ui.js') }}"></script>
+    <script>
+        var initialSession = {{ active_session|tojson }};
+        window.initPlaytestArena({{ active_session.id }}, initialSession);
+    </script>
+</body>
+</html>
+{% endif %}
