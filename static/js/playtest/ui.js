@@ -10,9 +10,6 @@
     var wakeLock = null;
     var toastTimeout = null;
 
-    // Active modal or sheet
-    var activeSheet = null;
-
     function haptic(ms) {
         try {
             if (navigator.vibrate) navigator.vibrate(ms || 12);
@@ -360,17 +357,108 @@
     }
 
     // -------------------------------------------------------------------------
-    // Zone Bar & Primary Actions
+    // Zone Bar & Primary Big Option Buttons
     // -------------------------------------------------------------------------
     function renderZoneBar(state) {
         var currentSeat = state.seats[state.viewing_seat];
         if (!currentSeat) return;
 
-        // 1. Life Counter
+        // 1. Life Counter Value
         var lifeVal = document.getElementById('hudLifeValue');
         if (lifeVal) lifeVal.textContent = currentSeat.life;
 
-        // 2. Command Zone Tax
+        // 2. Big Mulligan Button
+        var btnBigMulligan = document.getElementById('btnBigMulligan');
+        var labelBigMulligan = document.getElementById('labelBigMulligan');
+        var badgeMulliganStatus = document.getElementById('badgeMulliganStatus');
+        if (btnBigMulligan) {
+            var mCount = (currentSeat.mulligan && currentSeat.mulligan.count) || 0;
+            var isKept = !!(currentSeat.mulligan && currentSeat.mulligan.kept);
+
+            if (labelBigMulligan) {
+                labelBigMulligan.textContent = isKept ? 'Mulligan' : ('Mulligan (' + mCount + ')');
+            }
+            if (badgeMulliganStatus) {
+                if (!isKept && state.turn === 1) {
+                    badgeMulliganStatus.classList.remove('hidden');
+                } else {
+                    badgeMulliganStatus.classList.add('hidden');
+                }
+            }
+            btnBigMulligan.onclick = function () {
+                haptic(15);
+                openMulliganSheet(state);
+            };
+        }
+
+        // 3. Big Draw 1 Button
+        var btnBigDraw = document.getElementById('btnBigDraw');
+        if (btnBigDraw) {
+            btnBigDraw.onclick = function () {
+                haptic(15);
+                coord.dispatch({ type: 'DRAW_CARD', payload: { count: 1 } });
+                renderAll();
+                showToast('Drew 1 card.');
+            };
+        }
+
+        // 4. Big Untap All Button
+        var btnBigUntapAll = document.getElementById('btnBigUntapAll');
+        if (btnBigUntapAll) {
+            btnBigUntapAll.onclick = function () {
+                haptic(15);
+                coord.dispatch({ type: 'UNTAP_ALL' });
+                renderAll();
+                showToast('Untapped all permanents.');
+            };
+        }
+
+        // 5. Big Combat / Step Button
+        var stepBtn = document.getElementById('primaryStepButton');
+        var labelStepButton = document.getElementById('labelStepButton');
+        if (stepBtn) {
+            if (!state.combat) {
+                if (state.phase === 'main1') {
+                    if (labelStepButton) labelStepButton.textContent = 'Combat';
+                    stepBtn.className = 'flex-1 min-w-[95px] sm:min-w-[120px] py-2.5 px-2 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-mono font-bold text-xs uppercase rounded transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95';
+                    stepBtn.onclick = function () {
+                        haptic(15);
+                        coord.dispatch({ type: 'COMBAT_START' });
+                        renderAll();
+                    };
+                } else {
+                    if (labelStepButton) labelStepButton.textContent = 'Main 2';
+                    stepBtn.className = 'flex-1 min-w-[95px] sm:min-w-[120px] py-2.5 px-2 bg-slate-800 text-slate-300 font-mono font-bold text-xs uppercase rounded transition flex items-center justify-center gap-1.5';
+                    stepBtn.onclick = null;
+                }
+            } else {
+                if (labelStepButton) labelStepButton.textContent = 'In Combat';
+                stepBtn.className = 'flex-1 min-w-[95px] sm:min-w-[120px] py-2.5 px-2 bg-red-700 text-white font-mono font-bold text-xs uppercase rounded flex items-center justify-center gap-1.5';
+                stepBtn.onclick = null;
+            }
+        }
+
+        // 6. Big Pass Turn Button
+        var btnBigPassTurn = document.getElementById('btnBigPassTurn');
+        if (btnBigPassTurn) {
+            btnBigPassTurn.onclick = function () {
+                haptic(15);
+                coord.dispatch({ type: 'PASS_TURN' });
+                renderAll();
+                showToast('Turn passed.', true);
+            };
+        }
+
+        // 7. Big Actions Menu Button
+        var btnBigActionMenu = document.getElementById('btnBigActionMenu');
+        if (btnBigActionMenu) {
+            btnBigActionMenu.onclick = function () {
+                haptic(15);
+                openActionMenuSheet(state);
+            };
+        }
+
+        // 8. Command Zone Tax
         var cmdrZoneBtn = document.getElementById('zoneCommandBtn');
         if (cmdrZoneBtn) {
             var casts = 0;
@@ -379,13 +467,13 @@
             }
             var tax = casts * 2;
             cmdrZoneBtn.innerHTML = '⚔ Cmd (' + currentSeat.zones.command.length + ')' +
-                (tax > 0 ? ' <span class="text-amber-400">+' + tax + '</span>' : '');
+                (tax > 0 ? ' <span class="text-amber-400 font-bold">+' + tax + '</span>' : '');
             cmdrZoneBtn.onclick = function () {
                 openZoneSheet(state, 'command', 'Command Zone');
             };
         }
 
-        // 3. Library Button
+        // 9. Library Button
         var libBtn = document.getElementById('zoneLibraryBtn');
         if (libBtn) {
             libBtn.textContent = '🂠 Lib (' + currentSeat.zones.library.length + ')';
@@ -394,7 +482,7 @@
             };
         }
 
-        // 4. Graveyard Button
+        // 10. Graveyard Button
         var gyBtn = document.getElementById('zoneGraveyardBtn');
         if (gyBtn) {
             gyBtn.textContent = '💀 GY (' + currentSeat.zones.graveyard.length + ')';
@@ -403,7 +491,7 @@
             };
         }
 
-        // 5. Exile Button
+        // 11. Exile Button
         var exileBtn = document.getElementById('zoneExileBtn');
         if (exileBtn) {
             exileBtn.textContent = '✨ Exile (' + currentSeat.zones.exile.length + ')';
@@ -411,36 +499,243 @@
                 openZoneSheet(state, 'exile', 'Exile Zone');
             };
         }
-
-        // 6. Next Turn / Combat Button
-        var stepBtn = document.getElementById('primaryStepButton');
-        if (stepBtn) {
-            if (!state.combat) {
-                if (state.phase === 'main1') {
-                    stepBtn.textContent = '⚔ Combat';
-                    stepBtn.className = 'flex-1 py-2 bg-gradient-to-r from-red-600 to-amber-600 text-white font-mono font-bold text-xs uppercase shadow transition';
-                    stepBtn.onclick = function () {
-                        haptic(15);
-                        coord.dispatch({ type: 'COMBAT_START' });
-                        renderAll();
-                    };
-                } else {
-                    stepBtn.textContent = '▶ Pass Turn';
-                    stepBtn.className = 'flex-1 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono font-black text-xs uppercase shadow transition';
-                    stepBtn.onclick = function () {
-                        haptic(15);
-                        coord.dispatch({ type: 'PASS_TURN' });
-                        renderAll();
-                        showToast('Turn passed.', true);
-                    };
-                }
-            } else {
-                stepBtn.textContent = 'In Combat';
-                stepBtn.className = 'flex-1 py-2 bg-red-700 text-white font-mono font-bold text-xs uppercase';
-                stepBtn.onclick = null;
-            }
-        }
     }
+
+    // -------------------------------------------------------------------------
+    // Dedicated Mulligan Action Sheet
+    // -------------------------------------------------------------------------
+    function openMulliganSheet(state) {
+        var currentSeat = state.seats[state.viewing_seat];
+        var sheet = document.getElementById('mulliganModalSheet');
+        var banner = document.getElementById('mulliganStatusBanner');
+        var penaltyBadge = document.getElementById('mulliganPenaltyBadge');
+        var countBadge = document.getElementById('keepHandCountBadge');
+        if (!sheet || !currentSeat) return;
+
+        var mCount = (currentSeat.mulligan && currentSeat.mulligan.count) || 0;
+        var isKept = !!(currentSeat.mulligan && currentSeat.mulligan.kept);
+        var handCount = currentSeat.zones.hand.length;
+
+        if (countBadge) countBadge.textContent = handCount + ' Cards';
+
+        var penaltyText = '';
+        if (mCount === 0) {
+            penaltyText = 'Free 1st Mulligan: Draw 7 cards and keep all 7.';
+            if (penaltyBadge) penaltyBadge.textContent = 'Free 1st';
+        } else {
+            penaltyText = 'London Rule: Draw 7 cards, then put ' + mCount + ' card' + (mCount > 1 ? 's' : '') + ' on the bottom.';
+            if (penaltyBadge) penaltyBadge.textContent = '-' + mCount + ' on bottom';
+        }
+
+        if (banner) {
+            banner.innerHTML = '<div class="flex items-center justify-between">' +
+                '<span class="font-bold text-white text-xs">' + currentSeat.name + '</span>' +
+                '<span class="px-2 py-0.5 rounded text-[10px] font-bold ' + (isKept ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40' : 'bg-amber-950 text-amber-400 border border-amber-500/40') + '">' +
+                (isKept ? 'Hand Kept' : 'Opening Hand') + '</span>' +
+                '</div>' +
+                '<div class="text-[11px] text-slate-300">Cards currently in hand: <strong class="text-white">' + handCount + '</strong> | Mulligans taken: <strong class="text-amber-300">' + mCount + '</strong></div>' +
+                '<div class="text-[10px] text-cyan-300 mt-1 font-semibold">' + penaltyText + '</div>';
+        }
+
+        // Option 1: Take Mulligan
+        var btnTake = document.getElementById('btnTakeMulligan');
+        if (btnTake) {
+            btnTake.onclick = function () {
+                haptic(20);
+                coord.dispatch({ type: 'MULLIGAN_TAKE' });
+                sheet.classList.add('hidden');
+                renderAll();
+                showToast('Took Mulligan #' + (mCount + 1) + '. 7 new cards drawn.');
+            };
+        }
+
+        // Option 2: Keep Hand
+        var btnKeep = document.getElementById('btnKeepHand');
+        if (btnKeep) {
+            btnKeep.onclick = function () {
+                haptic(15);
+                coord.dispatch({ type: 'MULLIGAN_KEEP' });
+                sheet.classList.add('hidden');
+                renderAll();
+                showToast('Opening hand kept!');
+            };
+        }
+
+        // Option 3: Casual Free Mulligan
+        var btnFree = document.getElementById('btnFreeMulligan');
+        if (btnFree) {
+            btnFree.onclick = function () {
+                haptic(15);
+                var seat = state.seats[state.viewing_seat];
+                while (seat.zones.hand.length > 0) {
+                    seat.zones.library.push(seat.zones.hand.pop());
+                }
+                for (var i = seat.zones.library.length - 1; i > 0; i--) {
+                    var j = Math.floor(Math.random() * (i + 1));
+                    var tmp = seat.zones.library[i];
+                    seat.zones.library[i] = seat.zones.library[j];
+                    seat.zones.library[j] = tmp;
+                }
+                for (var k = 0; k < 7; k++) {
+                    if (seat.zones.library.length > 0) {
+                        seat.zones.hand.push(seat.zones.library.shift());
+                    }
+                }
+                sheet.classList.add('hidden');
+                renderAll();
+                showToast('Casual free mulligan: Fresh 7 cards drawn.');
+            };
+        }
+
+        sheet.classList.remove('hidden');
+    }
+
+    // -------------------------------------------------------------------------
+    // Dedicated Big Action Menu Sheet
+    // -------------------------------------------------------------------------
+    function openActionMenuSheet(state) {
+        var sheet = document.getElementById('mainActionsMenuSheet');
+        if (!sheet) return;
+
+        // 1. Mulligan tile
+        var optMulligan = document.getElementById('menuOptMulligan');
+        if (optMulligan) {
+            optMulligan.onclick = function () {
+                sheet.classList.add('hidden');
+                openMulliganSheet(state);
+            };
+        }
+
+        // 2. Draw Cards tile
+        var optDraw = document.getElementById('menuOptDraw');
+        if (optDraw) {
+            optDraw.onclick = function () {
+                sheet.classList.add('hidden');
+                var countStr = prompt('How many cards would you like to draw?', '1');
+                if (countStr) {
+                    var c = parseInt(countStr, 10);
+                    if (!isNaN(c) && c > 0) {
+                        coord.dispatch({ type: 'DRAW_CARD', payload: { count: c } });
+                        renderAll();
+                        showToast('Drew ' + c + ' card' + (c > 1 ? 's' : '') + '.');
+                    }
+                }
+            };
+        }
+
+        // 3. Untap All tile
+        var optUntap = document.getElementById('menuOptUntapAll');
+        if (optUntap) {
+            optUntap.onclick = function () {
+                sheet.classList.add('hidden');
+                coord.dispatch({ type: 'UNTAP_ALL' });
+                renderAll();
+                showToast('Untapped all permanents.');
+            };
+        }
+
+        // 4. Create Token tile
+        var optToken = document.getElementById('menuOptToken');
+        if (optToken) {
+            optToken.onclick = function () {
+                sheet.classList.add('hidden');
+                var tokenSheet = document.getElementById('tokenSpawnerModalSheet');
+                if (tokenSheet) tokenSheet.classList.remove('hidden');
+            };
+        }
+
+        // 5. Scry tile
+        var optScry = document.getElementById('menuOptScry');
+        if (optScry) {
+            optScry.onclick = function () {
+                sheet.classList.add('hidden');
+                openLibrarySheet(state);
+            };
+        }
+
+        // 6. Mill tile
+        var optMill = document.getElementById('menuOptMill');
+        if (optMill) {
+            optMill.onclick = function () {
+                sheet.classList.add('hidden');
+                var countStr = prompt('How many cards to mill to graveyard?', '3');
+                if (countStr) {
+                    var c = parseInt(countStr, 10);
+                    if (!isNaN(c) && c > 0) {
+                        var seat = state.seats[state.viewing_seat];
+                        for (var i = 0; i < c; i++) {
+                            if (seat.zones.library.length > 0) {
+                                var id = seat.zones.library[0];
+                                coord.dispatch({ type: 'MOVE_CARD', payload: { instance_id: id, from_zone: 'library', to_zone: 'graveyard' } });
+                            }
+                        }
+                        renderAll();
+                        showToast('Milled ' + c + ' card' + (c > 1 ? 's' : '') + '.');
+                    }
+                }
+            };
+        }
+
+        // 7. Search Deck tile
+        var optSearch = document.getElementById('menuOptSearch');
+        if (optSearch) {
+            optSearch.onclick = function () {
+                sheet.classList.add('hidden');
+                openLibrarySheet(state);
+            };
+        }
+
+        // 8. Dice & Coin tile
+        var optDice = document.getElementById('menuOptDice');
+        if (optDice) {
+            optDice.onclick = function () {
+                sheet.classList.add('hidden');
+                var utilDrawer = document.getElementById('utilityDrawer');
+                if (utilDrawer) utilDrawer.classList.remove('hidden');
+            };
+        }
+
+        // 9. Life & Damage tile
+        var optLife = document.getElementById('menuOptLife');
+        if (optLife) {
+            optLife.onclick = function () {
+                sheet.classList.add('hidden');
+                openLifeCounterSheet();
+            };
+        }
+
+        // 10. Run It Back tile
+        var optRestart = document.getElementById('menuOptRestart');
+        if (optRestart) {
+            optRestart.onclick = function () {
+                sheet.classList.add('hidden');
+                var btnRestart = document.getElementById('btnRestartGame');
+                if (btnRestart) btnRestart.click();
+            };
+        }
+
+        sheet.classList.remove('hidden');
+    }
+
+    // Global Token Preset Spawner
+    window.spawnTokenPreset = function (name, power, toughness, typeLine, keywords) {
+        haptic(15);
+        coord.dispatch({
+            type: 'SPAWN_TOKEN',
+            payload: {
+                name: name,
+                power: power,
+                toughness: toughness,
+                type_line: typeLine,
+                keywords: keywords,
+                count: 1
+            }
+        });
+        var tokenSheet = document.getElementById('tokenSpawnerModalSheet');
+        if (tokenSheet) tokenSheet.classList.add('hidden');
+        renderAll();
+        showToast('Spawned ' + name + ' Token.');
+    };
 
     // -------------------------------------------------------------------------
     // Hand Dock & Pass-Device Privacy Shield
@@ -591,6 +886,21 @@
                 closeActionSheet();
                 renderAll();
                 showToast('Exiled ' + ref.name, true);
+            }
+        });
+
+        // 5. Put on Bottom of Library (For mulligan / library manipulation)
+        actions.push({
+            label: 'Put on Bottom of Library',
+            color: 'bg-slate-800 hover:bg-slate-700 text-cyan-300',
+            fn: function () {
+                coord.dispatch({
+                    type: 'MOVE_CARD',
+                    payload: { instance_id: instId, from_zone: 'hand', to_zone: 'library', position: 'bottom' }
+                });
+                closeActionSheet();
+                renderAll();
+                showToast('Put ' + ref.name + ' on bottom of library.', true);
             }
         });
 
@@ -816,7 +1126,6 @@
                 }
             }},
             { label: 'Shuffle', fn: function () {
-                // In place shuffle
                 for (var i = currentSeat.zones.library.length - 1; i > 0; i--) {
                     var j = Math.floor(Math.random() * (i + 1));
                     var tmp = currentSeat.zones.library[i];
@@ -908,7 +1217,7 @@
         }
 
         stepper.classList.remove('hidden');
-        var step = state.combat.step; // 'attackers' | 'blockers' | 'tricks' | 'preview'
+        var step = state.combat.step;
         var content = document.getElementById('combatStepperContent');
         if (!content) return;
 
@@ -1153,6 +1462,21 @@
         var closeLifeSheetBtn = document.getElementById('closeLifeSheetBtn');
         if (closeLifeSheetBtn) closeLifeSheetBtn.onclick = function () {
             document.getElementById('lifeCounterSheet').classList.add('hidden');
+        };
+
+        var closeMulliganSheetBtn = document.getElementById('closeMulliganSheetBtn');
+        if (closeMulliganSheetBtn) closeMulliganSheetBtn.onclick = function () {
+            document.getElementById('mulliganModalSheet').classList.add('hidden');
+        };
+
+        var closeActionMenuSheetBtn = document.getElementById('closeActionMenuSheetBtn');
+        if (closeActionMenuSheetBtn) closeActionMenuSheetBtn.onclick = function () {
+            document.getElementById('mainActionsMenuSheet').classList.add('hidden');
+        };
+
+        var closeTokenSheetBtn = document.getElementById('closeTokenSheetBtn');
+        if (closeTokenSheetBtn) closeTokenSheetBtn.onclick = function () {
+            document.getElementById('tokenSpawnerModalSheet').classList.add('hidden');
         };
 
         // Utility Drawer

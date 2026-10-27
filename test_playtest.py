@@ -296,6 +296,11 @@ class TestCommanderPlaytestSuite(unittest.TestCase):
         self.assertIn("battlefieldNonlandsRow", arena_html)
         self.assertIn("handDockContainer", arena_html)
         self.assertIn("combatStepperSheet", arena_html)
+        self.assertIn("btnBigMulligan", arena_html)
+        self.assertIn("btnBigDraw", arena_html)
+        self.assertIn("btnBigUntapAll", arena_html)
+        self.assertIn("mulliganModalSheet", arena_html)
+        self.assertIn("mainActionsMenuSheet", arena_html)
 
 
 if __name__ == "__main__":

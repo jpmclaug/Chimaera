@@ -253,7 +253,7 @@ function deleteSession(id) {
         }
     </style>
 </head>
-<body class="bg-[#0D1117] text-slate-100 font-sans min-h-screen flex flex-col antialiased overflow-x-hidden pb-32">
+<body class="bg-[#0D1117] text-slate-100 font-sans min-h-screen flex flex-col antialiased overflow-x-hidden pb-40">
 
     <!-- Sticky Top Command Bar -->
     <header class="bg-[#141B26] border-b border-[#232F42] sticky top-0 z-40 px-3 py-2 flex items-center justify-between text-xs font-mono shadow-md">
@@ -313,37 +313,73 @@ function deleteSession(id) {
 
     <!-- Fixed Bottom Controls Dock -->
     <div class="fixed bottom-0 left-0 right-0 z-40 bg-[#141B26] border-t-2 border-[#232F42] shadow-2xl safe-area-bottom">
-        <!-- Zone Shortcuts & Quick Life Bar -->
-        <div class="px-3 py-2 border-b border-[#232F42] flex items-center justify-between gap-2 text-xs font-mono">
+        
+        <!-- Primary Big Action Buttons Bar (Large, thumb-friendly options) -->
+        <div class="px-2 sm:px-4 py-2 border-b border-[#232F42] bg-[#10141D] flex items-center gap-1.5 sm:gap-2 overflow-x-auto modal-scrollable">
+            <!-- Big Mulligan Button -->
+            <button type="button" id="btnBigMulligan" class="flex-1 min-w-[95px] sm:min-w-[120px] py-2.5 px-2 bg-gradient-to-r from-amber-600/40 to-orange-600/40 hover:from-amber-600 hover:to-orange-600 border border-amber-500/70 text-amber-200 hover:text-slate-950 font-mono font-bold text-xs uppercase rounded transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95" title="Opening Hand & Mulligan">
+                <span class="text-sm">🃏</span>
+                <span id="labelBigMulligan">Mulligan</span>
+                <span id="badgeMulliganStatus" class="hidden w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+            </button>
+
+            <!-- Big Draw 1 Button -->
+            <button type="button" id="btnBigDraw" class="flex-1 min-w-[85px] sm:min-w-[110px] py-2.5 px-2 bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-500/70 text-emerald-300 hover:text-slate-950 font-mono font-bold text-xs uppercase rounded transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95" title="Draw 1 Card">
+                <span class="text-sm">🂠</span>
+                <span>Draw 1</span>
+            </button>
+
+            <!-- Big Untap All Button -->
+            <button type="button" id="btnBigUntapAll" class="flex-1 min-w-[85px] sm:min-w-[110px] py-2.5 px-2 bg-blue-600/30 hover:bg-blue-600 border border-blue-500/70 text-blue-300 hover:text-slate-950 font-mono font-bold text-xs uppercase rounded transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95" title="Untap All Permanents">
+                <span class="text-sm">⚡</span>
+                <span>Untap</span>
+            </button>
+
+            <!-- Big Combat Button -->
+            <button type="button" id="primaryStepButton" class="flex-1 min-w-[95px] sm:min-w-[120px] py-2.5 px-2 bg-red-600 hover:bg-red-500 text-white font-mono font-bold text-xs uppercase rounded transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95" title="Combat Phase">
+                <span class="text-sm">⚔️</span>
+                <span id="labelStepButton">Combat</span>
+            </button>
+
+            <!-- Big Pass Turn Button -->
+            <button type="button" id="btnBigPassTurn" class="flex-1 min-w-[95px] sm:min-w-[120px] py-2.5 px-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono font-black text-xs uppercase rounded transition flex items-center justify-center gap-1.5 shadow-sm active:scale-95" title="Pass Turn">
+                <span class="text-sm">▶</span>
+                <span>Pass</span>
+            </button>
+
+            <!-- Big Actions Menu Button -->
+            <button type="button" id="btnBigActionMenu" class="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-mono font-bold text-xs uppercase rounded transition flex items-center justify-center gap-1 shadow-sm active:scale-95 flex-shrink-0" title="All Options & Tools">
+                <span>☰</span>
+                <span class="hidden sm:inline">Options</span>
+            </button>
+        </div>
+
+        <!-- Secondary Zone & Life Bar -->
+        <div class="px-3 py-1.5 border-b border-[#232F42] flex items-center justify-between gap-2 text-xs font-mono">
             <!-- Zone Drawer Buttons -->
-            <div class="flex items-center gap-1.5 overflow-x-auto modal-scrollable flex-shrink-0">
-                <button type="button" id="zoneCommandBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 rounded font-bold whitespace-nowrap">
+            <div class="flex items-center gap-1 overflow-x-auto modal-scrollable flex-shrink-0">
+                <button type="button" id="zoneCommandBtn" class="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-cyan-300 rounded font-bold whitespace-nowrap text-[11px]">
                     ⚔ Cmd
                 </button>
-                <button type="button" id="zoneLibraryBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded font-bold whitespace-nowrap">
+                <button type="button" id="zoneLibraryBtn" class="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded font-bold whitespace-nowrap text-[11px]">
                     🂠 Lib
                 </button>
-                <button type="button" id="zoneGraveyardBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-bold whitespace-nowrap">
+                <button type="button" id="zoneGraveyardBtn" class="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded font-bold whitespace-nowrap text-[11px]">
                     💀 GY
                 </button>
-                <button type="button" id="zoneExileBtn" class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-purple-300 rounded font-bold whitespace-nowrap">
+                <button type="button" id="zoneExileBtn" class="px-2 py-1 bg-slate-800/80 hover:bg-slate-700 text-purple-300 rounded font-bold whitespace-nowrap text-[11px]">
                     ✨ Exile
                 </button>
             </div>
 
             <!-- Life Counter & Adjusters -->
             <div class="flex items-center gap-1 bg-[#10141D] border border-[#263245] px-2 py-0.5 rounded">
-                <button type="button" id="btnLifeMinus1" class="px-2 py-1 text-red-400 hover:text-white font-black text-sm active:scale-95 transition">-</button>
+                <button type="button" id="btnLifeMinus1" class="px-2 py-0.5 text-red-400 hover:text-white font-black text-sm active:scale-95 transition">-</button>
                 <div id="hudLifeContainer" class="cursor-pointer text-center px-1" title="Tap to open Commander Damage & Life Pad">
                     <span id="hudLifeValue" class="text-sm sm:text-base font-black text-emerald-400 font-mono">40</span>
                 </div>
-                <button type="button" id="btnLifePlus1" class="px-2 py-1 text-emerald-400 hover:text-white font-black text-sm active:scale-95 transition">+</button>
+                <button type="button" id="btnLifePlus1" class="px-2 py-0.5 text-emerald-400 hover:text-white font-black text-sm active:scale-95 transition">+</button>
             </div>
-
-            <!-- Primary Phase Action Button -->
-            <button type="button" id="primaryStepButton" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-black rounded uppercase text-xs transition">
-                ⚔ Combat
-            </button>
         </div>
 
         <!-- Hand Tray / Pass-Device Privacy Shield -->
@@ -370,9 +406,195 @@ function deleteSession(id) {
     </div>
 
     <!-- Guided Step-by-Step Combat Stepper Sheet -->
-    <div id="combatStepperSheet" class="hidden fixed bottom-32 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-50 bg-[#141B26] border-2 border-red-500/60 p-3 rounded shadow-2xl">
+    <div id="combatStepperSheet" class="hidden fixed bottom-36 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-50 bg-[#141B26] border-2 border-red-500/60 p-3 rounded shadow-2xl">
         <div id="combatStepperContent">
             <!-- Injected via JS -->
+        </div>
+    </div>
+
+    <!-- Dedicated Mulligan Action Sheet (Big option buttons) -->
+    <div id="mulliganModalSheet" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+        <div class="bg-[#141B26] border-2 border-amber-500/70 w-full max-w-md p-5 rounded-t-xl sm:rounded-xl shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-[#232F42] pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">🃏</span>
+                    <h3 class="font-mono font-bold text-sm text-white uppercase">Opening Hand & Mulligan</h3>
+                </div>
+                <button type="button" id="closeMulliganSheetBtn" class="text-slate-400 hover:text-white p-1 text-lg font-bold">&times;</button>
+            </div>
+
+            <!-- Status Banner -->
+            <div id="mulliganStatusBanner" class="p-3 bg-[#10141D] border border-amber-500/40 rounded font-mono text-xs text-slate-300 space-y-1">
+                <!-- Injected via JS -->
+            </div>
+
+            <!-- Big Option Buttons -->
+            <div class="space-y-2.5 pt-1">
+                <!-- Option 1: Take Mulligan -->
+                <button type="button" id="btnTakeMulligan" class="w-full py-3.5 px-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-slate-950 font-mono font-black text-xs sm:text-sm uppercase rounded shadow-lg transition flex items-center justify-between active:scale-98">
+                    <span class="flex items-center gap-2">
+                        <span>🃏</span>
+                        <span>Take Mulligan (Draw 7)</span>
+                    </span>
+                    <span class="text-[10px] bg-slate-950/40 px-2 py-0.5 rounded text-amber-200 font-bold" id="mulliganPenaltyBadge">Free 1st</span>
+                </button>
+
+                <!-- Option 2: Keep Hand -->
+                <button type="button" id="btnKeepHand" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-mono font-black text-xs sm:text-sm uppercase rounded shadow-md transition flex items-center justify-between active:scale-98">
+                    <span class="flex items-center gap-2">
+                        <span>✅</span>
+                        <span>Keep This Hand</span>
+                    </span>
+                    <span class="text-[10px] bg-slate-950/40 px-2 py-0.5 rounded text-emerald-200 font-bold" id="keepHandCountBadge">7 Cards</span>
+                </button>
+
+                <!-- Option 3: Free Mulligan (Casual reset) -->
+                <button type="button" id="btnFreeMulligan" class="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-mono font-bold text-xs uppercase rounded border border-slate-700 transition flex items-center justify-between active:scale-98">
+                    <span class="flex items-center gap-2">
+                        <span>🔄</span>
+                        <span>Casual Free Mulligan (Fresh 7)</span>
+                    </span>
+                    <span class="text-[10px] text-slate-400">No Penalty</span>
+                </button>
+            </div>
+
+            <div class="text-[10px] font-mono text-slate-500 pt-1 leading-relaxed">
+                * Official Commander Rules: In multiplayer games, the first mulligan is completely free (draw 7, put 0 on bottom). Each subsequent mulligan draws 7 and puts 1 card on the bottom of your library.
+            </div>
+        </div>
+    </div>
+
+    <!-- Dedicated Big Actions Menu Sheet -->
+    <div id="mainActionsMenuSheet" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+        <div class="bg-[#141B26] border-2 border-cyan-500/60 w-full max-w-lg p-4 sm:p-5 rounded-t-xl sm:rounded-xl shadow-2xl space-y-4 max-h-[88vh] overflow-y-auto modal-scrollable">
+            <div class="flex items-center justify-between border-b border-[#232F42] pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-base text-cyan-400">⚡</span>
+                    <h3 class="font-mono font-bold text-sm text-white uppercase">Arena Action Menu</h3>
+                </div>
+                <button type="button" id="closeActionMenuSheetBtn" class="text-slate-400 hover:text-white p-1 text-lg font-bold">&times;</button>
+            </div>
+
+            <!-- Big Grid of Action Option Buttons -->
+            <div class="grid grid-cols-2 gap-2.5 font-mono text-xs">
+                <!-- 1. Mulligan -->
+                <button type="button" id="menuOptMulligan" class="p-3 bg-[#10141D] hover:bg-amber-600/20 border border-amber-500/50 hover:border-amber-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">🃏</div>
+                    <div class="font-bold text-white group-hover:text-amber-300 uppercase">Mulligan</div>
+                    <div class="text-[10px] text-slate-400">Draw fresh 7 cards</div>
+                </button>
+
+                <!-- 2. Draw Cards -->
+                <button type="button" id="menuOptDraw" class="p-3 bg-[#10141D] hover:bg-emerald-600/20 border border-emerald-500/50 hover:border-emerald-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">🂠</div>
+                    <div class="font-bold text-white group-hover:text-emerald-300 uppercase">Draw Cards</div>
+                    <div class="text-[10px] text-slate-400">Draw 1, 2, 3, or X</div>
+                </button>
+
+                <!-- 3. Untap All -->
+                <button type="button" id="menuOptUntapAll" class="p-3 bg-[#10141D] hover:bg-blue-600/20 border border-blue-500/50 hover:border-blue-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">⚡</div>
+                    <div class="font-bold text-white group-hover:text-blue-300 uppercase">Untap All</div>
+                    <div class="text-[10px] text-slate-400">Untap lands & creatures</div>
+                </button>
+
+                <!-- 4. Create Token -->
+                <button type="button" id="menuOptToken" class="p-3 bg-[#10141D] hover:bg-purple-600/20 border border-purple-500/50 hover:border-purple-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">🪙</div>
+                    <div class="font-bold text-white group-hover:text-purple-300 uppercase">Create Token</div>
+                    <div class="text-[10px] text-slate-400">Treasure, Soldier, Zombie...</div>
+                </button>
+
+                <!-- 5. Scry Cards -->
+                <button type="button" id="menuOptScry" class="p-3 bg-[#10141D] hover:bg-cyan-600/20 border border-cyan-500/50 hover:border-cyan-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">🔮</div>
+                    <div class="font-bold text-white group-hover:text-cyan-300 uppercase">Scry</div>
+                    <div class="text-[10px] text-slate-400">Look at top X & reorder</div>
+                </button>
+
+                <!-- 6. Mill Cards -->
+                <button type="button" id="menuOptMill" class="p-3 bg-[#10141D] hover:bg-rose-600/20 border border-rose-500/50 hover:border-rose-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">💀</div>
+                    <div class="font-bold text-white group-hover:text-rose-300 uppercase">Mill</div>
+                    <div class="text-[10px] text-slate-400">Mill top cards to GY</div>
+                </button>
+
+                <!-- 7. Search Library -->
+                <button type="button" id="menuOptSearch" class="p-3 bg-[#10141D] hover:bg-cyan-600/20 border border-cyan-500/50 hover:border-cyan-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">🔍</div>
+                    <div class="font-bold text-white group-hover:text-cyan-300 uppercase">Search Deck</div>
+                    <div class="text-[10px] text-slate-400">Browse A-Z library</div>
+                </button>
+
+                <!-- 8. Roll Dice & Flip Coin -->
+                <button type="button" id="menuOptDice" class="p-3 bg-[#10141D] hover:bg-amber-600/20 border border-amber-500/50 hover:border-amber-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">🎲</div>
+                    <div class="font-bold text-white group-hover:text-amber-300 uppercase">Dice & Coin</div>
+                    <div class="text-[10px] text-slate-400">D20, D6, coin flip</div>
+                </button>
+
+                <!-- 9. Life & Damage -->
+                <button type="button" id="menuOptLife" class="p-3 bg-[#10141D] hover:bg-emerald-600/20 border border-emerald-500/50 hover:border-emerald-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">❤</div>
+                    <div class="font-bold text-white group-hover:text-emerald-300 uppercase">Life & Damage</div>
+                    <div class="text-[10px] text-slate-400">Commander damage matrix</div>
+                </button>
+
+                <!-- 10. Run It Back (Restart) -->
+                <button type="button" id="menuOptRestart" class="p-3 bg-[#10141D] hover:bg-red-600/20 border border-red-500/50 hover:border-red-400 text-left rounded transition group active:scale-98">
+                    <div class="text-lg mb-1">🔄</div>
+                    <div class="font-bold text-white group-hover:text-red-300 uppercase">Run It Back</div>
+                    <div class="text-[10px] text-slate-400">Reshuffle & restart game</div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dedicated Token Spawner Sheet -->
+    <div id="tokenSpawnerModalSheet" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-3">
+        <div class="bg-[#141B26] border-2 border-purple-500/70 w-full max-w-md p-5 rounded-t-xl sm:rounded-xl shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto modal-scrollable">
+            <div class="flex items-center justify-between border-b border-[#232F42] pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">🪙</span>
+                    <h3 class="font-mono font-bold text-sm text-white uppercase">Spawn Token</h3>
+                </div>
+                <button type="button" id="closeTokenSheetBtn" class="text-slate-400 hover:text-white p-1 text-lg font-bold">&times;</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+                <button type="button" onclick="window.spawnTokenPreset('Treasure', 0, 0, 'Artifact — Treasure', ['Sacrifice to add one mana'])" class="p-3 bg-[#10141D] hover:bg-amber-600/20 border border-amber-500/50 text-left rounded">
+                    <div class="font-bold text-amber-300 uppercase">💰 Treasure</div>
+                    <div class="text-[10px] text-slate-400">Mana Rock Token</div>
+                </button>
+                <button type="button" onclick="window.spawnTokenPreset('Food', 0, 0, 'Artifact — Food', ['Sacrifice to gain 3 life'])" class="p-3 bg-[#10141D] hover:bg-emerald-600/20 border border-emerald-500/50 text-left rounded">
+                    <div class="font-bold text-emerald-300 uppercase">🥩 Food</div>
+                    <div class="text-[10px] text-slate-400">Gain Life Token</div>
+                </button>
+                <button type="button" onclick="window.spawnTokenPreset('Clue', 0, 0, 'Artifact — Clue', ['Sacrifice to draw a card'])" class="p-3 bg-[#10141D] hover:bg-cyan-600/20 border border-cyan-500/50 text-left rounded">
+                    <div class="font-bold text-cyan-300 uppercase">🔍 Clue</div>
+                    <div class="text-[10px] text-slate-400">Draw Card Token</div>
+                </button>
+                <button type="button" onclick="window.spawnTokenPreset('Soldier', 1, 1, 'Creature — Soldier Token', [])" class="p-3 bg-[#10141D] hover:bg-slate-700 border border-slate-600 text-left rounded">
+                    <div class="font-bold text-white uppercase">⚔️ 1/1 Soldier</div>
+                    <div class="text-[10px] text-slate-400">White Creature</div>
+                </button>
+                <button type="button" onclick="window.spawnTokenPreset('Zombie', 2, 2, 'Creature — Zombie Token', [])" class="p-3 bg-[#10141D] hover:bg-slate-700 border border-slate-600 text-left rounded">
+                    <div class="font-bold text-white uppercase">🧟 2/2 Zombie</div>
+                    <div class="text-[10px] text-slate-400">Black Creature</div>
+                </button>
+                <button type="button" onclick="window.spawnTokenPreset('Goblin', 1, 1, 'Creature — Goblin Token', [])" class="p-3 bg-[#10141D] hover:bg-slate-700 border border-slate-600 text-left rounded">
+                    <div class="font-bold text-white uppercase">👺 1/1 Goblin</div>
+                    <div class="text-[10px] text-slate-400">Red Creature</div>
+                </button>
+                <button type="button" onclick="window.spawnTokenPreset('Beast', 3, 3, 'Creature — Beast Token', [])" class="p-3 bg-[#10141D] hover:bg-slate-700 border border-slate-600 text-left rounded">
+                    <div class="font-bold text-white uppercase">🐾 3/3 Beast</div>
+                    <div class="text-[10px] text-slate-400">Green Creature</div>
+                </button>
+                <button type="button" onclick="window.spawnTokenPreset('Angel', 4, 4, 'Creature — Angel Token', ['Flying'])" class="p-3 bg-[#10141D] hover:bg-slate-700 border border-slate-600 text-left rounded">
+                    <div class="font-bold text-white uppercase">🪽 4/4 Angel</div>
+                    <div class="text-[10px] text-slate-400">Flying Token</div>
+                </button>
+            </div>
         </div>
     </div>
 
