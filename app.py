@@ -6116,11 +6116,12 @@ def create_app(test_config=None):
 
     def _add_mcp_cors_headers(resp):
         resp.headers["Access-Control-Allow-Origin"] = "*"
-        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
         resp.headers["Access-Control-Allow-Headers"] = (
-            "Content-Type, Authorization, X-API-Key, Accept, Mcp-Session-Id, Last-Event-ID"
+            "Content-Type, Authorization, X-API-Key, Accept, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID"
         )
-        resp.headers["Access-Control-Expose-Headers"] = "Mcp-Session-Id"
+        resp.headers["Access-Control-Expose-Headers"] = "Mcp-Session-Id, MCP-Protocol-Version"
+        resp.headers["Cache-Control"] = "no-store, no-cache, no-transform"
         return resp
 
     def _extract_mcp_token() -> str:
@@ -6154,20 +6155,46 @@ def create_app(test_config=None):
             host_url = host_url.replace("http://", "https://", 1)
         return host_url
 
-    @app.route("/mcp", methods=["GET", "POST", "OPTIONS"])
-    @app.route("/mcp/sse", methods=["GET", "POST", "OPTIONS"])
+    @app.route("/mcp", methods=["GET", "POST", "DELETE", "OPTIONS"])
     def mcp_endpoint():
         """
-        Primary Cloud Run Model Context Protocol (MCP) endpoint for Google Gemini Connected Apps.
-        Supports:
-        - POST /mcp: Stateless Streamable HTTP JSON-RPC 2.0 (ideal for Cloud Run serverless scaling).
-        - GET /mcp (or /mcp/sse): Server-Sent Events (SSE) transport stream.
+        Primary Cloud Run Model Context Protocol (MCP) Streamable HTTP (2025-03-26) endpoint
+        for Google Gemini Connected Apps.
+        - POST /mcp: Stateless Streamable HTTP JSON-RPC 2.0 request/response.
+        - GET /mcp: Returns 405 Method Not Allowed per MCP 2025-03-26 spec for stateless servers
+          so Google Gemini's proxy does not hang waiting on an infinite SSE stream.
+        - DELETE /mcp: Returns 200 OK for session cleanup.
         """
         if request.method == "OPTIONS":
             return _add_mcp_cors_headers(app.make_response(("", 204)))
 
+        if request.method == "DELETE":
+            return _add_mcp_cors_headers(app.make_response(("", 200)))
+
         if not app.config.get("MCP_ENABLED", True):
             return _add_mcp_cors_headers(jsonify({"error": "MCP server is disabled."})), 403
+
+        if request.method == "GET":
+            if request.args.get("format") == "json":
+                user, _ = _authenticate_mcp_request()
+                if not user:
+                    return _add_mcp_cors_headers(jsonify({"error": "Unauthorized"})), 401
+                return _add_mcp_cors_headers(
+                    jsonify({
+                        "name": MCP_SERVER_NAME,
+                        "version": MCP_SERVER_VERSION,
+                        "status": "online",
+                        "transport": "streamable-http",
+                        "user": user.email,
+                        "tools_count": len(MCP_TOOLS),
+                    })
+                )
+            # Per MCP 2025-03-26 Streamable HTTP specification:
+            # Stateless servers that do not offer a standalone GET SSE stream MUST return 405 Method Not Allowed
+            # so the client (e.g. Google Gemini Connected Apps) proceeds immediately instead of hanging.
+            resp_405 = app.make_response(("", 405))
+            resp_405.headers["Allow"] = "POST, DELETE, OPTIONS"
+            return _add_mcp_cors_headers(resp_405)
 
         user, token = _authenticate_mcp_request()
         if not user:
@@ -6181,36 +6208,32 @@ def create_app(test_config=None):
             }
             return _add_mcp_cors_headers(jsonify(err)), 401
 
-        if request.method == "POST":
-            payload = request.get_json(silent=True)
-            if payload is None:
-                return _add_mcp_cors_headers(
-                    jsonify({
-                        "jsonrpc": "2.0",
-                        "id": None,
-                        "error": {"code": -32700, "message": "Parse error: invalid JSON payload."},
-                    })
-                ), 400
-
-            resp_body, status_code = handle_mcp_payload(payload, user)
-            if resp_body is None:
-                return _add_mcp_cors_headers(app.make_response(("", status_code)))
-            resp = jsonify(resp_body)
-            resp.status_code = status_code
-            return _add_mcp_cors_headers(resp)
-
-        # GET request -> SSE stream or server discovery
-        accept_header = request.headers.get("Accept", "")
-        if request.args.get("format") == "json":
+        payload = request.get_json(silent=True)
+        if payload is None:
             return _add_mcp_cors_headers(
                 jsonify({
-                    "name": MCP_SERVER_NAME,
-                    "version": MCP_SERVER_VERSION,
-                    "status": "online",
-                    "user": user.email,
-                    "tools_count": len(MCP_TOOLS),
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": "Parse error: invalid JSON payload."},
                 })
-            )
+            ), 400
+
+        resp_body, status_code = handle_mcp_payload(payload, user)
+        if resp_body is None:
+            return _add_mcp_cors_headers(app.make_response(("", status_code)))
+        resp = jsonify(resp_body)
+        resp.status_code = status_code
+        return _add_mcp_cors_headers(resp)
+
+    @app.route("/mcp/sse", methods=["GET", "OPTIONS"])
+    def mcp_sse_endpoint():
+        """Legacy 2024-11-05 Server-Sent Events (SSE) MCP transport endpoint."""
+        if request.method == "OPTIONS":
+            return _add_mcp_cors_headers(app.make_response(("", 204)))
+
+        user, token = _authenticate_mcp_request()
+        if not user:
+            return _add_mcp_cors_headers(jsonify({"error": "Unauthorized"})), 401
 
         session_id = _uuid.uuid4().hex
         msg_queue: _queue.Queue = _queue.Queue()

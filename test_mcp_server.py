@@ -240,8 +240,12 @@ class TestChimeraMcpServer(unittest.TestCase):
         self.assertIn("check_card_deck_fit", tool_names)
 
     def test_mcp_sse_transport_and_messages(self):
-        """Verifies SSE stream endpoint discovery and /mcp/messages execution."""
-        sse_resp = self.client.get(f"/mcp?token={self.api_token}&single_event=1")
+        """Verifies GET /mcp returns 405 per Streamable HTTP spec and /mcp/sse + /mcp/messages works for legacy SSE."""
+        get_mcp_resp = self.client.get(f"/mcp?token={self.api_token}")
+        self.assertEqual(get_mcp_resp.status_code, 405)
+        self.assertIn("POST", get_mcp_resp.headers.get("Allow", ""))
+
+        sse_resp = self.client.get(f"/mcp/sse?token={self.api_token}&single_event=1")
         self.assertEqual(sse_resp.status_code, 200)
         self.assertIn("text/event-stream", sse_resp.content_type)
         raw_sse = sse_resp.get_data(as_text=True)
