@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+
+{% block title %}Chimaera // Gemini Mobile & Cloud Run MCP Hub{% endblock %}
+
+{% block content %}
+<div class="space-y-4 sm:space-y-6">
+
+    <!-- Header Telemetry Banner -->
+    <div class="bg-[#1B2230] border-2 border-[#00CED1] p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 relative overflow-hidden">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 bg-[#00CED1] animate-pulse inline-block"></span>
+                <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">CLOUD RUN REMOTE MCP // TELEMETRY BRIDGE</span>
+            </div>
+            <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
+                Gemini Mobile App &amp; MCP Integration Hub
+            </h2>
+            <p class="text-xs sm:text-sm text-[#94A3B8] mt-1 font-sans">
+                Connect the official Google Gemini Mobile App (Android &amp; iOS) and Custom Gems directly to your live Chimaera database on Google Cloud Run.
+            </p>
+        </div>
+        <div class="flex items-center space-x-3 sm:space-x-4 bg-[#10141D] px-3.5 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-shrink-0">
+            <div>
+                <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">MCP Protocol</div>
+                <div class="text-base sm:text-lg font-mono font-bold text-[#00CED1]">2025-03-26</div>
+            </div>
+            <div class="border-l border-[#263245] pl-3 sm:pl-4">
+                <div class="text-[10px] sm:text-xs font-mono text-[#94A3B8] uppercase tracking-wider">Active Tools</div>
+                <div class="text-xl sm:text-2xl font-mono font-bold text-white">{{ mcp_tools|length }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cloud Run Endpoint & API Token Configuration -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        <!-- Left Column: Cloud Run MCP Endpoint Card -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-2.5">
+                <div>
+                    <div class="text-[10px] font-mono text-[#00CED1] uppercase font-bold tracking-wider">// 01. REMOTE MCP ENDPOINT</div>
+                    <h3 class="text-sm sm:text-base font-heading font-bold text-white uppercase mt-0.5">Cloud Run MCP Server URL</h3>
+                </div>
+                <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 px-2 py-0.5 text-[10px] font-mono font-bold uppercase">STATELESS HTTP + SSE</span>
+            </div>
+
+            <div class="space-y-2">
+                <label class="block text-[11px] font-mono text-[#94A3B8] uppercase">
+                    Authenticated MCP URL (Recommended for Gemini Connected Apps)
+                </label>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="mcpFullUrlInput" readonly value="{{ mcp_url }}"
+                        class="flex-1 bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-[#00CED1] font-mono select-all focus:border-[#00CED1] focus:outline-none">
+                    <button type="button" onclick="copyTextById('mcpFullUrlInput', 'COPY MCP URL')" id="btnCopyMcpUrl"
+                        class="bg-[#00CED1] hover:bg-[#00CED1]/80 text-[#10141D] font-mono font-bold text-xs px-3.5 py-2 uppercase transition flex-shrink-0">
+                        COPY MCP URL
+                    </button>
+                </div>
+                <p class="text-[11px] text-[#64748B] font-mono">
+                    Includes your personal API token as a query parameter so mobile/web MCP clients connect without custom header setup.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#263245]">
+                <div>
+                    <label class="block text-[10px] font-mono text-[#94A3B8] uppercase mb-1">Base Endpoint (Header Auth)</label>
+                    <input type="text" id="mcpCleanUrlInput" readonly value="{{ mcp_clean_url }}"
+                        class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-[11px] text-white font-mono select-all">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-mono text-[#94A3B8] uppercase mb-1">Personal API Token</label>
+                    <div class="flex items-center gap-1.5">
+                        <input type="password" id="apiTokenInput" readonly value="{{ api_token }}"
+                            class="flex-1 bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-[11px] text-[#F59E0B] font-mono">
+                        <button type="button" onclick="toggleTokenVisibility()"
+                            class="bg-[#10141D] border border-[#263245] hover:border-[#00CED1] text-[#94A3B8] hover:text-white px-2 py-1.5 text-[10px] font-mono uppercase">
+                            SHOW
+                        </button>
+                        <button type="button" onclick="regenerateApiToken()" id="btnRegenToken"
+                            class="bg-[#DC143C]/20 border border-[#DC143C]/50 hover:bg-[#DC143C] text-[#FF3358] hover:text-white px-2 py-1.5 text-[10px] font-mono font-bold uppercase transition"
+                            title="Generate a new API token and invalidate the old token">
+                            ROTATE
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Step-by-Step Mobile Connection Guide -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 space-y-3.5">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-2.5">
+                <div>
+                    <div class="text-[10px] font-mono text-[#00CED1] uppercase font-bold tracking-wider">// 02. MOBILE DEPLOYMENT PROTOCOL</div>
+                    <h3 class="text-sm sm:text-base font-heading font-bold text-white uppercase mt-0.5">How to Connect Gemini Mobile App</h3>
+                </div>
+                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 px-2 py-0.5 text-[10px] font-mono font-bold uppercase">ANDROID &amp; iOS</span>
+            </div>
+
+            <ol class="space-y-2.5 text-xs text-[#E2E8F0] font-sans">
+                <li class="flex items-start gap-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                    <span class="bg-[#00CED1] text-[#10141D] font-mono font-bold text-[10px] px-1.5 py-0.5 flex-shrink-0">01</span>
+                    <div>
+                        <span class="font-bold text-white">Copy your Cloud Run MCP URL:</span>
+                        Click <span class="font-mono text-[#00CED1]">COPY MCP URL</span> on the left panel once deployed to Google Cloud Run.
+                    </div>
+                </li>
+                <li class="flex items-start gap-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                    <span class="bg-[#00CED1] text-[#10141D] font-mono font-bold text-[10px] px-1.5 py-0.5 flex-shrink-0">02</span>
+                    <div>
+                        <span class="font-bold text-white">Register in Gemini Connected Apps:</span>
+                        Open <span class="font-mono text-[#00CED1]">gemini.google.com</span> &rarr; <span class="font-mono">Settings</span> &rarr; <span class="font-mono">Connected Apps</span> &rarr; <span class="font-mono">Custom apps</span> &rarr; <span class="font-mono">Add a custom app</span>. Paste your MCP URL and name it <span class="font-mono text-white font-bold">Chimera</span>.
+                    </div>
+                </li>
+                <li class="flex items-start gap-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                    <span class="bg-[#00CED1] text-[#10141D] font-mono font-bold text-[10px] px-1.5 py-0.5 flex-shrink-0">03</span>
+                    <div>
+                        <span class="font-bold text-white">Query from the Gemini Mobile App:</span>
+                        Open the Gemini app on your phone and type or speak <span class="font-mono text-[#00CED1]">@Chimera</span> (e.g. <em>"@Chimera do I own Rhystic Study?"</em> or <em>"@Chimera what deals are active right now?"</em>).
+                    </div>
+                </li>
+            </ol>
+        </div>
+    </div>
+
+    <!-- Custom Gem Blueprint & Live Tool Tester -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        <!-- Custom Gem Instructions Card -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 space-y-3.5">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-2.5">
+                <div>
+                    <div class="text-[10px] font-mono text-[#FF3358] uppercase font-bold tracking-wider">// 03. CUSTOM GEM BLUEPRINT</div>
+                    <h3 class="text-sm sm:text-base font-heading font-bold text-white uppercase mt-0.5">Chimaera MTG Tactical Advisor Gem</h3>
+                </div>
+                <button type="button" onclick="copyTextById('gemPromptTextarea', 'COPY GEM INSTRUCTIONS')" id="btnCopyGemPrompt"
+                    class="bg-[#DC143C] hover:bg-[#DC143C]/80 text-white font-mono font-bold text-[11px] px-3 py-1.5 uppercase transition">
+                    COPY GEM INSTRUCTIONS
+                </button>
+            </div>
+
+            <p class="text-xs text-[#94A3B8]">
+                Create a dedicated Custom Gem in Gemini named <span class="text-white font-mono font-bold">Chimaera MTG Advisor</span> and paste these system instructions so it automatically orchestrates your MCP database tools:
+            </p>
+
+            <textarea id="gemPromptTextarea" readonly rows="10"
+                class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs font-mono text-[#E2E8F0] focus:border-[#00CED1] focus:outline-none">You are the Chimaera MTG Tactical Advisor, connected directly to my live Magic: The Gathering database via the @Chimera MCP server.
+
+Whenever I ask about my cards, collection, prices, deals, or Commander decks, always invoke the @Chimera MCP tools:
+1. `search_inventory` / `get_inventory_summary`: Check if I own a card, its quantity, set printing, foil finish, condition, binder location, and USD value.
+2. `get_watchlist` / `get_active_deals`: Check my tracked target prices and active deals across TCGplayer, Mighty Meeple, eBay, MicroCenter Charlotte, and Best Buy.
+3. `get_deck_analyses` / `check_card_deck_fit`: Inspect my saved Commander decks, power levels, mana curves, weaknesses, and upgrade recommendations, or evaluate if a candidate card fits my decks.
+4. `search_card_prices`: Look up live Scryfall pricing alongside my inventory and watchlist status.
+5. `add_to_watchlist`: Add new target cards and price thresholds to my surveillance registry when requested.
+
+Present answers concisely with exact card quantities, set codes, conditions, and USD prices.</textarea>
+        </div>
+
+        <!-- Interactive MCP Tool Tester -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 space-y-3.5">
+            <div class="flex items-center justify-between border-b border-[#263245] pb-2.5">
+                <div>
+                    <div class="text-[10px] font-mono text-[#00CED1] uppercase font-bold tracking-wider">// 04. LIVE DIAGNOSTICS</div>
+                    <h3 class="text-sm sm:text-base font-heading font-bold text-white uppercase mt-0.5">Interactive MCP Tool Tester</h3>
+                </div>
+                <button type="button" onclick="runMcpToolTest()" id="btnRunMcpTest"
+                    class="bg-[#00CED1] hover:bg-[#00CED1]/80 text-[#10141D] font-mono font-bold text-[11px] px-3.5 py-1.5 uppercase transition">
+                    EXECUTE TOOL
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[10px] font-mono text-[#94A3B8] uppercase mb-1">Select MCP Tool</label>
+                    <select id="mcpToolSelect" onchange="updateSampleArgs()"
+                        class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-2 text-xs text-white font-mono focus:border-[#00CED1]">
+                        {% for tool in mcp_tools %}
+                        <option value="{{ tool.name }}">{{ tool.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-mono text-[#94A3B8] uppercase mb-1">JSON Arguments</label>
+                    <input type="text" id="mcpToolArgsInput" value='{"top_n": 10}'
+                        class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-2 text-xs text-[#00CED1] font-mono focus:border-[#00CED1]">
+                </div>
+            </div>
+
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-[10px] font-mono text-[#94A3B8] uppercase">MCP JSON-RPC Tool Output</span>
+                    <span id="mcpTestStatus" class="text-[10px] font-mono text-[#64748B]">READY</span>
+                </div>
+                <pre id="mcpTestOutput" class="bg-[#10141D] border border-[#263245] p-3 text-[11px] font-mono text-[#E2E8F0] overflow-x-auto max-h-60 overflow-y-auto">// Select a tool above and click EXECUTE TOOL to verify live database telemetry.</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available MCP Tools Reference Matrix -->
+    <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-5 space-y-3">
+        <div class="text-[10px] font-mono text-[#00CED1] uppercase font-bold tracking-wider">// 05. REGISTERED MCP CAPABILITIES</div>
+        <h3 class="text-sm sm:text-base font-heading font-bold text-white uppercase">Exposed Database Tools ({{ mcp_tools|length }})</h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            {% for tool in mcp_tools %}
+            <div class="bg-[#10141D] border border-[#263245] p-3 flex flex-col justify-between space-y-2">
+                <div>
+                    <div class="text-xs font-mono font-bold text-[#00CED1]">{{ tool.name }}</div>
+                    <p class="text-[11px] text-[#94A3B8] mt-1 leading-relaxed">{{ tool.description }}</p>
+                </div>
+                <div class="pt-2 border-t border-[#263245]/60 text-[10px] font-mono text-[#64748B]">
+                    Params: {{ tool.inputSchema.properties.keys()|list|join(', ') or 'none' }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<script>
+const SAMPLE_TOOL_ARGS = {
+    "get_inventory_summary": '{"top_n": 10}',
+    "search_inventory": '{"query": "Sol Ring", "limit": 10}',
+    "get_watchlist": '{"deals_only": false, "limit": 20}',
+    "get_active_deals": '{"category": "all"}',
+    "get_deck_analyses": '{"query": ""}',
+    "search_card_prices": '{"card_name": "Rhystic Study"}',
+    "add_to_watchlist": '{"card_name": "Smothering Tithe", "target_price": 35.0}',
+    "check_card_deck_fit": '{"card_name": "Sol Ring"}'
+};
+
+function updateSampleArgs() {
+    const sel = document.getElementById("mcpToolSelect").value;
+    document.getElementById("mcpToolArgsInput").value = SAMPLE_TOOL_ARGS[sel] || "{}";
+}
+
+function copyTextById(elementId, defaultLabel) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    navigator.clipboard.writeText(el.value).then(() => {
+        if (typeof showToast === "function") {
+            showToast("Copied to clipboard!", "success");
+        }
+    });
+}
+
+function toggleTokenVisibility() {
+    const inp = document.getElementById("apiTokenInput");
+    if (!inp) return;
+    inp.type = inp.type === "password" ? "text" : "password";
+}
+
+async function regenerateApiToken() {
+    if (!confirm("Rotate your MCP API token? Any existing Gemini Connected App using the previous URL will need the updated URL.")) {
+        return;
+    }
+    const btn = document.getElementById("btnRegenToken");
+    btn.disabled = true;
+    try {
+        const resp = await fetch("/api/user/regenerate-token", { method: "POST" });
+        const data = await resp.json();
+        if (data.success) {
+            document.getElementById("apiTokenInput").value = data.api_token;
+            document.getElementById("mcpFullUrlInput").value = data.mcp_url;
+            if (typeof showToast === "function") {
+                showToast("API token rotated successfully.", "success");
+            }
+        }
+    } catch (err) {
+        if (typeof showToast === "function") {
+            showToast("Failed to rotate token.", "error");
+        }
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function runMcpToolTest() {
+    const toolName = document.getElementById("mcpToolSelect").value;
+    const rawArgs = document.getElementById("mcpToolArgsInput").value;
+    const statusEl = document.getElementById("mcpTestStatus");
+    const outputEl = document.getElementById("mcpTestOutput");
+
+    let parsedArgs = {};
+    try {
+        parsedArgs = rawArgs.trim() ? JSON.parse(rawArgs) : {};
+    } catch (e) {
+        statusEl.textContent = "INVALID JSON ARGS";
+        statusEl.className = "text-[10px] font-mono text-[#FF3358]";
+        outputEl.textContent = "Error parsing JSON arguments: " + e.message;
+        return;
+    }
+
+    statusEl.textContent = "EXECUTING...";
+    statusEl.className = "text-[10px] font-mono text-[#00CED1]";
+
+    try {
+        const resp = await fetch("/api/mcp/test-tool", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tool_name: toolName, arguments: parsedArgs })
+        });
+        const data = await resp.json();
+        statusEl.textContent = data.success ? "200 OK" : "ERROR";
+        statusEl.className = data.success ? "text-[10px] font-mono text-[#10B981]" : "text-[10px] font-mono text-[#FF3358]";
+        if (data.result && data.result.content && data.result.content[0] && data.result.content[0].text) {
+            outputEl.textContent = data.result.content[0].text;
+        } else {
+            outputEl.textContent = JSON.stringify(data, null, 2);
+        }
+    } catch (err) {
+        statusEl.textContent = "NETWORK ERROR";
+        statusEl.className = "text-[10px] font-mono text-[#FF3358]";
+        outputEl.textContent = String(err);
+    }
+}
+</script>
+{% endblock %}

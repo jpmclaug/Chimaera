@@ -326,6 +326,8 @@ def _migrate_db_schema(app):
                     user_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(user)")).fetchall()]
                     if "inventory_gdrive_url" not in user_cols:
                         conn.execute(db.text("ALTER TABLE user ADD COLUMN inventory_gdrive_url TEXT"))
+                    if "api_token" not in user_cols:
+                        conn.execute(db.text("ALTER TABLE user ADD COLUMN api_token VARCHAR(64)"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS secret_lair_analysis (
                             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -378,6 +380,7 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                         conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
                         conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS inventory_gdrive_url TEXT"))
+                        conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS api_token VARCHAR(64)"))
                         conn.execute(db.text("""
                             CREATE TABLE IF NOT EXISTS microcenter_item (
                                 id SERIAL PRIMARY KEY,
@@ -6094,6 +6097,253 @@ def create_app(test_config=None):
             "success": True,
             "sessions": [s.to_dict(include_state=False) for s in sessions],
         })
+
+    # =========================================================================
+    # GEMINI MOBILE APP & CLOUD RUN MODEL CONTEXT PROTOCOL (MCP) ENDPOINTS
+    # =========================================================================
+    import queue as _queue
+    import uuid as _uuid
+    from chimera_mcp import (
+        MCP_SERVER_NAME,
+        MCP_SERVER_VERSION,
+        MCP_TOOLS,
+        execute_mcp_tool,
+        handle_mcp_payload,
+        resolve_mcp_user,
+    )
+
+    _mcp_sse_queues: dict[str, _queue.Queue] = {}
+
+    def _add_mcp_cors_headers(resp):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type, Authorization, X-API-Key, Accept, Mcp-Session-Id, Last-Event-ID"
+        )
+        resp.headers["Access-Control-Expose-Headers"] = "Mcp-Session-Id"
+        return resp
+
+    def _extract_mcp_token() -> str:
+        auth_header = request.headers.get("Authorization", "").strip()
+        if auth_header.lower().startswith("bearer "):
+            return auth_header[7:].strip()
+        api_key_header = request.headers.get("X-API-Key", "").strip()
+        if api_key_header:
+            return api_key_header
+        token_arg = (request.args.get("token") or request.args.get("api_key") or "").strip()
+        if token_arg:
+            return token_arg
+        return ""
+
+    def _authenticate_mcp_request():
+        token = _extract_mcp_token()
+        user = resolve_mcp_user(
+            token=token,
+            config_api_key=app.config.get("CHIMERA_API_KEY", ""),
+            admin_email=app.config.get("ADMIN_EMAIL", ""),
+        )
+        return user, token
+
+    def _get_external_base_url() -> str:
+        configured = app.config.get("APP_BASE_URL", "").strip().rstrip("/")
+        if configured:
+            return configured
+        host_url = request.host_url.rstrip("/")
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "").lower()
+        if forwarded_proto == "https" or ".run.app" in host_url:
+            host_url = host_url.replace("http://", "https://", 1)
+        return host_url
+
+    @app.route("/mcp", methods=["GET", "POST", "OPTIONS"])
+    @app.route("/mcp/sse", methods=["GET", "POST", "OPTIONS"])
+    def mcp_endpoint():
+        """
+        Primary Cloud Run Model Context Protocol (MCP) endpoint for Google Gemini Connected Apps.
+        Supports:
+        - POST /mcp: Stateless Streamable HTTP JSON-RPC 2.0 (ideal for Cloud Run serverless scaling).
+        - GET /mcp (or /mcp/sse): Server-Sent Events (SSE) transport stream.
+        """
+        if request.method == "OPTIONS":
+            return _add_mcp_cors_headers(app.make_response(("", 204)))
+
+        if not app.config.get("MCP_ENABLED", True):
+            return _add_mcp_cors_headers(jsonify({"error": "MCP server is disabled."})), 403
+
+        user, token = _authenticate_mcp_request()
+        if not user:
+            err = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32001,
+                    "message": "Unauthorized: valid API token required via Authorization Bearer header, X-API-Key header, or ?token= query parameter.",
+                },
+            }
+            return _add_mcp_cors_headers(jsonify(err)), 401
+
+        if request.method == "POST":
+            payload = request.get_json(silent=True)
+            if payload is None:
+                return _add_mcp_cors_headers(
+                    jsonify({
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32700, "message": "Parse error: invalid JSON payload."},
+                    })
+                ), 400
+
+            resp_body, status_code = handle_mcp_payload(payload, user)
+            if resp_body is None:
+                return _add_mcp_cors_headers(app.make_response(("", status_code)))
+            resp = jsonify(resp_body)
+            resp.status_code = status_code
+            return _add_mcp_cors_headers(resp)
+
+        # GET request -> SSE stream or server discovery
+        accept_header = request.headers.get("Accept", "")
+        if request.args.get("format") == "json":
+            return _add_mcp_cors_headers(
+                jsonify({
+                    "name": MCP_SERVER_NAME,
+                    "version": MCP_SERVER_VERSION,
+                    "status": "online",
+                    "user": user.email,
+                    "tools_count": len(MCP_TOOLS),
+                })
+            )
+
+        session_id = _uuid.uuid4().hex
+        msg_queue: _queue.Queue = _queue.Queue()
+        _mcp_sse_queues[session_id] = msg_queue
+        single_event = request.args.get("single_event") in ("1", "true", "yes")
+        messages_path = f"/mcp/messages?session_id={session_id}&token={token}"
+
+        def _generate_sse():
+            try:
+                yield f"event: endpoint\ndata: {messages_path}\n\n"
+                if single_event:
+                    return
+                while True:
+                    try:
+                        msg = msg_queue.get(timeout=15)
+                        if msg is None:
+                            break
+                        yield f"event: message\ndata: {json.dumps(msg)}\n\n"
+                    except _queue.Empty:
+                        yield ": keepalive\n\n"
+            finally:
+                _mcp_sse_queues.pop(session_id, None)
+
+        sse_resp = app.response_class(_generate_sse(), mimetype="text/event-stream")
+        sse_resp.headers["Cache-Control"] = "no-cache, no-transform"
+        sse_resp.headers["X-Accel-Buffering"] = "no"
+        return _add_mcp_cors_headers(sse_resp)
+
+    @app.route("/mcp/messages", methods=["POST", "OPTIONS"])
+    def mcp_messages_endpoint():
+        """Receives JSON-RPC 2.0 messages for active SSE MCP sessions."""
+        if request.method == "OPTIONS":
+            return _add_mcp_cors_headers(app.make_response(("", 204)))
+
+        user, _ = _authenticate_mcp_request()
+        if not user:
+            return _add_mcp_cors_headers(
+                jsonify({
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32001, "message": "Unauthorized"},
+                })
+            ), 401
+
+        payload = request.get_json(silent=True)
+        if payload is None:
+            return _add_mcp_cors_headers(
+                jsonify({
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": "Parse error"},
+                })
+            ), 400
+
+        session_id = (request.args.get("session_id") or "").strip()
+        resp_body, status_code = handle_mcp_payload(payload, user)
+        if session_id and session_id in _mcp_sse_queues and resp_body is not None:
+            _mcp_sse_queues[session_id].put(resp_body)
+
+        if resp_body is None:
+            return _add_mcp_cors_headers(app.make_response(("", 202)))
+        resp = jsonify(resp_body)
+        resp.status_code = status_code
+        return _add_mcp_cors_headers(resp)
+
+    @app.route("/mcp/schema", methods=["GET"])
+    def mcp_schema_endpoint():
+        """Returns the public MCP tool definitions and server metadata."""
+        return _add_mcp_cors_headers(
+            jsonify({
+                "server": MCP_SERVER_NAME,
+                "version": MCP_SERVER_VERSION,
+                "tools": MCP_TOOLS,
+            })
+        )
+
+    @app.route("/gemini-hub")
+    @login_required
+    def gemini_hub_page():
+        """Renders the Gemini Mobile App & Cloud Run MCP Integration Hub."""
+        user = get_current_user()
+        if not user.api_token:
+            user.ensure_api_token()
+            db.session.commit()
+
+        base_url = _get_external_base_url()
+        mcp_url = f"{base_url}/mcp?token={user.api_token}"
+        mcp_clean_url = f"{base_url}/mcp"
+
+        return render_template(
+            "gemini_hub.html",
+            current_user=user,
+            active_tab="gemini_hub",
+            api_token=user.api_token,
+            mcp_url=mcp_url,
+            mcp_clean_url=mcp_clean_url,
+            base_url=base_url,
+            mcp_tools=MCP_TOOLS,
+        )
+
+    @app.route("/api/user/regenerate-token", methods=["POST"])
+    @login_required
+    def api_regenerate_user_token():
+        """Regenerates the authenticated user's MCP API token."""
+        user = get_current_user()
+        new_token = user.regenerate_api_token()
+        db.session.commit()
+        log_activity("MCP_TOKEN_REGENERATED", details="Regenerated Gemini Mobile MCP API token", user=user)
+        base_url = _get_external_base_url()
+        return jsonify({
+            "success": True,
+            "api_token": new_token,
+            "mcp_url": f"{base_url}/mcp?token={new_token}",
+        })
+
+    @app.route("/api/mcp/test-tool", methods=["POST"])
+    @login_required
+    def api_mcp_test_tool():
+        """Allows testing any Chimera MCP tool directly from the Gemini Hub web UI."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        tool_name = (data.get("tool_name") or "").strip()
+        arguments = data.get("arguments") or {}
+        if not tool_name:
+            return jsonify({"error": "tool_name is required."}), 400
+        result = execute_mcp_tool(user, tool_name, arguments)
+        log_activity("MCP_TOOL_TEST", details=f"Tested MCP tool: {tool_name}", user=user)
+        return jsonify({
+            "success": not result.get("isError", False),
+            "tool_name": tool_name,
+            "result": result,
+        })
+
 
     app._attach_ownership_and_allocations = _attach_ownership_and_allocations
     app._compute_fleet_stats = _compute_fleet_stats

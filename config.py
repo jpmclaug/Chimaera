@@ -96,6 +96,10 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
     GEMINI_DEFAULT_MODEL = os.getenv("GEMINI_DEFAULT_MODEL", "gemini-3.8-flash").strip()
 
+    # Chimera Remote MCP Server Configuration (Google Gemini Connected Apps / Mobile)
+    CHIMERA_API_KEY = os.getenv("CHIMERA_API_KEY", "").strip()
+    MCP_ENABLED = os.getenv("MCP_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+
     # Best Buy Local Store Stock & Price Surveillance Configuration
     BESTBUY_API_KEY = os.getenv("BESTBUY_API_KEY", "").strip()
     BESTBUY_POSTAL_CODE = os.getenv("BESTBUY_POSTAL_CODE", "28202").strip()

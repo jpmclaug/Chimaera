@@ -1,5 +1,6 @@
 import json
 import re
+import secrets
 from datetime import datetime, timezone, timedelta
 from flask_sqlalchemy import SQLAlchemy
 
@@ -24,6 +25,7 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     discord_webhook_url = db.Column(db.String(500), nullable=True)
     inventory_gdrive_url = db.Column(db.Text, nullable=True)
+    api_token = db.Column(db.String(64), unique=True, index=True, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
     last_login = db.Column(db.DateTime, nullable=True)
 
@@ -88,6 +90,17 @@ class User(db.Model):
         if not User.DISCORD_WEBHOOK_REGEX.match(clean):
             return False, "Invalid Discord webhook URL format. Expected: https://discord.com/api/webhooks/<id>/<token>"
         return True, clean
+
+    def ensure_api_token(self) -> str:
+        """Returns existing API token or generates a new 64-char hex token for MCP / Gemini mobile integration."""
+        if not self.api_token or not str(self.api_token).strip():
+            self.api_token = secrets.token_hex(32)
+        return self.api_token
+
+    def regenerate_api_token(self) -> str:
+        """Generates a fresh 64-char hex API token for MCP / Gemini mobile integration."""
+        self.api_token = secrets.token_hex(32)
+        return self.api_token
 
     @property
     def card_count(self):
