@@ -145,10 +145,11 @@
 
 Whenever I ask about my cards, collection, prices, deals, or Commander decks, always invoke the @Chimera MCP tools:
 1. `search_inventory` / `get_inventory_summary`: Check if I own a card, its quantity, set printing, foil finish, condition, binder location, and USD value.
-2. `get_watchlist` / `get_active_deals`: Check my tracked target prices and active deals across TCGplayer, Mighty Meeple, eBay, MicroCenter Charlotte, and Best Buy.
+2. `get_deck_cards`: Retrieve the full list of cards in any of my Commander decks, with cards categorized by type and formatted as a clean decklist.
 3. `get_deck_analyses` / `check_card_deck_fit`: Inspect my saved Commander decks, power levels, mana curves, weaknesses, and upgrade recommendations, or evaluate if a candidate card fits my decks.
-4. `search_card_prices`: Look up live Scryfall pricing alongside my inventory and watchlist status.
-5. `add_to_watchlist`: Add new target cards and price thresholds to my surveillance registry when requested.
+4. `get_watchlist` / `get_active_deals`: Check my tracked target prices and active deals across TCGplayer, Mighty Meeple, eBay, MicroCenter Charlotte, and Best Buy.
+5. `search_card_prices`: Look up live Scryfall pricing alongside my inventory and watchlist status.
+6. `add_to_watchlist`: Add new target cards and price thresholds to my surveillance registry when requested.
 
 Present answers concisely with exact card quantities, set codes, conditions, and USD prices.</textarea>
         </div>
@@ -222,6 +223,7 @@ const SAMPLE_TOOL_ARGS = {
     "get_watchlist": '{"deals_only": false, "limit": 20}',
     "get_active_deals": '{"category": "all"}',
     "get_deck_analyses": '{"query": ""}',
+    "get_deck_cards": '{"query": "", "group_by_type": true}',
     "search_card_prices": '{"card_name": "Rhystic Study"}',
     "add_to_watchlist": '{"card_name": "Smothering Tithe", "target_price": 35.0}',
     "check_card_deck_fit": '{"card_name": "Sol Ring"}'

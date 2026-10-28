@@ -228,13 +228,14 @@ class TestChimeraMcpServer(unittest.TestCase):
         )
         self.assertEqual(list_resp.status_code, 200)
         tools = list_resp.get_json()["result"]["tools"]
-        self.assertEqual(len(tools), 8)
+        self.assertEqual(len(tools), 9)
         tool_names = {t["name"] for t in tools}
         self.assertIn("get_inventory_summary", tool_names)
         self.assertIn("search_inventory", tool_names)
         self.assertIn("get_watchlist", tool_names)
         self.assertIn("get_active_deals", tool_names)
         self.assertIn("get_deck_analyses", tool_names)
+        self.assertIn("get_deck_cards", tool_names)
         self.assertIn("search_card_prices", tool_names)
         self.assertIn("add_to_watchlist", tool_names)
         self.assertIn("check_card_deck_fit", tool_names)
@@ -258,7 +259,7 @@ class TestChimeraMcpServer(unittest.TestCase):
             json={"jsonrpc": "2.0", "id": 10, "method": "tools/list"},
         )
         self.assertEqual(msg_resp.status_code, 200)
-        self.assertEqual(len(msg_resp.get_json()["result"]["tools"]), 8)
+        self.assertEqual(len(msg_resp.get_json()["result"]["tools"]), 9)
 
     def _call_tool(self, name: str, arguments: dict | None = None) -> dict:
         resp = self.client.post(
@@ -329,11 +330,28 @@ class TestChimeraMcpServer(unittest.TestCase):
             self.assertEqual(price_lookup["lowest_market_printing"]["price"], 39.99)
 
     def test_deck_analyses_and_card_fit_tools(self):
-        """Verifies get_deck_analyses and check_card_deck_fit tools."""
+        """Verifies get_deck_analyses, get_deck_cards, and check_card_deck_fit tools."""
         decks_res = self._call_tool("get_deck_analyses", {"query": "Ur-Dragon"})
         self.assertIn("deck", decks_res)
         self.assertEqual(decks_res["deck"]["commander_name"], "The Ur-Dragon")
         self.assertEqual(decks_res["deck"]["power_level"], 8.0)
+        self.assertIn("cards_data", decks_res["deck"])
+
+        # Test get_deck_cards tool
+        deck_cards = self._call_tool("get_deck_cards", {"query": "Ur-Dragon", "group_by_type": True})
+        self.assertEqual(deck_cards["deck_name"], "The Ur-Dragon Tribal")
+        self.assertEqual(deck_cards["commander_name"], "The Ur-Dragon")
+        self.assertIn("cards_by_type", deck_cards)
+        self.assertIn("text_decklist", deck_cards)
+        self.assertIn("1 The Ur-Dragon", deck_cards["text_decklist"])
+        self.assertIn("1 Sol Ring", deck_cards["text_decklist"])
+        self.assertIn("Commander", deck_cards["cards_by_type"])
+        self.assertIn("Artifacts", deck_cards["cards_by_type"])
+
+        # Test get_deck_cards with flat list
+        flat_cards = self._call_tool("get_deck_cards", {"query": "Ur-Dragon", "group_by_type": False})
+        self.assertIn("cards", flat_cards)
+        self.assertEqual(len(flat_cards["cards"]), 2)
 
         # Check fit for Rhystic Study (owned + in upgrade recommendations)
         fit_res = self._call_tool("check_card_deck_fit", {"card_name": "Rhystic Study"})

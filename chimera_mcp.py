@@ -174,8 +174,36 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
                 "include_cards": {
                     "type": "boolean",
-                    "description": "If true when inspecting a deck, includes the full parsed card list.",
-                    "default": False,
+                    "description": "If true when inspecting a deck, includes the full parsed card list (defaults to True).",
+                    "default": True,
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_deck_cards",
+        "description": (
+            "Returns all cards in a Commander deck, including quantities, type lines, mana costs, "
+            "CMC, USD prices, and color identity. Cards are returned grouped by category (Commander, "
+            "Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers, Lands) and as a "
+            "clean formatted text decklist."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Name of the deck or commander to retrieve (e.g. 'Ur-Dragon', 'Sauron'). Leave blank to get the user's latest deck.",
+                },
+                "deck_id": {
+                    "type": "integer",
+                    "description": "Optional specific DeckAnalysis ID.",
+                },
+                "group_by_type": {
+                    "type": "boolean",
+                    "description": "Whether to group cards by category (Commander, Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers, Lands). Defaults to True.",
+                    "default": True,
                 },
             },
             "required": [],
@@ -471,8 +499,8 @@ def _execute_get_active_deals(user: User, args: dict[str, Any]) -> dict[str, Any
 
 def _execute_get_deck_analyses(user: User, args: dict[str, Any]) -> dict[str, Any]:
     deck_id = args.get("deck_id")
-    query_str = (args.get("query") or "").strip()
-    include_cards = bool(args.get("include_cards", False))
+    query_str = (args.get("query") or args.get("deck_name") or args.get("commander_name") or "").strip()
+    include_cards = bool(args.get("include_cards", True))
 
     q = DeckAnalysis.query.filter_by(user_id=user.id)
     if deck_id is not None:
@@ -516,6 +544,118 @@ def _execute_get_deck_analyses(user: User, args: dict[str, Any]) -> dict[str, An
         "total_decks": len(summaries),
         "decks": summaries,
     }
+
+
+def _execute_get_deck_cards(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    deck_id = args.get("deck_id")
+    query_str = (args.get("query") or args.get("deck_name") or args.get("commander_name") or "").strip()
+    group_by_type = bool(args.get("group_by_type", True))
+
+    q = DeckAnalysis.query.filter_by(user_id=user.id)
+    deck = None
+    if deck_id is not None:
+        deck = q.filter_by(id=int(deck_id)).first()
+    elif query_str:
+        deck = q.filter(
+            db.or_(
+                DeckAnalysis.deck_name.ilike(f"%{query_str}%"),
+                DeckAnalysis.commander_name.ilike(f"%{query_str}%"),
+            )
+        ).order_by(DeckAnalysis.updated_at.desc()).first()
+    else:
+        deck = q.order_by(DeckAnalysis.updated_at.desc()).first()
+
+    if not deck:
+        avail_decks = [
+            {"id": d.id, "name": d.deck_name, "commander": d.commander_name}
+            for d in q.order_by(DeckAnalysis.deck_name.asc()).all()
+        ]
+        return {
+            "error": f"No Commander deck found matching '{query_str or deck_id}'.",
+            "available_decks": avail_decks,
+        }
+
+    cards = deck.get_parsed_cards()
+    commander_names = [c.strip() for c in (deck.commander_name or "").split(",") if c.strip()]
+
+    type_categories: dict[str, list[dict[str, Any]]] = {
+        "Commander": [],
+        "Creatures": [],
+        "Instants": [],
+        "Sorceries": [],
+        "Artifacts": [],
+        "Enchantments": [],
+        "Planeswalkers": [],
+        "Battles": [],
+        "Lands": [],
+        "Other": [],
+    }
+
+    clean_cards_list = []
+    text_lines = []
+
+    for c in cards:
+        name = c.get("name") or "Unknown"
+        qty = int(c.get("quantity", 1) or 1)
+        type_line = c.get("type_line") or ""
+        t_lower = type_line.lower()
+
+        card_info = {
+            "name": name,
+            "quantity": qty,
+            "type_line": type_line,
+            "mana_cost": c.get("mana_cost") or "",
+            "cmc": c.get("cmc", 0),
+            "price_usd": c.get("price_usd"),
+            "set_code": (c.get("set_code") or "").upper(),
+            "color_identity": c.get("color_identity") or [],
+            "oracle_text": c.get("oracle_text") or "",
+        }
+        clean_cards_list.append(card_info)
+        text_lines.append(f"{qty} {name}")
+
+        if any(name.lower() == cmd.lower() for cmd in commander_names):
+            type_categories["Commander"].append(card_info)
+        elif "creature" in t_lower:
+            type_categories["Creatures"].append(card_info)
+        elif "instant" in t_lower:
+            type_categories["Instants"].append(card_info)
+        elif "sorcery" in t_lower:
+            type_categories["Sorceries"].append(card_info)
+        elif "artifact" in t_lower:
+            type_categories["Artifacts"].append(card_info)
+        elif "enchantment" in t_lower:
+            type_categories["Enchantments"].append(card_info)
+        elif "planeswalker" in t_lower:
+            type_categories["Planeswalkers"].append(card_info)
+        elif "battle" in t_lower:
+            type_categories["Battles"].append(card_info)
+        elif "land" in t_lower:
+            type_categories["Lands"].append(card_info)
+        else:
+            type_categories["Other"].append(card_info)
+
+    filtered_categories = {cat: items for cat, items in type_categories.items() if items}
+    category_counts = {cat: sum(item["quantity"] for item in items) for cat, items in filtered_categories.items()}
+
+    response_data: dict[str, Any] = {
+        "deck_id": deck.id,
+        "deck_name": deck.deck_name,
+        "commander_name": deck.commander_name,
+        "total_cards": sum(c.get("quantity", 1) for c in clean_cards_list),
+        "total_value_usd": deck.total_value,
+        "avg_cmc": deck.avg_cmc,
+        "color_identity": deck.get_color_identity_list(),
+        "category_counts": category_counts,
+        "text_decklist": "\n".join(text_lines),
+    }
+
+    if group_by_type:
+        response_data["cards_by_type"] = filtered_categories
+    else:
+        response_data["cards"] = clean_cards_list
+
+    return response_data
 
 
 def _execute_search_card_prices(user: User, args: dict[str, Any]) -> dict[str, Any]:
@@ -750,6 +890,7 @@ TOOL_HANDLERS = {
     "get_watchlist": _execute_get_watchlist,
     "get_active_deals": _execute_get_active_deals,
     "get_deck_analyses": _execute_get_deck_analyses,
+    "get_deck_cards": _execute_get_deck_cards,
     "search_card_prices": _execute_search_card_prices,
     "add_to_watchlist": _execute_add_to_watchlist,
     "check_card_deck_fit": _execute_check_card_deck_fit,

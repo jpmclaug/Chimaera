@@ -16,9 +16,10 @@ The Chimaera MCP engine ([chimera_mcp.py](file:///c:/Users/jpmcl/Python%20Develo
 3. `get_watchlist(query, tag, deals_only, limit)`: Lists monitored cards on the user's `WatchlistItem` registry with current vendor prices and target thresholds.
 4. `get_active_deals(category="all")`: Returns active deals across single-card watchlists, MicroCenter Charlotte (`MicrocenterItem`), and Best Buy (`BestBuyItem`).
 5. `get_deck_analyses(deck_id, query, include_cards)`: Lists saved Commander decks or retrieves full AI tactical breakdown, card ratings, stats, and upgrades for a deck.
-6. `search_card_prices(card_name, set_code)`: Queries live Scryfall pricing and checks inventory ownership + watchlist status.
-7. `add_to_watchlist(card_name, target_price, set_code, finish, tag)`: Adds or updates a card on the user's surveillance watchlist.
-8. `check_card_deck_fit(card_name)`: Evaluates whether a card is already in the user's Commander decks, recommended in saved upgrade plans, or owned in inventory.
+6. `get_deck_cards(query, deck_id, group_by_type)`: Returns all cards in a Commander deck, with quantities, types, mana costs, CMC, USD prices, categorized by card type and formatted as a clean text decklist.
+7. `search_card_prices(card_name, set_code)`: Queries live Scryfall pricing and checks inventory ownership + watchlist status.
+8. `add_to_watchlist(card_name, target_price, set_code, finish, tag)`: Adds or updates a card on the user's surveillance watchlist.
+9. `check_card_deck_fit(card_name)`: Evaluates whether a card is already in the user's Commander decks, recommended in saved upgrade plans, or owned in inventory.
 
 ## Connecting via Google Cloud Run (Gemini Mobile App & Connected Apps)
 
