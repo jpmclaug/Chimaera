@@ -1140,6 +1140,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const sel = document.getElementById('selectPerPage');
         if (sel) sel.value = '25';
     }
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialQ = urlParams.get('q');
+    if (initialQ) {
+        const input = document.getElementById('inventorySearch');
+        if (input) {
+            input.value = initialQ;
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (clearBtn) clearBtn.classList.remove('hidden');
+        }
+    }
     loadCardsPage(1);
 });
 </script>

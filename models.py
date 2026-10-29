@@ -366,6 +366,71 @@ class WatchlistItem(db.Model):
                 return vp
         return None
 
+    @property
+    def in_binder(self) -> bool:
+        """Returns True if user owns this card in their inventory / binder."""
+        if getattr(self, "_in_binder", None) is not None:
+            return self._in_binder
+        if self.user_id and self.name:
+            self._compute_binder_status()
+            return bool(getattr(self, "_in_binder", False))
+        return False
+
+    @in_binder.setter
+    def in_binder(self, val: bool):
+        self._in_binder = bool(val)
+
+    @property
+    def binder_count(self) -> int:
+        """Returns number of copies the user owns in their inventory / binder."""
+        if getattr(self, "_binder_count", None) is not None:
+            return self._binder_count
+        if self.user_id and self.name:
+            self._compute_binder_status()
+            return getattr(self, "_binder_count", 0) or 0
+        return 0
+
+    @binder_count.setter
+    def binder_count(self, val: int):
+        self._binder_count = int(val)
+
+    @property
+    def binder_names(self) -> list:
+        """Returns list of binder names where this card is located."""
+        if getattr(self, "_binder_names", None) is not None:
+            return self._binder_names
+        if self.user_id and self.name:
+            self._compute_binder_status()
+            return getattr(self, "_binder_names", []) or []
+        return []
+
+    @binder_names.setter
+    def binder_names(self, val: list):
+        self._binder_names = list(val) if val else []
+
+    def _compute_binder_status(self):
+        """Fallback on-demand computation of binder status for this single card."""
+        try:
+            from card_utils import get_card_match_keys
+            match_keys = get_card_match_keys(self.name)
+            inv_cards = UserInventoryCard.query.filter_by(user_id=self.user_id).all()
+            total_qty = 0
+            binders = []
+            for c in inv_cards:
+                c_keys = get_card_match_keys(c.name)
+                if match_keys & c_keys:
+                    qty = max(1, int(c.quantity or 1))
+                    total_qty += qty
+                    if c.binder_name and c.binder_name.strip() and c.binder_name.strip() not in binders:
+                        binders.append(c.binder_name.strip())
+            self._in_binder = total_qty > 0
+            self._binder_count = total_qty
+            self._binder_names = sorted(binders)
+        except Exception:
+            self._in_binder = False
+            self._binder_count = 0
+            self._binder_names = []
+
     def to_dict(self):
         """Serializes watchlist item and its vendor prices into a dict."""
         return {
@@ -383,6 +448,9 @@ class WatchlistItem(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "is_any_version": self.is_any_version,
             "is_deal": self.is_deal,
+            "in_binder": self.in_binder,
+            "binder_count": self.binder_count,
+            "binder_names": self.binder_names,
             "lowest_price": self.lowest_in_stock_price,
             "savings_amount": self.savings_amount,
             "savings_percent": self.savings_percent,

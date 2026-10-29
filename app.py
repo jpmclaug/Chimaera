@@ -1458,12 +1458,58 @@ def create_app(test_config=None):
             mimetype="image/png",
         )
 
+    def enrich_watchlist_items_with_binder_status(watchlist_items, user_id):
+        """Batch enriches WatchlistItem models with physical collection binder ownership telemetry."""
+        if not watchlist_items or not user_id:
+            return watchlist_items
+
+        try:
+            inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
+            if not inv_cards:
+                for item in watchlist_items:
+                    item.in_binder = False
+                    item.binder_count = 0
+                    item.binder_names = []
+                return watchlist_items
+
+            owned_map: Dict[str, int] = defaultdict(int)
+            binder_names_map: Dict[str, set] = defaultdict(set)
+
+            for ic in inv_cards:
+                qty = max(1, int(ic.quantity or 1))
+                b_name = ic.binder_name.strip() if ic.binder_name else ""
+                for k in get_card_match_keys(ic.name):
+                    owned_map[k] += qty
+                    if b_name:
+                        binder_names_map[k].add(b_name)
+
+            for item in watchlist_items:
+                item_keys = get_card_match_keys(item.name)
+                count = max([owned_map.get(k, 0) for k in item_keys] or [0])
+                binders = set()
+                for k in item_keys:
+                    if k in binder_names_map:
+                        binders.update(binder_names_map[k])
+
+                item.in_binder = (count > 0)
+                item.binder_count = count
+                item.binder_names = sorted(list(binders))
+        except Exception as e:
+            logger.warning(f"Error enriching watchlist items with binder status: {e}")
+            for item in watchlist_items:
+                item.in_binder = False
+                item.binder_count = 0
+                item.binder_names = []
+
+        return watchlist_items
+
     @app.route("/")
     @login_required
     def index():
         """Wishlist Dashboard view scoped to the authenticated user."""
         user = get_current_user()
         items = WatchlistItem.query.filter_by(user_id=user.id).order_by(WatchlistItem.created_at.desc()).all()
+        enrich_watchlist_items_with_binder_status(items, user.id)
 
         # Calculate summary KPIs
         total_items = len(items)
@@ -1500,6 +1546,7 @@ def create_app(test_config=None):
         """Dedicated Active Deals view scoped to the authenticated user."""
         user = get_current_user()
         all_items = WatchlistItem.query.filter_by(user_id=user.id).order_by(WatchlistItem.created_at.desc()).all()
+        enrich_watchlist_items_with_binder_status(all_items, user.id)
         deal_items = [item for item in all_items if item.is_deal]
 
         total_savings = sum(item.savings_amount for item in deal_items)
@@ -2517,6 +2564,7 @@ def create_app(test_config=None):
             return jsonify({"error": "Card not found in your target registry."}), 404
 
         result = deal_engine.poll_card(item, notify=True)
+        enrich_watchlist_items_with_binder_status([item], user.id)
         log_activity("PRICE_REFRESH", details=f"Price refreshed for '{item.name}'", user=user)
         return jsonify({
             "message": f"Refreshed prices for {item.name}.",

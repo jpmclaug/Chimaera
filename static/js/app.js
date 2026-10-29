@@ -1474,6 +1474,27 @@ function updateCardInRegistryDom(card) {
         gridRow.dataset.cardFinish = safeFinish;
         gridRow.dataset.isDeal = card.is_deal ? "true" : "false";
         gridRow.dataset.mmStock = card.mm_in_stock ? "true" : "false";
+        if (card.in_binder !== undefined) {
+            gridRow.dataset.inBinder = card.in_binder ? "true" : "false";
+            gridRow.dataset.binderCount = card.binder_count || 0;
+        }
+
+        // Update binder badge
+        const gridBinderWrapper = document.getElementById(`card-binder-wrapper-${cid}`);
+        if (gridBinderWrapper && card.in_binder !== undefined) {
+            if (card.in_binder) {
+                const bNames = card.binder_names && card.binder_names.length ? `: ${card.binder_names.join(', ')}` : '';
+                const qtyLabel = card.binder_count === 1 ? 'copy' : 'copies';
+                gridBinderWrapper.innerHTML = `<a href="/inventory?q=${encodeURIComponent(card.name)}" 
+                    class="bg-[#10B981]/20 hover:bg-[#10B981]/35 text-[#10B981] hover:text-white border border-[#10B981]/50 text-[10px] px-2 py-0.5 font-mono uppercase font-bold tracking-wider transition flex items-center space-x-1"
+                    title="Owned in Collection / Binder${bNames} (${card.binder_count} ${qtyLabel}). Click to inspect in Binder.">
+                    <span>💼</span>
+                    <span>IN BINDER (${card.binder_count})</span>
+                </a>`;
+            } else {
+                gridBinderWrapper.innerHTML = '';
+            }
+        }
 
         // Update finish badge if present
         const finishBadge = gridRow.querySelector("[data-card-finish-badge]") || gridRow.querySelector(".font-mono.uppercase.font-semibold");
@@ -1589,6 +1610,27 @@ function updateCardInRegistryDom(card) {
         compactCard.dataset.tag = (card.tag || "").toLowerCase().trim();
         compactCard.dataset.cardFinish = safeFinish;
         compactCard.dataset.isDeal = card.is_deal ? "true" : "false";
+        if (card.in_binder !== undefined) {
+            compactCard.dataset.inBinder = card.in_binder ? "true" : "false";
+            compactCard.dataset.binderCount = card.binder_count || 0;
+        }
+
+        // Update binder badge
+        const compactBinderWrapper = document.getElementById(`compact-binder-wrapper-${cid}`);
+        if (compactBinderWrapper && card.in_binder !== undefined) {
+            if (card.in_binder) {
+                const bNames = card.binder_names && card.binder_names.length ? `: ${card.binder_names.join(', ')}` : '';
+                const qtyLabel = card.binder_count === 1 ? 'copy' : 'copies';
+                compactBinderWrapper.innerHTML = `<a href="/inventory?q=${encodeURIComponent(card.name)}" 
+                    class="text-[#10B981] hover:text-white bg-[#10B981]/20 hover:bg-[#10B981]/35 border border-[#10B981]/50 px-1.5 py-0.2 uppercase text-[10px] font-bold flex items-center space-x-0.5 transition"
+                    title="Owned in Collection / Binder${bNames} (${card.binder_count} ${qtyLabel}). Click to inspect in Binder.">
+                    <span>💼</span>
+                    <span>IN BINDER (${card.binder_count})</span>
+                </a>`;
+            } else {
+                compactBinderWrapper.innerHTML = '';
+            }
+        }
 
         if (card.is_deal) {
             compactCard.classList.add("is-deal");
@@ -1647,6 +1689,27 @@ function updateCardInRegistryDom(card) {
         swipeSlide.dataset.tag = (card.tag || "").toLowerCase().trim();
         swipeSlide.dataset.cardFinish = safeFinish;
         swipeSlide.dataset.isDeal = card.is_deal ? "true" : "false";
+        if (card.in_binder !== undefined) {
+            swipeSlide.dataset.inBinder = card.in_binder ? "true" : "false";
+            swipeSlide.dataset.binderCount = card.binder_count || 0;
+        }
+
+        // Update binder badge
+        const swipeBinderWrapper = document.getElementById(`swipe-binder-wrapper-${cid}`);
+        if (swipeBinderWrapper && card.in_binder !== undefined) {
+            if (card.in_binder) {
+                const bNames = card.binder_names && card.binder_names.length ? `: ${card.binder_names.join(', ')}` : '';
+                const qtyLabel = card.binder_count === 1 ? 'copy' : 'copies';
+                swipeBinderWrapper.innerHTML = `<a href="/inventory?q=${encodeURIComponent(card.name)}" 
+                    class="bg-[#10B981]/20 hover:bg-[#10B981]/35 text-[#10B981] hover:text-white border border-[#10B981]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold flex items-center space-x-1 transition"
+                    title="Owned in Collection / Binder${bNames} (${card.binder_count} ${qtyLabel}). Click to inspect in Binder.">
+                    <span>💼</span>
+                    <span>IN BINDER (${card.binder_count})</span>
+                </a>`;
+            } else {
+                swipeBinderWrapper.innerHTML = '';
+            }
+        }
 
         const swipeBox = document.getElementById(`swipe-card-box-${cid}`);
         if (swipeBox) {
@@ -2580,12 +2643,17 @@ function filterWatchlist() {
         const inStock = card.dataset.inStock === "true";
         const mmStock = card.dataset.mmStock === "true";
         const isAny = card.dataset.isAny === "true";
+        const inBinder = card.dataset.inBinder === "true";
 
         const matchesSearch = !searchVal || name.includes(searchVal) || set.includes(searchVal) || tag.includes(searchVal);
         let matchesDeal = true;
 
         if (dealFilter === "deals") {
             matchesDeal = isDeal;
+        } else if (dealFilter === "in_binder") {
+            matchesDeal = inBinder;
+        } else if (dealFilter === "not_in_binder") {
+            matchesDeal = !inBinder;
         } else if (dealFilter === "in_stock") {
             matchesDeal = inStock;
         } else if (dealFilter === "mm_in_stock") {

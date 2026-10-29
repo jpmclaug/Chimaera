@@ -98,6 +98,8 @@
                     class="w-full md:w-auto bg-[#10141D] border border-[#263245] px-2.5 py-1.5 sm:py-2 text-xs text-white focus:border-[#00CED1] uppercase font-mono font-medium truncate h-9">
                     <option value="all">ALL TARGETS</option>
                     <option value="deals">DEALS ONLY</option>
+                    <option value="in_binder">💼 IN BINDER ONLY</option>
+                    <option value="not_in_binder">NOT IN BINDER</option>
                     <option value="in_stock">IN STOCK ONLY</option>
                     <option value="mm_in_stock">MIGHTY MEEPLE IN STOCK</option>
                     <option value="any_version">ANY VERSION (GENERAL)</option>
@@ -238,6 +240,8 @@
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
             data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
             data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
+            data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
+            data-binder-count="{{ item.binder_count or 0 }}"
             data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
             data-target="{{ item.target_price if item.target_price is not none else 0 }}"
             data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
@@ -289,6 +293,18 @@
                             {% endif %}
                             <span data-card-finish-badge="true" class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
                             
+                            <!-- In Binder Indicator Badge -->
+                            <div id="card-binder-wrapper-{{ item.id }}" class="inline-flex items-center">
+                            {% if item.in_binder %}
+                            <a href="/inventory?q={{ item.name|urlencode }}" 
+                                class="bg-[#10B981]/20 hover:bg-[#10B981]/35 text-[#10B981] hover:text-white border border-[#10B981]/50 text-[10px] px-2 py-0.5 font-mono uppercase font-bold tracking-wider transition flex items-center space-x-1"
+                                title="Owned in Collection / Binder{% if item.binder_names %}: {{ item.binder_names|join(', ') }}{% endif %} ({{ item.binder_count }} {{ 'copy' if item.binder_count == 1 else 'copies' }}). Click to inspect in Binder.">
+                                <span>💼</span>
+                                <span>IN BINDER ({{ item.binder_count }})</span>
+                            </a>
+                            {% endif %}
+                            </div>
+
                             <!-- Tag / Deck Badge -->
                             <div id="card-tag-wrapper-{{ item.id }}" class="inline-flex items-center">
                             {% if item.tag %}
@@ -486,6 +502,8 @@
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
             data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
             data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
+            data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
+            data-binder-count="{{ item.binder_count or 0 }}"
             data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
             data-target="{{ item.target_price if item.target_price is not none else 0 }}"
             data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
@@ -538,6 +556,17 @@
                         <span class="text-[#C084FC] bg-[#9333EA]/20 border border-[#9333EA]/40 px-1.5 py-0.2 uppercase text-[10px]">🏷️ {{ item.tag }}</span>
                         {% endif %}
                         </span>
+                        <!-- In Binder Indicator Badge -->
+                        <div id="compact-binder-wrapper-{{ item.id }}" class="inline-flex items-center">
+                        {% if item.in_binder %}
+                        <a href="/inventory?q={{ item.name|urlencode }}"
+                            class="text-[#10B981] hover:text-white bg-[#10B981]/20 hover:bg-[#10B981]/35 border border-[#10B981]/50 px-1.5 py-0.2 uppercase text-[10px] font-bold flex items-center space-x-0.5 transition"
+                            title="Owned in Collection / Binder{% if item.binder_names %}: {{ item.binder_names|join(', ') }}{% endif %} ({{ item.binder_count }} {{ 'copy' if item.binder_count == 1 else 'copies' }}). Click to inspect in Binder.">
+                            <span>💼</span>
+                            <span>IN BINDER ({{ item.binder_count }})</span>
+                        </a>
+                        {% endif %}
+                        </div>
                         {% if item.mm_in_stock %}
                         <span class="text-[#00CED1] border border-[#00CED1]/50 bg-[#00CED1]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">MM In-Stock</span>
                         {% endif %}
@@ -623,6 +652,8 @@
                     data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
                     data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
                     data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
+                    data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
+                    data-binder-count="{{ item.binder_count or 0 }}"
                     data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
                     data-target="{{ item.target_price if item.target_price is not none else 0 }}"
                     data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
@@ -663,6 +694,17 @@
                                         <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold">ANY VERSION</span>
                                         {% endif %}
                                         <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase">{{ item.finish }}</span>
+                                        <!-- In Binder Indicator Badge -->
+                                        <div id="swipe-binder-wrapper-{{ item.id }}" class="inline-flex items-center">
+                                        {% if item.in_binder %}
+                                        <a href="/inventory?q={{ item.name|urlencode }}"
+                                            class="bg-[#10B981]/20 hover:bg-[#10B981]/35 text-[#10B981] hover:text-white border border-[#10B981]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold flex items-center space-x-1 transition"
+                                            title="Owned in Collection / Binder{% if item.binder_names %}: {{ item.binder_names|join(', ') }}{% endif %} ({{ item.binder_count }} {{ 'copy' if item.binder_count == 1 else 'copies' }}). Click to inspect in Binder.">
+                                            <span>💼</span>
+                                            <span>IN BINDER ({{ item.binder_count }})</span>
+                                        </a>
+                                        {% endif %}
+                                        </div>
                                         <span id="swipe-tag-wrapper-{{ item.id }}" class="inline-flex items-center">
                                         {% if item.tag %}
                                         <span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold">🏷️ {{ item.tag }}</span>
