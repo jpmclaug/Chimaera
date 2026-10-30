@@ -8,10 +8,17 @@ skills can query and interact with the Chimera PostgreSQL / SQLite database on G
 
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 from typing import Any
 
+from card_utils import (
+    card_names_match,
+    get_card_match_keys,
+    normalize_card_name,
+    strip_accents,
+)
 from models import (
     BestBuyItem,
     CardAddAnalysis,
@@ -50,6 +57,58 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "description": "Number of highest-value cards to include in the summary (default 15, max 50).",
                     "default": 15,
                 }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "check_inventory_cards",
+        "description": (
+            "Quickly checks whether a single card or multiple Magic: The Gathering cards are present in the user's "
+            "inventory collection. Accepts a list of card names, an array of card objects, a single card name, or a "
+            "raw decklist string. Returns which cards are owned, total quantities owned, foil/non-foil availability, "
+            "binder locations, USD market valuations, and which cards are missing from the collection."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cards": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of card names to check in inventory (e.g. ['Rhystic Study', 'Sol Ring', 'Cyclonic Rift']).",
+                },
+                "card_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alias for 'cards' - list of card names to check.",
+                },
+                "card_name": {
+                    "type": "string",
+                    "description": "A single card name to check (e.g. 'Rhystic Study').",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Decklist or multi-line text containing card names (e.g. '1 Sol Ring\\n2 Rhystic Study').",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional search string or comma-separated list of card names.",
+                },
+                "binder_name": {
+                    "type": "string",
+                    "description": "Optional binder/folder filter to restrict ownership verification to a specific binder.",
+                },
+                "include_details": {
+                    "type": "boolean",
+                    "description": "Whether to include full itemized printing records (set, condition, foil, binder, price) for each matched card. Defaults to true.",
+                    "default": True,
+                },
+                "match_mode": {
+                    "type": "string",
+                    "enum": ["smart", "exact"],
+                    "description": "Matching algorithm: 'smart' (default, handles accents, DFC split cards, and punctuation) or 'exact'.",
+                    "default": "smart",
+                },
             },
             "required": [],
         },
@@ -381,11 +440,329 @@ def _execute_get_inventory_summary(user: User, args: dict[str, Any]) -> dict[str
     }
 
 
-def _execute_search_inventory(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    limit = min(max(int(args.get("limit", 25) or 25), 1), 100)
+def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Extracts and standardizes requested card items from various MCP argument combinations:
+    - args["cards"]: list of strings, list of dicts, or comma/newline delimited string
+    - args["card_names"]: list of strings or comma/newline delimited string
+    - args["card_name"]: single string
+    - args["query"]: single string or comma/newline delimited string
+    - args["text"]: decklist or multi-line string
+    """
+    raw_candidates: list[Any] = []
+
+    # 1. 'cards' or 'card_names'
+    for key in ("cards", "card_names"):
+        val = args.get(key)
+        if val is not None:
+            if isinstance(val, list):
+                raw_candidates.extend(val)
+            elif isinstance(val, str) and val.strip():
+                raw_candidates.append(val)
+
+    # 2. 'card_name'
+    single_name = args.get("card_name")
+    if single_name and isinstance(single_name, str) and single_name.strip():
+        raw_candidates.append(single_name)
+
+    # 3. 'text' or 'query'
+    if not raw_candidates:
+        for key in ("text", "query"):
+            val = args.get(key)
+            if val and isinstance(val, str) and val.strip():
+                raw_candidates.append(val)
+
+    line_pattern = re.compile(
+        r"^(?:(\d+)[xX]?\s+)?([^\r\n()]+?)(?:\s+\(([A-Za-z0-9]+)\)\s*([A-Za-z0-9]+)?)?(?:\s+\*.*?\*)?$"
+    )
+
+    extracted_items: list[dict[str, Any]] = []
+
+    for item in raw_candidates:
+        if isinstance(item, dict):
+            name = (item.get("name") or item.get("card_name") or "").strip()
+            qty = int(item.get("quantity", 1) or 1)
+            if name:
+                extracted_items.append({
+                    "raw_query": name,
+                    "clean_name": normalize_card_name(name),
+                    "quantity": max(1, qty),
+                })
+        elif isinstance(item, str):
+            clean_str = item.strip()
+            if not clean_str:
+                continue
+
+            lines = [ln.strip() for ln in clean_str.splitlines() if ln.strip()]
+            if len(lines) > 1:
+                for line in lines:
+                    if line.startswith(("//", "#")) or line.lower() in ("deck", "commander", "mainboard", "sideboard"):
+                        continue
+                    m = line_pattern.match(line)
+                    if m:
+                        qty_str, cname, _, _ = m.groups()
+                        qty = int(qty_str) if qty_str else 1
+                        cleaned = normalize_card_name(cname)
+                        if cleaned and len(cleaned) >= 2:
+                            extracted_items.append({
+                                "raw_query": line,
+                                "clean_name": cleaned,
+                                "quantity": max(1, qty),
+                            })
+                    else:
+                        cleaned = normalize_card_name(line)
+                        if cleaned and len(cleaned) >= 2:
+                            extracted_items.append({
+                                "raw_query": line,
+                                "clean_name": cleaned,
+                                "quantity": 1,
+                            })
+            else:
+                single_line = lines[0]
+                # If only one candidate was provided and it has commas separating what look like cards
+                if len(raw_candidates) == 1 and "," in single_line:
+                    is_legendary_prefix = any(
+                        single_line.lower().startswith(p)
+                        for p in (
+                            "jace,", "teferi,", "chandra,", "urza,", "karn,",
+                            "liliana,", "nissa,", "nicol bolas,", "omnath,", "gisela,"
+                        )
+                    )
+                    comma_parts = [p.strip() for p in single_line.split(",") if p.strip()]
+                    if not is_legendary_prefix and len(comma_parts) > 1:
+                        for part in comma_parts:
+                            m = line_pattern.match(part)
+                            if m:
+                                qty_str, cname, _, _ = m.groups()
+                                qty = int(qty_str) if qty_str else 1
+                                cleaned = normalize_card_name(cname)
+                                if cleaned:
+                                    extracted_items.append({
+                                        "raw_query": part,
+                                        "clean_name": cleaned,
+                                        "quantity": max(1, qty),
+                                    })
+                            else:
+                                cleaned = normalize_card_name(part)
+                                if cleaned:
+                                    extracted_items.append({
+                                        "raw_query": part,
+                                        "clean_name": cleaned,
+                                        "quantity": 1,
+                                    })
+                        continue
+
+                m = line_pattern.match(single_line)
+                if m:
+                    qty_str, cname, _, _ = m.groups()
+                    qty = int(qty_str) if qty_str else 1
+                    cleaned = normalize_card_name(cname)
+                    if cleaned:
+                        extracted_items.append({
+                            "raw_query": single_line,
+                            "clean_name": cleaned,
+                            "quantity": max(1, qty),
+                        })
+                else:
+                    cleaned = normalize_card_name(single_line)
+                    if cleaned:
+                        extracted_items.append({
+                            "raw_query": single_line,
+                            "clean_name": cleaned,
+                            "quantity": 1,
+                        })
+
+    return extracted_items
+
+
+def _execute_check_inventory_cards(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """
+    Checks ownership and availability in the user's inventory for one or multiple cards.
+    Accepts single cards, lists of card names/objects, or decklist text.
+    """
+    extracted_items = _parse_card_input_list(args)
+    if not extracted_items:
+        return {
+            "total_queried": 0,
+            "found_count": 0,
+            "missing_count": 0,
+            "all_owned": False,
+            "total_owned_quantity": 0,
+            "total_found_value_usd": 0.0,
+            "owned_card_names": [],
+            "missing_card_names": [],
+            "found_cards": [],
+            "missing_cards": [],
+            "cards": [],
+            "message": "No cards provided to check. Pass 'cards': ['Card Name 1', 'Card Name 2'] or 'card_name': 'Card Name'.",
+        }
+
+    include_details = bool(args.get("include_details", True))
+    match_mode = (args.get("match_mode") or "smart").strip().lower()
+    binder_name = (args.get("binder_name") or "").strip()
+
     q = UserInventoryCard.query.filter_by(user_id=user.id)
+    if binder_name:
+        q = q.filter(UserInventoryCard.binder_name.ilike(f"%{binder_name}%"))
+    inventory_cards = q.all()
+
+    # Build fast in-memory lookup indices
+    exact_map: dict[str, list[UserInventoryCard]] = {}
+    key_map: dict[str, list[UserInventoryCard]] = {}
+
+    for card in inventory_cards:
+        c_name = card.name or ""
+        c_clean = normalize_card_name(c_name)
+        c_lower = c_clean.lower()
+        exact_map.setdefault(c_lower, []).append(card)
+
+        for k in get_card_match_keys(c_clean):
+            key_map.setdefault(k, []).append(card)
+
+        if card.raw_name:
+            r_clean = normalize_card_name(card.raw_name)
+            if r_clean and r_clean.lower() != c_lower:
+                exact_map.setdefault(r_clean.lower(), []).append(card)
+                for k in get_card_match_keys(r_clean):
+                    key_map.setdefault(k, []).append(card)
+
+    all_cards: list[dict[str, Any]] = []
+    found_cards: list[dict[str, Any]] = []
+    missing_cards: list[dict[str, Any]] = []
+    owned_names_set: set[str] = set()
+    missing_names: list[str] = []
+
+    total_owned_qty = 0
+    total_found_val = 0.0
+
+    for req in extracted_items:
+        clean_name = req["clean_name"]
+        clean_lower = clean_name.lower()
+        req_qty = req["quantity"]
+        raw_q = req["raw_query"]
+
+        matching_rows: list[UserInventoryCard] = []
+
+        # 1. Exact lowercase match
+        if clean_lower in exact_map:
+            matching_rows = exact_map[clean_lower]
+        # 2. Smart match via canonical keys (accents, DFC front face, mojibake)
+        elif match_mode != "exact":
+            query_keys = get_card_match_keys(clean_name)
+            for k in query_keys:
+                if k in key_map:
+                    matching_rows = key_map[k]
+                    break
+
+            # 3. Fallback: card_names_match loop
+            if not matching_rows:
+                for card in inventory_cards:
+                    if card_names_match(card.name, clean_name):
+                        matching_rows = [card]
+                        break
+
+        # Deduplicate rows by ID
+        unique_matches: list[UserInventoryCard] = []
+        seen_ids = set()
+        for r in matching_rows:
+            if r.id not in seen_ids:
+                seen_ids.add(r.id)
+                unique_matches.append(r)
+
+        in_inventory = len(unique_matches) > 0
+        total_qty = sum(int(c.quantity or 1) for c in unique_matches) if in_inventory else 0
+        has_foil = any(bool(c.foil and c.foil.lower() in ("foil", "etched")) for c in unique_matches)
+        has_nonfoil = any(not (c.foil and c.foil.lower() in ("foil", "etched")) for c in unique_matches)
+        binders = sorted(list({(c.binder_name or "Unassigned").strip() or "Unassigned" for c in unique_matches})) if in_inventory else []
+
+        card_total_val = 0.0
+        items_list = []
+        for c in unique_matches:
+            qty = int(c.quantity or 1)
+            is_foil = bool(c.foil and c.foil.lower() in ("foil", "etched"))
+            unit_price = (
+                c.price_usd_foil
+                if (is_foil and c.price_usd_foil is not None)
+                else (c.price_usd or 0.0)
+            )
+            line_val = round(unit_price * qty, 2)
+            card_total_val += line_val
+
+            if include_details:
+                items_list.append({
+                    "id": c.id,
+                    "name": c.name,
+                    "set_code": (c.set_code or "").upper(),
+                    "set_name": c.set_name or "",
+                    "collector_number": c.collector_number or "",
+                    "quantity": qty,
+                    "foil": c.foil or "normal",
+                    "condition": c.condition or "NM",
+                    "binder_name": (c.binder_name or "Unassigned").strip() or "Unassigned",
+                    "price_usd": c.price_usd,
+                    "price_usd_foil": c.price_usd_foil,
+                    "effective_price": round(unit_price, 2),
+                    "total_value_usd": line_val,
+                })
+
+        matched_name = unique_matches[0].name if in_inventory else None
+        has_sufficient = total_qty >= req_qty if in_inventory else False
+        missing_qty = max(0, req_qty - total_qty)
+
+        entry: dict[str, Any] = {
+            "query": raw_q,
+            "clean_name": clean_name,
+            "matched_name": matched_name,
+            "in_inventory": in_inventory,
+            "total_quantity": total_qty,
+            "requested_quantity": req_qty,
+            "has_sufficient_quantity": has_sufficient,
+            "missing_quantity": missing_qty,
+            "has_foil": has_foil,
+            "has_nonfoil": has_nonfoil,
+            "binders": binders,
+            "total_value_usd": round(card_total_val, 2),
+        }
+        if include_details:
+            entry["inventory_items"] = items_list
+
+        all_cards.append(entry)
+
+        if in_inventory:
+            found_cards.append(entry)
+            owned_names_set.add(matched_name or clean_name)
+            total_owned_qty += total_qty
+            total_found_val += card_total_val
+        else:
+            missing_cards.append(entry)
+            missing_names.append(raw_q)
+
+    return {
+        "total_queried": len(extracted_items),
+        "found_count": len(found_cards),
+        "missing_count": len(missing_cards),
+        "all_owned": len(missing_cards) == 0 and len(extracted_items) > 0,
+        "total_owned_quantity": total_owned_qty,
+        "total_found_value_usd": round(total_found_val, 2),
+        "owned_card_names": sorted(list(owned_names_set)),
+        "missing_card_names": missing_names,
+        "found_cards": found_cards,
+        "missing_cards": missing_cards,
+        "cards": all_cards,
+    }
+
+
+def _execute_search_inventory(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    # If caller passed multiple cards or a list, seamlessly route to check_inventory_cards
+    if args.get("cards") or args.get("card_names"):
+        return _execute_check_inventory_cards(user, args)
 
     query_str = (args.get("query") or args.get("card_name") or "").strip()
+    if "\n" in query_str:
+        return _execute_check_inventory_cards(user, args)
+
+    limit = min(max(int(args.get("limit", 25) or 25), 1), 100)
+    q = UserInventoryCard.query.filter_by(user_id=user.id)
     if query_str:
         q = q.filter(
             db.or_(
@@ -886,6 +1263,9 @@ def _execute_check_card_deck_fit(user: User, args: dict[str, Any]) -> dict[str, 
 
 TOOL_HANDLERS = {
     "get_inventory_summary": _execute_get_inventory_summary,
+    "check_inventory_cards": _execute_check_inventory_cards,
+    "check_cards_in_inventory": _execute_check_inventory_cards,
+    "batch_check_inventory": _execute_check_inventory_cards,
     "search_inventory": _execute_search_inventory,
     "get_watchlist": _execute_get_watchlist,
     "get_active_deals": _execute_get_active_deals,
@@ -989,7 +1369,8 @@ def handle_mcp_jsonrpc_message(
                 },
                 "instructions": (
                     "Chimera MTG Market Surveillance & Collection Intelligence MCP Server. "
-                    "Use these tools to search the user's Magic: The Gathering card inventory, "
+                    "Use these tools to quickly check single or batch card inventory ownership with check_inventory_cards, "
+                    "search card details with search_inventory, inspect collection totals with get_inventory_summary, "
                     "check watched single-card prices and active retail deals across TCGplayer, "
                     "Mighty Meeple, eBay, MicroCenter, and Best Buy, inspect Commander deck "
                     "analyses and upgrade recommendations, or add cards to the watchlist."

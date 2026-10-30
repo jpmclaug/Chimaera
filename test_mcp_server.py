@@ -228,9 +228,10 @@ class TestChimeraMcpServer(unittest.TestCase):
         )
         self.assertEqual(list_resp.status_code, 200)
         tools = list_resp.get_json()["result"]["tools"]
-        self.assertEqual(len(tools), 9)
+        self.assertEqual(len(tools), 10)
         tool_names = {t["name"] for t in tools}
         self.assertIn("get_inventory_summary", tool_names)
+        self.assertIn("check_inventory_cards", tool_names)
         self.assertIn("search_inventory", tool_names)
         self.assertIn("get_watchlist", tool_names)
         self.assertIn("get_active_deals", tool_names)
@@ -259,7 +260,7 @@ class TestChimeraMcpServer(unittest.TestCase):
             json={"jsonrpc": "2.0", "id": 10, "method": "tools/list"},
         )
         self.assertEqual(msg_resp.status_code, 200)
-        self.assertEqual(len(msg_resp.get_json()["result"]["tools"]), 9)
+        self.assertEqual(len(msg_resp.get_json()["result"]["tools"]), 10)
 
     def _call_tool(self, name: str, arguments: dict | None = None) -> dict:
         resp = self.client.post(
@@ -289,6 +290,102 @@ class TestChimeraMcpServer(unittest.TestCase):
         self.assertEqual(search_res["total_matching_entries"], 1)
         self.assertEqual(search_res["total_matching_quantity"], 2)
         self.assertEqual(search_res["cards"][0]["set_code"], "WOT")
+
+    def test_check_inventory_cards(self):
+        """Verifies check_inventory_cards tool with single cards, multi-card lists, decklists, aliases, and filters."""
+        # 1. Multi-card check with found and missing cards
+        batch_res = self._call_tool(
+            "check_inventory_cards",
+            {"cards": ["Rhystic Study", "Sol Ring", "Mana Crypt"]},
+        )
+        self.assertEqual(batch_res["total_queried"], 3)
+        self.assertEqual(batch_res["found_count"], 2)
+        self.assertEqual(batch_res["missing_count"], 1)
+        self.assertFalse(batch_res["all_owned"])
+        self.assertEqual(batch_res["total_owned_quantity"], 6)
+        self.assertIn("Rhystic Study", batch_res["owned_card_names"])
+        self.assertIn("Sol Ring", batch_res["owned_card_names"])
+        self.assertEqual(batch_res["missing_card_names"], ["Mana Crypt"])
+
+        # Check detail for found cards
+        rhystic_entry = next(c for c in batch_res["found_cards"] if c["matched_name"] == "Rhystic Study")
+        self.assertTrue(rhystic_entry["in_inventory"])
+        self.assertEqual(rhystic_entry["total_quantity"], 2)
+        self.assertTrue(rhystic_entry["has_foil"])
+        self.assertFalse(rhystic_entry["has_nonfoil"])
+        self.assertEqual(rhystic_entry["binders"], ["Staples Binder"])
+        self.assertEqual(len(rhystic_entry["inventory_items"]), 1)
+        self.assertEqual(rhystic_entry["inventory_items"][0]["set_code"], "WOT")
+        self.assertEqual(rhystic_entry["inventory_items"][0]["effective_price"], 65.0)
+
+        missing_entry = batch_res["missing_cards"][0]
+        self.assertEqual(missing_entry["query"], "Mana Crypt")
+        self.assertFalse(missing_entry["in_inventory"])
+        self.assertEqual(missing_entry["total_quantity"], 0)
+
+        # 2. Single card check via card_name
+        single_res = self._call_tool("check_inventory_cards", {"card_name": "Rhystic Study"})
+        self.assertEqual(single_res["total_queried"], 1)
+        self.assertEqual(single_res["found_count"], 1)
+        self.assertEqual(single_res["missing_count"], 0)
+        self.assertTrue(single_res["all_owned"])
+
+        # 3. Decklist text with quantities
+        decklist_res = self._call_tool(
+            "check_inventory_cards",
+            {"text": "1x Rhystic Study\n4 Sol Ring\n1 Black Lotus"},
+        )
+        self.assertEqual(decklist_res["total_queried"], 3)
+        self.assertEqual(decklist_res["found_count"], 2)
+        self.assertEqual(decklist_res["missing_count"], 1)
+        sol_entry = next(c for c in decklist_res["found_cards"] if c["matched_name"] == "Sol Ring")
+        self.assertEqual(sol_entry["requested_quantity"], 4)
+        self.assertEqual(sol_entry["total_quantity"], 4)
+        self.assertTrue(sol_entry["has_sufficient_quantity"])
+        self.assertEqual(sol_entry["missing_quantity"], 0)
+
+        # 4. Smart normalization: case-insensitive & accent support
+        norm_res = self._call_tool(
+            "check_inventory_cards",
+            {"cards": ["rhystic study", "SOL RING"]},
+        )
+        self.assertEqual(norm_res["found_count"], 2)
+        self.assertTrue(norm_res["all_owned"])
+
+        # 5. Compact mode (include_details=False)
+        compact_res = self._call_tool(
+            "check_inventory_cards",
+            {"cards": ["Sol Ring"], "include_details": False},
+        )
+        self.assertNotIn("inventory_items", compact_res["found_cards"][0])
+
+        # 6. Binder filtering
+        binder_res = self._call_tool(
+            "check_inventory_cards",
+            {"cards": ["Rhystic Study", "Sol Ring"], "binder_name": "Staples Binder"},
+        )
+        self.assertEqual(binder_res["found_count"], 1)
+        self.assertEqual(binder_res["missing_count"], 1)
+        self.assertEqual(binder_res["owned_card_names"], ["Rhystic Study"])
+        self.assertEqual(binder_res["missing_card_names"], ["Sol Ring"])
+
+        # 7. Aliases
+        alias_res1 = self._call_tool("check_cards_in_inventory", {"cards": ["Sol Ring"]})
+        self.assertEqual(alias_res1["found_count"], 1)
+
+        alias_res2 = self._call_tool("batch_check_inventory", {"cards": ["Sol Ring"]})
+        self.assertEqual(alias_res2["found_count"], 1)
+
+        # 8. search_inventory routing when 'cards' is passed
+        search_batch_res = self._call_tool("search_inventory", {"cards": ["Rhystic Study", "Mana Crypt"]})
+        self.assertEqual(search_batch_res["total_queried"], 2)
+        self.assertEqual(search_batch_res["found_count"], 1)
+        self.assertEqual(search_batch_res["missing_count"], 1)
+
+        # 9. Empty arguments handling
+        empty_res = self._call_tool("check_inventory_cards", {})
+        self.assertEqual(empty_res["total_queried"], 0)
+        self.assertEqual(empty_res["found_count"], 0)
 
     def test_watchlist_and_deals_tools(self):
         """Verifies get_watchlist, get_active_deals, and add_to_watchlist tools."""
