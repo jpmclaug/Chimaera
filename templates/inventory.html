@@ -483,13 +483,15 @@ async function triggerQuickGdriveSync() {
         btn.innerHTML = '<span class="inline-block animate-spin mr-1">⟳</span> Syncing Drive...';
     }
 
-    openUploadModal();
-    switchUploadTab('gdrive');
-    await submitUpload();
-
-    if (btn) {
-        btn.removeAttribute('disabled');
-        btn.innerHTML = origHtml;
+    try {
+        openUploadModal();
+        switchUploadTab('gdrive');
+        await submitUpload();
+    } finally {
+        if (btn) {
+            btn.removeAttribute('disabled');
+            btn.innerHTML = origHtml;
+        }
     }
 }
 
@@ -624,11 +626,35 @@ async function submitUpload() {
             });
         }
 
-        progressBar.style.width = "100%";
-        percentText.innerText = "100%";
-        statusText.innerText = "Processing complete!";
+        progressBar.style.width = "90%";
+        percentText.innerText = "90%";
+        statusText.innerText = "Finalizing collection database records...";
 
-        const data = await resp.json();
+        // Parse response safely - handle both JSON and potential HTML error pages
+        let data = null;
+        const contentType = resp.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+            try {
+                data = await resp.json();
+            } catch (jsonErr) {
+                data = null;
+            }
+        }
+
+        if (!data) {
+            const rawText = await resp.text();
+            let errorMsg = `Server returned HTTP ${resp.status}`;
+            if (rawText.includes("<title>") && rawText.includes("</title>")) {
+                const match = rawText.match(/<title>([^<]+)<\/title>/i);
+                if (match) errorMsg = match[1].trim();
+            } else if (rawText && !rawText.trim().startsWith("<")) {
+                errorMsg = rawText.trim().slice(0, 160);
+            }
+            closeUploadModal();
+            showToast(`Sync Failed: ${errorMsg}`, "error");
+            return;
+        }
+
         if (!resp.ok || data.error) {
             closeUploadModal();
             if (data.errors && data.errors.length > 0) {
@@ -638,6 +664,10 @@ async function submitUpload() {
             }
             return;
         }
+
+        progressBar.style.width = "100%";
+        percentText.innerText = "100%";
+        statusText.innerText = "Processing complete!";
 
         closeUploadModal();
         showToast(`Synced ${data.added_count + data.updated_count} cards into collection vault.`, "success");
@@ -653,7 +683,9 @@ async function submitUpload() {
         }
 
     } catch (err) {
+        closeUploadModal();
         showToast(`Ingestion error: ${err.message}`, "error");
+    } finally {
         btn.removeAttribute('disabled');
         progressContainer.classList.add('hidden');
     }
@@ -698,12 +730,16 @@ function deleteCard(cardId, cardName) {
         async () => {
             try {
                 const resp = await fetch(`/api/inventory/card/${cardId}`, { method: "DELETE" });
-                const data = await resp.json();
-                if (data.success) {
+                const contentType = resp.headers.get("content-type") || "";
+                let data = null;
+                if (contentType.includes("application/json")) {
+                    data = await resp.json();
+                }
+                if (data && data.success) {
                     showToast(`Removed '${cardName}' from collection.`, "success");
                     loadCardsPage(currentPage);
                 } else {
-                    showToast(data.error || "Failed to remove card.", "error");
+                    showToast((data && data.error) || `Failed to remove card (HTTP ${resp.status}).`, "error");
                 }
             } catch (err) {
                 showToast(`Error deleting card: ${err.message}`, "error");
@@ -720,12 +756,16 @@ function confirmClearInventory() {
         async () => {
             try {
                 const resp = await fetch("/api/inventory/clear", { method: "POST" });
-                const data = await resp.json();
-                if (data.success) {
+                const contentType = resp.headers.get("content-type") || "";
+                let data = null;
+                if (contentType.includes("application/json")) {
+                    data = await resp.json();
+                }
+                if (data && data.success) {
                     showToast("Collection vault purged.", "success");
                     setTimeout(() => window.location.reload(), 400);
                 } else {
-                    showToast(data.error || "Failed to clear collection.", "error");
+                    showToast((data && data.error) || `Failed to clear collection (HTTP ${resp.status}).`, "error");
                 }
             } catch (err) {
                 showToast(`Error clearing inventory: ${err.message}`, "error");

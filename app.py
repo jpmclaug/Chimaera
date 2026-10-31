@@ -913,6 +913,42 @@ def create_app(test_config=None):
         return response
 
     # ---------------------------------------------------------
+    # Safe API Error Handlers (Prevents raw HTML error pages on API endpoints)
+    # ---------------------------------------------------------
+    @app.errorhandler(413)
+    def handle_request_entity_too_large(e):
+        if request.path.startswith("/api/") or request.is_json:
+            return jsonify({"error": "The uploaded collection file is too large. Maximum allowed size is 32MB."}), 413
+        return "<h1>413 Request Entity Too Large</h1>", 413
+
+    @app.errorhandler(500)
+    def handle_internal_server_error(e):
+        logger.error(f"Internal server error on {request.path}: {e}", exc_info=True)
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        if request.path.startswith("/api/") or request.is_json:
+            return jsonify({"error": "Internal server error occurred while processing request."}), 500
+        return e
+
+    @app.errorhandler(Exception)
+    def handle_unhandled_exception(e):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            if request.path.startswith("/api/") or request.is_json:
+                return jsonify({"error": e.description or str(e)}), e.code
+            return e
+        logger.error(f"Unhandled exception on {request.path}: {e}", exc_info=True)
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        if request.path.startswith("/api/") or request.is_json:
+            return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
+        raise e
+
+    # ---------------------------------------------------------
     # In-Process Background Scheduler (Optional / Monolithic Mode)
     # ---------------------------------------------------------
     enable_inprocess_sched = (
@@ -5032,17 +5068,28 @@ def create_app(test_config=None):
                 "total_rows": parsed.get("total_rows", 0),
             }), 400
 
-        import_result = inventory_manager.import_inventory(
-            user_id=user.id,
-            parsed_cards=valid_cards,
-            mode=mode,
-        )
+        try:
+            import_result = inventory_manager.import_inventory(
+                user_id=user.id,
+                parsed_cards=valid_cards,
+                mode=mode,
+            )
+        except Exception as e:
+            logger.error(f"Error importing collection cards for user {user.id}: {e}", exc_info=True)
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return jsonify({"error": f"Failed to persist collection into database: {str(e)}", "errors": []}), 500
 
-        log_activity(
-            "INVENTORY_IMPORT",
-            details=f"Imported {import_result['added_count'] + import_result['updated_count']} cards ({mode} mode) with {len(errors)} row errors",
-            user=user,
-        )
+        try:
+            log_activity(
+                "INVENTORY_IMPORT",
+                details=f"Imported {import_result['added_count'] + import_result['updated_count']} cards ({mode} mode) with {len(errors)} row errors",
+                user=user,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record inventory import activity log: {e}")
 
         return jsonify({
             "success": True,
@@ -5100,17 +5147,28 @@ def create_app(test_config=None):
                 "total_rows": parsed.get("total_rows", 0),
             }), 400
 
-        import_result = inventory_manager.import_inventory(
-            user_id=user.id,
-            parsed_cards=valid_cards,
-            mode=mode,
-        )
+        try:
+            import_result = inventory_manager.import_inventory(
+                user_id=user.id,
+                parsed_cards=valid_cards,
+                mode=mode,
+            )
+        except Exception as e:
+            logger.error(f"Error importing collection cards from Google Drive for user {user.id}: {e}", exc_info=True)
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            return jsonify({"error": f"Failed to persist collection into database: {str(e)}", "errors": []}), 500
 
-        log_activity(
-            "INVENTORY_GDRIVE_SYNC",
-            details=f"Synced {import_result['added_count'] + import_result['updated_count']} cards from Google Drive ({mode} mode) with {len(errors)} row errors",
-            user=user,
-        )
+        try:
+            log_activity(
+                "INVENTORY_GDRIVE_SYNC",
+                details=f"Synced {import_result['added_count'] + import_result['updated_count']} cards from Google Drive ({mode} mode) with {len(errors)} row errors",
+                user=user,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record inventory gdrive sync activity log: {e}")
 
         return jsonify({
             "success": True,

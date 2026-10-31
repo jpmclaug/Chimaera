@@ -3897,7 +3897,26 @@ async function submitBulkBuylist() {
             }),
         });
 
-        const data = await res.json();
+        let data = null;
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+            try {
+                data = await res.json();
+            } catch (jsonErr) {
+                data = null;
+            }
+        }
+        if (!data) {
+            const rawText = await res.text();
+            let errText = `Server returned HTTP ${res.status}`;
+            if (rawText.includes("<title>") && rawText.includes("</title>")) {
+                const match = rawText.match(/<title>([^<]+)<\/title>/i);
+                if (match) errText = match[1].trim();
+            }
+            showToast(`Buylist valuation failed: ${errText}`, "error");
+            return;
+        }
+
         if (res.ok && data.quotes) {
             bulkBuylistQuotes = data.quotes;
             bulkBuylistSummary = data.summary;

@@ -113,102 +113,21 @@ class InventoryManager:
         added_count = 0
         updated_count = 0
 
-        if mode == "replace":
-            db.session.execute(db.delete(UserInventoryCard).where(UserInventoryCard.user_id == user_id))
-            db.session.flush()
+        try:
+            if mode == "replace":
+                db.session.execute(db.delete(UserInventoryCard).where(UserInventoryCard.user_id == user_id))
+                db.session.flush()
 
-            records_to_insert = []
-            for item in parsed_cards:
-                name = item["name"]
-                name_l = name.lower()
-                set_code = item.get("set_code", "").upper()
-                col_num = item.get("collector_number", "")
-                foil = item.get("foil", "normal").lower()
-                qty = max(1, int(item.get("quantity", 1)))
+                records_to_insert = []
+                for item in parsed_cards:
+                    name = item["name"]
+                    name_l = name.lower()
+                    set_code = item.get("set_code", "").upper()
+                    col_num = item.get("collector_number", "")
+                    foil = item.get("foil", "normal").lower()
+                    qty = max(1, int(item.get("quantity", 1)))
 
-                # Resolve metadata
-                meta = scryfall_map.get(name_l) or cached_meta.get(name_l, {})
-                if not meta and " // " in name:
-                    front = name.split(" // ")[0].lower()
-                    meta = scryfall_map.get(front) or cached_meta.get(front, {})
-
-                prices = meta.get("prices", {}) if isinstance(meta, dict) and "prices" in meta else {}
-                price_usd = meta.get("price_usd") if isinstance(meta, dict) else None
-                price_usd_foil = meta.get("price_usd_foil") if isinstance(meta, dict) else None
-                if price_usd is None and prices.get("usd"):
-                    try:
-                        price_usd = float(prices["usd"])
-                    except Exception:
-                        pass
-                if price_usd_foil is None and prices.get("usd_foil"):
-                    try:
-                        price_usd_foil = float(prices["usd_foil"])
-                    except Exception:
-                        pass
-                if price_usd is None and item.get("purchase_price") is not None:
-                    price_usd = item["purchase_price"]
-
-                cid = meta.get("color_identity") if isinstance(meta, dict) else None
-                cid_str = ",".join(cid) if isinstance(cid, list) else (cid if isinstance(cid, str) else None)
-                cmc_val = meta.get("cmc") if isinstance(meta, dict) else None
-
-                records_to_insert.append({
-                    "user_id": user_id,
-                    "name": name,
-                    "raw_name": item.get("raw_name") or name,
-                    "set_code": set_code,
-                    "set_name": item.get("set_name") or (meta.get("set_name", "") if isinstance(meta, dict) else ""),
-                    "collector_number": col_num,
-                    "scryfall_id": item.get("scryfall_id") or (meta.get("id") if isinstance(meta, dict) else None),
-                    "quantity": qty,
-                    "foil": foil,
-                    "condition": item.get("condition") or "Near Mint",
-                    "language": item.get("language") or "en",
-                    "purchase_price": item.get("purchase_price"),
-                    "binder_name": item.get("binder_name") or "",
-                    "rarity": item.get("rarity") or (meta.get("rarity", "") if isinstance(meta, dict) else ""),
-                    "mana_cost": meta.get("mana_cost") if isinstance(meta, dict) else None,
-                    "cmc": float(cmc_val) if cmc_val is not None else 0.0,
-                    "type_line": meta.get("type_line") if isinstance(meta, dict) else None,
-                    "oracle_text": meta.get("oracle_text") if isinstance(meta, dict) else None,
-                    "color_identity": cid_str,
-                    "image_uri": (meta.get("image_uri") or meta.get("small_image_uri")) if isinstance(meta, dict) else None,
-                    "price_usd": price_usd,
-                    "price_usd_foil": price_usd_foil,
-                    "created_at": now_dt,
-                    "updated_at": now_dt,
-                })
-
-            # Fast bulk insert in batches of 1000
-            for i in range(0, len(records_to_insert), 1000):
-                chunk = records_to_insert[i:i + 1000]
-                db.session.bulk_insert_mappings(UserInventoryCard, chunk)
-            db.session.commit()
-            added_count = len(records_to_insert)
-
-        else:
-            # Mode == merge
-            existing_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
-            existing_map = {
-                self._build_card_key(c.name, c.set_code, c.collector_number, c.foil): c
-                for c in existing_cards
-            }
-            to_insert = []
-            for item in parsed_cards:
-                name = item["name"]
-                name_l = name.lower()
-                set_code = item.get("set_code", "").upper()
-                col_num = item.get("collector_number", "")
-                foil = item.get("foil", "normal").lower()
-                qty = max(1, int(item.get("quantity", 1)))
-                key = self._build_card_key(name, set_code, col_num, foil)
-
-                if key in existing_map:
-                    existing = existing_map[key]
-                    existing.quantity += qty
-                    existing.updated_at = now_dt
-                    updated_count += 1
-                else:
+                    # Resolve metadata
                     meta = scryfall_map.get(name_l) or cached_meta.get(name_l, {})
                     if not meta and " // " in name:
                         front = name.split(" // ")[0].lower()
@@ -234,7 +153,7 @@ class InventoryManager:
                     cid_str = ",".join(cid) if isinstance(cid, list) else (cid if isinstance(cid, str) else None)
                     cmc_val = meta.get("cmc") if isinstance(meta, dict) else None
 
-                    to_insert.append({
+                    records_to_insert.append({
                         "user_id": user_id,
                         "name": name,
                         "raw_name": item.get("raw_name") or name,
@@ -260,13 +179,102 @@ class InventoryManager:
                         "created_at": now_dt,
                         "updated_at": now_dt,
                     })
-                    added_count += 1
 
-            if to_insert:
-                for i in range(0, len(to_insert), 1000):
-                    chunk = to_insert[i:i + 1000]
+                # Fast bulk insert in batches of 1000
+                for i in range(0, len(records_to_insert), 1000):
+                    chunk = records_to_insert[i:i + 1000]
                     db.session.bulk_insert_mappings(UserInventoryCard, chunk)
-            db.session.commit()
+                db.session.commit()
+                added_count = len(records_to_insert)
+
+            else:
+                # Mode == merge
+                existing_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
+                existing_map = {
+                    self._build_card_key(c.name, c.set_code, c.collector_number, c.foil): c
+                    for c in existing_cards
+                }
+                to_insert = []
+                for item in parsed_cards:
+                    name = item["name"]
+                    name_l = name.lower()
+                    set_code = item.get("set_code", "").upper()
+                    col_num = item.get("collector_number", "")
+                    foil = item.get("foil", "normal").lower()
+                    qty = max(1, int(item.get("quantity", 1)))
+                    key = self._build_card_key(name, set_code, col_num, foil)
+
+                    if key in existing_map:
+                        existing = existing_map[key]
+                        existing.quantity += qty
+                        existing.updated_at = now_dt
+                        updated_count += 1
+                    else:
+                        meta = scryfall_map.get(name_l) or cached_meta.get(name_l, {})
+                        if not meta and " // " in name:
+                            front = name.split(" // ")[0].lower()
+                            meta = scryfall_map.get(front) or cached_meta.get(front, {})
+
+                        prices = meta.get("prices", {}) if isinstance(meta, dict) and "prices" in meta else {}
+                        price_usd = meta.get("price_usd") if isinstance(meta, dict) else None
+                        price_usd_foil = meta.get("price_usd_foil") if isinstance(meta, dict) else None
+                        if price_usd is None and prices.get("usd"):
+                            try:
+                                price_usd = float(prices["usd"])
+                            except Exception:
+                                pass
+                        if price_usd_foil is None and prices.get("usd_foil"):
+                            try:
+                                price_usd_foil = float(prices["usd_foil"])
+                            except Exception:
+                                pass
+                        if price_usd is None and item.get("purchase_price") is not None:
+                            price_usd = item["purchase_price"]
+
+                        cid = meta.get("color_identity") if isinstance(meta, dict) else None
+                        cid_str = ",".join(cid) if isinstance(cid, list) else (cid if isinstance(cid, str) else None)
+                        cmc_val = meta.get("cmc") if isinstance(meta, dict) else None
+
+                        to_insert.append({
+                            "user_id": user_id,
+                            "name": name,
+                            "raw_name": item.get("raw_name") or name,
+                            "set_code": set_code,
+                            "set_name": item.get("set_name") or (meta.get("set_name", "") if isinstance(meta, dict) else ""),
+                            "collector_number": col_num,
+                            "scryfall_id": item.get("scryfall_id") or (meta.get("id") if isinstance(meta, dict) else None),
+                            "quantity": qty,
+                            "foil": foil,
+                            "condition": item.get("condition") or "Near Mint",
+                            "language": item.get("language") or "en",
+                            "purchase_price": item.get("purchase_price"),
+                            "binder_name": item.get("binder_name") or "",
+                            "rarity": item.get("rarity") or (meta.get("rarity", "") if isinstance(meta, dict) else ""),
+                            "mana_cost": meta.get("mana_cost") if isinstance(meta, dict) else None,
+                            "cmc": float(cmc_val) if cmc_val is not None else 0.0,
+                            "type_line": meta.get("type_line") if isinstance(meta, dict) else None,
+                            "oracle_text": meta.get("oracle_text") if isinstance(meta, dict) else None,
+                            "color_identity": cid_str,
+                            "image_uri": (meta.get("image_uri") or meta.get("small_image_uri")) if isinstance(meta, dict) else None,
+                            "price_usd": price_usd,
+                            "price_usd_foil": price_usd_foil,
+                            "created_at": now_dt,
+                            "updated_at": now_dt,
+                        })
+                        added_count += 1
+
+                if to_insert:
+                    for i in range(0, len(to_insert), 1000):
+                        chunk = to_insert[i:i + 1000]
+                        db.session.bulk_insert_mappings(UserInventoryCard, chunk)
+                db.session.commit()
+        except Exception as db_err:
+            logger.error(f"Database error during inventory import for user {user_id}: {db_err}", exc_info=True)
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            raise
 
         # 4. Trigger asynchronous background enrichment for remaining cards lacking images/metadata
         if len(missing_names) > 75:

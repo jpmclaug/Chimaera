@@ -150,8 +150,14 @@ class ManaBoxInventoryParser:
                         resp_text = resp.content.decode("utf-8-sig", errors="replace").strip()
 
                         # Verify if this is an HTML page (access denied, private file, or login required)
-                        if resp_text.startswith("<!DOCTYPE") or resp_text.startswith("<html") or "<title>Google Drive - Access Denied" in resp_text or "accounts.google.com" in resp_text:
-                            last_err = "Google Drive access denied. Please ensure your file's sharing permission is set to 'Anyone with the link can view'."
+                        if (
+                            resp_text.startswith("<!DOCTYPE")
+                            or resp_text.startswith("<html")
+                            or resp_text.startswith("<")
+                            or "<title>Google Drive - Access Denied" in resp_text
+                            or "accounts.google.com" in resp_text
+                        ):
+                            last_err = "Google Drive returned an HTML page instead of a CSV. Please ensure your file's sharing permission is set to 'Anyone with the link can view'."
                             continue
 
                         if resp_text and ("\n" in resp_text or "," in resp_text):
@@ -162,7 +168,7 @@ class ManaBoxInventoryParser:
 
             if not content_str:
                 if last_err:
-                    raise InventoryParseError(f"Failed to download file from Google Drive: {last_err}")
+                    raise InventoryParseError(f"Failed to retrieve CSV from Google Drive: {last_err}")
                 raise InventoryParseError(
                     "Could not retrieve CSV from Google Drive. Please verify the link and ensure sharing is set to 'Anyone with the link can view'."
                 )
@@ -172,8 +178,8 @@ class ManaBoxInventoryParser:
                 if resp.status_code != 200:
                     raise InventoryParseError(f"Download failed with HTTP {resp.status_code}.")
                 resp_text = resp.content.decode("utf-8-sig", errors="replace").strip()
-                if resp_text.startswith("<!DOCTYPE") or resp_text.startswith("<html"):
-                    raise InventoryParseError("The provided URL returned a webpage instead of raw CSV file content.")
+                if resp_text.startswith("<") or "<html" in resp_text.lower() or "<!doctype" in resp_text.lower():
+                    raise InventoryParseError("The provided URL returned a webpage (HTML/XML) instead of raw CSV file content.")
                 content_str = resp_text
             except Exception as e:
                 raise InventoryParseError(f"Failed to download file from URL: {str(e)}")
@@ -216,12 +222,32 @@ class ManaBoxInventoryParser:
         if not csv_content or not csv_content.strip():
             raise InventoryParseError("The uploaded CSV file is empty.")
 
+        clean_content = csv_content.strip()
+        first_100 = clean_content[:150].lstrip().lower()
+        if first_100.startswith("<") or "<html" in first_100 or "<!doctype" in first_100:
+            if "<html" in first_100 or "<!doctype" in first_100:
+                raise InventoryParseError(
+                    "The file or link provided contains an HTML webpage instead of a ManaBox CSV export. "
+                    "If using Google Drive, make sure the link sharing setting is set to 'Anyone with the link can view' "
+                    "and that you are linking directly to the CSV file."
+                )
+            elif first_100.startswith("<?xml") or "<deck" in first_100 or "<cockatrice_deck" in first_100:
+                raise InventoryParseError(
+                    "The file provided appears to be an XML deck/collection file (e.g. MTGO .dek or Cockatrice .cod) "
+                    "rather than a ManaBox CSV. Please export your ManaBox collection as a CSV file and upload that."
+                )
+            else:
+                raise InventoryParseError(
+                    "The uploaded file starts with '<' and appears to be XML or HTML markup rather than a CSV spreadsheet. "
+                    "Please export your collection from ManaBox as a standard .CSV file."
+                )
+
         # Split content to check line count and preserve raw lines for snippets
-        raw_lines = csv_content.splitlines()
+        raw_lines = clean_content.splitlines()
         if not raw_lines:
             raise InventoryParseError("No readable content in CSV.")
 
-        f = io.StringIO(csv_content)
+        f = io.StringIO(clean_content)
         try:
             reader = csv.reader(f)
             header_row = next(reader, None)
