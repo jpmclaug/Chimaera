@@ -38,6 +38,7 @@ instance/
 *.db
 *.sqlite
 *.sqlite3
+check_db.py
 
 # Runtime process PID
 .chimaera.pid

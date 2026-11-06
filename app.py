@@ -69,6 +69,18 @@ from secret_lair_advisor import (
 )
 from card_add_evaluator import CardAddEvaluator
 from tcgplayer_parser import TCGPlayerPurchaseParser
+from timewalked_analyzer import (
+    ArchidektClient as TimewalkedArchidektClient,
+    BRACKET_NAMES as TIMEWALKED_BRACKET_NAMES,
+    DeckClassifier as TimewalkedDeckClassifier,
+    EdhrecClient as TimewalkedEdhrecClient,
+    GAME_CHANGERS as TIMEWALKED_GAME_CHANGERS,
+    HttpJsonClient as TimewalkedHttpJsonClient,
+    SAMPLE_DECKS as TIMEWALKED_SAMPLE_DECKS,
+    STRONG_STAPLES as TIMEWALKED_STRONG_STAPLES,
+    format_analysis_report as format_timewalked_report,
+    parse_decklist_text as parse_timewalked_decklist,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -4750,6 +4762,298 @@ def create_app(test_config=None):
                 return jsonify({"error": str(e)}), 500
 
         return jsonify(entry.to_dict())
+
+    # ----------------------------------------------------------------------
+    # Timewalked Commander Bracket & "Feels Like" Deck Analyzer Endpoints
+    # ----------------------------------------------------------------------
+
+    def _extract_vault_deck_for_timewalked(entry: DeckAnalysis) -> tuple[str, list[str], dict[str, int], list[dict[str, Any]]]:
+        """Extracts (deck_name, commanders, mainboard_counts, pre_resolved_cards) from a DeckAnalysis record."""
+        d_name = entry.deck_name or "Commander Deck"
+        cmdrs = [c.strip() for c in (entry.commander_name or "").split(",") if c.strip()]
+        cmdrs_lower = {c.lower() for c in cmdrs}
+        parsed_cards = entry.get_parsed_cards() or []
+        mainboard: dict[str, int] = {}
+
+        if parsed_cards:
+            for c in parsed_cards:
+                c_name = (c.get("name") or "").strip()
+                if not c_name:
+                    continue
+                sec = (c.get("section") or "mainboard").lower()
+                if sec in ("sideboard", "maybeboard", "considering"):
+                    continue
+                qty = max(1, int(c.get("quantity", 1) or 1))
+                if sec == "commander" or c_name.lower() in cmdrs_lower:
+                    if c_name not in cmdrs and c_name.lower() not in cmdrs_lower:
+                        cmdrs.append(c_name)
+                        cmdrs_lower.add(c_name.lower())
+                else:
+                    mainboard[c_name] = mainboard.get(c_name, 0) + qty
+        elif entry.raw_decklist:
+            parsed_cmdrs, mainboard = parse_timewalked_decklist(entry.raw_decklist)
+            if not cmdrs and parsed_cmdrs:
+                cmdrs = parsed_cmdrs
+
+        return d_name, cmdrs, mainboard, parsed_cards
+
+    @app.route("/timewalked")
+    @login_required
+    def timewalked_page():
+        """Timewalked Commander Bracket & 'Feels Like' Deck Analyzer Hub."""
+        user = get_current_user()
+        recent_decks = []
+        if user:
+            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(
+                db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None)
+            )
+            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+
+        deck_dicts, _ = _compute_fleet_stats(recent_decks)
+        initial_deck_id = request.args.get("deck_id", type=int)
+
+        log_activity("PAGE_VIEW", details="Accessed Timewalked Bracket Analyzer", user=user)
+
+        return render_template(
+            "timewalked.html",
+            decks=deck_dicts,
+            sample_decks=TIMEWALKED_SAMPLE_DECKS,
+            bracket_names=TIMEWALKED_BRACKET_NAMES,
+            initial_deck_id=initial_deck_id,
+            active_tab="timewalked",
+        )
+
+    @app.route("/api/timewalked/analyze", methods=["POST"])
+    @login_required
+    def api_timewalked_analyze():
+        """Evaluates a Commander deck into 'On Paper' Bracket (1-5) and 'Feels Like' Score (1.0-5.0) with itemized receipts."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+
+        mode = (data.get("mode") or "text_or_url").lower().strip()
+        offline = bool(data.get("offline", False))
+        excluded_raw = data.get("excluded_cards") or []
+        excluded_cards = [str(c).strip() for c in excluded_raw if c and str(c).strip()]
+
+        classifier = TimewalkedDeckClassifier(offline=offline)
+        deck_name = (data.get("deck_name") or "").strip()
+        commanders: list[str] = []
+        mainboard: dict[str, int] = {}
+        pre_resolved_cards: list[dict[str, Any]] = []
+        edhrec_profile: dict[str, Any] | None = None
+
+        try:
+            if mode == "demo":
+                demo_idx = int(data.get("demo_index", 0) or 0)
+                if demo_idx < 0 or demo_idx >= len(TIMEWALKED_SAMPLE_DECKS):
+                    demo_idx = 0
+                sample = TIMEWALKED_SAMPLE_DECKS[demo_idx]
+                _, mainboard = parse_timewalked_decklist(sample["list"])
+                commanders = [sample["commander"]]
+                if not deck_name:
+                    deck_name = sample["name"]
+
+            elif mode == "vault_deck":
+                deck_id = data.get("deck_id") or data.get("source")
+                if not deck_id or not str(deck_id).isdigit():
+                    return jsonify({"error": "Valid deck_id is required for vault_deck mode."}), 400
+                entry = db.session.get(DeckAnalysis, int(deck_id))
+                if not entry:
+                    return jsonify({"error": "Saved Commander deck not found."}), 404
+                if not user.is_admin and entry.user_id and entry.user_id != user.id:
+                    return jsonify({"error": "Access denied."}), 403
+                v_name, commanders, mainboard, pre_resolved_cards = _extract_vault_deck_for_timewalked(entry)
+                if not deck_name:
+                    deck_name = v_name
+
+            elif mode == "edhrec_commander":
+                cmdr_query = (data.get("commander_name") or data.get("source") or "").strip()
+                if not cmdr_query:
+                    return jsonify({"error": "Please provide a Commander name to profile on EDHREC."}), 400
+                try:
+                    edhrec_client = TimewalkedEdhrecClient(TimewalkedHttpJsonClient(offline=offline))
+                    edhrec_profile = edhrec_client.get_commander_profile(cmdr_query)
+                    commanders = [edhrec_profile["commander"]]
+                    mainboard = edhrec_profile["average_deck_mainboard"]
+                    if not deck_name:
+                        deck_name = f"EDHREC Average Deck: {edhrec_profile['commander']}"
+                except Exception as edh_err:
+                    logger.warning(f"EDHREC profile lookup failed for '{cmdr_query}': {edh_err}")
+                    return jsonify({
+                        "error": f"Could not fetch EDHREC average deck for '{cmdr_query}'. Verify the commander name is spelled accurately ({edh_err})."
+                    }), 400
+
+            else:
+                # mode == "text_or_url"
+                source = (data.get("source") or data.get("raw_text") or "").strip()
+                if not source:
+                    return jsonify({"error": "Please paste a Commander decklist or deck URL to analyze."}), 400
+
+                is_archidekt = "archidekt.com" in source.lower() or source.isdigit()
+                is_url = source.lower().startswith("http://") or source.lower().startswith("https://")
+
+                if is_archidekt and not offline:
+                    try:
+                        arch = TimewalkedArchidektClient(TimewalkedHttpJsonClient(offline=offline))
+                        fetched_name, commanders, mainboard = arch.fetch_deck(source)
+                        if not deck_name:
+                            deck_name = fetched_name
+                    except Exception:
+                        parsed = DeckParser.parse(source)
+                        if not deck_name:
+                            deck_name = parsed.get("deck_name") or "Imported Commander Deck"
+                        commanders = parsed.get("commander") or []
+                        for c in parsed.get("cards", []):
+                            if c.get("section") == "commander":
+                                if c["name"] not in commanders:
+                                    commanders.append(c["name"])
+                            elif c.get("section", "mainboard") == "mainboard":
+                                mainboard[c["name"]] = mainboard.get(c["name"], 0) + int(c.get("quantity", 1) or 1)
+                elif is_url:
+                    parsed = DeckParser.parse(source)
+                    if not deck_name:
+                        deck_name = parsed.get("deck_name") or "Imported Commander Deck"
+                    commanders = parsed.get("commander") or []
+                    for c in parsed.get("cards", []):
+                        if c.get("section") == "commander":
+                            if c["name"] not in commanders:
+                                commanders.append(c["name"])
+                        elif c.get("section", "mainboard") == "mainboard":
+                            mainboard[c["name"]] = mainboard.get(c["name"], 0) + int(c.get("quantity", 1) or 1)
+                else:
+                    commanders, mainboard = parse_timewalked_decklist(source)
+                    if not deck_name:
+                        deck_name = "Custom Commander Deck"
+
+            # Apply explicit commander override if supplied by user
+            cmdr_override = data.get("commanders") or data.get("commander")
+            if cmdr_override:
+                if isinstance(cmdr_override, str):
+                    override_list = [c.strip() for c in re.split(r"[,;\n]+", cmdr_override) if c.strip()]
+                elif isinstance(cmdr_override, list):
+                    override_list = [str(c).strip() for c in cmdr_override if c and str(c).strip()]
+                else:
+                    override_list = []
+                if override_list:
+                    commanders = override_list
+                    # Remove overridden commander from mainboard if duplicated
+                    cmdr_low = {c.lower() for c in commanders}
+                    mainboard = {k: v for k, v in mainboard.items() if k.lower() not in cmdr_low}
+
+            if not mainboard and not commanders:
+                return jsonify({"error": "No valid Magic: The Gathering cards were found in the input."}), 400
+
+            if not deck_name:
+                deck_name = f"{' // '.join(commanders)} Commander" if commanders else "Untitled Commander Deck"
+
+            baseline_res = classifier.classify(
+                commanders=commanders,
+                mainboard=mainboard,
+                deck_name=deck_name,
+                pre_resolved_cards=pre_resolved_cards,
+            )
+
+            if excluded_cards:
+                excl_lower = {c.lower() for c in excluded_cards}
+                filtered_main = {k: v for k, v in mainboard.items() if k.lower() not in excl_lower}
+                filtered_cmdrs = [c for c in commanders if c.lower() not in excl_lower] or commanders
+                active_res = classifier.classify(
+                    commanders=filtered_cmdrs,
+                    mainboard=filtered_main,
+                    deck_name=f"{deck_name} (What-If Tuned)",
+                    pre_resolved_cards=pre_resolved_cards,
+                )
+                baseline_dict = baseline_res.to_dict()
+            else:
+                active_res = baseline_res
+                baseline_dict = None
+
+            ascii_report = format_timewalked_report(active_res)
+            log_activity(
+                "TIMEWALKED_ANALYZE",
+                details=f"Timewalked analysis: {active_res.deck_name} (Paper B{active_res.on_paper_bracket} / Feels {active_res.feels_like_score})",
+                user=user,
+            )
+
+            return jsonify({
+                "success": True,
+                "mode": mode,
+                "result": active_res.to_dict(),
+                "baseline": baseline_dict,
+                "excluded_cards": excluded_cards,
+                "ascii_report": ascii_report,
+                "edhrec_profile": edhrec_profile,
+            })
+        except DeckParseError as pe:
+            return jsonify({"error": str(pe)}), 400
+        except Exception as e:
+            logger.exception("Error in api_timewalked_analyze")
+            return jsonify({"error": f"Failed to classify deck: {e}"}), 500
+
+    @app.route("/api/timewalked/fleet", methods=["POST"])
+    @login_required
+    def api_timewalked_fleet():
+        """Scans the user's saved Commander decks and returns a Fleet Bracket & Feels-Like Matrix."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        offline = bool(data.get("offline", False))
+
+        query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(
+            db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None)
+        )
+        all_user_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
+        if not all_user_decks:
+            return jsonify({"error": "No Commander decks found in your vault."}), 400
+
+        classifier = TimewalkedDeckClassifier(offline=offline)
+        fleet_results = []
+
+        for entry in all_user_decks:
+            try:
+                d_name, cmdrs, mainboard, pre_cards = _extract_vault_deck_for_timewalked(entry)
+                if not mainboard and not cmdrs:
+                    continue
+                res = classifier.classify(
+                    commanders=cmdrs,
+                    mainboard=mainboard,
+                    deck_name=d_name,
+                    pre_resolved_cards=pre_cards,
+                )
+                delta = round(res.feels_like_score - res.on_paper_bracket, 1)
+                fleet_results.append({
+                    "deck_id": entry.id,
+                    "deck_name": entry.deck_name,
+                    "commander_name": entry.commander_name or (" // ".join(cmdrs) if cmdrs else "Unspecified"),
+                    "commander_art": entry.commander_art,
+                    "color_identity": entry.get_color_identity_list(),
+                    "total_cards": res.total_cards,
+                    "avg_cmc_nonland": res.avg_cmc_nonland,
+                    "on_paper_bracket": res.on_paper_bracket,
+                    "on_paper_label": res.on_paper_label,
+                    "feels_like_score": res.feels_like_score,
+                    "delta": delta,
+                    "estimated_win_turn": res.estimated_win_turn,
+                    "game_changers_count": len(res.game_changers),
+                    "game_changers": res.game_changers,
+                    "combos_count": len(res.combos),
+                    "summary_verdict": res.summary_verdict,
+                })
+            except Exception as e:
+                logger.warning(f"Skipping deck {entry.id} in Timewalked fleet scan: {e}")
+
+        fleet_results.sort(key=lambda x: (x["feels_like_score"], x["on_paper_bracket"]), reverse=True)
+
+        log_activity(
+            "TIMEWALKED_FLEET_SCAN",
+            details=f"Scanned {len(fleet_results)} Commander decks in Timewalked Fleet Matrix",
+            user=user,
+        )
+
+        return jsonify({
+            "success": True,
+            "total_scanned": len(fleet_results),
+            "fleet": fleet_results,
+        })
 
     @app.route("/api/secret-lair/analyze", methods=["POST"])
     @login_required

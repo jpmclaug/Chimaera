@@ -4359,6 +4359,7 @@ function getCommandPaletteCatalog() {
         { id: "nav-inventory", category: "SECTOR NAVIGATION", title: "06 // Collection Binder", subtitle: "Physical ManaBox collection & deck allocation vault", badge: "SECTOR 06", action: () => { window.location.href = "/inventory"; } },
         { id: "nav-sealed", category: "SECTOR NAVIGATION", title: "08 // Sealed Product", subtitle: "Booster boxes, bundles & collector EV intelligence", badge: "SECTOR 08", action: () => { window.location.href = "/sealed"; } },
         { id: "nav-bestbuy", category: "SECTOR NAVIGATION", title: "09 // Best Buy Drop Radar", subtitle: "Retail stock & MSRP drop surveillance", badge: "SECTOR 09", action: () => { window.location.href = "/bestbuy"; } },
+        { id: "nav-timewalked", category: "SECTOR NAVIGATION", title: "11 // Timewalked Bracket Analyzer", subtitle: "On-Paper WotC Bracket (1-5) vs. Feels-Like Score & Itemized Receipts", badge: "SECTOR 11", action: () => { window.location.href = "/timewalked"; } },
         { id: "nav-admin", category: "SECTOR NAVIGATION", title: "07 // Admin Console", subtitle: "User management & system telemetry controls", badge: "SECTOR 07", action: () => { window.location.href = "/admin/users"; } },
 
         // Tactical Operations

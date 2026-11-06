@@ -160,6 +160,13 @@
                                     </div>
                                     <span class="text-[#00CED1]">&rarr;</span>
                                 </a>
+                                <a href="/timewalked" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'timewalked' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold">11 // Timewalked</span>
+                                        <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">BRACKET</span>
+                                    </div>
+                                    <span class="text-[#C084FC]">&rarr;</span>
+                                </a>
                                 {% if current_user.is_admin %}
                                 <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
                                     <span class="font-bold">07 // Admin Console</span>
@@ -225,6 +232,7 @@
                         {% elif active_tab == 'microcenter' %}text-[#F59E0B]
                         {% elif active_tab == 'bestbuy' %}text-[#3B82F6]
                         {% elif active_tab in ['add_evaluator', 'secret_lair'] %}text-[#00CED1]
+                        {% elif active_tab == 'timewalked' %}text-[#C084FC]
                         {% elif active_tab == 'system_overview' %}text-[#00CED1]
                         {% elif active_tab == 'admin' %}text-[#00CED1]
                         {% else %}text-[#94A3B8]{% endif %}">
@@ -236,6 +244,7 @@
                             {% elif active_tab == 'buylist' %}bg-[#2DD4BF]
                             {% elif active_tab == 'microcenter' %}bg-[#F59E0B]
                             {% elif active_tab == 'bestbuy' %}bg-[#3B82F6]
+                            {% elif active_tab == 'timewalked' %}bg-[#A855F7]
                             {% else %}bg-[#00CED1]{% endif %}"></span>
                         <span class="truncate max-w-[80px] sm:max-w-[120px]">
                             {% if active_tab == 'wishlist' %}Registry
@@ -246,6 +255,7 @@
                             {% elif active_tab == 'microcenter' %}MicroCenter
                             {% elif active_tab == 'bestbuy' %}BestBuy
                             {% elif active_tab in ['add_evaluator', 'secret_lair'] %}Evaluator
+                            {% elif active_tab == 'timewalked' %}Timewalked
                             {% elif active_tab == 'system_overview' %}Manual
                             {% elif active_tab == 'admin' %}Admin
                             {% else %}Chimaera{% endif %}
@@ -421,6 +431,13 @@
                     </div>
                     <span class="text-[#3B82F6]">&rarr;</span>
                 </a>
+                <a href="/timewalked" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'timewalked' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                    <div class="flex items-center space-x-2">
+                        <span class="font-bold">11 // Timewalked</span>
+                        <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-bold uppercase">BRACKET</span>
+                    </div>
+                    <span class="text-[#C084FC]">&rarr;</span>
+                </a>
                 {% if current_user.is_admin %}
                 <a href="/admin" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
                     <span class="font-bold">07 // Admin Console</span>
@@ -532,6 +549,10 @@
             <a href="/bestbuy" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'bestbuy' %}bg-[#10141D] text-[#60A5FA] border-[#3B82F6] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
                 <span>09 // Best Buy</span>
                 <span class="text-[9px] text-[#60A5FA] font-bold">NEARBY</span>
+            </a>
+            <a href="/timewalked" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'timewalked' %}bg-[#10141D] text-[#C084FC] border-[#A855F7] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+                <span>11 // Timewalked</span>
+                <span class="text-[9px] text-[#C084FC] font-bold">BRACKET</span>
             </a>
             {% if current_user.is_admin %}
             <a href="/admin" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border {% if active_tab == 'admin' %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#00CED1]/80 border-transparent{% endif %} whitespace-nowrap">
