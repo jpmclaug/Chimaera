@@ -22,17 +22,6 @@
                     Evaluate any Commander deck against Wizards of the Coast's official 5-Bracket system (<strong class="text-white">On Paper</strong>) while calculating how strong it actually plays at the table (<strong class="text-[#00CED1]">Feels Like 1.0–5.0</strong>) with itemized score receipts, official <strong class="text-[#C084FC]">Game Changers</strong>, <strong class="text-[#F59E0B]">Commander Spellbook combos</strong>, and an interactive <strong class="text-[#10B981]">What-If Bracket Tuner</strong>.
                 </p>
             </div>
-            <div class="flex flex-wrap items-center gap-2 flex-shrink-0">
-                <button type="button" onclick="runDemoDeck(0)" class="btn-bridge px-3 py-2 text-xs font-mono flex items-center space-x-1.5 border-[#10B981]/50 text-[#10B981] hover:bg-[#10B981]/15" title="Run Bracket 2 Demo Deck (Plays like ~2.8)">
-                    <span>⚡ Demo B2</span>
-                </button>
-                <button type="button" onclick="runDemoDeck(1)" class="btn-bridge px-3 py-2 text-xs font-mono flex items-center space-x-1.5 border-[#00CED1]/50 text-[#00CED1] hover:bg-[#00CED1]/15" title="Run Bracket 3 Demo Deck (Orzhov Lifedrain)">
-                    <span>⚡ Demo B3</span>
-                </button>
-                <button type="button" onclick="runDemoDeck(2)" class="btn-bridge px-3 py-2 text-xs font-mono flex items-center space-x-1.5 border-[#DC143C]/60 text-[#FF3358] hover:bg-[#DC143C]/15" title="Run Bracket 4/5 cEDH Demo Deck (Urza PolyKraken)">
-                    <span>⚡ Demo cEDH</span>
-                </button>
-            </div>
         </div>
     </div>
 
@@ -43,7 +32,7 @@
                 <span class="w-2 h-2 rounded-full bg-[#A855F7] animate-pulse"></span>
                 <h2 class="text-sm font-bold font-mono tracking-wider text-white uppercase">// DECK INGESTION & SOURCE SELECTOR</h2>
             </div>
-            <!-- 4-Mode Selector Tabs -->
+            <!-- 3-Mode Selector Tabs -->
             <div class="flex flex-wrap items-center gap-1 bg-[#10141D] p-1 border border-[#263245] text-xs font-mono">
                 <button type="button" onclick="switchTimewalkedTab('text_or_url')" id="tw-tab-text_or_url" class="px-3 py-1.5 bg-[#A855F7] text-white font-bold transition uppercase">
                     1 // Paste List or URL
@@ -53,9 +42,6 @@
                 </button>
                 <button type="button" onclick="switchTimewalkedTab('edhrec_commander')" id="tw-tab-edhrec_commander" class="px-3 py-1.5 text-[#94A3B8] hover:text-white transition uppercase">
                     3 // EDHREC Average Deck
-                </button>
-                <button type="button" onclick="switchTimewalkedTab('demo')" id="tw-tab-demo" class="px-3 py-1.5 text-[#94A3B8] hover:text-white transition uppercase">
-                    4 // Sample Decks
                 </button>
             </div>
         </div>
@@ -88,14 +74,7 @@
                         Paste Decklist Text (MTGO / Arena / Moxfield / Archidekt / ManaBox) or Deck URL:
                     </label>
                     <div class="flex items-center space-x-2 text-[11px] font-mono">
-                        <span class="text-[#64748B]">Load Sample Text:</span>
-                        <button type="button" onclick="populateSampleText(0)" class="text-[#10B981] hover:underline font-bold">Omnath (B2)</button>
-                        <span class="text-[#263245]">|</span>
-                        <button type="button" onclick="populateSampleText(1)" class="text-[#00CED1] hover:underline font-bold">Vito (B3)</button>
-                        <span class="text-[#263245]">|</span>
-                        <button type="button" onclick="populateSampleText(2)" class="text-[#FF3358] hover:underline font-bold">Urza (cEDH)</button>
-                        <span class="text-[#263245]">|</span>
-                        <button type="button" onclick="clearTimewalkedText()" class="text-[#94A3B8] hover:text-white">Clear</button>
+                        <button type="button" onclick="clearTimewalkedText()" class="text-[#94A3B8] hover:text-white uppercase font-bold">[ Clear Input ]</button>
                     </div>
                 </div>
                 <textarea id="tw-input-source" rows="8" placeholder="Commander
@@ -238,65 +217,6 @@ Or paste an Archidekt / Moxfield / ManaBox deck URL directly (e.g. https://archi
                     {{ popular_cmdr }}
                 </button>
                 {% endfor %}
-            </div>
-        </div>
-
-        <!-- TAB 4: Sample Demo Decks -->
-        <div id="tw-panel-demo" class="hidden space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- Demo 0 -->
-                <div class="bg-[#10141D] border border-[#263245] hover:border-[#10B981] p-4 flex flex-col justify-between transition">
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-mono font-bold px-2 py-0.5 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 uppercase">BRACKET 2 ON PAPER</span>
-                            <span class="text-[11px] font-mono text-[#94A3B8]">Feels Like ~2.8</span>
-                        </div>
-                        <h3 class="text-sm font-heading font-bold text-white">Big Green Man (on a budget)</h3>
-                        <p class="text-xs font-mono text-[#00CED1] mt-0.5">Commander: Omnath, Locus of Mana</p>
-                        <p class="text-xs text-[#94A3B8] mt-2 leading-relaxed">
-                            Contains 0 Game Changers and no 2-card infinite combos (Bracket 2 Core on paper), but packs 11+ mana accelerants and real finishers like Craterhoof Behemoth &amp; Finale of Devastation.
-                        </p>
-                    </div>
-                    <button type="button" onclick="runDemoDeck(0)" class="mt-4 w-full btn-bridge py-2 text-xs font-mono font-bold uppercase text-[#10B981] border-[#10B981]/50 hover:bg-[#10B981]/20">
-                        Analyze Demo Deck &rarr;
-                    </button>
-                </div>
-
-                <!-- Demo 1 -->
-                <div class="bg-[#10141D] border border-[#263245] hover:border-[#00CED1] p-4 flex flex-col justify-between transition">
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-mono font-bold px-2 py-0.5 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 uppercase">BRACKET 3 ON PAPER</span>
-                            <span class="text-[11px] font-mono text-[#94A3B8]">Upgraded</span>
-                        </div>
-                        <h3 class="text-sm font-heading font-bold text-white">Upgraded Orzhov Lifedrain</h3>
-                        <p class="text-xs font-mono text-[#00CED1] mt-0.5">Commander: Vito, Thorn of the Dusk Rose</p>
-                        <p class="text-xs text-[#94A3B8] mt-2 leading-relaxed">
-                            Includes 3 Game Changers (Demonic Tutor, Smothering Tithe, Bolas's Citadel), targeted removal, and the classic Exquisite Blood + Sanguine Bond 2-card lifedrain combo.
-                        </p>
-                    </div>
-                    <button type="button" onclick="runDemoDeck(1)" class="mt-4 w-full btn-bridge py-2 text-xs font-mono font-bold uppercase text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/20">
-                        Analyze Demo Deck &rarr;
-                    </button>
-                </div>
-
-                <!-- Demo 2 -->
-                <div class="bg-[#10141D] border border-[#263245] hover:border-[#DC143C] p-4 flex flex-col justify-between transition">
-                    <div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-[10px] font-mono font-bold px-2 py-0.5 bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 uppercase">BRACKET 5 ON PAPER</span>
-                            <span class="text-[11px] font-mono text-[#FF3358]">cEDH Powerhouse</span>
-                        </div>
-                        <h3 class="text-sm font-heading font-bold text-white">Urza PolyKraken / Scepter</h3>
-                        <p class="text-xs font-mono text-[#00CED1] mt-0.5">Commander: Urza, Lord High Artificer</p>
-                        <p class="text-xs text-[#94A3B8] mt-2 leading-relaxed">
-                            Full cEDH signature: 13+ Game Changers, dense 0–1 MV fast mana (Mana Vault, Grim Monolith, Chrome Mox, Mox Diamond), free countermagic suite, and Isochron Scepter + Dramatic Reversal.
-                        </p>
-                    </div>
-                    <button type="button" onclick="runDemoDeck(2)" class="mt-4 w-full btn-bridge py-2 text-xs font-mono font-bold uppercase text-[#FF3358] border-[#DC143C]/60 hover:bg-[#DC143C]/20">
-                        Analyze Demo Deck &rarr;
-                    </button>
-                </div>
             </div>
         </div>
     </div>
@@ -581,7 +501,6 @@ Or paste an Archidekt / Moxfield / ManaBox deck URL directly (e.g. https://archi
 
 {% block scripts %}
 <script>
-const TIMEWALKED_SAMPLES = {{ sample_decks|tojson }};
 const INITIAL_DECK_ID = {{ initial_deck_id|tojson }};
 
 let currentTwMode = "text_or_url";
@@ -603,7 +522,7 @@ function escapeTwHtml(str) {
 
 function switchTimewalkedTab(mode) {
     currentTwMode = mode;
-    const modes = ["text_or_url", "vault_deck", "edhrec_commander", "demo"];
+    const modes = ["text_or_url", "vault_deck", "edhrec_commander"];
     modes.forEach(m => {
         const tabBtn = document.getElementById(`tw-tab-${m}`);
         const panel = document.getElementById(`tw-panel-${m}`);
@@ -620,30 +539,10 @@ function switchTimewalkedTab(mode) {
     });
 }
 
-function populateSampleText(idx) {
-    const sample = TIMEWALKED_SAMPLES[idx];
-    if (!sample) return;
-    switchTimewalkedTab("text_or_url");
-    document.getElementById("tw-input-deck-name").value = sample.name || "";
-    document.getElementById("tw-input-commander").value = sample.commander || "";
-    document.getElementById("tw-input-source").value = (sample.list || "").trim();
-}
-
 function clearTimewalkedText() {
     document.getElementById("tw-input-deck-name").value = "";
     document.getElementById("tw-input-commander").value = "";
     document.getElementById("tw-input-source").value = "";
-}
-
-function runDemoDeck(idx) {
-    selectedWhatIfExclusions.clear();
-    const offline = Boolean(document.getElementById("tw-chk-offline")?.checked);
-    executeTimewalkedAnalysis({
-        mode: "demo",
-        demo_index: idx,
-        offline: offline,
-        excluded_cards: []
-    });
 }
 
 function analyzeVaultDeck(deckId) {

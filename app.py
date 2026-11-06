@@ -76,7 +76,6 @@ from timewalked_analyzer import (
     EdhrecClient as TimewalkedEdhrecClient,
     GAME_CHANGERS as TIMEWALKED_GAME_CHANGERS,
     HttpJsonClient as TimewalkedHttpJsonClient,
-    SAMPLE_DECKS as TIMEWALKED_SAMPLE_DECKS,
     STRONG_STAPLES as TIMEWALKED_STRONG_STAPLES,
     format_analysis_report as format_timewalked_report,
     parse_decklist_text as parse_timewalked_decklist,
@@ -4817,7 +4816,6 @@ def create_app(test_config=None):
         return render_template(
             "timewalked.html",
             decks=deck_dicts,
-            sample_decks=TIMEWALKED_SAMPLE_DECKS,
             bracket_names=TIMEWALKED_BRACKET_NAMES,
             initial_deck_id=initial_deck_id,
             active_tab="timewalked",
@@ -4843,17 +4841,7 @@ def create_app(test_config=None):
         edhrec_profile: dict[str, Any] | None = None
 
         try:
-            if mode == "demo":
-                demo_idx = int(data.get("demo_index", 0) or 0)
-                if demo_idx < 0 or demo_idx >= len(TIMEWALKED_SAMPLE_DECKS):
-                    demo_idx = 0
-                sample = TIMEWALKED_SAMPLE_DECKS[demo_idx]
-                _, mainboard = parse_timewalked_decklist(sample["list"])
-                commanders = [sample["commander"]]
-                if not deck_name:
-                    deck_name = sample["name"]
-
-            elif mode == "vault_deck":
+            if mode == "vault_deck":
                 deck_id = data.get("deck_id") or data.get("source")
                 if not deck_id or not str(deck_id).isdigit():
                     return jsonify({"error": "Valid deck_id is required for vault_deck mode."}), 400

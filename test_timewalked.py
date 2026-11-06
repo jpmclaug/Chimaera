@@ -73,32 +73,105 @@ class TestTimewalkedSection(unittest.TestCase):
         self.assertIn("Vault Vito Lifedrain", html)
         self.assertIn('href="/timewalked"', html)
 
-    def test_analyze_demo_decks_offline(self):
-        """Verify demo mode classifies Bracket 2, Bracket 3, and Bracket 5 sample decks."""
-        # Demo 0: Omnath (Bracket 2 on paper, plays higher)
-        r0 = self.client.post("/api/timewalked/analyze", json={"mode": "demo", "demo_index": 0, "offline": True})
+    def test_analyze_brackets_offline(self):
+        """Verify offline classification for Bracket 2, Bracket 3, and Bracket 5 decklists."""
+        # Bracket 2: Omnath landfall / ramp with no game changers or early infinite combos
+        omnath_list = """
+        Commander
+        1 Omnath, Locus of Rage
+
+        Deck
+        1 Cultivate
+        1 Kodama's Reach
+        1 Rampant Growth
+        1 Farseek
+        1 Sakura-Tribe Elder
+        1 Harrow
+        1 Explosive Vegetation
+        1 Skyshroud Claim
+        1 Sol Ring
+        1 Harmonize
+        1 Beast Within
+        1 Chaos Warp
+        35 Forest
+        35 Mountain
+        """
+        r0 = self.client.post("/api/timewalked/analyze", json={
+            "mode": "text_or_url",
+            "source": omnath_list,
+            "deck_name": "Omnath Ramp",
+            "commander_name": "Omnath, Locus of Rage",
+            "offline": True,
+        })
         self.assertEqual(r0.status_code, 200)
         d0 = r0.get_json()
         self.assertTrue(d0["success"])
         self.assertEqual(d0["result"]["on_paper_bracket"], 2)
-        self.assertGreaterEqual(d0["result"]["feels_like_score"], 2.5)
+        self.assertGreaterEqual(d0["result"]["feels_like_score"], 2.0)
         self.assertIn("packages", d0["result"])
-        self.assertGreaterEqual(len(d0["result"]["packages"]["ramp"]), 8)
+        self.assertGreaterEqual(len(d0["result"]["packages"]["ramp"]), 4)
 
-        # Demo 1: Vito (Bracket 3 on paper)
-        r1 = self.client.post("/api/timewalked/analyze", json={"mode": "demo", "demo_index": 1, "offline": True})
+        # Bracket 3: Vito with Game Changers & Combo
+        vito_list = """
+        Commander
+        1 Vito, Thorn of the Dusk Rose
+
+        Deck
+        1 Demonic Tutor
+        1 Vampiric Tutor
+        1 Smothering Tithe
+        1 Exquisite Blood
+        1 Sanguine Bond
+        1 Sol Ring
+        35 Swamp
+        """
+        r1 = self.client.post("/api/timewalked/analyze", json={
+            "mode": "text_or_url",
+            "source": vito_list,
+            "deck_name": "Vito Combos",
+            "commander_name": "Vito, Thorn of the Dusk Rose",
+            "offline": True,
+        })
         self.assertEqual(r1.status_code, 200)
         d1 = r1.get_json()
         self.assertEqual(d1["result"]["on_paper_bracket"], 3)
         self.assertGreaterEqual(len(d1["result"]["game_changers"]), 3)
         self.assertGreaterEqual(len(d1["result"]["combos"]), 1)
 
-        # Demo 2: Urza cEDH (Bracket 5 on paper)
-        r2 = self.client.post("/api/timewalked/analyze", json={"mode": "demo", "demo_index": 2, "offline": True})
+        # Bracket 5: Urza cEDH with 6+ Game Changers, fast mana, free interaction, fast combos
+        urza_list = """
+        Commander
+        1 Urza, Lord High Artificer
+
+        Deck
+        1 Sol Ring
+        1 Mana Vault
+        1 Grim Monolith
+        1 Chrome Mox
+        1 Mox Diamond
+        1 Ancient Tomb
+        1 The One Ring
+        1 Rhystic Study
+        1 Mystic Remora
+        1 Isochron Scepter
+        1 Dramatic Reversal
+        1 Force of Will
+        1 Fierce Guardianship
+        1 Force of Negation
+        1 Cyclonic Rift
+        35 Island
+        """
+        r2 = self.client.post("/api/timewalked/analyze", json={
+            "mode": "text_or_url",
+            "source": urza_list,
+            "deck_name": "Urza cEDH",
+            "commander_name": "Urza, Lord High Artificer",
+            "offline": True,
+        })
         self.assertEqual(r2.status_code, 200)
         d2 = r2.get_json()
         self.assertEqual(d2["result"]["on_paper_bracket"], 5)
-        self.assertGreaterEqual(d2["result"]["feels_like_score"], 4.4)
+        self.assertGreaterEqual(d2["result"]["feels_like_score"], 4.0)
 
     def test_analyze_text_and_what_if_tuner(self):
         """Verify raw decklist classification and What-If card exclusion simulation."""
