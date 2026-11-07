@@ -4813,6 +4813,11 @@ def create_app(test_config=None):
                 "deck_format": d.deck_format,
             })
 
+        offline = bool(data.get("offline", False))
+
+        # Build user collection index for binder matching
+        user_inventory_index = _build_user_inventory_match_index(user.id if user else 0)
+
         if mode == "secret_lair":
             url_or_text = (data.get("url") or data.get("raw_text") or "").strip()
             if not url_or_text:
@@ -4825,6 +4830,8 @@ def create_app(test_config=None):
                     custom_instructions=custom_instructions,
                     model=model,
                     api_key=effective_key,
+                    offline=offline,
+                    user_inventory_index=user_inventory_index,
                 )
             except Exception as e:
                 logger.error(f"Secret Lair evaluation failed: {e}", exc_info=True)
@@ -4871,6 +4878,8 @@ def create_app(test_config=None):
                 custom_instructions=custom_instructions,
                 model=model,
                 api_key=effective_key,
+                offline=offline,
+                user_inventory_index=user_inventory_index,
             )
 
             if "error" in suite_result:

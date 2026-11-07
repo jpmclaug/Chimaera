@@ -3,7 +3,8 @@ Card Add Evaluator & Tactical Add Analysis Suite for Chimaera MTG.
 Evaluates single cards, batch card lists, and Secret Lair drops against individual
 Commander decks or the user's entire Commander fleet.
 Cross-references color identity rules, Commander/Pauper banlists, EDHREC synergies,
-deck deficits, and leverages Google Gemini for tactical rationales and cut recommendations.
+deck deficits, Timewalked ratio targets, Commander Spellbook combos, and WotC brackets
+for tactical rationales and cut recommendations.
 """
 
 import json
@@ -33,23 +34,31 @@ from deck_upgrade_engine import (
     PAUPER_COMMANDER_BANNED_CARDS,
     DualTierUpgradeEngine,
 )
-from gemini_analyzer import (
-    DEFAULT_MODEL,
-    GEMINI_API_BASE,
-    MODEL_FALLBACK_MAP,
-    MODEL_TIER_SEQUENCE,
-    GeminiAnalysisError,
-    get_model_for_task,
-)
+from gemini_analyzer import GEMINI_API_BASE, get_model_for_task
 from providers.edhrec import EDHRECProvider
 from providers.scryfall import ScryfallProvider
 from secret_lair_advisor import (
     SecretLairFinancialEvaluator,
-    SecretLairGeminiAdvisor,
     SecretLairScraper,
 )
+from timewalked_analyzer import (
+    BRACKET_NAMES as TIMEWALKED_BRACKET_NAMES,
+    DEFAULT_RATIO_TARGETS as TIMEWALKED_RATIO_TARGETS,
+    DeckClassifier as TimewalkedDeckClassifier,
+    GAME_CHANGERS as TIMEWALKED_GAME_CHANGERS,
+    MASS_LAND_DENIAL as TIMEWALKED_MASS_LAND_DENIAL,
+    STRONG_STAPLES as TIMEWALKED_STRONG_STAPLES,
+    classify_timewalked_categories,
+    compute_ratio_breakdown,
+)
+from timewalked_analyzer.api_clients import SpellbookClient
+from timewalked_analyzer.card_db import classify_card_roles as timewalked_classify_card_roles
 
 logger = logging.getLogger(__name__)
+
+_LOWER_GAME_CHANGERS = {k.strip().lower() for k in TIMEWALKED_GAME_CHANGERS}
+_LOWER_MASS_LAND_DENIAL = {k.strip().lower() for k in TIMEWALKED_MASS_LAND_DENIAL}
+_LOWER_STRONG_STAPLES = {k.strip().lower() for k in TIMEWALKED_STRONG_STAPLES}
 
 # Lazily-built {lowercase name: staple} indices for O(1) curated staple lookups.
 _STAPLE_INDEX: dict[bool, dict[str, dict]] = {}
@@ -76,15 +85,19 @@ class CardAddEvaluator:
     """
     Evaluates candidate cards (single, bulk, or Secret Lair drops) against
     Commander decks to determine optimal fit, synergy ratings, and cuts.
+    Powered by the Timewalked methodology (EDHREC inclusion/synergy, Commander
+    Spellbook combos, 9-category deck ratios, WotC bracket guardrails, and data-driven cuts).
     """
 
     def __init__(
         self,
         scryfall_provider: Optional[ScryfallProvider] = None,
         edhrec_provider: Optional[EDHRECProvider] = None,
+        spellbook_client: Optional[SpellbookClient] = None,
     ):
         self.scryfall = scryfall_provider or ScryfallProvider()
         self.edhrec = edhrec_provider or EDHRECProvider()
+        self.spellbook = spellbook_client or SpellbookClient()
         self.classifier = MTGCardClassifier()
         self.upgrade_engine = DualTierUpgradeEngine(scryfall_provider=self.scryfall)
         self.scraper = SecretLairScraper()
@@ -355,17 +368,26 @@ class CardAddEvaluator:
         }
 
     # -------------------------------------------------------------------------
-    # Algorithmic Synergy Scoring & Cut Candidate Selection
+    # Algorithmic & Timewalked Synergy Scoring & Cut Candidate Selection
     # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _clean_card_key(name: str) -> str:
+        s = name.strip().lower()
+        if " // " in s:
+            s = s.split(" // ")[0].strip()
+        return re.sub(r"['’,\-\s]+", "", s)
 
     def build_card_profile(self, card_meta: dict) -> dict:
         """
-        Computes deck-independent card data (clean names, classification, primary role) once,
-        so it can be reused across every deck in a suite run.
+        Computes deck-independent card data (clean names, classification, primary role,
+        Timewalked categories, and Game Changer status) once, so it can be reused
+        across every deck in a suite run.
         """
         card_name = card_meta.get("canonical_name") or card_meta.get("name", "")
         clean_name = strip_accents(card_name).lower().strip()
         clean_front = clean_name.split(" // ")[0].strip() if " // " in clean_name else clean_name
+        clean_key = self._clean_card_key(card_name)
         type_lower = (card_meta.get("type_line") or "").lower()
 
         # Classify functional role
@@ -377,6 +399,8 @@ class CardAddEvaluator:
             "mana_cost": card_meta.get("mana_cost", ""),
         }
         classification = self.classifier.classify(card_dict)
+        tw_categories = classify_timewalked_categories(card_dict)
+        tw_roles = timewalked_classify_card_roles(card_dict)
 
         # Primary Role assignment
         role = "Utility / Support"
@@ -403,13 +427,164 @@ class CardAddEvaluator:
         elif "land" in type_lower:
             role = "Mana Base / Land"
 
+        is_game_changer = bool(
+            card_meta.get("game_changer")
+            or card_name in TIMEWALKED_GAME_CHANGERS
+            or clean_name in _LOWER_GAME_CHANGERS
+            or clean_front in _LOWER_GAME_CHANGERS
+            or "game_changer" in tw_roles
+        )
+        is_mass_land_denial = bool(
+            card_name in TIMEWALKED_MASS_LAND_DENIAL
+            or clean_name in _LOWER_MASS_LAND_DENIAL
+            or clean_front in _LOWER_MASS_LAND_DENIAL
+            or "mass_land_denial" in tw_roles
+        )
+        is_strong_staple = bool(
+            card_name in TIMEWALKED_STRONG_STAPLES
+            or clean_name in _LOWER_STRONG_STAPLES
+            or clean_front in _LOWER_STRONG_STAPLES
+            or "strong_card" in tw_roles
+        )
+
         return {
             "card_name": card_name,
             "clean_name": clean_name,
             "clean_front": clean_front,
+            "clean_key": clean_key,
             "is_land": "land" in type_lower,
             "classification": classification,
             "role": role,
+            "tw_categories": tw_categories,
+            "tw_roles": tw_roles,
+            "is_game_changer": is_game_changer,
+            "is_mass_land_denial": is_mass_land_denial,
+            "is_strong_staple": is_strong_staple,
+        }
+
+    def _build_timewalked_deck_context(
+        self,
+        deck: dict,
+        edhrec_synergies: Optional[dict[str, dict]] = None,
+        offline: bool = False,
+    ) -> dict:
+        """
+        Prepares Timewalked context for a deck:
+        - Ratio breakdown (9 categories)
+        - On-paper bracket & feels-like score
+        - Included & almost-included combos from Commander Spellbook
+        - Timewalked cut pool with inclusion rates and protected combo pieces
+        """
+        raw_cards = deck.get("cards", []) or []
+        deck_counts: dict[str, int] = {}
+        deck_resolved: dict[str, dict[str, Any]] = {}
+        commanders: list[str] = []
+
+        cmdr_raw = deck.get("commander_name") or ""
+        if cmdr_raw:
+            commanders = [c.strip() for c in re.split(r"[,/]+", cmdr_raw) if c.strip()]
+
+        for c in raw_cards:
+            c_name = c.get("name", "").strip()
+            if not c_name:
+                continue
+            qty = max(1, int(c.get("quantity", 1) or 1))
+            sec = (c.get("section") or "mainboard").lower()
+            if sec in ("commander", "commanders"):
+                if c_name not in commanders:
+                    commanders.append(c_name)
+            else:
+                deck_counts[c_name] = deck_counts.get(c_name, 0) + qty
+
+            deck_resolved[c_name] = {
+                "name": c_name,
+                "type_line": c.get("type_line", ""),
+                "oracle_text": c.get("oracle_text", ""),
+                "cmc": float(c.get("cmc", 0.0) or 0.0),
+                "mana_cost": c.get("mana_cost", ""),
+            }
+
+        # 1. 9-Category Ratio Breakdown
+        ratios = compute_ratio_breakdown(deck_resolved, deck_counts)
+
+        # 2. Timewalked Classifier (Brackets, Feels Like, Spellbook Combos)
+        tw_classifier = TimewalkedDeckClassifier(offline=offline)
+        analysis_res = tw_classifier.classify(
+            commanders=commanders,
+            mainboard=deck_counts,
+            deck_name=deck.get("deck_name", "Commander Deck"),
+            pre_resolved_cards=raw_cards,
+        )
+
+        on_paper_bracket = analysis_res.on_paper_bracket
+        on_paper_label = analysis_res.on_paper_label
+        feels_like_score = analysis_res.feels_like_score
+        game_changers_count = len(analysis_res.game_changers)
+        included_combos = analysis_res.combos
+
+        # Find 1-card-away combos from Spellbook
+        combo_results = tw_classifier.spellbook.find_combos(commanders, list(deck_counts.keys()))
+        almost_combos = combo_results.get("almost_included") or []
+        combos_missing_card: dict[str, list[dict[str, Any]]] = {}
+        for ac in almost_combos:
+            missing_list = ac.get("missing") or []
+            if len(missing_list) == 1:
+                missing_name = missing_list[0]
+                ck = self._clean_card_key(missing_name)
+                combos_missing_card.setdefault(ck, []).append(ac)
+
+        # Protect cards in active combos
+        active_combo_cards: set[str] = set()
+        for ic in included_combos:
+            for cn in ic.get("cards", []):
+                active_combo_cards.add(self._clean_card_key(cn))
+
+        # 3. Build Cut Pool
+        edh_by_clean: dict[str, dict] = {}
+        if edhrec_synergies:
+            for c_lower, item in edhrec_synergies.items():
+                ck = self._clean_card_key(item.get("name") or c_lower)
+                if ck not in edh_by_clean or item.get("inclusion_percent", 0) > edh_by_clean[ck].get("inclusion_percent", 0):
+                    edh_by_clean[ck] = item
+
+        cut_pool: list[dict[str, Any]] = []
+        for name, qty in deck_counts.items():
+            if name in commanders:
+                continue
+            card_obj = deck_resolved.get(name) or {"name": name, "type_line": "Spell", "cmc": 3.0}
+            t_line = card_obj.get("type_line", "")
+            is_basic = name in {"Plains", "Island", "Swamp", "Mountain", "Forest", "Wastes"}
+            ck = self._clean_card_key(name)
+            is_gc = bool(card_obj.get("game_changer") or name in TIMEWALKED_GAME_CHANGERS)
+            is_part_of_combo = ck in active_combo_cards
+            inc_pct = float(edh_by_clean.get(ck, {}).get("inclusion_percent", 0.0) or 0.0)
+            cats = classify_timewalked_categories(card_obj)
+
+            cut_pool.append({
+                "name": name,
+                "clean_key": ck,
+                "card_obj": card_obj,
+                "type_line": t_line,
+                "is_land": "land" in t_line.lower(),
+                "is_basic": is_basic,
+                "is_game_changer": is_gc,
+                "is_part_of_combo": is_part_of_combo,
+                "inclusion_pct": inc_pct,
+                "cmc": float(card_obj.get("cmc", 0.0)),
+                "categories": cats,
+            })
+
+        return {
+            "commanders": commanders,
+            "ratios": ratios,
+            "on_paper_bracket": on_paper_bracket,
+            "on_paper_label": on_paper_label,
+            "feels_like_score": feels_like_score,
+            "game_changers_count": game_changers_count,
+            "included_combos": included_combos,
+            "combos_missing_card": combos_missing_card,
+            "cut_pool": cut_pool,
+            "edh_by_clean": edh_by_clean,
         }
 
     def evaluate_card_algorithmic(
@@ -420,126 +595,217 @@ class CardAddEvaluator:
         used_cuts: Optional[set[str]] = None,
         edhrec_synergies: Optional[dict[str, dict]] = None,
         profile: Optional[dict] = None,
+        tw_context: Optional[dict] = None,
+        timewalked_context: Optional[dict] = None,
+        deck_context: Optional[dict] = None,
     ) -> dict:
         """
         Calculates functional role, synergy score (1-100 and 1.0-10.0 scale),
-        fit verdict, deficit filling, and matching cut candidate.
-        Pass a precomputed `profile` (from build_card_profile) to skip re-classification.
+        fit verdict, deficit filling, and matching cut candidate using the
+        Timewalked methodology.
         """
+        if tw_context is None:
+            tw_context = timewalked_context if timewalked_context is not None else deck_context
         if profile is None:
             profile = self.build_card_profile(card_meta)
         clean_name = profile["clean_name"]
         clean_front = profile["clean_front"]
+        clean_key = profile["clean_key"]
         classification = profile["classification"]
         role = profile["role"]
+        tw_cats = profile["tw_categories"]
+        is_gc = profile["is_game_changer"]
 
-        # Check EDHREC synergy if available
+        # Check EDHREC synergy and inclusion
         syn = 0.0
         syn_pct = 0.0
         inc_pct = 0.0
         if edhrec_synergies:
-            syn_info = edhrec_synergies.get(clean_name) or edhrec_synergies.get(clean_front)
+            syn_info = (
+                edhrec_synergies.get(clean_name)
+                or edhrec_synergies.get(clean_front)
+                or (tw_context.get("edh_by_clean", {}).get(clean_key) if tw_context else None)
+            )
             if syn_info:
-                syn = float(syn_info.get("synergy", 0.0))
-                syn_pct = float(syn_info.get("synergy_percent", round(syn * 100.0, 1)))
-                inc_pct = float(syn_info.get("inclusion_percent", 0.0))
+                syn = float(syn_info.get("synergy", 0.0) or 0.0)
+                syn_pct = float(syn_info.get("synergy_percent", round(syn * 100.0, 1)) or 0.0)
+                inc_pct = float(syn_info.get("inclusion_percent", 0.0) or 0.0)
 
-        # Scoring heuristics
-        score = 45.0
-        reasons = []
+        # Baseline score calculation
+        if inc_pct > 0.0:
+            score = inc_pct
+        else:
+            score = 45.0  # Default baseline for cards not in EDHREC top samples
 
-        # 1. EDHREC synergy bonus
-        if syn_pct > 0:
+        reasons: list[str] = []
+        signals: list[str] = []
+
+        cmdr_display = (tw_context and tw_context.get("commanders") and tw_context["commanders"][0]) or deck.get("commander_name") or "this commander"
+
+        # 1. EDHREC Signals
+        if inc_pct > 0.0:
+            signals.append("edhrec")
+            reasons.append(f"{round(inc_pct)}% of {cmdr_display} decks")
+            if syn_pct > 15.0:
+                score += min(syn_pct * 0.4, 20.0)
+                reasons.append(f"+{syn_pct:.1f}% EDHREC synergy")
+        elif syn_pct > 0.0:
+            signals.append("edhrec")
             score += min(syn_pct * 0.7, 30.0)
             reasons.append(f"+{syn_pct:.1f}% EDHREC synergy")
-        elif syn_pct < -15.0:
-            score -= 10.0
 
-        if inc_pct >= 20.0:
-            score += min(inc_pct * 0.25, 12.0)
-            reasons.append(f"played in {inc_pct:.0f}% of decks")
+        # 2. Timewalked 9-Category Ratio Targets Boost
+        if tw_context and tw_context.get("ratios"):
+            ratios = tw_context["ratios"]
+            best_ratio_boost = 0.0
+            ratio_reason = ""
+            for cat in tw_cats:
+                r_info = ratios.get(cat)
+                if not r_info:
+                    continue
+                state = r_info.get("state")
+                cnt = r_info.get("count", 0)
+                tgt = r_info.get("target", 0)
+                lbl = r_info.get("label", cat.title())
 
-        # 2. Deficit filling & curve efficiency
-        deck_stats = deck.get("stats") or {}
-        pacing = deck_stats.get("pacing") or {}
-        velocity = deck_stats.get("velocity") or {}
+                if state == "short" and best_ratio_boost < 15.0:
+                    best_ratio_boost = 15.0
+                    ratio_reason = f"Fills {lbl} ({cnt}/{tgt})"
+                elif state == "close" and best_ratio_boost < 7.0:
+                    best_ratio_boost = 7.0
+                    ratio_reason = f"Boosts {lbl} ({cnt}/{tgt})"
 
-        # Resolve counts from top-level deck_stats with fallback to nested pacing/velocity (mock compatibility)
-        def _stat_val(primary_key: str, fallback_dict: dict, fallback_key: str) -> int:
-            val = deck_stats.get(primary_key)
-            if val is None:
-                val = fallback_dict.get(fallback_key, 0)
-            try:
-                return int(val)
-            except (ValueError, TypeError):
-                return 0
+            if best_ratio_boost > 0:
+                score += best_ratio_boost
+                signals.append("ratio")
+                reasons.append(ratio_reason)
 
-        draw_engines = _stat_val("draw_engine_count", pacing, "draw_engine_count")
-        draw_total = _stat_val("total_draw_count", pacing, "draw_total")
-        fast_ramp = _stat_val("fast_ramp_count", velocity, "fast_ramp_count")
-        ramp_total = _stat_val("total_ramp_count", velocity, "ramp_count")
-        targeted_removal = _stat_val("targeted_removal_count", pacing, "targeted_removal_count")
-        board_wipes = _stat_val("board_wipe_count", pacing, "board_wipe_count")
+        # 3. Commander Spellbook 1-Card-Away Combo Boost
+        cm_combos = []
+        if tw_context:
+            if tw_context.get("combos_missing_card"):
+                cm_combos = tw_context["combos_missing_card"].get(clean_key, [])
+            elif tw_context.get("almost_included_combos"):
+                for ac in tw_context["almost_included_combos"]:
+                    missing = ac.get("missing_cards") or ac.get("missing") or []
+                    if any(self._clean_card_key(m) == clean_key for m in missing):
+                        cm_combos.append(ac)
+        completes_combos = []
+        if cm_combos:
+            combo_boost = 25.0 + min(len(cm_combos) - 1, 2) * 10.0
+            score += combo_boost
+            signals.append("combo")
+            completes_combos = cm_combos
+            partner_pieces = []
+            for ac in cm_combos:
+                other_cards = [c for c in ac.get("cards", []) if self._clean_card_key(c) != clean_key]
+                if other_cards:
+                    partner_pieces.append(other_cards[0])
+            partner_summary = ", ".join(partner_pieces[:2]) if partner_pieces else "existing pieces"
+            reasons.append(f"Completes combo with {partner_summary}")
 
-        # Draw deficit
-        if (draw_engines < 5 or draw_total < 8) and (
-            classification.get("is_draw") or classification.get("draw_type") == "engine"
-        ):
-            score += 15.0
-            reasons.append("fills deck's card draw deficit")
-
-        # Ramp deficit
-        if (fast_ramp < 5 or ramp_total < 9) and classification.get("is_ramp"):
-            score += 15.0
-            reasons.append("enhances early mana acceleration")
-
-        # Removal deficit
-        if (targeted_removal < 6) and classification.get("is_targeted_removal"):
-            score += 12.0
-            reasons.append("fills instant-speed interaction gap")
-
-        # Board Wipe deficit
-        if (board_wipes < 2) and classification.get("is_board_wipe"):
-            score += 12.0
-            reasons.append("provides essential board sweeper reset")
-
-        # 3. Curated staple check
+        # 4. Curated staple & Game Changer check
         staples = _staple_index(_is_pauper_deck(deck))
         staple_match = staples.get(clean_name) or staples.get(clean_front)
         if staple_match:
             score += 15.0
-            reasons.append(f"premier format staple ({staple_match.get('category', 'Staple')})")
+            reasons.append(f"premier staple ({staple_match.get('category', 'Staple')})")
 
-        # 4. Low CMC efficiency
+        if is_gc:
+            score += 10.0
+            reasons.append("Official Game Changer")
+
+        # 5. Low CMC efficiency
         cmc = card_meta.get("cmc", 0.0)
         if cmc <= 2 and not profile["is_land"]:
-            score += 8.0
+            score += 6.0
 
-        # Cap score between 1 and 100
+        # Bracket Guardrail Warning
+        bracket_warning = None
+        if profile.get("is_mass_land_denial"):
+            bracket_warning = "Mass Land Denial (automatically places deck in Bracket 4)"
+        elif tw_context and is_gc:
+            cur_gc = tw_context.get("game_changers_count", 0)
+            p_bracket = tw_context.get("on_paper_bracket", 2)
+            if p_bracket <= 3 and cur_gc >= 3:
+                bracket_warning = f"Adding this Game Changer raises deck to Bracket 4 (exceeds 3 GC cap: {cur_gc + 1} total)"
+            elif p_bracket == 2 and cur_gc == 0:
+                bracket_warning = "Official Game Changer (bumps deck from Bracket 2 to Bracket 3)"
+
+        # Cap score between 5.0 and 99.0
         score = max(5.0, min(99.0, score))
         synergy_rating = round(score / 10.0, 1)
 
         # Fit Verdict
-        if synergy_rating >= 9.0 or syn_pct >= 40.0:
+        if synergy_rating >= 9.0 or syn_pct >= 40.0 or inc_pct >= 60.0 or completes_combos:
             fit_verdict = "Essential Upgrade"
-        elif synergy_rating >= 7.8 or syn_pct >= 18.0:
+        elif synergy_rating >= 7.8 or syn_pct >= 18.0 or inc_pct >= 30.0:
             fit_verdict = "High Synergy"
         elif classification.get("wincon_tags"):
             fit_verdict = "Alternative Win-Con"
-        elif synergy_rating >= 6.0:
+        elif synergy_rating >= 6.0 or inc_pct >= 10.0:
             fit_verdict = "Role Filler / Utility"
         else:
             fit_verdict = "Suboptimal / Redundant"
 
-        # Find best cut candidate
-        matched_cut = self.upgrade_engine._find_best_cut(
-            cut_candidates=cut_candidates,
-            target_role_or_category=role,
-            used_cuts=used_cuts,
-        )
-        cut_name = matched_cut.get("name") if isinstance(matched_cut, dict) else str(matched_cut)
-        cut_cmc = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
-        cut_type = matched_cut.get("type_line") if isinstance(matched_cut, dict) else None
+        # Find best cut candidate using Timewalked cut pool or fallback engine cut
+        cut_name = None
+        cut_cmc = None
+        cut_type = None
+        cut_reason = "Lowest synergy / meta inclusion in deck"
+
+        cut_pool = tw_context.get("cut_pool") if tw_context else None
+        if cut_pool:
+            is_cand_land = "lands" in tw_cats or profile["is_land"]
+            eligible_cuts = [
+                c for c in cut_pool
+                if (used_cuts is None or c.get("clean_key") not in used_cuts)
+                and not c.get("is_game_changer", False)
+                and not c.get("is_part_of_combo", False)
+            ]
+
+            matched_cut = None
+            if is_cand_land:
+                land_cuts = [c for c in eligible_cuts if c.get("is_land")]
+                if land_cuts:
+                    land_cuts.sort(key=lambda x: (x.get("is_basic", False), x.get("inclusion_pct", 0.0)))
+                    matched_cut = land_cuts[0]
+                    cut_reason = f"Replaces land ({round(matched_cut.get('inclusion_pct', 0.0))}% inclusion)"
+            else:
+                cand_nonland_cats = set(tw_cats) - {"lands"}
+                same_cat_cuts = [
+                    c for c in eligible_cuts
+                    if not c.get("is_land") and not c.get("is_basic") and (cand_nonland_cats & set(c.get("categories", [])))
+                ]
+                if same_cat_cuts:
+                    same_cat_cuts.sort(key=lambda x: (x.get("inclusion_pct", 0.0), -float(x.get("cmc", 0.0))))
+                    matched_cut = same_cat_cuts[0]
+                    intersect = list(cand_nonland_cats & set(matched_cut.get("categories", [])))[0]
+                    lbl = intersect.replace("_", " ").title()
+                    cut_reason = f"Same-role swap: replaces {lbl} ({round(matched_cut.get('inclusion_pct', 0.0))}% inclusion)"
+                else:
+                    nonland_cuts = [c for c in eligible_cuts if not c.get("is_land") and not c.get("is_basic")]
+                    if nonland_cuts:
+                        nonland_cuts.sort(key=lambda x: (x.get("inclusion_pct", 0.0), -float(x.get("cmc", 0.0))))
+                        matched_cut = nonland_cuts[0]
+                        cut_reason = f"Lowest inclusion card in deck ({round(matched_cut.get('inclusion_pct', 0.0))}% inclusion)"
+
+            if matched_cut:
+                if used_cuts is not None and matched_cut.get("clean_key"):
+                    used_cuts.add(matched_cut["clean_key"])
+                cut_name = matched_cut.get("name")
+                cut_cmc = matched_cut.get("cmc")
+                cut_type = matched_cut.get("type_line")
+        else:
+            matched_cut = self.upgrade_engine._find_best_cut(
+                cut_candidates=cut_candidates,
+                target_role_or_category=role,
+                used_cuts=used_cuts,
+            )
+            cut_name = matched_cut.get("name") if isinstance(matched_cut, dict) else str(matched_cut)
+            cut_cmc = matched_cut.get("cmc") if isinstance(matched_cut, dict) else None
+            cut_type = matched_cut.get("type_line") if isinstance(matched_cut, dict) else None
+            cut_reason = f"Role replacement for {role}"
 
         # Build concise rationale
         if reasons:
@@ -553,10 +819,17 @@ class CardAddEvaluator:
             "synergy_rating": synergy_rating,
             "fit_verdict": fit_verdict,
             "reasons": reasons,
+            "signals": signals,
             "rationale": rationale,
             "suggested_cut": cut_name,
             "suggested_cut_cmc": cut_cmc,
             "suggested_cut_type": cut_type,
+            "cut_reason": cut_reason,
+            "bracket_warning": bracket_warning,
+            "completes_combos": completes_combos,
+            "is_game_changer": is_gc,
+            "is_mass_land_denial": profile.get("is_mass_land_denial", False),
+            "categories": sorted(list(tw_cats)),
             "edhrec_synergy_percent": syn_pct if syn_pct != 0.0 else None,
             "edhrec_inclusion_percent": inc_pct if inc_pct != 0.0 else None,
         }
@@ -760,19 +1033,26 @@ class CardAddEvaluator:
     # Unified Suite Evaluator (Algorithmic + Gemini Integration)
     # -------------------------------------------------------------------------
 
+    # -------------------------------------------------------------------------
+    # Unified Suite Evaluator (Timewalked Methodology Engine)
+    # -------------------------------------------------------------------------
+
     def evaluate_cards_suite(
         self,
         cards: list[dict],
         decks: list[dict],
-        use_gemini: bool = True,
+        use_gemini: bool = False,
         custom_instructions: str = "",
         model: Optional[str] = None,
         api_key: Optional[str] = None,
+        offline: bool = False,
+        user_inventory_index: Optional[dict[str, dict]] = None,
     ) -> dict:
         """
-        Full evaluation suite for custom cards.
-        Computes legality checks, algorithmic scoring, cut matching,
-        and optionally enriches with Gemini AI strategic reasoning.
+        Full evaluation suite for custom cards powered by the Timewalked methodology.
+        Computes legality checks, Timewalked ratio targets & gap filling,
+        Commander Spellbook 1-card-away combo completions, WotC bracket guardrails,
+        data-driven cuts, and collection binder inventory matching.
         Produces both Card Matrix View and Deck Breakdown View.
         """
         if not cards:
@@ -780,12 +1060,14 @@ class CardAddEvaluator:
         if not decks:
             return {"error": "No Commander decks selected to evaluate against."}
 
-        # Precompute deck cards sets and cut candidates per deck
-        deck_cards_sets: dict[int, set[str]] = {}
-        deck_cut_candidates: dict[int, list[dict]] = {}
-        deck_synergies_cache: dict[int, dict] = {}
+        # Query EDHREC synergies once per unique commander (parallel, cached by provider)
+        deck_synergies_cache = self._fetch_deck_synergies(decks) if not offline else {}
 
+        # Precompute Timewalked context, deck card sets, and cut pools per deck
+        deck_cards_sets: dict[int, set[str]] = {}
         deck_ci_cache: dict[int, set[str]] = {}
+        deck_tw_contexts: dict[int, dict] = {}
+        deck_cut_candidates: dict[int, list[dict]] = {}
 
         for d in decks:
             did = d["id"]
@@ -800,38 +1082,59 @@ class CardAddEvaluator:
             deck_cards_sets[did] = d_set
             deck_ci_cache[did] = self.normalize_color_identity(d.get("color_identity"))
 
-            # Identify cut candidates from existing deck cards
+            # Build Timewalked deck context (ratios, combos, brackets, cut pool)
+            edh_syn = deck_synergies_cache.get(did, {})
+            tw_ctx = self._build_timewalked_deck_context(d, edhrec_synergies=edh_syn, offline=offline)
+            deck_tw_contexts[did] = tw_ctx
+
+            # Identify cut candidates for backward compatibility
             cuts = self.upgrade_engine._identify_cut_candidates(d_cards, ai_analysis=d.get("analysis"))
             deck_cut_candidates[did] = cuts
-
-        # Query EDHREC synergies once per unique commander (parallel, cached by provider)
-        deck_synergies_cache = self._fetch_deck_synergies(decks)
 
         # Classify each candidate card once (deck-independent)
         card_profiles = [self.build_card_profile(card) for card in cards]
 
-        # 1. Compute Algorithmic Baseline for Card Matrix & Deck Breakdowns
+        # 1. Compute Timewalked Card Matrix & Deck Breakdowns
         card_matrix = []
         deck_breakdowns_map: dict[int, dict] = {}
 
         for d in decks:
-            deck_breakdowns_map[d["id"]] = {
-                "deck_id": d["id"],
+            did = d["id"]
+            tw_ctx = deck_tw_contexts[did]
+            deck_breakdowns_map[did] = {
+                "deck_id": did,
                 "deck_name": d["deck_name"],
                 "commander_name": d.get("commander_name") or "Unspecified",
-                "color_identity": sorted(deck_ci_cache[d["id"]]),
+                "color_identity": sorted(deck_ci_cache[did]),
                 "commander_art": d.get("commander_art"),
+                "on_paper_bracket": tw_ctx.get("on_paper_bracket", 2),
+                "on_paper_label": tw_ctx.get("on_paper_label", "Core"),
+                "feels_like_score": tw_ctx.get("feels_like_score", 2.0),
+                "ratios": tw_ctx.get("ratios", {}),
                 "total_applicable_cards": 0,
                 "applicable_cards": [],
             }
 
-        # deck_id -> card names that are legal & not already in deck (sent to Gemini)
-        eligible_pairs: dict[int, list[str]] = {}
-        # (card_name_lower, deck_id) -> (matrix rec, breakdown entry) for O(1) AI overlay
-        pair_index: dict[tuple[str, Any], tuple[dict, dict]] = {}
-
         for card, profile in zip(cards, card_profiles):
             c_name = card.get("canonical_name") or card.get("name", "")
+            clean_k = profile["clean_key"]
+
+            # Binder matching
+            is_owned = False
+            owned_qty = 0
+            binders = []
+            if user_inventory_index:
+                owned_data = (
+                    user_inventory_index.get(clean_k)
+                    or user_inventory_index.get(c_name.lower().strip())
+                    or user_inventory_index.get(self._clean_card_key(c_name))
+                )
+                if owned_data and (owned_data.get("qty", 0) > 0 or owned_data.get("quantity", 0) > 0 or owned_data.get("id")):
+                    is_owned = True
+                    owned_qty = int(owned_data.get("qty") or owned_data.get("quantity") or 1)
+                    raw_b = owned_data.get("binders") or ([owned_data.get("binder_name")] if owned_data.get("binder_name") else [])
+                    binders = sorted(list({b for b in raw_b if b}))
+
             card_entry = {
                 "card_name": c_name,
                 "mana_cost": card.get("mana_cost", ""),
@@ -844,6 +1147,13 @@ class CardAddEvaluator:
                 "art_crop_uri": card.get("art_crop_uri", ""),
                 "scryfall_id": card.get("scryfall_id"),
                 "tcgplayer_url": card.get("tcgplayer_url", ""),
+                "is_game_changer": profile["is_game_changer"],
+                "categories": sorted(list(profile["tw_categories"])),
+                "is_owned": is_owned,
+                "in_binder": is_owned,
+                "owned_qty": owned_qty,
+                "binders": binders,
+                "binder_name": binders[0] if binders else None,
                 "compatible_decks_count": 0,
                 "deck_recommendations": [],
                 "incompatible_decks": [],
@@ -872,28 +1182,39 @@ class CardAddEvaluator:
                     })
                     continue
 
-                eligible_pairs.setdefault(did, []).append(c_name)
-
-                # Algorithmic evaluation
+                # Timewalked evaluation
                 cuts = deck_cut_candidates[did]
                 synergies = deck_synergies_cache.get(did, {})
-                algo_res = self.evaluate_card_algorithmic(
-                    card, d, cut_candidates=cuts, edhrec_synergies=synergies, profile=profile
+                tw_ctx = deck_tw_contexts[did]
+                tw_res = self.evaluate_card_algorithmic(
+                    card,
+                    d,
+                    cut_candidates=cuts,
+                    edhrec_synergies=synergies,
+                    profile=profile,
+                    tw_context=tw_ctx,
                 )
 
                 rec = {
                     "deck_id": did,
                     "deck_name": d["deck_name"],
                     "commander_name": d.get("commander_name"),
-                    "fit_verdict": algo_res["fit_verdict"],
-                    "role": algo_res["role"],
-                    "synergy_rating": algo_res["synergy_rating"],
-                    "score": algo_res["score"],
-                    "suggested_cut": algo_res["suggested_cut"],
-                    "suggested_cut_cmc": algo_res["suggested_cut_cmc"],
-                    "suggested_cut_type": algo_res["suggested_cut_type"],
-                    "rationale": algo_res["rationale"],
-                    "edhrec_synergy_percent": algo_res["edhrec_synergy_percent"],
+                    "fit_verdict": tw_res["fit_verdict"],
+                    "role": tw_res["role"],
+                    "synergy_rating": tw_res["synergy_rating"],
+                    "score": tw_res["score"],
+                    "suggested_cut": tw_res["suggested_cut"],
+                    "suggested_cut_cmc": tw_res["suggested_cut_cmc"],
+                    "suggested_cut_type": tw_res["suggested_cut_type"],
+                    "cut_reason": tw_res.get("cut_reason", ""),
+                    "bracket_warning": tw_res.get("bracket_warning"),
+                    "reasons": tw_res.get("reasons", []),
+                    "signals": tw_res.get("signals", []),
+                    "completes_combos": tw_res.get("completes_combos", []),
+                    "is_game_changer": tw_res.get("is_game_changer", False),
+                    "rationale": tw_res["rationale"],
+                    "edhrec_synergy_percent": tw_res["edhrec_synergy_percent"],
+                    "edhrec_inclusion_percent": tw_res["edhrec_inclusion_percent"],
                     "is_already_in_deck": False,
                 }
 
@@ -908,16 +1229,21 @@ class CardAddEvaluator:
                     "image_uri": card.get("image_uri", ""),
                     "price_usd": card.get("price_usd"),
                     "scryfall_id": card.get("scryfall_id"),
-                    "fit_verdict": algo_res["fit_verdict"],
-                    "role": algo_res["role"],
-                    "synergy_rating": algo_res["synergy_rating"],
-                    "suggested_cut": algo_res["suggested_cut"],
-                    "suggested_cut_cmc": algo_res["suggested_cut_cmc"],
-                    "suggested_cut_type": algo_res["suggested_cut_type"],
-                    "rationale": algo_res["rationale"],
+                    "fit_verdict": tw_res["fit_verdict"],
+                    "role": tw_res["role"],
+                    "synergy_rating": tw_res["synergy_rating"],
+                    "suggested_cut": tw_res["suggested_cut"],
+                    "suggested_cut_cmc": tw_res["suggested_cut_cmc"],
+                    "suggested_cut_type": tw_res["suggested_cut_type"],
+                    "cut_reason": tw_res.get("cut_reason", ""),
+                    "bracket_warning": tw_res.get("bracket_warning"),
+                    "reasons": tw_res.get("reasons", []),
+                    "signals": tw_res.get("signals", []),
+                    "completes_combos": tw_res.get("completes_combos", []),
+                    "is_game_changer": tw_res.get("is_game_changer", False),
+                    "rationale": tw_res["rationale"],
                 }
                 deck_breakdowns_map[did]["applicable_cards"].append(app_card)
-                pair_index[(c_name.lower(), did)] = (rec, app_card)
 
             # Sort deck recommendations by synergy score descending
             card_entry["deck_recommendations"].sort(key=lambda x: -x["synergy_rating"])
@@ -944,98 +1270,48 @@ class CardAddEvaluator:
             if "legendary" in t_line and "creature" in t_line:
                 c_name = card.get("canonical_name") or card.get("name", "")
                 colors = card.get("color_identity", [])
+                is_gc_cmdr = bool(card.get("game_changer") or c_name in TIMEWALKED_GAME_CHANGERS)
                 new_commanders.append({
                     "card_name": c_name,
                     "colors": colors,
                     "type_line": card.get("type_line", ""),
                     "image_uri": card.get("image_uri", ""),
-                    "archetype": "Commander Potential",
-                    "rationale": f"{c_name} is a legendary creature that can helm a new Commander deck.",
+                    "archetype": "High-Ceiling Commander" if is_gc_cmdr else "Commander Potential",
+                    "is_game_changer": is_gc_cmdr,
+                    "rationale": f"{c_name} is an official Game Changer legendary creature with extreme power ceiling."
+                    if is_gc_cmdr
+                    else f"{c_name} is a legendary creature that can helm a new Commander deck.",
                 })
 
-        result = {
+        # Summary telemetry
+        essential_count = sum(
+            1
+            for cm in card_matrix
+            for r in cm.get("deck_recommendations", [])
+            if r.get("fit_verdict") == "Essential Upgrade"
+        )
+        combo_count = sum(
+            1
+            for cm in card_matrix
+            for r in cm.get("deck_recommendations", [])
+            if r.get("completes_combos")
+        )
+        exec_summary = (
+            f"Evaluated {len(cards)} candidate card(s) against {len(decks)} Commander deck(s) using Timewalked methodology. "
+            f"Identified {essential_count} Essential Upgrade match(es)"
+            + (f" and {combo_count} combo completion(s)." if combo_count > 0 else ".")
+        )
+
+        return {
             "mode": "cards",
-            "executive_summary": f"Analyzed {len(cards)} candidate card(s) against {len(decks)} Commander deck(s).",
+            "executive_summary": exec_summary,
             "card_matrix": card_matrix,
             "deck_breakdowns": deck_breakdowns,
             "new_commander_opportunities": new_commanders,
             "evaluated_cards_count": len(cards),
             "evaluated_decks_count": len(decks),
-            "_model_used": "algorithmic-fast-engine",
+            "_model_used": "timewalked-methodology",
         }
-
-        # 2. If Gemini is requested and API key is present, enrich with Gemini
-        #    (skipped entirely when no card is a legal, new add for any deck — saves a full API call)
-        if use_gemini and eligible_pairs:
-            try:
-                cut_pools = {
-                    did: [c["name"] for c in cands if not c.get("is_basic")][:GEMINI_CUT_POOL_SIZE]
-                    for did, cands in deck_cut_candidates.items()
-                }
-                gemini_res = self.evaluate_with_gemini(
-                    cards=cards,
-                    decks=decks,
-                    custom_instructions=custom_instructions,
-                    model=model,
-                    api_key=api_key,
-                    eligible_pairs=eligible_pairs,
-                    cut_pools=cut_pools,
-                )
-
-                # Merge Gemini insights into algorithmic matrix
-                result["executive_summary"] = gemini_res.get("executive_summary") or result["executive_summary"]
-                result["_model_used"] = gemini_res.get("_model_used", model or "gemini-3.8-flash")
-                if gemini_res.get("new_commander_opportunities"):
-                    result["new_commander_opportunities"] = gemini_res["new_commander_opportunities"]
-
-                # Overlay Gemini rationales, ratings, and cuts onto both views in one pass
-                for ev in self._iter_gemini_evals(gemini_res):
-                    c_low = str(ev.get("card") or ev.get("card_name") or "").strip().lower()
-                    raw_did = ev.get("deck_id")
-                    try:
-                        did = int(raw_did)
-                    except (TypeError, ValueError):
-                        did = raw_did
-                    hit = pair_index.get((c_low, did)) or pair_index.get((c_low, raw_did))
-                    if not hit and " // " not in c_low:
-                        # Gemini may return only the front face of a DFC/split card
-                        hit = next(
-                            (v for (n, d_id), v in pair_index.items() if d_id == did and n.split(" // ")[0] == c_low),
-                            None,
-                        )
-                    if not hit:
-                        continue
-                    for target in hit:
-                        if ev.get("fit_verdict"):
-                            target["fit_verdict"] = ev["fit_verdict"]
-                        if ev.get("role"):
-                            target["role"] = ev["role"]
-                        if ev.get("synergy_rating") is not None:
-                            try:
-                                target["synergy_rating"] = float(ev["synergy_rating"])
-                            except (TypeError, ValueError):
-                                pass
-                        if ev.get("suggested_cut"):
-                            target["suggested_cut"] = ev["suggested_cut"]
-                        if ev.get("rationale"):
-                            target["rationale"] = ev["rationale"]
-
-                # Re-sort both views by updated synergy rating
-                for c_entry in result["card_matrix"]:
-                    c_entry["deck_recommendations"].sort(key=lambda x: -x["synergy_rating"])
-                    c_entry["best_fit_deck"] = (
-                        c_entry["deck_recommendations"][0]["deck_name"]
-                        if c_entry["deck_recommendations"]
-                        else None
-                    )
-                for db_info in result["deck_breakdowns"]:
-                    db_info["applicable_cards"].sort(key=lambda x: -x["synergy_rating"])
-
-            except Exception as e:
-                logger.warning(f"Gemini enrichment failed; using algorithmic results: {e}")
-                result["_gemini_warning"] = f"Gemini strategic enrichment skipped: {str(e)}"
-
-        return result
 
     @staticmethod
     def _iter_gemini_evals(gemini_res: dict):
@@ -1093,28 +1369,46 @@ class CardAddEvaluator:
         return {did: results.get(cmdr, {}) for did, cmdr in cmdr_by_deck.items()}
 
     # -------------------------------------------------------------------------
-    # Secret Lair Superdrop Integration
+    # Secret Lair Superdrop Integration (Timewalked Deterministic Methodology)
     # -------------------------------------------------------------------------
 
     def evaluate_secret_lair_suite(
         self,
-        url_or_text: str,
-        decks: list[dict],
-        use_gemini: bool = True,
+        url_or_text: str = "",
+        decks: list[dict] = None,
+        use_gemini: bool = False,
         custom_instructions: str = "",
         model: Optional[str] = None,
         api_key: Optional[str] = None,
+        offline: bool = False,
+        user_inventory_index: Optional[dict[str, dict]] = None,
+        drops: Optional[list[dict]] = None,
     ) -> dict:
         """
         Integrates Secret Lair Superdrop scraping, Scryfall EV calculation,
-        and fleet synergy analysis. Generates EV rankings, bundle analysis,
+        and Timewalked fleet synergy analysis. Generates EV rankings, bundle analysis,
         and feeds drop cards into the Card Matrix.
         """
         effective_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
+        bundles = []
 
-        # 1. Fetch & Parse announcement
-        announcement = self.scraper.fetch_announcement(url_or_text)
-        drops, bundles = self.scraper.parse_drops(announcement["text"], api_key=effective_key if use_gemini else None, html=announcement.get("html"))
+        # 1. Fetch & Parse announcement (or use pre-parsed drops)
+        if drops is None:
+            announcement = self.scraper.fetch_announcement(url_or_text)
+            parsed_drops, bundles = self.scraper.parse_drops(
+                announcement["text"],
+                api_key=effective_key if use_gemini else None,
+                html=announcement.get("html"),
+            )
+            title = announcement.get("title", "Secret Lair Superdrop")
+            banner_img = announcement.get("banner_image")
+            src_url = announcement.get("source_url", url_or_text)
+            drops = parsed_drops
+        else:
+            title = "Secret Lair Evaluation"
+            banner_img = None
+            src_url = url_or_text or ""
+
         if not drops:
             raise ValueError("No Secret Lair drops or cards could be parsed from the provided announcement.")
 
@@ -1130,70 +1424,120 @@ class CardAddEvaluator:
                 card_item["from_drop"] = d_name
                 all_drop_cards.append(card_item)
 
-        # 4. Dispatch to Gemini Fleet Synergy Advisor if enabled
-        fleet_analysis = {}
-        if use_gemini and effective_key:
-            try:
-                advisor = SecretLairGeminiAdvisor(api_key=effective_key, model=model)
-                fleet_analysis = advisor.analyze_fleet_synergy(
-                    superdrop_title=announcement["title"],
-                    drops=enriched_drops,
-                    bundles=bundles,
-                    commander_decks=decks,
-                    custom_instructions=custom_instructions,
-                )
-            except Exception as e:
-                logger.warning(f"Secret Lair Gemini fleet synergy analysis skipped or failed: {e}")
-                fleet_analysis = {}
-
-        # 5. Build unified Card Matrix from drops
+        # 4. Build unified Card Matrix from drops using Timewalked methodology
         card_matrix_result = self.evaluate_cards_suite(
             cards=all_drop_cards,
             decks=decks,
-            use_gemini=False,  # Evaluated above or via algorithmic matrix
+            use_gemini=False,
+            offline=offline,
+            user_inventory_index=user_inventory_index,
         )
 
-        # Overlay fleet_analysis deck breakdowns into card matrix if available
-        ai_deck_cards_map: dict[str, dict] = {}
-        for db_entry in fleet_analysis.get("deck_breakdowns", []):
-            did = db_entry.get("deck_id")
-            for ac in db_entry.get("applicable_cards", []):
-                key = (ac.get("card_name", "").lower(), did)
-                ai_deck_cards_map[key] = ac
+        # 5. Deterministic Timewalked Drop Ranking and Bundle Analysis
+        # Count high-synergy / essential upgrades per drop across the fleet
+        drop_upgrade_counts: dict[str, dict] = {}
+        for drop in enriched_drops:
+            d_name = drop.get("drop_name", "Drop")
+            drop_upgrade_counts[d_name] = {
+                "drop_name": d_name,
+                "essential_count": 0,
+                "high_count": 0,
+                "target_decks": set(),
+                "cards_matching": [],
+            }
 
         for cm in card_matrix_result.get("card_matrix", []):
-            c_low = cm["card_name"].lower()
-            for rec in cm.get("deck_recommendations", []):
-                ai_match = ai_deck_cards_map.get((c_low, rec["deck_id"]))
-                if ai_match:
-                    if ai_match.get("fit_verdict"):
-                        rec["fit_verdict"] = ai_match["fit_verdict"]
-                    if ai_match.get("role"):
-                        rec["role"] = ai_match["role"]
-                    if ai_match.get("synergy_rating") is not None:
-                        rec["synergy_rating"] = float(ai_match["synergy_rating"])
-                    if ai_match.get("suggested_cut"):
-                        rec["suggested_cut"] = ai_match["suggested_cut"]
-                    if ai_match.get("rationale"):
-                        rec["rationale"] = ai_match["rationale"]
+            d_origin = cm.get("from_drop")
+            if not d_origin or d_origin not in drop_upgrade_counts:
+                # Fallback matching
+                for d_cand in drop_upgrade_counts:
+                    if any(
+                        self._clean_card_key(c.get("canonical_name", "")) == self._clean_card_key(cm.get("card_name", ""))
+                        for c in next((d.get("cards", []) for d in enriched_drops if d.get("drop_name") == d_cand), [])
+                    ):
+                        d_origin = d_cand
+                        break
 
-            cm["deck_recommendations"].sort(key=lambda x: -x["synergy_rating"])
-            cm["best_fit_deck"] = cm["deck_recommendations"][0]["deck_name"] if cm["deck_recommendations"] else None
+            if d_origin and d_origin in drop_upgrade_counts:
+                info = drop_upgrade_counts[d_origin]
+                for rec in cm.get("deck_recommendations", []):
+                    if rec.get("fit_verdict") == "Essential Upgrade":
+                        info["essential_count"] += 1
+                        info["target_decks"].add(rec.get("deck_name"))
+                        info["cards_matching"].append(cm.get("card_name"))
+                    elif rec.get("fit_verdict") == "High Synergy":
+                        info["high_count"] += 1
+                        info["target_decks"].add(rec.get("deck_name"))
+                        info["cards_matching"].append(cm.get("card_name"))
 
-        model_used = fleet_analysis.get("_model_used", model or "gemini-3.8-flash") if use_gemini else "algorithmic-fast-engine"
+        ranked_drops = []
+        for drop in enriched_drops:
+            d_name = drop.get("drop_name", "Drop")
+            upg = drop_upgrade_counts.get(d_name, {})
+            ev_ratio = drop.get("ev_ratio_nonfoil") or 1.0
+            ess = upg.get("essential_count", 0)
+            high = upg.get("high_count", 0)
+
+            # Combined score: EV financial ratio + tactical fleet upgrades
+            fleet_score = round((ev_ratio * 35.0) + (ess * 18.0) + (high * 8.0), 1)
+
+            tier = "Pass / Low Priority"
+            if ess >= 2 or (ev_ratio >= 1.25 and ess >= 1):
+                tier = "Must Buy / High Priority"
+            elif ess >= 1 or high >= 2 or ev_ratio >= 1.1:
+                tier = "Consider Buying"
+            elif high >= 1:
+                tier = "Role Filler"
+
+            deck_list_str = ", ".join(sorted(list(upg.get("target_decks", [])))[:2])
+            summary_rationale = (
+                f"EV {ev_ratio:.2f}x retail with {ess} Essential and {high} High Synergy fleet upgrades"
+                + (f" for {deck_list_str}." if deck_list_str else ".")
+            )
+
+            ranked_drops.append({
+                "drop_name": d_name,
+                "recommendation_tier": tier,
+                "fleet_synergy_score": fleet_score,
+                "ev_ratio": ev_ratio,
+                "summary_rationale": summary_rationale,
+                "target_decks": sorted(list(upg.get("target_decks", []))),
+            })
+
+        ranked_drops.sort(key=lambda x: -x["fleet_synergy_score"])
+        for idx, r in enumerate(ranked_drops, 1):
+            r["rank"] = idx
+
+        # Bundle evaluation
+        bundle_analysis = {}
+        if bundles:
+            best_bundle = bundles[0]
+            b_name = best_bundle.get("bundle_name", "Superdrop Bundle")
+            total_singles = sum(d.get("singles_value_nonfoil", 0.0) for d in enriched_drops)
+            b_price = best_bundle.get("price_nonfoil") or best_bundle.get("price") or 119.99
+            b_discount_val = round(total_singles - b_price, 2)
+            b_verdict = "Buy Bundle" if total_singles > b_price else "Buy Selected Singles"
+            bundle_analysis = {
+                "verdict": b_verdict,
+                "bundle_name": b_name,
+                "singles_total_value": round(total_singles, 2),
+                "bundle_price": b_price,
+                "savings_vs_singles": b_discount_val,
+                "rationale": f"Total fleet singles value of ${total_singles:.2f} vs bundle retail of ${b_price:.2f}. "
+                f"Result: {b_verdict}.",
+            }
 
         return {
             "mode": "secret_lair",
-            "title": announcement["title"],
-            "banner_image": announcement.get("banner_image"),
-            "source_url": announcement.get("source_url"),
+            "title": title,
+            "banner_image": banner_img,
+            "source_url": src_url,
             "drops": enriched_drops,
             "bundles": bundles,
-            "fleet_analysis": fleet_analysis,
             "card_matrix": card_matrix_result.get("card_matrix", []),
-            "deck_breakdowns": fleet_analysis.get("deck_breakdowns", []) or card_matrix_result.get("deck_breakdowns", []),
-            "best_drops_to_buy": fleet_analysis.get("best_drops_to_buy", []),
-            "bundle_analysis": fleet_analysis.get("bundle_analysis", {}),
-            "new_commander_opportunities": fleet_analysis.get("new_commander_opportunities", []),
-            "_model_used": model_used,
+            "deck_breakdowns": card_matrix_result.get("deck_breakdowns", []),
+            "best_drops_to_buy": ranked_drops,
+            "bundle_analysis": bundle_analysis,
+            "new_commander_opportunities": card_matrix_result.get("new_commander_opportunities", []),
+            "_model_used": "timewalked-methodology",
         }

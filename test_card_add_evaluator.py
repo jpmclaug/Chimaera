@@ -243,6 +243,217 @@ class TestCardAddEvaluator(unittest.TestCase):
         throne_matrix = next(cm for cm in suite["card_matrix"] if cm["card_name"] == "Roaming Throne")
         self.assertEqual(len(throne_matrix["deck_recommendations"]), 2)
         self.assertEqual(len(throne_matrix["incompatible_decks"]), 0)
+        self.assertEqual(suite.get("_model_used"), "timewalked-methodology")
+
+    def test_timewalked_ratio_and_bracket_warning(self):
+        """Tests Timewalked ratio filling, game changer bracket warnings, and cut pairing."""
+        deck = {
+            "id": 201,
+            "deck_name": "Testing Ratios",
+            "commander_name": "Krenko, Mob Boss",
+            "color_identity": ["R"],
+            "cards": [
+                {"name": "Mountain", "type_line": "Basic Land"},
+                {"name": "Goblins of the Flarg", "type_line": "Creature", "cmc": 1},
+            ],
+        }
+
+        # Armageddon is a Game Changer / MLD card (White, but let's test evaluation directly)
+        mld_card = {
+            "canonical_name": "Armageddon",
+            "name": "Armageddon",
+            "type_line": "Sorcery",
+            "oracle_text": "Destroy all lands.",
+            "cmc": 4,
+            "mana_cost": "{3}{W}",
+            "color_identity": ["W"],
+            "price_usd": 12.00,
+        }
+
+        cut_candidates = [
+            {"name": "Goblins of the Flarg", "cmc": 1, "type_line": "Creature", "inclusion_percent": 15.0},
+        ]
+
+        res = self.evaluator.evaluate_card_algorithmic(
+            card_meta=mld_card,
+            deck=deck,
+            cut_candidates=cut_candidates,
+            edhrec_synergies={},
+        )
+
+        # MLD card should be recognized and trigger Bracket 4 warning
+        self.assertTrue(res.get("is_mass_land_denial"))
+        self.assertIsNotNone(res.get("bracket_warning"))
+        self.assertIn("Bracket 4", res["bracket_warning"])
+        # Should have cut reason
+        self.assertTrue(bool(res.get("suggested_cut")))
+        self.assertTrue(bool(res.get("cut_reason")))
+
+        # Test official Game Changer (Rhystic Study) with deck context near 3 GC cap
+        rhystic_card = {
+            "canonical_name": "Rhystic Study",
+            "name": "Rhystic Study",
+            "type_line": "Enchantment",
+            "oracle_text": "Whenever an opponent casts a spell...",
+            "cmc": 3,
+            "mana_cost": "{2}{U}",
+            "color_identity": ["U"],
+            "price_usd": 35.00,
+        }
+        tw_context_high_gc = {
+            "ratios": {},
+            "on_paper_bracket": 3,
+            "feels_like": 3,
+            "game_changers_count": 3,
+            "included_combos": [],
+            "almost_included_combos": [],
+            "cut_pool": cut_candidates,
+        }
+        res_gc = self.evaluator.evaluate_card_algorithmic(
+            card_meta=rhystic_card,
+            deck=deck,
+            cut_candidates=cut_candidates,
+            edhrec_synergies={},
+            tw_context=tw_context_high_gc,
+        )
+        self.assertTrue(res_gc.get("is_game_changer"))
+        self.assertIsNotNone(res_gc.get("bracket_warning"))
+        self.assertIn("raises deck to Bracket 4", res_gc["bracket_warning"])
+
+    def test_timewalked_combo_completion_boost(self):
+        """Tests that a 1-card-away combo completion boosts synergy and emits combo signal."""
+        deck = {
+            "id": 202,
+            "deck_name": "Heliod Sun-Crowned Ballista",
+            "commander_name": "Heliod, Sun-Crowned",
+            "color_identity": ["W"],
+            "cards": [
+                {"name": "Plains", "type_line": "Basic Land"},
+                {"name": "Heliod, Sun-Crowned", "type_line": "Legendary Enchantment Creature — God", "cmc": 3},
+            ],
+        }
+
+        ballista_card = {
+            "canonical_name": "Walking Ballista",
+            "name": "Walking Ballista",
+            "type_line": "Artifact Creature — Construct",
+            "oracle_text": "Walking Ballista enters the battlefield with X +1/+1 counters on it...",
+            "cmc": 0,
+            "mana_cost": "{X}{X}",
+            "color_identity": [],
+            "price_usd": 15.00,
+        }
+
+        # Mock deck context with almost_included_combos completing with Walking Ballista
+        tw_context = {
+            "ratios": {},
+            "bracket": 2,
+            "feels_like": 2,
+            "game_changer_count": 0,
+            "included_combos": [],
+            "almost_included_combos": [
+                {
+                    "cards": ["Heliod, Sun-Crowned", "Walking Ballista"],
+                    "missing_cards": ["Walking Ballista"],
+                    "present_cards": ["Heliod, Sun-Crowned"],
+                    "missing_count": 1,
+                    "combo_id": "test-combo-1",
+                }
+            ],
+            "cut_pool": [{"name": "Plains", "type_line": "Basic Land", "cmc": 0}],
+        }
+
+        res = self.evaluator.evaluate_card_algorithmic(
+            card_meta=ballista_card,
+            deck=deck,
+            cut_candidates=[],
+            edhrec_synergies={},
+            timewalked_context=tw_context,
+        )
+
+        self.assertIn("combo", res.get("signals", []))
+        self.assertGreaterEqual(res["synergy_rating"], 7.5)
+        self.assertEqual(res["fit_verdict"], "Essential Upgrade")
+        self.assertTrue(any("combo" in r.lower() for r in res.get("reasons", [])))
+
+    def test_evaluate_cards_suite_inventory_badge(self):
+        """Tests that cards in user inventory receive in_binder flag."""
+        decks = [
+            {
+                "id": 103,
+                "deck_name": "Mono-White",
+                "commander_name": "Elesh Norn",
+                "color_identity": ["W"],
+                "cards": [{"name": "Plains", "type_line": "Basic Land"}],
+            }
+        ]
+        cards = [
+            {
+                "name": "Sol Ring",
+                "canonical_name": "Sol Ring",
+                "cmc": 1,
+                "type_line": "Artifact",
+                "color_identity": [],
+            }
+        ]
+        user_inv = {
+            "sol ring": {
+                "id": 999,
+                "binder_id": 12,
+                "binder_name": "Staples Binder",
+                "quantity": 1,
+                "finish": "foil",
+            }
+        }
+
+        suite = self.evaluator.evaluate_cards_suite(
+            cards=cards,
+            decks=decks,
+            use_gemini=False,
+            user_inventory_index=user_inv,
+        )
+
+        card_entry = suite["card_matrix"][0]
+        self.assertTrue(card_entry.get("in_binder"))
+        self.assertEqual(card_entry.get("binder_name"), "Staples Binder")
+
+    def test_evaluate_secret_lair_suite_timewalked_deterministic(self):
+        """Tests deterministic Secret Lair evaluation without Gemini."""
+        decks = [
+            {
+                "id": 104,
+                "deck_name": "Mono-White",
+                "commander_name": "Heliod",
+                "color_identity": ["W"],
+                "cards": [{"name": "Plains", "type_line": "Basic Land"}],
+            }
+        ]
+        drop_data = {
+            "drop_name": "Secret Lair: Artist Series",
+            "cards": [
+                {
+                    "name": "Swords to Plowshares",
+                    "canonical_name": "Swords to Plowshares",
+                    "cmc": 1,
+                    "type_line": "Instant",
+                    "color_identity": ["W"],
+                    "price_usd": 5.0,
+                }
+            ],
+            "price_usd": 29.99,
+        }
+
+        suite = self.evaluator.evaluate_secret_lair_suite(
+            drops=[drop_data],
+            decks=decks,
+            use_gemini=False,
+        )
+
+        self.assertEqual(suite["mode"], "secret_lair")
+        self.assertEqual(suite.get("_model_used"), "timewalked-methodology")
+        self.assertIn("best_drops_to_buy", suite)
+        self.assertIn("bundle_analysis", suite)
+        self.assertTrue(len(suite["best_drops_to_buy"]) >= 1)
 
 
 class TestAddEvaluatorAPI(unittest.TestCase):

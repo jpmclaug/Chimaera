@@ -11,15 +11,15 @@
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
             <div>
                 <div class="flex items-center space-x-2">
-                    <span class="bg-[#A855F7]/20 border border-[#A855F7]/60 text-[#C084FC] text-[10px] font-mono font-bold px-2 py-0.5 uppercase tracking-wider">SECTOR 08 // AI INTEL</span>
+                    <span class="bg-[#10B981]/20 border border-[#10B981]/60 text-[#10B981] text-[10px] font-mono font-bold px-2 py-0.5 uppercase tracking-wider">SECTOR 08 // TIMEWALKED INTEL</span>
                     <span class="bg-[#00CED1]/20 border border-[#00CED1]/50 text-[#00CED1] text-[10px] font-mono px-2 py-0.5 uppercase font-bold">ADD EVALUATOR</span>
-                    <span class="bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981] text-[10px] font-mono px-2 py-0.5 uppercase font-bold">SECRET LAIR SUITE</span>
+                    <span class="bg-[#A855F7]/20 border border-[#A855F7]/50 text-[#C084FC] text-[10px] font-mono px-2 py-0.5 uppercase font-bold">SECRET LAIR SUITE</span>
                 </div>
                 <h1 class="text-xl sm:text-2xl font-black font-heading tracking-wide uppercase text-white mt-1.5 flex items-center gap-2">
                     Tactical Card Add & Secret Lair Suite
                 </h1>
                 <p class="text-xs text-[#94A3B8] max-w-3xl mt-1 leading-relaxed">
-                    Evaluate any single card, batch list, or Secret Lair Superdrop against your Commander fleet. Chimaera enforces color identity legality, identifies deck deficits and EDHREC synergies, scores tactical fit, and proposes exact cuts from your 99.
+                    Evaluate any single card, batch list, or Secret Lair Superdrop against your Commander fleet using the <strong class="text-white">Timewalked Methodology</strong>. Chimaera evaluates color identity legality, checks EDHREC community inclusion %, verifies 1-card-away <strong class="text-[#F59E0B]">Commander Spellbook combos</strong>, enforces <strong class="text-[#C084FC]">WotC Bracket guardrails</strong>, calculates <strong class="text-[#10B981]">9-category ratio targets</strong>, and pairs additions with data-driven cuts.
                 </p>
             </div>
             <div class="flex items-center space-x-3 flex-shrink-0">
@@ -180,24 +180,18 @@
 
         <!-- Tactical Parameters & Launch Button -->
         <div class="mt-5 pt-4 border-t border-[#263245] flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div class="flex items-center space-x-3 w-full sm:w-auto flex-wrap gap-2">
-                <div class="min-w-[170px]">
-                    <label class="block text-[10px] font-mono uppercase text-[#64748B] mb-1">AI Reasoning Engine:</label>
-                    <select id="select-gemini-model" class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#00CED1] focus:outline-none">
-                        {% for m in supported_models %}
-                        <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
-                        {% endfor %}
-                    </select>
+            <div class="flex items-center space-x-4 w-full sm:w-auto flex-wrap gap-2">
+                <div class="flex items-center space-x-2">
+                    <span class="px-2.5 py-1 bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] font-mono font-bold text-xs uppercase flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
+                        Timewalked Methodology Active
+                    </span>
                 </div>
-                <div class="flex items-center space-x-2 pt-4">
-                    <label class="flex items-center space-x-1.5 text-xs font-mono text-[#94A3B8] cursor-pointer select-none">
-                        <input type="checkbox" id="chk-use-gemini" class="w-3.5 h-3.5 text-[#00CED1] bg-[#10141D] border-[#263245] rounded focus:ring-0">
-                        <span>Gemini AI Tactical Deep-Dive</span>
+                <div class="flex items-center space-x-2">
+                    <label class="flex items-center space-x-1.5 text-xs font-mono text-[#94A3B8] cursor-pointer select-none" title="Use local curated Game Changers and Combo database without external API queries">
+                        <input type="checkbox" id="chk-tw-offline" class="w-3.5 h-3.5 text-[#00CED1] bg-[#10141D] border-[#263245] rounded focus:ring-0">
+                        <span>Fast Offline Mode (Local Staples &amp; Combos)</span>
                     </label>
-                </div>
-                <div class="flex-1 min-w-[200px]">
-                    <label class="block text-[10px] font-mono uppercase text-[#64748B] mb-1">Custom Directives (Optional):</label>
-                    <input type="text" id="input-custom-notes" placeholder="e.g. Prioritize low curve, budget alternatives..." class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white font-mono focus:border-[#00CED1] focus:outline-none">
                 </div>
             </div>
 
@@ -205,7 +199,7 @@
                 <svg id="icon-deploy" class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                 </svg>
-                <span id="btn-deploy-text">Deploy Add Evaluation</span>
+                <span id="btn-deploy-text">Deploy Timewalked Evaluation</span>
             </button>
         </div>
     </div>
@@ -231,11 +225,11 @@
             </div>
             <div id="step-3" class="p-2 bg-[#10141D] border border-[#263245] text-[#94A3B8] flex items-center space-x-2">
                 <span class="step-num font-bold">03</span>
-                <span class="truncate">Legality & Synergy</span>
+                <span class="truncate">EDHREC &amp; Combos</span>
             </div>
             <div id="step-4" class="p-2 bg-[#10141D] border border-[#263245] text-[#94A3B8] flex items-center space-x-2">
                 <span class="step-num font-bold">04</span>
-                <span class="truncate">Tactical Cuts</span>
+                <span class="truncate">Ratios &amp; Data Cuts</span>
             </div>
         </div>
     </div>
@@ -254,8 +248,8 @@
                 </div>
                 <div class="flex-1 min-w-0 space-y-2">
                     <div class="flex items-center space-x-2 flex-wrap gap-1">
-                        <span class="bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-model-used">ALGORITHMIC + AI</span>
-                        <span class="bg-[#10B981]/20 border border-[#10B981] text-[#10B981] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-cards-count">0 CARDS EVALUATED</span>
+                        <span class="bg-[#10B981]/20 border border-[#10B981] text-[#10B981] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-model-used">TIMEWALKED METHODOLOGY</span>
+                        <span class="bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-cards-count">0 CARDS EVALUATED</span>
                         <span class="bg-[#A855F7]/20 border border-[#A855F7] text-[#C084FC] text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-mode">MODE: CARDS</span>
                         <span class="hidden bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-[10px] font-mono px-2 py-0.5 font-bold uppercase" id="badge-saved-indicator">💾 SAVED TO INTEL</span>
                     </div>
@@ -263,10 +257,6 @@
                         <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wide" id="result-title">
                             Evaluation Results
                         </h2>
-                        <button id="btn-rerun-gemini" onclick="triggerGeminiDeepDiveOnResults()" class="hidden px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-[11px] uppercase tracking-wider rounded shadow transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap self-start sm:self-auto">
-                            <span>⚡</span>
-                            <span id="btn-rerun-gemini-text">Run Gemini AI Deep-Dive</span>
-                        </button>
                     </div>
                     <div class="bg-[#10141D] border border-[#263245] p-3.5 text-xs text-[#F1F5F9] font-sans leading-relaxed border-l-4 border-l-[#00CED1]" id="result-exec-summary">
                         Executive briefing loading...
@@ -634,15 +624,11 @@ async function runAddEvaluation() {
         return;
     }
 
-    const model = document.getElementById('select-gemini-model').value;
-    const useGemini = document.getElementById('chk-use-gemini').checked;
-    const customNotes = document.getElementById('input-custom-notes').value.trim();
+    const offline = Boolean(document.getElementById('chk-tw-offline')?.checked);
 
     let payload = {
         deck_ids: selectedDeckIds,
-        model: model,
-        use_gemini: useGemini,
-        custom_instructions: customNotes,
+        offline: offline,
     };
 
     if (currentInputMode === 'secret_lair') {
@@ -700,9 +686,9 @@ async function runAddEvaluation() {
     };
 
     updateStep(1, 'Normalizing card targets...');
-    setTimeout(() => updateStep(2, 'Querying Scryfall market & color telemetry...'), 800);
-    setTimeout(() => updateStep(3, 'Cross-referencing color legality & EDHREC synergies...'), 1800);
-    setTimeout(() => updateStep(4, 'Synthesizing tactical cuts & Gemini reasoning...'), 3000);
+    setTimeout(() => updateStep(2, 'Querying Scryfall market & color telemetry...'), 600);
+    setTimeout(() => updateStep(3, 'Cross-referencing EDHREC inclusion & Spellbook combos...'), 1200);
+    setTimeout(() => updateStep(4, 'Computing Timewalked ratios & data-driven cuts...'), 2000);
 
     try {
         const resp = await fetch('/api/add-evaluator/evaluate', {
@@ -801,16 +787,10 @@ function renderResults(data) {
 
     document.getElementById('result-title').innerText = data.title || (data.mode === 'secret_lair' ? 'Secret Lair Superdrop Intelligence' : 'Card Add Fleet Evaluation');
     document.getElementById('result-exec-summary').innerText = data.executive_summary || 'Tactical analysis completed.';
-    const isGeminiUsed = Boolean(data._model_used && !data._model_used.toLowerCase().includes('algorithmic'));
     const modelBadge = document.getElementById('badge-model-used');
     if (modelBadge) {
-        if (isGeminiUsed) {
-            modelBadge.innerText = (data._model_used || 'Gemini 3.8 Flash').toUpperCase();
-            modelBadge.className = 'bg-[#00CED1]/20 border border-[#00CED1] text-[#00CED1] text-[10px] font-mono px-2 py-0.5 font-bold uppercase';
-        } else {
-            modelBadge.innerText = 'FAST ALGORITHMIC';
-            modelBadge.className = 'bg-[#94A3B8]/20 border border-[#94A3B8] text-[#94A3B8] text-[10px] font-mono px-2 py-0.5 font-bold uppercase';
-        }
+        modelBadge.innerText = 'TIMEWALKED METHODOLOGY';
+        modelBadge.className = 'bg-[#10B981]/20 border border-[#10B981] text-[#10B981] text-[10px] font-mono px-2 py-0.5 font-bold uppercase';
     }
 
     const savedBadge = document.getElementById('badge-saved-indicator');
@@ -819,17 +799,6 @@ function renderResults(data) {
             savedBadge.classList.remove('hidden');
         } else {
             savedBadge.classList.add('hidden');
-        }
-    }
-
-    const rerunBtn = document.getElementById('btn-rerun-gemini');
-    if (rerunBtn) {
-        if (isGeminiUsed) {
-            rerunBtn.classList.remove('hidden');
-            document.getElementById('btn-rerun-gemini-text').innerText = 'Rerun Gemini Deep-Dive';
-        } else {
-            rerunBtn.classList.remove('hidden');
-            document.getElementById('btn-rerun-gemini-text').innerText = 'Run Gemini Deep-Dive';
         }
     }
 
@@ -944,7 +913,13 @@ function renderCardMatrix(cardMatrix) {
                                 ${manaCost ? `<span class="text-xs font-mono text-[#94A3B8]">${manaCost}</span>` : ''}
                                 ${item.from_drop ? `<span class="text-[10px] font-mono text-[#C084FC] px-1.5 py-0.2 bg-[#A855F7]/20 border border-[#A855F7]/50">[From: ${item.from_drop}]</span>` : ''}
                             </div>
-                            <div class="text-[11px] text-[#94A3B8]">${typeLine} &bull; <span class="text-[#00CED1] font-mono font-bold">${price}</span></div>
+                            <div class="text-[11px] text-[#94A3B8] flex items-center gap-2 flex-wrap mt-0.5">
+                                <span>${typeLine}</span>
+                                <span>&bull;</span>
+                                <span class="text-[#00CED1] font-mono font-bold">${price}</span>
+                                ${item.is_game_changer ? `<span class="text-[9px] font-mono px-1.5 py-0.2 bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/40 font-bold uppercase">GAME CHANGER</span>` : ''}
+                                ${item.is_owned ? `<span class="text-[9px] font-mono px-1.5 py-0.2 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 font-bold uppercase">IN BINDER (${item.owned_qty}x)</span>` : ''}
+                            </div>
                         </div>
                     </div>
                     <div class="flex items-center space-x-2">
@@ -982,12 +957,29 @@ function renderCardMatrix(cardMatrix) {
                                                 </div>
                                             </div>
                                             <div class="text-[10px] text-[#94A3B8] mt-1">${rec.commander_name ? `Commander: ${rec.commander_name}` : ''}</div>
-                                            <p class="text-xs text-[#94A3B8] mt-1 leading-relaxed">${rec.rationale || 'Synergy fit for deck game plan.'}</p>
+                                            
+                                            ${rec.bracket_warning ? `
+                                                <div class="text-[10px] font-mono text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/40 px-2 py-0.5 mt-1.5 flex items-center gap-1">
+                                                    <span>⚠️</span>
+                                                    <span>${rec.bracket_warning}</span>
+                                                </div>
+                                            ` : ''}
+
+                                            ${rec.reasons && rec.reasons.length > 0 ? `
+                                                <div class="flex flex-wrap gap-1 mt-1.5">
+                                                    ${rec.reasons.map(r => `
+                                                        <span class="text-[9px] font-mono px-1.5 py-0.2 bg-[#10141D] border border-[#263245] text-[#94A3B8]">${r}</span>
+                                                    `).join('')}
+                                                </div>
+                                            ` : ''}
+
+                                            <p class="text-xs text-[#94A3B8] mt-1.5 leading-relaxed">${rec.rationale || 'Synergy fit for deck game plan.'}</p>
                                         </div>
 
                                         <div class="pt-2 border-t border-[#263245] flex items-center justify-between text-xs font-mono">
-                                            <div class="text-[11px] text-[#FF3358] truncate max-w-[170px]" title="Recommended Cut: ${rec.suggested_cut}">
+                                            <div class="text-[11px] text-[#FF3358] truncate max-w-[200px]" title="Recommended Cut: ${rec.suggested_cut} (${rec.cut_reason || ''})">
                                                 Cut: <strong>${rec.suggested_cut}</strong>
+                                                ${rec.cut_reason ? `<span class="text-[9px] text-[#64748B] block truncate">${rec.cut_reason}</span>` : ''}
                                             </div>
                                             <div class="flex items-center space-x-1.5 flex-shrink-0">
                                                 <button onclick="applyEvaluatorSwap(${rec.deck_id}, '${rec.suggested_cut.replace(/'/g, "\\'")}', '${cardName.replace(/'/g, "\\'")}')" class="px-2 py-1 bg-[#00CED1]/20 hover:bg-[#00CED1] text-[#00CED1] hover:text-slate-950 font-bold border border-[#00CED1]/40 text-[10px] transition uppercase">
@@ -1081,14 +1073,42 @@ function renderActiveBreakdownContent() {
         <div class="bg-[#1B2230] border border-[#263245] p-5 shadow-xl space-y-4">
             <div class="flex items-center justify-between border-b border-[#263245] pb-3">
                 <div>
-                    <h3 class="text-sm font-heading font-black text-white uppercase">${deck.deck_name}</h3>
-                    <div class="text-xs font-mono text-[#94A3B8]">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h3 class="text-sm font-heading font-black text-white uppercase">${deck.deck_name}</h3>
+                        ${deck.on_paper_bracket ? `
+                            <span class="text-[10px] font-mono px-2 py-0.5 bg-[#00CED1]/20 border border-[#00CED1]/50 text-[#00CED1] font-bold">
+                                Bracket ${deck.on_paper_bracket} (${deck.on_paper_label || 'Core'}) · Feels Like ${Number(deck.feels_like_score || 2.0).toFixed(1)}
+                            </span>
+                        ` : ''}
+                    </div>
+                    <div class="text-xs font-mono text-[#94A3B8] mt-1">
                         Commander: <span class="text-white">${deck.commander_name || 'Unspecified'}</span> &bull; 
                         CI: <span class="text-[#00CED1]">[${deck.color_identity.join('')}]</span> &bull; 
                         ${cards.length} Beneficial Additions Found
                     </div>
                 </div>
             </div>
+
+            <!-- Timewalked Deck Ratio Strip -->
+            ${deck.ratios && Object.keys(deck.ratios).length > 0 ? `
+                <div class="bg-[#10141D] p-3 border border-[#263245]">
+                    <div class="text-[10px] font-mono text-[#94A3B8] uppercase font-bold tracking-wider mb-1.5">// TIMEWALKED CARD RATIOS</div>
+                    <div class="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1.5">
+                        ${Object.values(deck.ratios).map(r => {
+                            let badgeCls = 'bg-[#10B981]/15 text-[#10B981] border-[#10B981]/40';
+                            if (r.state === 'close') badgeCls = 'bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/40';
+                            else if (r.state === 'short') badgeCls = 'bg-[#DC143C]/15 text-[#FF3358] border-[#DC143C]/40';
+                            return `
+                                <div class="p-1.5 bg-[#1B2230] border border-[#263245] text-center font-mono">
+                                    <div class="text-[9px] text-[#94A3B8] truncate" title="${r.label}">${r.label}</div>
+                                    <div class="text-[11px] font-bold text-white mt-0.5">${r.count}/${r.target}</div>
+                                    <div class="text-[8px] font-bold uppercase px-1 py-0.2 border mt-1 ${badgeCls}">${r.state ? r.state.toUpperCase() : 'OK'}</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            ` : ''}
 
             ${cards.length > 0 ? `
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1111,12 +1131,26 @@ function renderActiveBreakdownContent() {
                                         </div>
                                     </div>
                                     <div class="text-[10px] text-[#64748B] mt-0.5">${c.type_line || ''} ${c.price_usd ? `&bull; $${c.price_usd.toFixed(2)}` : ''}</div>
+                                    ${c.bracket_warning ? `
+                                        <div class="text-[10px] font-mono text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/40 px-2 py-0.5 mt-1 flex items-center gap-1">
+                                            <span>⚠️</span>
+                                            <span>${c.bracket_warning}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${c.reasons && c.reasons.length > 0 ? `
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            ${c.reasons.map(r => `
+                                                <span class="text-[9px] font-mono px-1.5 py-0.2 bg-[#10141D] border border-[#263245] text-[#94A3B8]">${r}</span>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
                                     <p class="text-xs text-[#94A3B8] mt-1 leading-relaxed">${c.rationale || 'Tactical upgrade.'}</p>
                                 </div>
 
                                 <div class="pt-2 border-t border-[#263245] flex items-center justify-between text-xs font-mono">
-                                    <div class="text-[11px] text-[#FF3358] truncate max-w-[170px]">
+                                    <div class="text-[11px] text-[#FF3358] truncate max-w-[200px]" title="Recommended Cut: ${c.suggested_cut} (${c.cut_reason || ''})">
                                         Cut: <strong>${c.suggested_cut}</strong>
+                                        ${c.cut_reason ? `<span class="text-[9px] text-[#64748B] block truncate">${c.cut_reason}</span>` : ''}
                                     </div>
                                     <div class="flex items-center space-x-1.5">
                                         <button onclick="applyEvaluatorSwap(${deck.deck_id}, '${c.suggested_cut.replace(/'/g, "\\'")}', '${c.card_name.replace(/'/g, "\\'")}')" class="px-2 py-1 bg-[#00CED1]/20 hover:bg-[#00CED1] text-[#00CED1] hover:text-slate-950 font-bold border border-[#00CED1]/40 text-[10px] transition uppercase">
