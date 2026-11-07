@@ -39,6 +39,9 @@ class ScryfallProvider:
 
             if resp.status_code == 429:
                 wait_time = 1.0 * (attempt + 1)
+                req_timeout = kwargs.get("timeout")
+                if req_timeout is not None and wait_time >= req_timeout:
+                    return resp
                 logger.warning(f"Scryfall 429 rate limit hit for {url}. Pausing {wait_time}s (attempt {attempt + 1}/3)...")
                 time.sleep(wait_time)
                 continue
@@ -312,7 +315,7 @@ class ScryfallProvider:
         logger.warning(f"Scryfall named lookup failed for '{card_name}'")
         return None
 
-    def get_cards_collection(self, card_names: list[str], fallback_named: bool = True) -> tuple[dict[str, dict], list[str]]:
+    def get_cards_collection(self, card_names: list[str], fallback_named: bool = True, timeout: float = 15.0) -> tuple[dict[str, dict], list[str]]:
         """
         Batch resolves multiple card names via Scryfall's /cards/collection endpoint.
         Returns a tuple of (found_map, not_found_list).
@@ -371,7 +374,7 @@ class ScryfallProvider:
                     url,
                     json={"identifiers": identifiers},
                     headers={"Content-Type": "application/json"},
-                    timeout=15,
+                    timeout=timeout,
                 )
 
                 if response is not None and response.status_code == 200:

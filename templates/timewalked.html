@@ -390,6 +390,92 @@ Or paste an Archidekt / Moxfield / ManaBox deck URL directly (e.g. https://archi
             <div id="tw-receipts-list" class="space-y-3"></div>
         </div>
 
+        <!-- SUGGESTED UPGRADES — TIMEWALKED POPULAR CARDS + FREE BINDER MATCHING -->
+        <div id="tw-suggested-upgrades-section" class="bg-[#1B2230] border-2 border-[#10B981]/50 p-4 sm:p-6 shadow-2xl space-y-6">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#263245] pb-4">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse"></span>
+                        <h3 class="text-sm sm:text-base font-heading font-black text-white uppercase tracking-wider">
+                            // SUGGESTED UPGRADES — POPULAR WITH <span id="tw-sug-cmdr-title" class="text-[#00CED1]">COMMANDER</span>
+                        </h3>
+                        <span class="text-[10px] font-mono px-2 py-0.5 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 font-bold uppercase">
+                            TIMEWALKED METHODOLOGY
+                        </span>
+                    </div>
+                    <p class="text-xs text-[#94A3B8] mt-1">
+                        Ranked by EDHREC community inclusion %, boosted for finishing combos &amp; filling ratio gaps. Cross-referenced against your collection binder.
+                    </p>
+                </div>
+                <div class="flex items-center space-x-2 flex-wrap gap-2">
+                    <button type="button" onclick="copyTimewalkedFreeSwaps()" id="btn-copy-tw-swaps" class="btn-bridge px-3 py-1.5 text-xs font-mono font-bold text-[#10B981] border border-[#10B981]/40 hover:bg-[#10B981]/10">
+                        📋 Copy Free Swaps
+                    </button>
+                    <button type="button" onclick="copyTimewalkedBuyList()" id="btn-copy-tw-buylist" class="btn-bridge px-3 py-1.5 text-xs font-mono font-bold text-[#C084FC] border border-[#C084FC]/40 hover:bg-[#C084FC]/10">
+                        🛒 Copy Buy List
+                    </button>
+                </div>
+            </div>
+
+            <!-- Card Ratio Strip (Timewalked Deck Health) -->
+            <div class="bg-[#10141D] border border-[#263245] p-3 sm:p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[11px] font-mono text-[#94A3B8] uppercase font-bold tracking-wider">Deck Health &middot; Timewalked Card Ratios vs Targets</span>
+                    <span id="tw-ratio-summary-badge" class="text-[10px] font-mono px-2 py-0.2 font-bold uppercase bg-[#1B2230] border border-[#263245] text-white"></span>
+                </div>
+                <div id="tw-ratio-chips" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2"></div>
+            </div>
+
+            <!-- Upgrade Loading State -->
+            <div id="tw-upgrades-loading" class="text-center py-8 space-y-2">
+                <div class="inline-block animate-spin text-[#10B981] text-2xl">⏳</div>
+                <div class="text-xs font-mono text-[#94A3B8]">Scanning EDHREC inclusion data, Commander Spellbook combos &amp; collection binder...</div>
+            </div>
+
+            <!-- Two-Column Upgrades Grid -->
+            <div id="tw-upgrades-container" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                <!-- Column A: FREE UPGRADES (IN YOUR BINDER) -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between bg-[#10141D] p-3 border-l-4 border-[#10B981] border border-[#263245]">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-2 h-2 rounded-full bg-[#10B981]"></span>
+                            <h4 class="text-xs sm:text-sm font-mono font-bold text-white uppercase">🟢 FREE UPGRADES: IN YOUR BINDER</h4>
+                        </div>
+                        <span id="tw-free-badge" class="text-[11px] font-mono font-bold text-[#10B981] px-2 py-0.5 bg-[#10B981]/15 border border-[#10B981]/40">
+                            0 Cards &middot; $0.00 Value
+                        </span>
+                    </div>
+                    <div id="tw-free-cards-list" class="space-y-3"></div>
+                    <div class="text-center pt-2">
+                        <button type="button" onclick="toggleTimewalkedMore('free')" id="btn-tw-more-free" class="hidden text-xs font-mono text-[#10B981] hover:underline uppercase font-bold">
+                            Show More Free Upgrades &darr;
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Column B: BUY LIST (MARKET ACQUISITIONS) -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between bg-[#10141D] p-3 border-l-4 border-[#A855F7] border border-[#263245]">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-2 h-2 rounded-full bg-[#A855F7]"></span>
+                            <h4 class="text-xs sm:text-sm font-mono font-bold text-white uppercase">🛒 BUY LIST: POPULAR ADDS</h4>
+                        </div>
+                        <span id="tw-buy-badge" class="text-[11px] font-mono font-bold text-[#C084FC] px-2 py-0.5 bg-[#A855F7]/15 border border-[#A855F7]/40">
+                            0 Cards &middot; $0.00 Total
+                        </span>
+                    </div>
+                    <div id="tw-buy-cards-list" class="space-y-3"></div>
+                    <div class="text-center pt-2">
+                        <button type="button" onclick="toggleTimewalkedMore('buy')" id="btn-tw-more-buy" class="hidden text-xs font-mono text-[#C084FC] hover:underline uppercase font-bold">
+                            Show More Buy List &darr;
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
         <!-- INTERACTIVE "WHAT-IF" BRACKET TUNER -->
         <div class="bg-[#1B2230] border border-[#263245] p-4 sm:p-6 shadow-xl">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#263245] pb-3 mb-4">
@@ -509,6 +595,33 @@ let currentTwResult = null;
 let currentTwBaseline = null;
 let currentAsciiReport = "";
 let selectedWhatIfExclusions = new Set();
+let currentSuggestedUpgrades = null;
+let showAllFreeUpgrades = false;
+let showAllBuyUpgrades = false;
+
+function getDismissedSuggestions(cmdrKey) {
+    try {
+        const raw = localStorage.getItem(`tw_dismissed_${cmdrKey}`);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveDismissedSuggestion(cmdrKey, cardName) {
+    try {
+        const cur = getDismissedSuggestions(cmdrKey);
+        if (!cur.includes(cardName)) cur.push(cardName);
+        localStorage.setItem(`tw_dismissed_${cmdrKey}`, JSON.stringify(cur));
+    } catch {}
+}
+
+function removeDismissedSuggestion(cmdrKey, cardName) {
+    try {
+        const cur = getDismissedSuggestions(cmdrKey).filter(n => n !== cardName);
+        localStorage.setItem(`tw_dismissed_${cmdrKey}`, JSON.stringify(cur));
+    } catch {}
+}
 
 function escapeTwHtml(str) {
     if (str === null || str === undefined) return "";
@@ -632,6 +745,9 @@ async function executeTimewalkedAnalysis(payload) {
         currentAsciiReport = data.ascii_report || "";
         renderTimewalkedResults(data);
         document.getElementById("tw-results-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+        // Trigger Timewalked-style Suggested Upgrades scan in background
+        loadTimewalkedSuggestedUpgrades(payload);
     } catch (err) {
         if (typeof showToast === "function") {
             showToast(err.message || "Failed to analyze deck.", "error");
@@ -1245,5 +1361,343 @@ document.addEventListener("DOMContentLoaded", () => {
         analyzeVaultDeck(INITIAL_DECK_ID);
     }
 });
+
+// -----------------------------------------------------------------------------
+// TIMEWALKED SUGGESTED UPGRADES & BINDER MATCHING CLIENT LOGIC
+// -----------------------------------------------------------------------------
+
+async function loadTimewalkedSuggestedUpgrades(basePayload) {
+    const loadingEl = document.getElementById("tw-upgrades-loading");
+    const container = document.getElementById("tw-upgrades-container");
+    if (loadingEl) loadingEl.classList.remove("hidden");
+    if (container) container.classList.add("hidden");
+
+    const cmdrTitle = document.getElementById("tw-sug-cmdr-title");
+    const primaryCmdr = (currentTwResult && currentTwResult.commanders && currentTwResult.commanders[0]) || "COMMANDER";
+    if (cmdrTitle) cmdrTitle.textContent = primaryCmdr.toUpperCase();
+
+    const cmdrKey = primaryCmdr.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const dismissed = getDismissedSuggestions(cmdrKey);
+
+    try {
+        const resp = await fetch("/api/timewalked/suggested-upgrades", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                ...basePayload,
+                dismissed: dismissed,
+                limit: 30
+            })
+        });
+        const json = await resp.json();
+        if (!resp.ok || json.error) {
+            throw new Error(json.error || "Failed to load upgrades");
+        }
+        currentSuggestedUpgrades = json.data;
+        renderTimewalkedSuggestedUpgrades(json.data);
+    } catch (err) {
+        console.warn("Suggested upgrades error:", err);
+        if (loadingEl) {
+            loadingEl.innerHTML = `<span class="text-xs font-mono text-[#64748B]">Could not load EDHREC recommendations (${escapeTwHtml(err.message)}).</span>`;
+        }
+    } finally {
+        if (loadingEl && currentSuggestedUpgrades) loadingEl.classList.add("hidden");
+        if (container && currentSuggestedUpgrades) container.classList.remove("hidden");
+    }
+}
+
+function renderTimewalkedSuggestedUpgrades(data) {
+    if (!data) return;
+
+    // 1. Render Ratio Breakdown Strip
+    const ratioChipsEl = document.getElementById("tw-ratio-chips");
+    const ratios = data.ratios || {};
+    let metCount = 0;
+    let totalTargets = 0;
+
+    if (ratioChipsEl) {
+        ratioChipsEl.innerHTML = Object.values(ratios).map(r => {
+            totalTargets++;
+            const state = r.state;
+            if (state === "met") metCount++;
+            let badgeCls = "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/40";
+            let dotCls = "bg-[#10B981]";
+            if (state === "close") {
+                badgeCls = "bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/40";
+                dotCls = "bg-[#F59E0B]";
+            } else if (state === "short") {
+                badgeCls = "bg-[#DC143C]/15 text-[#FF3358] border-[#DC143C]/40";
+                dotCls = "bg-[#FF3358]";
+            }
+
+            return `
+                <div class="p-2 bg-[#1B2230] border border-[#263245] flex flex-col justify-between" title="${r.label}: ${r.count} of ${r.target} target">
+                    <div class="flex items-center justify-between text-[10px] font-mono mb-1">
+                        <span class="text-white truncate font-bold">${escapeTwHtml(r.label)}</span>
+                        <span class="w-1.5 h-1.5 rounded-full ${dotCls}"></span>
+                    </div>
+                    <div class="flex items-baseline justify-between font-mono">
+                        <span class="text-xs font-bold text-white">${r.count}</span>
+                        <span class="text-[10px] text-[#64748B]">/ ${r.target}</span>
+                    </div>
+                    <div class="mt-1 text-[9px] font-mono px-1 py-0.2 border text-center font-bold uppercase ${badgeCls}">
+                        ${state ? state.toUpperCase() : "OK"}
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+
+    const ratioSummary = document.getElementById("tw-ratio-summary-badge");
+    if (ratioSummary) {
+        ratioSummary.textContent = `${metCount} OF ${totalTargets} CATEGORIES AT TARGET`;
+    }
+
+    // 2. Render Free Upgrades (Binder)
+    const freeBadge = document.getElementById("tw-free-badge");
+    if (freeBadge) {
+        freeBadge.textContent = `${data.free_count || 0} Cards · $${Number(data.free_value_usd || 0).toFixed(2)} Value`;
+    }
+    renderUpgradeColumn("free", data.free_upgrades || [], showAllFreeUpgrades);
+
+    // 3. Render Buy List
+    const buyBadge = document.getElementById("tw-buy-badge");
+    if (buyBadge) {
+        buyBadge.textContent = `${data.buy_count || 0} Cards · $${Number(data.buy_total_usd || 0).toFixed(2)} Total`;
+    }
+    renderUpgradeColumn("buy", data.buy_upgrades || [], showAllBuyUpgrades);
+}
+
+function renderUpgradeColumn(type, list, showAll) {
+    const listEl = document.getElementById(type === "free" ? "tw-free-cards-list" : "tw-buy-cards-list");
+    const moreBtn = document.getElementById(type === "free" ? "btn-tw-more-free" : "btn-tw-more-buy");
+    if (!listEl) return;
+
+    if (!list || list.length === 0) {
+        listEl.innerHTML = `
+            <div class="p-6 bg-[#10141D] border border-[#263245] text-center text-xs font-mono text-[#64748B]">
+                ${type === "free" ? "No free binder upgrades found for this commander. Check Buy List for popular additions." : "No market upgrades pending."}
+            </div>
+        `;
+        if (moreBtn) moreBtn.classList.add("hidden");
+        return;
+    }
+
+    const displayList = showAll ? list : list.slice(0, 6);
+    if (moreBtn) {
+        if (list.length > 6) {
+            moreBtn.classList.remove("hidden");
+            moreBtn.textContent = showAll ? `▲ Show Fewer (Top 6)` : `▼ Show All (${list.length} Suggestions)`;
+        } else {
+            moreBtn.classList.add("hidden");
+        }
+    }
+
+    listEl.innerHTML = displayList.map(item => renderUpgradeTileHtml(item, type)).join("");
+}
+
+function renderUpgradeTileHtml(item, type) {
+    const isFree = type === "free";
+    const imgUri = item.image_uri || "";
+    const primaryCmdr = (currentTwResult && currentTwResult.commanders && currentTwResult.commanders[0]) || "";
+    const cmdrKey = primaryCmdr.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const deckId = currentSuggestedUpgrades && currentSuggestedUpgrades.deck_id;
+
+    // Reason chips
+    const reasonChipsHtml = (item.reasons || []).map(r => `
+        <span class="inline-block text-[10px] font-mono px-1.5 py-0.5 bg-[#10141D] border border-[#263245] text-[#94A3B8]">
+            ${escapeTwHtml(r)}
+        </span>
+    `).join("");
+
+    // Binder badge
+    let binderBadge = "";
+    if (isFree && item.binders && item.binders.length > 0) {
+        binderBadge = `
+            <span class="text-[10px] font-mono px-2 py-0.5 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 font-bold" title="Found in binder: ${item.binders.join(', ')}">
+                📖 ${escapeTwHtml(item.binders.join(', '))} (${item.owned_qty}x)
+            </span>
+        `;
+    } else if (isFree) {
+        binderBadge = `
+            <span class="text-[10px] font-mono px-2 py-0.5 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 font-bold">
+                Owned (${item.owned_qty}x)
+            </span>
+        `;
+    }
+
+    // Other deck allocation note
+    let allocBadge = "";
+    if (item.in_other_decks && item.in_other_decks.length > 0) {
+        allocBadge = `
+            <span class="text-[10px] font-mono px-1.5 py-0.2 bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/30" title="Also slotted in: ${item.in_other_decks.join(', ')}">
+                Also in: ${escapeTwHtml(item.in_other_decks[0])}${item.in_other_decks.length > 1 ? ` (+${item.in_other_decks.length - 1})` : ''}
+            </span>
+        `;
+    }
+
+    // Bracket warning badge
+    let bracketWarnHtml = "";
+    if (item.bracket_warning) {
+        bracketWarnHtml = `
+            <div class="text-[10px] font-mono text-[#F59E0B] bg-[#F59E0B]/10 border border-[#F59E0B]/40 px-2 py-1 flex items-center space-x-1">
+                <span>⚠️</span>
+                <span>${escapeTwHtml(item.bracket_warning)}</span>
+            </div>
+        `;
+    }
+
+    // Cut Pairing Banner
+    let cutHtml = "";
+    if (item.card_out) {
+        cutHtml = `
+            <div class="bg-[#10141D] p-2 border border-[#263245] flex items-center justify-between text-xs font-mono">
+                <div class="flex items-center space-x-2 truncate">
+                    <span class="text-[#FF3358] font-bold">✂ CUT:</span>
+                    <strong class="text-white truncate">${escapeTwHtml(item.card_out)}</strong>
+                    <span class="text-[10px] text-[#64748B] hidden sm:inline">(${escapeTwHtml(item.cut_reason)})</span>
+                </div>
+                ${deckId ? `
+                    <button type="button" onclick="applyTimewalkedSwap(this, ${deckId}, '${escapeTwHtml(item.card_out)}', '${escapeTwHtml(item.card_in)}')" class="btn-crimson px-2.5 py-1 text-[10px] font-mono font-bold uppercase ml-2 flex-shrink-0">
+                        Swap Now
+                    </button>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    return `
+        <div class="bg-[#10141D] border border-[#263245] hover:border-[#3D4F6B] p-3.5 space-y-2.5 transition" id="tw-tile-${escapeTwHtml(item.card_in.replace(/[^a-zA-Z0-9]/g, ''))}">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start space-x-3 min-w-0">
+                    <div class="w-12 h-16 bg-[#0C0F17] border border-[#263245] flex-shrink-0 overflow-hidden cursor-pointer" onclick="openCardImageModal('${escapeTwHtml(imgUri)}', '${escapeTwHtml(item.card_in)}', 'ANY', '', 'nonfoil')">
+                        ${imgUri ? `<img src="${escapeTwHtml(imgUri)}" alt="${escapeTwHtml(item.card_in)}" class="w-full h-full object-cover">` : `<div class="p-1 text-[9px] font-mono text-[#64748B] text-center">No Art</div>`}
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center space-x-2 flex-wrap gap-1">
+                            <span class="text-sm font-bold font-heading text-white truncate">${escapeTwHtml(item.card_in)}</span>
+                            ${item.is_game_changer ? `<span class="text-[9px] font-mono px-1.5 py-0.2 bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/40 font-bold uppercase">GAME CHANGER</span>` : ''}
+                        </div>
+                        <div class="text-[11px] font-mono text-[#94A3B8] truncate mt-0.5">
+                            ${escapeTwHtml(item.type_line || '')} &middot; CMC ${item.cmc}
+                        </div>
+                        <div class="flex items-center space-x-2 mt-1 flex-wrap gap-1">
+                            ${binderBadge}
+                            ${allocBadge}
+                        </div>
+                    </div>
+                </div>
+                <div class="text-right flex-shrink-0 font-mono">
+                    <div class="text-base font-black ${item.inclusion_pct >= 50 ? 'text-[#10B981]' : (item.inclusion_pct >= 25 ? 'text-[#00CED1]' : 'text-white')}">
+                        ${item.inclusion_pct > 0 ? Math.round(item.inclusion_pct) + '%' : 'COMBO'}
+                    </div>
+                    <div class="text-[10px] text-[#64748B] uppercase">Inclusion</div>
+                    ${item.price_usd !== null && item.price_usd !== undefined ? `
+                        <div class="text-xs font-bold text-[#C084FC] mt-0.5">$${Number(item.price_usd).toFixed(2)}</div>
+                    ` : ''}
+                </div>
+            </div>
+
+            <!-- Signal Reasons -->
+            <div class="flex flex-wrap gap-1.5">
+                ${reasonChipsHtml}
+            </div>
+
+            ${bracketWarnHtml}
+            ${cutHtml}
+
+            <!-- Dismiss Button -->
+            <div class="flex items-center justify-end pt-1">
+                <button type="button" onclick="dismissTimewalkedSuggestion('${cmdrKey}', '${escapeTwHtml(item.card_in)}')" class="text-[10px] font-mono text-[#64748B] hover:text-[#DC143C] uppercase">
+                    ✕ Dismiss from suggestions
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function toggleTimewalkedMore(type) {
+    if (type === "free") {
+        showAllFreeUpgrades = !showAllFreeUpgrades;
+        renderUpgradeColumn("free", (currentSuggestedUpgrades && currentSuggestedUpgrades.free_upgrades) || [], showAllFreeUpgrades);
+    } else {
+        showAllBuyUpgrades = !showAllBuyUpgrades;
+        renderUpgradeColumn("buy", (currentSuggestedUpgrades && currentSuggestedUpgrades.buy_upgrades) || [], showAllBuyUpgrades);
+    }
+}
+
+function dismissTimewalkedSuggestion(cmdrKey, cardName) {
+    saveDismissedSuggestion(cmdrKey, cardName);
+    if (typeof showToast === "function") {
+        showToast(`Dismissed ${cardName}. Click Undo to restore.`, "info", () => {
+            removeDismissedSuggestion(cmdrKey, cardName);
+            if (lastRequestPayload) loadTimewalkedSuggestedUpgrades(lastRequestPayload);
+        });
+    }
+    // Remove tile immediately
+    const cleanId = cardName.replace(/[^a-zA-Z0-9]/g, '');
+    const tile = document.getElementById(`tw-tile-${cleanId}`);
+    if (tile) tile.remove();
+}
+
+async function applyTimewalkedSwap(btn, deckId, cardOut, cardIn) {
+    if (!confirm(`Apply swap in your vault deck?\n\nCUT: -1 ${cardOut}\nADD: +1 ${cardIn}`)) return;
+
+    const oldText = btn.textContent;
+    btn.textContent = "Swapping...";
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch(`/api/deck/${deckId}/apply-swap`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ card_out: cardOut, card_in: cardIn })
+        });
+        const json = await resp.json();
+        if (!resp.ok || json.error) {
+            throw new Error(json.error || `HTTP ${resp.status}`);
+        }
+        if (typeof showToast === "function") {
+            showToast(`Swapped: -1 ${cardOut} / +1 ${cardIn}`, "success");
+        }
+        // Re-run analysis for deck to refresh bracket and suggestions
+        analyzeVaultDeck(deckId);
+    } catch (err) {
+        if (typeof showToast === "function") {
+            showToast(`Swap failed: ${err.message}`, "error");
+        }
+        btn.textContent = oldText;
+        btn.disabled = false;
+    }
+}
+
+function copyTimewalkedFreeSwaps() {
+    if (!currentSuggestedUpgrades || !currentSuggestedUpgrades.free_upgrades) return;
+    const lines = currentSuggestedUpgrades.free_upgrades
+        .filter(u => u.card_out)
+        .map(u => `+1 ${u.card_in} (from binder: ${u.binders.join(', ') || 'Inventory'}) / -1 ${u.card_out}`);
+
+    if (lines.length === 0) {
+        if (typeof showToast === "function") showToast("No free swaps available to copy.", "info");
+        return;
+    }
+    const txt = `// TIMEWALKED FREE BINDER SWAPS FOR ${currentSuggestedUpgrades.commander}\n` + lines.join("\n");
+    navigator.clipboard.writeText(txt).then(() => {
+        if (typeof showToast === "function") showToast(`Copied ${lines.length} free swaps to clipboard!`, "success");
+    });
+}
+
+function copyTimewalkedBuyList() {
+    if (!currentSuggestedUpgrades || !currentSuggestedUpgrades.buy_upgrades) return;
+    const lines = currentSuggestedUpgrades.buy_upgrades.map(u => `1 ${u.card_in}`);
+    if (lines.length === 0) {
+        if (typeof showToast === "function") showToast("Buy list is empty.", "info");
+        return;
+    }
+    const txt = lines.join("\n");
+    navigator.clipboard.writeText(txt).then(() => {
+        if (typeof showToast === "function") showToast(`Copied ${lines.length} buy list cards to clipboard!`, "success");
+    });
+}
 </script>
 {% endblock %}

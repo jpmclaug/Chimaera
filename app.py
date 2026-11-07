@@ -72,11 +72,13 @@ from tcgplayer_parser import TCGPlayerPurchaseParser
 from timewalked_analyzer import (
     ArchidektClient as TimewalkedArchidektClient,
     BRACKET_NAMES as TIMEWALKED_BRACKET_NAMES,
+    DEFAULT_RATIO_TARGETS as TIMEWALKED_RATIO_TARGETS,
     DeckClassifier as TimewalkedDeckClassifier,
     EdhrecClient as TimewalkedEdhrecClient,
     GAME_CHANGERS as TIMEWALKED_GAME_CHANGERS,
     HttpJsonClient as TimewalkedHttpJsonClient,
     STRONG_STAPLES as TIMEWALKED_STRONG_STAPLES,
+    SuggestedUpgradeEngine as TimewalkedSuggestedUpgradeEngine,
     format_analysis_report as format_timewalked_report,
     parse_decklist_text as parse_timewalked_decklist,
 )
@@ -334,6 +336,10 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON user_inventory_card (user_id)"))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_name ON user_inventory_card (name)"))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_cid ON user_inventory_card (user_id, color_identity)"))
+                    inv_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(user_inventory_card)")).fetchall()]
+                    if "enrichment_attempts" not in inv_cols:
+                        conn.execute(db.text("ALTER TABLE user_inventory_card ADD COLUMN enrichment_attempts INTEGER DEFAULT 0"))
                     user_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(user)")).fetchall()]
                     if "inventory_gdrive_url" not in user_cols:
                         conn.execute(db.text("ALTER TABLE user ADD COLUMN inventory_gdrive_url TEXT"))
@@ -540,6 +546,8 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_id ON user_inventory_card (user_id)"))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_name ON user_inventory_card (name)"))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_scryfall_id ON user_inventory_card (scryfall_id)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_inventory_user_cid ON user_inventory_card (user_id, color_identity)"))
+                        conn.execute(db.text("ALTER TABLE user_inventory_card ADD COLUMN IF NOT EXISTS enrichment_attempts INTEGER DEFAULT 0"))
                         conn.execute(db.text("""
                             CREATE TABLE IF NOT EXISTS secret_lair_analysis (
                                 id SERIAL PRIMARY KEY,
@@ -4796,6 +4804,137 @@ def create_app(test_config=None):
 
         return d_name, cmdrs, mainboard, parsed_cards
 
+    def _resolve_timewalked_deck_input(data: dict[str, Any], user: User, offline: bool = False):
+        """Resolves deck input from various modes into (deck_name, commanders, mainboard, pre_resolved_cards, edhrec_profile, deck_id)."""
+        mode = (data.get("mode") or "text_or_url").lower().strip()
+        deck_name = (data.get("deck_name") or "").strip()
+        commanders: list[str] = []
+        mainboard: dict[str, int] = {}
+        pre_resolved_cards: list[dict[str, Any]] = []
+        edhrec_profile: dict[str, Any] | None = None
+        deck_id_val: int | None = None
+
+        if mode == "vault_deck":
+            deck_id = data.get("deck_id") or data.get("source")
+            if not deck_id or not str(deck_id).isdigit():
+                raise ValueError("Valid deck_id is required for vault_deck mode.")
+            entry = db.session.get(DeckAnalysis, int(deck_id))
+            if not entry:
+                raise LookupError("Saved Commander deck not found.")
+            if not user.is_admin and entry.user_id and entry.user_id != user.id:
+                raise PermissionError("Access denied.")
+            v_name, commanders, mainboard, pre_resolved_cards = _extract_vault_deck_for_timewalked(entry)
+            if not deck_name:
+                deck_name = v_name
+            deck_id_val = entry.id
+
+        elif mode == "edhrec_commander":
+            cmdr_query = (data.get("commander_name") or data.get("source") or "").strip()
+            if not cmdr_query:
+                raise ValueError("Please provide a Commander name to profile on EDHREC.")
+            try:
+                edhrec_client = TimewalkedEdhrecClient(TimewalkedHttpJsonClient(offline=offline))
+                edhrec_profile = edhrec_client.get_commander_profile(cmdr_query)
+                commanders = [edhrec_profile["commander"]]
+                mainboard = edhrec_profile["average_deck_mainboard"]
+                if not deck_name:
+                    deck_name = f"EDHREC Average Deck: {edhrec_profile['commander']}"
+            except Exception as edh_err:
+                logger.warning(f"EDHREC profile lookup failed for '{cmdr_query}': {edh_err}")
+                raise ValueError(f"Could not fetch EDHREC average deck for '{cmdr_query}'. Verify spelling ({edh_err}).")
+
+        else:
+            # mode == "text_or_url"
+            source = (data.get("source") or data.get("raw_text") or "").strip()
+            if not source:
+                raise ValueError("Please paste a Commander decklist or deck URL to analyze.")
+
+            is_archidekt = "archidekt.com" in source.lower() or source.isdigit()
+            is_url = source.lower().startswith("http://") or source.lower().startswith("https://")
+
+            if is_archidekt and not offline:
+                try:
+                    arch = TimewalkedArchidektClient(TimewalkedHttpJsonClient(offline=offline))
+                    fetched_name, commanders, mainboard = arch.fetch_deck(source)
+                    if not deck_name:
+                        deck_name = fetched_name
+                except Exception:
+                    parsed = DeckParser.parse(source)
+                    if not deck_name:
+                        deck_name = parsed.get("deck_name") or "Imported Commander Deck"
+                    commanders = parsed.get("commander") or []
+                    for c in parsed.get("cards", []):
+                        if c.get("section") == "commander":
+                            if c["name"] not in commanders:
+                                commanders.append(c["name"])
+                        elif c.get("section", "mainboard") == "mainboard":
+                            mainboard[c["name"]] = mainboard.get(c["name"], 0) + int(c.get("quantity", 1) or 1)
+            elif is_url:
+                parsed = DeckParser.parse(source)
+                if not deck_name:
+                    deck_name = parsed.get("deck_name") or "Imported Commander Deck"
+                commanders = parsed.get("commander") or []
+                for c in parsed.get("cards", []):
+                    if c.get("section") == "commander":
+                        if c["name"] not in commanders:
+                            commanders.append(c["name"])
+                    elif c.get("section", "mainboard") == "mainboard":
+                        mainboard[c["name"]] = mainboard.get(c["name"], 0) + int(c.get("quantity", 1) or 1)
+            else:
+                commanders, mainboard = parse_timewalked_decklist(source)
+                if not deck_name:
+                    deck_name = "Custom Commander Deck"
+
+        # Apply explicit commander override if supplied by user
+        cmdr_override = data.get("commanders") or data.get("commander")
+        if cmdr_override:
+            if isinstance(cmdr_override, str):
+                override_list = [c.strip() for c in re.split(r"[,;\n]+", cmdr_override) if c.strip()]
+            elif isinstance(cmdr_override, list):
+                override_list = [str(c).strip() for c in cmdr_override if c and str(c).strip()]
+            else:
+                override_list = []
+            if override_list:
+                commanders = override_list
+                cmdr_low = {c.lower() for c in commanders}
+                mainboard = {k: v for k, v in mainboard.items() if k.lower() not in cmdr_low}
+
+        if not mainboard and not commanders:
+            raise ValueError("No valid Magic: The Gathering cards were found in the input.")
+
+        if not deck_name:
+            deck_name = f"{' // '.join(commanders)} Commander" if commanders else "Untitled Commander Deck"
+
+        return deck_name, commanders, mainboard, pre_resolved_cards, edhrec_profile, deck_id_val
+
+    def _build_user_inventory_match_index(user_id: int) -> dict[str, dict[str, Any]]:
+        """Builds an index of user collection cards for quick matching by all match keys."""
+        owned_index: dict[str, dict[str, Any]] = {}
+        if not user_id:
+            return owned_index
+
+        inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
+        for ic in inv_cards:
+            qty = max(1, int(ic.quantity or 1))
+            b_name = (ic.binder_name or "").strip()
+            # Generate clean keys matching Timewalked clean_card_key
+            raw_key = re.sub(r"['’,\-\s]+", "", ic.name.strip().lower())
+            front_key = re.sub(r"['’,\-\s]+", "", ic.name.split(" // ")[0].strip().lower()) if " // " in ic.name else raw_key
+
+            for k in {raw_key, front_key}:
+                if k not in owned_index:
+                    owned_index[k] = {
+                        "name": ic.name,
+                        "qty": 0,
+                        "binders": set(),
+                        "price_usd": ic.price_usd,
+                    }
+                owned_index[k]["qty"] += qty
+                if b_name:
+                    owned_index[k]["binders"].add(b_name)
+
+        return owned_index
+
     @app.route("/timewalked")
     @login_required
     def timewalked_page():
@@ -4834,105 +4973,11 @@ def create_app(test_config=None):
         excluded_cards = [str(c).strip() for c in excluded_raw if c and str(c).strip()]
 
         classifier = TimewalkedDeckClassifier(offline=offline)
-        deck_name = (data.get("deck_name") or "").strip()
-        commanders: list[str] = []
-        mainboard: dict[str, int] = {}
-        pre_resolved_cards: list[dict[str, Any]] = []
-        edhrec_profile: dict[str, Any] | None = None
 
         try:
-            if mode == "vault_deck":
-                deck_id = data.get("deck_id") or data.get("source")
-                if not deck_id or not str(deck_id).isdigit():
-                    return jsonify({"error": "Valid deck_id is required for vault_deck mode."}), 400
-                entry = db.session.get(DeckAnalysis, int(deck_id))
-                if not entry:
-                    return jsonify({"error": "Saved Commander deck not found."}), 404
-                if not user.is_admin and entry.user_id and entry.user_id != user.id:
-                    return jsonify({"error": "Access denied."}), 403
-                v_name, commanders, mainboard, pre_resolved_cards = _extract_vault_deck_for_timewalked(entry)
-                if not deck_name:
-                    deck_name = v_name
-
-            elif mode == "edhrec_commander":
-                cmdr_query = (data.get("commander_name") or data.get("source") or "").strip()
-                if not cmdr_query:
-                    return jsonify({"error": "Please provide a Commander name to profile on EDHREC."}), 400
-                try:
-                    edhrec_client = TimewalkedEdhrecClient(TimewalkedHttpJsonClient(offline=offline))
-                    edhrec_profile = edhrec_client.get_commander_profile(cmdr_query)
-                    commanders = [edhrec_profile["commander"]]
-                    mainboard = edhrec_profile["average_deck_mainboard"]
-                    if not deck_name:
-                        deck_name = f"EDHREC Average Deck: {edhrec_profile['commander']}"
-                except Exception as edh_err:
-                    logger.warning(f"EDHREC profile lookup failed for '{cmdr_query}': {edh_err}")
-                    return jsonify({
-                        "error": f"Could not fetch EDHREC average deck for '{cmdr_query}'. Verify the commander name is spelled accurately ({edh_err})."
-                    }), 400
-
-            else:
-                # mode == "text_or_url"
-                source = (data.get("source") or data.get("raw_text") or "").strip()
-                if not source:
-                    return jsonify({"error": "Please paste a Commander decklist or deck URL to analyze."}), 400
-
-                is_archidekt = "archidekt.com" in source.lower() or source.isdigit()
-                is_url = source.lower().startswith("http://") or source.lower().startswith("https://")
-
-                if is_archidekt and not offline:
-                    try:
-                        arch = TimewalkedArchidektClient(TimewalkedHttpJsonClient(offline=offline))
-                        fetched_name, commanders, mainboard = arch.fetch_deck(source)
-                        if not deck_name:
-                            deck_name = fetched_name
-                    except Exception:
-                        parsed = DeckParser.parse(source)
-                        if not deck_name:
-                            deck_name = parsed.get("deck_name") or "Imported Commander Deck"
-                        commanders = parsed.get("commander") or []
-                        for c in parsed.get("cards", []):
-                            if c.get("section") == "commander":
-                                if c["name"] not in commanders:
-                                    commanders.append(c["name"])
-                            elif c.get("section", "mainboard") == "mainboard":
-                                mainboard[c["name"]] = mainboard.get(c["name"], 0) + int(c.get("quantity", 1) or 1)
-                elif is_url:
-                    parsed = DeckParser.parse(source)
-                    if not deck_name:
-                        deck_name = parsed.get("deck_name") or "Imported Commander Deck"
-                    commanders = parsed.get("commander") or []
-                    for c in parsed.get("cards", []):
-                        if c.get("section") == "commander":
-                            if c["name"] not in commanders:
-                                commanders.append(c["name"])
-                        elif c.get("section", "mainboard") == "mainboard":
-                            mainboard[c["name"]] = mainboard.get(c["name"], 0) + int(c.get("quantity", 1) or 1)
-                else:
-                    commanders, mainboard = parse_timewalked_decklist(source)
-                    if not deck_name:
-                        deck_name = "Custom Commander Deck"
-
-            # Apply explicit commander override if supplied by user
-            cmdr_override = data.get("commanders") or data.get("commander")
-            if cmdr_override:
-                if isinstance(cmdr_override, str):
-                    override_list = [c.strip() for c in re.split(r"[,;\n]+", cmdr_override) if c.strip()]
-                elif isinstance(cmdr_override, list):
-                    override_list = [str(c).strip() for c in cmdr_override if c and str(c).strip()]
-                else:
-                    override_list = []
-                if override_list:
-                    commanders = override_list
-                    # Remove overridden commander from mainboard if duplicated
-                    cmdr_low = {c.lower() for c in commanders}
-                    mainboard = {k: v for k, v in mainboard.items() if k.lower() not in cmdr_low}
-
-            if not mainboard and not commanders:
-                return jsonify({"error": "No valid Magic: The Gathering cards were found in the input."}), 400
-
-            if not deck_name:
-                deck_name = f"{' // '.join(commanders)} Commander" if commanders else "Untitled Commander Deck"
+            deck_name, commanders, mainboard, pre_resolved_cards, edhrec_profile, _ = _resolve_timewalked_deck_input(
+                data=data, user=user, offline=offline
+            )
 
             baseline_res = classifier.classify(
                 commanders=commanders,
@@ -4972,9 +5017,102 @@ def create_app(test_config=None):
                 "ascii_report": ascii_report,
                 "edhrec_profile": edhrec_profile,
             })
-        except DeckParseError as pe:
+        except (ValueError, DeckParseError) as pe:
             return jsonify({"error": str(pe)}), 400
+        except LookupError as le:
+            return jsonify({"error": str(le)}), 404
+        except PermissionError as pere:
+            return jsonify({"error": str(pere)}), 403
         except Exception as e:
+            logger.exception("Error in api_timewalked_analyze")
+            return jsonify({"error": f"Failed to classify deck: {e}"}), 500
+
+    @app.route("/api/timewalked/suggested-upgrades", methods=["POST"])
+    @login_required
+    def api_timewalked_suggested_upgrades():
+        """Generates Timewalked-style suggested cards, cross-referencing user collection binder for free upgrades."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        offline = bool(data.get("offline", False))
+        limit = max(1, min(100, int(data.get("limit") or 30)))
+        dismissed_names = data.get("dismissed") or []
+
+        try:
+            deck_name, commanders, mainboard, pre_resolved_cards, edhrec_profile, deck_id_val = _resolve_timewalked_deck_input(
+                data=data, user=user, offline=offline
+            )
+
+            # 1. Build owned collection index for this user
+            owned_index = _build_user_inventory_match_index(user.id if user else 0)
+
+            # 2. Get card allocations across user's other decks
+            allocations = InventoryManager.get_user_card_allocations(
+                user_id=user.id if user else 0,
+                current_deck_id=deck_id_val,
+            )
+
+            # 3. Quick on-paper bracket + game changer check for bracket guardrails
+            classifier = TimewalkedDeckClassifier(offline=offline)
+            quick_res = classifier.classify(
+                commanders=commanders,
+                mainboard=mainboard,
+                deck_name=deck_name,
+                pre_resolved_cards=pre_resolved_cards,
+            )
+
+            # 4. EDHREC fetcher delegating to app's cached EDHREC provider
+            def _fetch_edhrec(cmdr: str, partner: Optional[str] = None) -> Optional[dict[str, Any]]:
+                if offline:
+                    return None
+                provider = getattr(app, "edhrec_provider", None) or edhrec_provider
+                if not provider:
+                    return None
+                cmdr_slug = f"{cmdr} {partner}".strip() if partner else cmdr
+                return provider.get_commander_data(cmdr_slug)
+
+            # 5. Initialize Timewalked Suggested Upgrade Engine
+            engine = TimewalkedSuggestedUpgradeEngine(
+                edhrec_fetcher=_fetch_edhrec,
+                scryfall=classifier.scryfall,
+                spellbook=classifier.spellbook,
+            )
+
+            suggestions = engine.suggest(
+                commanders=commanders,
+                mainboard=mainboard,
+                owned_index=owned_index,
+                allocations=allocations,
+                on_paper_bracket=quick_res.on_paper_bracket,
+                game_changer_count=len(quick_res.game_changers),
+                dismissed_names=dismissed_names,
+                limit_per_tier=limit,
+                pre_resolved_cards=pre_resolved_cards,
+            )
+
+            suggestions["deck_name"] = deck_name
+            suggestions["deck_id"] = deck_id_val
+            suggestions["on_paper_bracket"] = quick_res.on_paper_bracket
+            suggestions["feels_like_score"] = quick_res.feels_like_score
+
+            log_activity(
+                "TIMEWALKED_UPGRADES",
+                details=f"Generated Timewalked suggested upgrades for {deck_name}: {suggestions.get('free_count', 0)} Free / {suggestions.get('buy_count', 0)} Buy",
+                user=user,
+            )
+
+            return jsonify({
+                "success": True,
+                "data": suggestions,
+            })
+        except (ValueError, DeckParseError) as pe:
+            return jsonify({"error": str(pe)}), 400
+        except LookupError as le:
+            return jsonify({"error": str(le)}), 404
+        except PermissionError as pere:
+            return jsonify({"error": str(pere)}), 403
+        except Exception as e:
+            logger.exception("Error in api_timewalked_suggested_upgrades")
+            return jsonify({"error": f"Failed to generate suggested upgrades: {e}"}), 500
             logger.exception("Error in api_timewalked_analyze")
             return jsonify({"error": f"Failed to classify deck: {e}"}), 500
 
@@ -5533,12 +5671,15 @@ def create_app(test_config=None):
             is_pauper_override = is_pauper_arg.strip().lower() in ("1", "true", "yes", "on")
 
         # If not explicitly refreshed, check if stored upgrades match the requested filters
+        current_inv_version = inventory_manager.get_inventory_version(user.id)
         if not force_refresh:
             cached_upgrades = entry.get_upgrades()
             if cached_upgrades and isinstance(cached_upgrades, dict) and cached_upgrades.get("owned_swaps") is not None:
                 cached_theme = cached_upgrades.get("theme_applied")
                 cached_anti_salt = bool(cached_upgrades.get("anti_salt_applied", False))
-                if cached_theme == theme and cached_anti_salt == anti_salt:
+                cached_inv_version = cached_upgrades.get("inventory_version", 0)
+                # If cached upgrades were not partial and inventory has not been modified since, serve cache
+                if cached_theme == theme and cached_anti_salt == anti_salt and not cached_upgrades.get("partial", False) and cached_inv_version == current_inv_version:
                     payload = dict(cached_upgrades)
                     payload["success"] = True
                     payload["deck_id"] = deck_id
@@ -5577,6 +5718,7 @@ def create_app(test_config=None):
             anti_salt=anti_salt,
             is_pauper=is_pauper_override,
             deck_stats=entry.get_stats(),
+            time_budget_s=8.0,
         )
 
         edhrec_summary = None
@@ -5599,6 +5741,7 @@ def create_app(test_config=None):
             "cached": False,
             "edhrec": edhrec_summary,
             "enrichment": enrich_status,
+            "inventory_version": current_inv_version,
             **results,
         }
 
@@ -6768,6 +6911,14 @@ def create_app(test_config=None):
 
     app._attach_ownership_and_allocations = _attach_ownership_and_allocations
     app._compute_fleet_stats = _compute_fleet_stats
+
+    try:
+        def _auto_resume():
+            with app.app_context():
+                inventory_manager.resume_pending_enrichment()
+        threading.Thread(target=_auto_resume, daemon=True).start()
+    except Exception as resume_err:
+        logger.warning(f"Could not spawn auto-resume enrichment thread: {resume_err}")
 
     return app
 

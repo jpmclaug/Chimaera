@@ -11,6 +11,7 @@ import io
 import csv
 import logging
 import re
+import time
 from typing import Dict, Any, List, Optional, Set, Tuple
 from card_classifier import MTGCardClassifier
 from models import UserInventoryCard, DeckAnalysis
@@ -374,6 +375,17 @@ CURATED_PAUPER_UPGRADES: List[Dict[str, Any]] = [
     {"name": "Guildless Commons", "role": "Land", "cmc": 0, "colors": [], "category": "Mana Base", "rating": 9.0, "rationale": "Colorless bounce land tapping for {C}{C}."},
 ]
 
+# Fast precomputed lookups for curated staples
+_CURATED_BY_KEY: Dict[str, Dict[str, Any]] = {}
+_CURATED_NAMES_SET: Set[str] = set()
+for _staple in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES:
+    _s_clean = strip_accents(_staple["name"]).strip().lower()
+    _CURATED_NAMES_SET.add(_s_clean)
+    for _k in get_card_match_keys(_staple["name"]):
+        if _k not in _CURATED_BY_KEY:
+            _CURATED_BY_KEY[_k] = _staple
+
+
 
 class DualTierUpgradeEngine:
     """
@@ -410,12 +422,16 @@ class DualTierUpgradeEngine:
         max_salt: float = 1.5,
         is_pauper: Optional[bool] = None,
         deck_stats: Optional[Dict[str, Any]] = None,
+        time_budget_s: float = 8.0,
     ) -> Dict[str, Any]:
         """
         Executes dual-tier upgrade evaluation enriched with EDHREC synergy,
         theme alignment, anti-salt filtering, strategic deck deficit alignment,
         inventory binder deep scan, and combo analysis.
         """
+        import time as _t
+        deadline = _t.perf_counter() + max(1.0, float(time_budget_s))
+
         # 1. Resolve deck attributes
         cards = deck.get_parsed_cards() if hasattr(deck, "get_parsed_cards") else (deck.get("cards") or [])
         deck_id = deck.id if hasattr(deck, "id") else deck.get("id")
@@ -585,33 +601,33 @@ class DualTierUpgradeEngine:
         if candidates_to_validate:
             # Strictly cap at 75 cards (exactly 1 Scryfall batch) and disable slow individual fallbacks
             candidates_list = list(candidates_to_validate)[:75]
-            try:
-                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(candidates_list, fallback_named=False)
-                session_scryfall_cache.update(scryfall_meta)
-                for name_query in candidates_list:
-                    q_low = name_query.lower().strip()
-                    meta = scryfall_meta.get(q_low)
-                    if not meta:
-                        clean_q = strip_accents(name_query).strip().lower()
-                        meta = scryfall_meta.get(clean_q)
-                    if meta:
-                        scry_cid = meta.get("color_identity", [])
-                        leg = ScryfallProvider.is_pauper_legal(meta) if is_pauper else True
-                        for k in get_card_match_keys(meta.get("name", name_query)):
-                            cid_cache[k] = scry_cid
+            time_left = max(0.5, deadline - _t.perf_counter())
+            if time_left >= 1.0:
+                try:
+                    scryfall_meta, _ = self.scryfall_provider.get_cards_collection(
+                        candidates_list, fallback_named=False, timeout=min(5.0, time_left)
+                    )
+                    session_scryfall_cache.update(scryfall_meta)
+                    for name_query in candidates_list:
+                        q_low = name_query.lower().strip()
+                        meta = scryfall_meta.get(q_low)
+                        if not meta:
+                            clean_q = strip_accents(name_query).strip().lower()
+                            meta = scryfall_meta.get(clean_q)
+                        if meta:
+                            scry_cid = meta.get("color_identity", [])
+                            leg = ScryfallProvider.is_pauper_legal(meta) if is_pauper else True
+                            for k in get_card_match_keys(meta.get("name", name_query)):
+                                cid_cache[k] = scry_cid
+                                if is_pauper:
+                                    pauper_legal_cache[k] = leg
+                                    DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = leg
+                        else:
                             if is_pauper:
-                                pauper_legal_cache[k] = leg
-                                DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[k] = leg
-
-                        # Metadata cached in session_scryfall_cache and cid_cache
-                        # Note: Do NOT mutate UserInventoryCard ORM objects directly in db.session
-                        # to prevent blocking locks during background enrichment and avoid dirty commits.
-                    else:
-                        if is_pauper:
-                            pauper_legal_cache[q_low] = False
-                            DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[q_low] = False
-            except Exception as e:
-                logger.error(f"Error validating card metadata with Scryfall: {e}")
+                                pauper_legal_cache[q_low] = False
+                                DualTierUpgradeEngine._PAUPER_LEGALITY_CACHE[q_low] = False
+                except Exception as e:
+                    logger.error(f"Error validating card metadata with Scryfall: {e}")
 
         # Evaluate Known Combos from EDHREC / Commander Spellbook early to inform binder recommendations
         combo_results = self.evaluate_combos(
@@ -914,7 +930,7 @@ class DualTierUpgradeEngine:
                 applied_card_in_names.add(s_name_lower)
 
         # D) Deep Scan User's Entire Binder for High-Buff and Strategy Upgrades
-        binder_recommendations = self._scan_binder_for_upgrades(
+        binder_recommendations, binder_is_partial, skipped_unresolved = self._scan_binder_for_upgrades(
             user_inventory=user_inventory,
             deck_cards_set=deck_cards_set,
             color_identity=color_identity,
@@ -931,6 +947,7 @@ class DualTierUpgradeEngine:
             binder_combo_pieces=binder_combo_pieces,
             max_salt=max_salt,
             scryfall_cache=session_scryfall_cache,
+            deadline=deadline,
         )
         owned_swaps.extend(binder_recommendations)
 
@@ -1147,11 +1164,14 @@ class DualTierUpgradeEngine:
                     for k in get_card_match_keys(meta.get("name", s["name"])):
                         cid_cache[k] = meta["color_identity"]
 
-        # Fetch only truly missing card metadata from Scryfall (capped at 1 batch of 75)
+        # Fetch only truly missing card metadata from Scryfall (capped at 1 batch of 75 within time budget)
         missing_meta_names = [s["name"] for s in shopping_list_raw if s.get("price_usd") is None or not s.get("image_uri")]
-        if missing_meta_names:
+        time_left_shop = max(0.5, deadline - _t.perf_counter())
+        if missing_meta_names and time_left_shop >= 1.0:
             try:
-                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(missing_meta_names[:75], fallback_named=False)
+                scryfall_meta, _ = self.scryfall_provider.get_cards_collection(
+                    missing_meta_names[:75], fallback_named=False, timeout=min(4.0, time_left_shop)
+                )
                 for k, meta in scryfall_meta.items():
                     session_scryfall_cache[k] = meta
                 for s in shopping_list_raw:
@@ -1228,6 +1248,8 @@ class DualTierUpgradeEngine:
             "is_pauper": is_pauper,
             "deck_format": "pauper_commander" if is_pauper else "commander",
             "deck_strategy": deck_strategy,
+            "partial": binder_is_partial,
+            "skipped_unresolved": skipped_unresolved,
         }
 
     def evaluate_combos(
@@ -1332,7 +1354,7 @@ class DualTierUpgradeEngine:
         return None
 
     @staticmethod
-    def _is_format_legal(card_name: str, is_pauper: bool = False, pauper_legal_cache: Optional[Dict[str, bool]] = None) -> bool:
+    def _is_format_legal(card_name: str, is_pauper: bool = False, pauper_legal_cache: Optional[Dict[str, bool]] = None, card_rarity: Optional[str] = None) -> bool:
         """Checks if card is legal in Commander (or Pauper Commander if is_pauper is True)."""
         if not card_name:
             return True
@@ -1344,6 +1366,8 @@ class DualTierUpgradeEngine:
         if is_pauper:
             if clean in PAUPER_COMMANDER_BANNED_CARDS:
                 return False
+            if card_rarity and str(card_rarity).strip().lower() == "common":
+                return True
             if pauper_legal_cache is not None:
                 for k in get_card_match_keys(card_name):
                     if k in pauper_legal_cache:
@@ -1454,10 +1478,9 @@ class DualTierUpgradeEngine:
                     break
 
         if card_cid is None:
-            clean_name = strip_accents(card_name).strip().lower()
-            for s in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES:
-                if strip_accents(s["name"]).lower() == clean_name:
-                    card_cid = s.get("colors", [])
+            for k in get_card_match_keys(card_name):
+                if k in _CURATED_BY_KEY:
+                    card_cid = _CURATED_BY_KEY[k].get("colors", [])
                     break
 
         if card_cid is None and mana_cost:
@@ -1761,21 +1784,40 @@ class DualTierUpgradeEngine:
         binder_combo_pieces: Optional[Set[str]] = None,
         max_salt: float = 1.5,
         scryfall_cache: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        deadline: Optional[float] = None,
+    ) -> Tuple[List[Dict[str, Any]], bool, int]:
         """
         Scans the user's entire inventory to discover the strongest buff candidates matching
         the deck's color identity, strategy/engines, and deficit needs.
         """
         binder_swaps = []
-        curated_names_set = {strip_accents(s["name"]).lower() for s in CURATED_UPGRADES + CURATED_PAUPER_UPGRADES}
+        curated_names_set = _CURATED_NAMES_SET
         combo_pieces = binder_combo_pieces or set()
+        is_partial = False
+        skipped_unresolved = 0
 
         inventory_by_name: Dict[str, List[UserInventoryCard]] = {}
         for ic in user_inventory:
             clean = strip_accents(ic.name).strip().lower()
             inventory_by_name.setdefault(clean, []).append(ic)
 
-        for clean_name, copies in inventory_by_name.items():
+        # Sort candidate inventory groups so highest-potential cards (combos, synergies, value) evaluate first
+        sorted_inventory_items = sorted(
+            inventory_by_name.items(),
+            key=lambda item: (
+                1 if (item[0] in combo_pieces or item[0] in edhrec_synergies) else 0,
+                edhrec_synergies.get(item[0], {}).get("synergy", 0.0),
+                item[1][0].price_usd or 0.0,
+            ),
+            reverse=True,
+        )
+
+        for idx, (clean_name, copies) in enumerate(sorted_inventory_items):
+            if idx > 0 and idx % 150 == 0:
+                if deadline and time.perf_counter() > deadline:
+                    is_partial = True
+                    break
+
             if not clean_name or clean_name in applied_card_in_names:
                 continue
             primary_copy = copies[0]
@@ -1784,17 +1826,17 @@ class DualTierUpgradeEngine:
             if self._is_card_in_deck(card_name, deck_cards_set):
                 continue
 
-            if not self._is_format_legal(card_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache):
-                continue
-
             # Fallback metadata from cache if not already enriched in DB
             c_meta = (scryfall_cache.get(clean_name) or scryfall_cache.get(card_name.lower())) if scryfall_cache else None
-            p_img = primary_copy.image_uri or (c_meta.get("image_uri") or c_meta.get("small_image_uri") if c_meta else None)
-            p_mana = primary_copy.mana_cost or (c_meta.get("mana_cost") if c_meta else "") or ""
-            p_cmc = primary_copy.cmc if (primary_copy.cmc is not None and primary_copy.cmc != 0) else (float(c_meta.get("cmc") or 0) if c_meta else (primary_copy.cmc or 0))
             p_type = primary_copy.type_line or (c_meta.get("type_line") if c_meta else "") or ""
-            p_oracle = primary_copy.oracle_text or (c_meta.get("oracle_text") if c_meta else "") or ""
+            type_line_lower = p_type.lower()
+            if "basic" in type_line_lower and "land" in type_line_lower:
+                continue
 
+            if not self._is_format_legal(card_name, is_pauper=is_pauper, pauper_legal_cache=pauper_legal_cache, card_rarity=primary_copy.rarity):
+                continue
+
+            p_mana = primary_copy.mana_cost or (c_meta.get("mana_cost") if c_meta else "") or ""
             ic_cid = None
             if hasattr(primary_copy, "color_identity") and primary_copy.color_identity is not None:
                 if isinstance(primary_copy.color_identity, list):
@@ -1805,11 +1847,13 @@ class DualTierUpgradeEngine:
                 ic_cid = primary_copy.get_color_identity_list()
 
             if not self._is_color_legal(card_name, color_identity, card_cid=ic_cid, cid_cache=cid_cache, mana_cost=p_mana):
+                if ic_cid is None and not p_mana and clean_name not in curated_names_set:
+                    skipped_unresolved += 1
                 continue
 
-            type_line_lower = p_type.lower()
-            if "basic" in type_line_lower and "land" in type_line_lower:
-                continue
+            p_img = primary_copy.image_uri or (c_meta.get("image_uri") or c_meta.get("small_image_uri") if c_meta else None)
+            p_cmc = primary_copy.cmc if (primary_copy.cmc is not None and primary_copy.cmc != 0) else (float(c_meta.get("cmc") or 0) if c_meta else (primary_copy.cmc or 0))
+            p_oracle = primary_copy.oracle_text or (c_meta.get("oracle_text") if c_meta else "") or ""
 
             card_dict = {
                 "name": card_name,
@@ -1941,7 +1985,7 @@ class DualTierUpgradeEngine:
             })
             applied_card_in_names.add(clean_name)
 
-        return binder_swaps
+        return binder_swaps, is_partial, skipped_unresolved
 
     def _identify_cut_candidates(self, cards: List[Dict[str, Any]], ai_analysis: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Identifies the weakest slotted cards in the deck to suggest as cuts."""

@@ -420,6 +420,7 @@
 <script>
 let currentUploadTab = 'gdrive';
 let selectedFile = null;
+let isUploading = false;
 
 function switchUploadTab(tab) {
     currentUploadTab = tab;
@@ -452,6 +453,7 @@ function switchUploadTab(tab) {
 }
 
 function handleGdriveInputChanged() {
+    if (isUploading) return;
     const val = (document.getElementById('gdriveUrlInput') ? document.getElementById('gdriveUrlInput').value : '').trim();
     const btn = document.getElementById('btnStartUpload');
     if (currentUploadTab === 'gdrive') {
@@ -476,6 +478,7 @@ function closeUploadModal() {
 
 // Quick Sync Drive
 async function triggerQuickGdriveSync() {
+    if (isUploading) return;
     const btn = document.getElementById('btnQuickGdriveSync');
     const origHtml = btn ? btn.innerHTML : '';
     if (btn) {
@@ -571,6 +574,8 @@ function clearSelectedFile(e) {
 
 // Ingestion Submission (Google Drive or Local File)
 async function submitUpload() {
+    if (isUploading) return;
+    isUploading = true;
     const btn = document.getElementById('btnStartUpload');
     const mode = document.querySelector('input[name="uploadMode"]:checked').value;
     const progressContainer = document.getElementById('uploadProgressContainer');
@@ -686,6 +691,7 @@ async function submitUpload() {
         closeUploadModal();
         showToast(`Ingestion error: ${err.message}`, "error");
     } finally {
+        isUploading = false;
         btn.removeAttribute('disabled');
         progressContainer.classList.add('hidden');
     }

@@ -383,6 +383,7 @@ class SpellbookClient:
                 )
                 results = resp.get("results", {})
                 included_raw = results.get("included", [])
+                almost_raw = results.get("almostIncluded", [])
                 included = []
                 for variant in included_raw:
                     cards = [u["card"]["name"] for u in variant.get("uses", []) if "card" in u]
@@ -400,19 +401,44 @@ class SpellbookClient:
                             "mana_needed": variant.get("manaNeeded", ""),
                         }
                     )
+                deck_lower = {c.lower() for c in (commanders + mainboard)}
+                almost_included = []
+                for variant in almost_raw:
+                    cards = [u["card"]["name"] for u in variant.get("uses", []) if "card" in u]
+                    produces = [
+                        p["feature"]["name"]
+                        for p in variant.get("produces", [])
+                        if "feature" in p
+                    ]
+                    missing = [c for c in cards if c.lower() not in deck_lower and c.split(" // ")[0].strip().lower() not in deck_lower]
+                    if len(missing) == 1:
+                        almost_included.append(
+                            {
+                                "id": str(variant.get("id", "")),
+                                "cards": cards,
+                                "missing": missing,
+                                "produces": produces,
+                                "bracket_tag": str(variant.get("bracketTag", "3")),
+                            }
+                        )
                 return {
                     "source": "commander_spellbook_api",
                     "bracket_tag": results.get("bracketTag"),
                     "included": included,
-                    "almost_included_count": len(results.get("almostIncluded", [])),
+                    "almost_included_count": len(almost_raw),
+                    "almost_included": almost_included,
                 }
             except Exception:
                 pass
 
         # Fallback: local deterministic combo detection
         all_cards_lower = {c.lower(): c for c in (commanders + mainboard)}
+        for c in (commanders + mainboard):
+            if " // " in c:
+                all_cards_lower[c.split(" // ")[0].strip().lower()] = c
         included_local = []
         almost_local = 0
+        almost_included_local = []
         max_combo_bracket = 1
 
         for combo in KNOWN_COMBOS:
@@ -423,12 +449,22 @@ class SpellbookClient:
                 max_combo_bracket = max(max_combo_bracket, b_tag)
             elif len(present) == len(combo["cards"]) - 1 and len(combo["cards"]) >= 2:
                 almost_local += 1
+                missing_cards = [c for c in combo["cards"] if c.lower() not in all_cards_lower]
+                almost_included_local.append(
+                    {
+                        "cards": combo["cards"],
+                        "missing": missing_cards,
+                        "produces": [combo.get("description", "Infinite Combo")],
+                        "bracket_tag": str(combo.get("bracket_tag", "3")),
+                    }
+                )
 
         return {
             "source": "local_combo_db",
             "bracket_tag": str(max_combo_bracket) if included_local else None,
             "included": included_local,
             "almost_included_count": almost_local,
+            "almost_included": almost_included_local,
         }
 
 

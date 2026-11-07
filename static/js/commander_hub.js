@@ -4851,7 +4851,7 @@ window.antiSaltFilterEnabled = false;
 
 function switchUpgradeSubtab(subtab) {
     currentUpgradeSubtab = subtab;
-    const subtabs = ['owned', 'shop', 'primers', 'combos'];
+    const subtabs = ['owned', 'timewalked', 'shop', 'primers', 'combos'];
     subtabs.forEach(t => {
         const btn = document.getElementById(`subtab-btn-${t}`);
         const content = document.getElementById(`subtab-content-${t}`);
@@ -4859,6 +4859,7 @@ function switchUpgradeSubtab(subtab) {
             if (btn) {
                 btn.classList.remove('text-slate-400', 'border-transparent');
                 if (t === 'owned') btn.classList.add('text-emerald-400', 'border-emerald-400', 'bg-emerald-500/10');
+                else if (t === 'timewalked') btn.classList.add('text-purple-400', 'border-purple-400', 'bg-purple-500/10');
                 else if (t === 'shop') btn.classList.add('text-cyan-400', 'border-cyan-400', 'bg-cyan-500/10');
                 else if (t === 'primers') btn.classList.add('text-amber-400', 'border-amber-400', 'bg-amber-500/10');
                 else if (t === 'combos') btn.classList.add('text-purple-400', 'border-purple-400', 'bg-purple-500/10');
@@ -4871,6 +4872,10 @@ function switchUpgradeSubtab(subtab) {
             if (content) content.classList.add('hidden');
         }
     });
+
+    if (subtab === 'timewalked' && activeDeck && activeDeck.id) {
+        loadHubTimewalkedUpgrades(activeDeck.id);
+    }
 }
 
 function handleUpgradeThemeChange(themeSlug) {
@@ -4936,7 +4941,12 @@ function trackCollectionEnrichment(status) {
                         pill.classList.remove('flex');
                         clearInterval(enrichmentPollTimer);
                         enrichmentPollTimer = null;
-                        showToast("Binder collection enrichment completed!", "success");
+                        if (activeDeck && activeDeck.id && (!activeDeck.upgrades || activeDeck.upgrades.partial)) {
+                            showToast("Binder collection enrichment completed! Updating recommendations...", "success");
+                            loadDualTierUpgrades(activeDeck.id, { force: true });
+                        } else {
+                            showToast("Binder collection enrichment completed!", "success");
+                        }
                     }
                 }
             } catch (e) {
@@ -5043,8 +5053,10 @@ async function loadDualTierUpgrades(deckId, options = {}) {
         const shopCount = data.shopping_count || 0;
         const msg = data.cached
             ? `Displaying stored upgrades: ${ownedCount} binder swaps, ${shopCount} shopping cards`
-            : `Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards`;
-        showToast(msg, "success");
+            : (data.partial
+                ? `Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards (analysis continuing in background)`
+                : `Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards`);
+        showToast(msg, data.partial ? "info" : "success");
 
     } catch (err) {
         if (loadingElem) loadingElem.classList.add('hidden');
@@ -6349,4 +6361,183 @@ async function generateAllTactics(options = {}) {
             btnStale.innerHTML = origStaleText;
         }
     }
+}
+
+// -----------------------------------------------------------------------------
+// COMMANDER HUB: TIMEWALKED SUGGESTED UPGRADES SUB-TAB LOGIC
+// -----------------------------------------------------------------------------
+
+window.hubTimewalkedCache = {};
+
+async function loadHubTimewalkedUpgrades(deckId, options = {}) {
+    if (!deckId) return;
+    const { force = false } = options;
+
+    const loadingEl = document.getElementById("hub-tw-loading");
+    const resultsEl = document.getElementById("hub-tw-results");
+    const countBadge = document.getElementById("timewalkedCountBadge");
+
+    if (!force && window.hubTimewalkedCache[deckId]) {
+        renderHubTimewalkedUpgrades(window.hubTimewalkedCache[deckId]);
+        return;
+    }
+
+    if (loadingEl) loadingEl.classList.remove("hidden");
+    if (resultsEl) resultsEl.classList.add("hidden");
+
+    try {
+        const resp = await fetch("/api/timewalked/suggested-upgrades", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                mode: "vault_deck",
+                deck_id: deckId,
+                limit: 30
+            })
+        });
+        const json = await resp.json();
+        if (!resp.ok || json.error) {
+            throw new Error(json.error || "Failed to load Timewalked upgrades");
+        }
+        window.hubTimewalkedCache[deckId] = json.data;
+        renderHubTimewalkedUpgrades(json.data);
+    } catch (err) {
+        console.warn("Hub Timewalked upgrades load error:", err);
+        if (loadingEl) {
+            loadingEl.innerHTML = `<span class="text-xs font-mono text-slate-500">Could not load Timewalked recommendations (${escapeHtml(err.message)}).</span>`;
+        }
+    } finally {
+        if (loadingEl && window.hubTimewalkedCache[deckId]) loadingEl.classList.add("hidden");
+        if (resultsEl && window.hubTimewalkedCache[deckId]) resultsEl.classList.remove("hidden");
+    }
+}
+
+function renderHubTimewalkedUpgrades(data) {
+    if (!data) return;
+
+    // 1. Badge count
+    const badge = document.getElementById("timewalkedCountBadge");
+    if (badge) {
+        badge.textContent = `${data.free_count || 0} Free`;
+    }
+
+    // 2. Ratios Strip
+    const ratioChipsEl = document.getElementById("hub-tw-ratio-chips");
+    const ratios = data.ratios || {};
+    if (ratioChipsEl) {
+        ratioChipsEl.innerHTML = Object.values(ratios).map(r => {
+            const state = r.state;
+            let badgeCls = "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+            if (state === "close") badgeCls = "bg-amber-500/15 text-amber-400 border-amber-500/30";
+            else if (state === "short") badgeCls = "bg-rose-500/15 text-rose-400 border-rose-500/30";
+
+            return `
+                <div class="p-2 bg-[#1B2230] border border-[#263245] flex flex-col justify-between" title="${r.label}: ${r.count} of ${r.target}">
+                    <div class="text-[10px] font-mono text-white truncate font-bold">${escapeHtml(r.label)}</div>
+                    <div class="flex items-baseline justify-between font-mono mt-1">
+                        <span class="text-xs font-bold text-white">${r.count}</span>
+                        <span class="text-[10px] text-slate-500">/ ${r.target}</span>
+                    </div>
+                    <div class="mt-1 text-[9px] font-mono px-1 py-0.2 border text-center font-bold uppercase ${badgeCls}">
+                        ${state ? state.toUpperCase() : "OK"}
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+
+    // 3. Free Upgrades
+    const freeBadge = document.getElementById("hub-tw-free-badge");
+    if (freeBadge) freeBadge.textContent = `${data.free_count || 0} Swaps · $${Number(data.free_value_usd || 0).toFixed(2)}`;
+    const freeList = document.getElementById("hub-tw-free-list");
+    if (freeList) {
+        if (!data.free_upgrades || data.free_upgrades.length === 0) {
+            freeList.innerHTML = `<div class="p-4 bg-[#10141D] border border-[#263245] text-center text-xs font-mono text-slate-500">No free binder swaps for this commander.</div>`;
+        } else {
+            freeList.innerHTML = data.free_upgrades.slice(0, 15).map(u => renderHubUpgradeCardHtml(u, true)).join("");
+        }
+    }
+
+    // 4. Buy List
+    const buyBadge = document.getElementById("hub-tw-buy-badge");
+    if (buyBadge) buyBadge.textContent = `${data.buy_count || 0} Cards · $${Number(data.buy_total_usd || 0).toFixed(2)}`;
+    const buyList = document.getElementById("hub-tw-buy-list");
+    if (buyList) {
+        if (!data.buy_upgrades || data.buy_upgrades.length === 0) {
+            buyList.innerHTML = `<div class="p-4 bg-[#10141D] border border-[#263245] text-center text-xs font-mono text-slate-500">No market recommendations pending.</div>`;
+        } else {
+            buyList.innerHTML = data.buy_upgrades.slice(0, 15).map(u => renderHubUpgradeCardHtml(u, false)).join("");
+        }
+    }
+}
+
+function renderHubUpgradeCardHtml(item, isFree) {
+    const imgUri = item.image_uri || "";
+    const reasonChips = (item.reasons || []).map(r => `
+        <span class="inline-block text-[10px] font-mono px-1.5 py-0.5 bg-[#10141D] border border-[#263245] text-slate-400">
+            ${escapeHtml(r)}
+        </span>
+    `).join("");
+
+    let binderTag = "";
+    if (isFree && item.binders && item.binders.length > 0) {
+        binderTag = `<span class="text-[10px] font-mono text-emerald-400">📖 ${escapeHtml(item.binders.join(', '))} (${item.owned_qty}x)</span>`;
+    } else if (isFree) {
+        binderTag = `<span class="text-[10px] font-mono text-emerald-400">Owned (${item.owned_qty}x)</span>`;
+    }
+
+    let cutBar = "";
+    if (item.card_out) {
+        cutBar = `
+            <div class="bg-[#10141D] p-2 border border-[#263245] flex items-center justify-between text-xs font-mono">
+                <div class="flex items-center space-x-2 truncate">
+                    <span class="text-rose-400 font-bold">✂ CUT:</span>
+                    <strong class="text-white truncate">${escapeHtml(item.card_out)}</strong>
+                    <span class="text-[10px] text-slate-500 hidden sm:inline">(${escapeHtml(item.cut_reason)})</span>
+                </div>
+                ${activeDeck && activeDeck.id ? `
+                    <button type="button" onclick="applyDeckSwap(this, '${escapeHtml(item.card_out)}', '${escapeHtml(item.card_in)}')" class="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40 text-[10px] font-mono font-bold uppercase ml-2 flex-shrink-0 transition">
+                        Apply Swap
+                    </button>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    return `
+        <div class="bg-[#10141D] border border-[#263245] hover:border-slate-600 p-3 space-y-2">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start space-x-3 min-w-0">
+                    <div class="w-10 h-14 bg-[#0C0F17] border border-[#263245] flex-shrink-0 overflow-hidden cursor-pointer" onclick="openCardImageModal('${escapeHtml(imgUri)}', '${escapeHtml(item.card_in)}', 'ANY', '', 'nonfoil')">
+                        ${imgUri ? `<img src="${escapeHtml(imgUri)}" alt="${escapeHtml(item.card_in)}" class="w-full h-full object-cover">` : `<div class="p-1 text-[8px] font-mono text-slate-600 text-center">Art</div>`}
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center space-x-2 flex-wrap gap-1">
+                            <span class="text-xs sm:text-sm font-bold font-heading text-white truncate">${escapeHtml(item.card_in)}</span>
+                            ${item.is_game_changer ? `<span class="text-[9px] font-mono px-1 py-0.2 bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold uppercase">GAME CHANGER</span>` : ''}
+                        </div>
+                        <div class="text-[11px] font-mono text-slate-400 truncate mt-0.5">
+                            ${escapeHtml(item.type_line || '')} &middot; CMC ${item.cmc}
+                        </div>
+                        <div class="mt-1">${binderTag}</div>
+                    </div>
+                </div>
+                <div class="text-right flex-shrink-0 font-mono">
+                    <div class="text-sm font-black ${item.inclusion_pct >= 50 ? 'text-emerald-400' : 'text-cyan-400'}">
+                        ${item.inclusion_pct > 0 ? Math.round(item.inclusion_pct) + '%' : 'COMBO'}
+                    </div>
+                    <div class="text-[9px] text-slate-500 uppercase">Inclusion</div>
+                    ${item.price_usd !== null && item.price_usd !== undefined ? `
+                        <div class="text-[11px] font-bold text-purple-300 mt-0.5">$${Number(item.price_usd).toFixed(2)}</div>
+                    ` : ''}
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-1">
+                ${reasonChips}
+            </div>
+
+            ${cutBar}
+        </div>
+    `;
 }

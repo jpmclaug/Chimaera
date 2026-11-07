@@ -1460,6 +1460,7 @@ class UserInventoryCard(db.Model):
     image_uri = db.Column(db.Text, nullable=True)
     price_usd = db.Column(db.Float, nullable=True)
     price_usd_foil = db.Column(db.Float, nullable=True)
+    enrichment_attempts = db.Column(db.Integer, default=0, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 

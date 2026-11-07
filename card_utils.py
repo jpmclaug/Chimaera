@@ -5,7 +5,8 @@ Card name normalization, Unicode accent stripping, mojibake repair, and flexible
 import html
 import re
 import unicodedata
-from typing import Set, List, Optional
+from functools import lru_cache
+from typing import Set, List, Optional, FrozenSet
 
 
 def fix_mojibake(text: Optional[str]) -> str:
@@ -35,6 +36,7 @@ def fix_mojibake(text: Optional[str]) -> str:
     return clean
 
 
+@lru_cache(maxsize=32768)
 def strip_accents(text: Optional[str]) -> str:
     """
     Removes diacritics / combining accents from a string using NFKD Unicode normalization.
@@ -51,6 +53,7 @@ def strip_accents(text: Optional[str]) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+@lru_cache(maxsize=32768)
 def normalize_card_name(name: Optional[str], strip_diacritics: bool = False) -> str:
     """
     Cleans and standardizes a card name:
@@ -88,30 +91,17 @@ def normalize_card_name(name: Optional[str], strip_diacritics: bool = False) -> 
     return clean.strip().strip("\"'").strip()
 
 
-def get_card_match_keys(card_name: Optional[str]) -> Set[str]:
-    """
-    Generates all canonical matching keys for a card name:
-    1. Lowercase original (with accents)
-    2. Lowercase unaccented (ASCII-folded)
-    3. Lowercase front face (if DFC / adventure)
-    4. Lowercase unaccented front face
-    
-    Example for 'Glóin the Mighty // Easy Pickings':
-        {
-            'glóin the mighty // easy pickings',
-            'gloin the mighty // easy pickings',
-            'glóin the mighty',
-            'gloin the mighty'
-        }
-    """
+@lru_cache(maxsize=32768)
+def _get_card_match_keys_cached(card_name: Optional[str]) -> FrozenSet[str]:
+    """Internal cached helper returning immutable canonical matching keys."""
     if not card_name:
-        return set()
+        return frozenset()
 
     clean = normalize_card_name(card_name)
     if not clean:
-        return set()
+        return frozenset()
 
-    keys: Set[str] = set()
+    keys = set()
 
     # 1. Full name lowercase
     full_lower = clean.lower()
@@ -128,7 +118,20 @@ def get_card_match_keys(card_name: Optional[str]) -> Set[str]:
         keys.add(front_lower)
         keys.add(strip_accents(front_lower))
 
-    return keys
+    return frozenset(keys)
+
+
+def get_card_match_keys(card_name: Optional[str]) -> Set[str]:
+    """
+    Generates all canonical matching keys for a card name:
+    1. Lowercase original (with accents)
+    2. Lowercase unaccented (ASCII-folded)
+    3. Lowercase front face (if DFC / adventure)
+    4. Lowercase unaccented front face
+    
+    Returns a mutable Set[str] copy backed by internal LRU cache.
+    """
+    return set(_get_card_match_keys_cached(card_name))
 
 
 def card_names_match(name1: Optional[str], name2: Optional[str]) -> bool:
