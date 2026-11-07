@@ -1781,13 +1781,52 @@ function updateCardInRegistryDom(card) {
         }
     }
 
-    // 5. UPDATE TELEMETRY KPIS
+    // 5. IN-PERSON ART GRID UPDATES
+    const inpersonArt = document.getElementById(`inperson-art-card-${cid}`);
+    if (inpersonArt) {
+        inpersonArt.dataset.tag = (card.tag || "").toLowerCase().trim();
+        inpersonArt.dataset.cardFinish = safeFinish;
+        inpersonArt.dataset.isDeal = card.is_deal ? "true" : "false";
+        inpersonArt.dataset.target = card.target_price || 0;
+        if (card.lowest_price !== undefined && card.lowest_price !== null) {
+            inpersonArt.dataset.price = card.lowest_price;
+        }
+        if (card.in_binder !== undefined) {
+            inpersonArt.dataset.inBinder = card.in_binder ? "true" : "false";
+            inpersonArt.dataset.binderCount = card.binder_count || 0;
+        }
+        if (card.is_deal) {
+            inpersonArt.classList.add("border-[#DC143C]", "bg-[#DC143C]/5");
+            inpersonArt.classList.remove("border-[#263245]");
+        } else {
+            inpersonArt.classList.remove("border-[#DC143C]", "bg-[#DC143C]/5");
+            inpersonArt.classList.add("border-[#263245]");
+        }
+    }
+
+    // 6. IN-PERSON CHECKLIST UPDATES
+    const inpersonCheck = document.getElementById(`inperson-check-row-${cid}`);
+    if (inpersonCheck) {
+        inpersonCheck.dataset.tag = (card.tag || "").toLowerCase().trim();
+        inpersonCheck.dataset.cardFinish = safeFinish;
+        inpersonCheck.dataset.isDeal = card.is_deal ? "true" : "false";
+        inpersonCheck.dataset.target = card.target_price || 0;
+        if (card.lowest_price !== undefined && card.lowest_price !== null) {
+            inpersonCheck.dataset.price = card.lowest_price;
+        }
+        if (card.in_binder !== undefined) {
+            inpersonCheck.dataset.inBinder = card.in_binder ? "true" : "false";
+            inpersonCheck.dataset.binderCount = card.binder_count || 0;
+        }
+    }
+
+    // 7. UPDATE TELEMETRY KPIS
     updateRegistryKpis();
 
-    // 6. UPDATE TAG PILLS & DROPDOWN
+    // 8. UPDATE TAG PILLS & DROPDOWN
     refreshRegistryTagsDom();
 
-    // 7. RE-APPLY ACTIVE CLIENT-SIDE FILTERS
+    // 9. RE-APPLY ACTIVE CLIENT-SIDE FILTERS
     if (typeof filterWatchlist === "function") {
         filterWatchlist();
     }
@@ -2007,6 +2046,8 @@ function removeCardsFromDomInPlace(cardIds) {
             `card-row-${id}`,
             `compact-card-${id}`,
             `swipe-card-slide-${id}`,
+            `inperson-art-card-${id}`,
+            `inperson-check-row-${id}`,
             `deal-card-${id}`,
             `compact-deal-${id}`,
             `swipe-deal-${id}`
@@ -2029,6 +2070,9 @@ function removeCardsFromDomInPlace(cardIds) {
         updateRegistryKpis();
         refreshRegistryTagsDom();
         filterWatchlist();
+        if (typeof updateInPersonGroupHeadersVisibility === "function") {
+            updateInPersonGroupHeadersVisibility();
+        }
     }
     if (document.getElementById("deals-grid")) {
         filterDeals();
@@ -2373,6 +2417,12 @@ function hydrateSwipeTemplatesIfNeeded() {
     }
 }
 
+let activeInPersonSubView = localStorage.getItem("chimaera_inperson_subview") || "art";
+let activeInPersonGroupBy = localStorage.getItem("chimaera_inperson_groupby") || "color";
+let activeInPersonColor = "all";
+let activeInPersonType = "all";
+let isInPersonFocus = localStorage.getItem("chimaera_inperson_focus") === "true";
+
 function setViewMode(mode) {
     activeViewMode = mode;
     localStorage.setItem("chimaera_view_mode", mode);
@@ -2385,7 +2435,8 @@ function setViewMode(mode) {
     const btns = {
         grid: document.getElementById("btn-view-grid"),
         compact: document.getElementById("btn-view-compact"),
-        swipe: document.getElementById("btn-view-swipe")
+        swipe: document.getElementById("btn-view-swipe"),
+        inperson: document.getElementById("btn-view-inperson")
     };
     Object.keys(btns).forEach(k => {
         if (btns[k]) {
@@ -2398,19 +2449,38 @@ function setViewMode(mode) {
     const rGrid = document.getElementById("watchlist-grid");
     const rCompact = document.getElementById("watchlist-compact");
     const rSwipe = document.getElementById("watchlist-swipe");
+    const rInPerson = document.getElementById("watchlist-inperson");
+    const inPersonControls = document.getElementById("inperson-controls-bar");
 
-    if (rGrid || rCompact || rSwipe) {
+    if (rGrid || rCompact || rSwipe || rInPerson) {
         if (rGrid) rGrid.classList.add("hidden");
         if (rCompact) rCompact.classList.add("hidden");
         if (rSwipe) rSwipe.classList.add("hidden");
+        if (rInPerson) rInPerson.classList.add("hidden");
 
         if (mode === "compact" && rCompact) {
             rCompact.classList.remove("hidden");
         } else if (mode === "swipe" && rSwipe) {
             rSwipe.classList.remove("hidden");
             updateSwipeDeckPosition("registry-swipe-track");
+        } else if (mode === "inperson" && rInPerson) {
+            rInPerson.classList.remove("hidden");
+            applyInPersonSubView();
+            renderInPersonGroups();
+            updateInPersonGroupHeadersVisibility();
         } else if (rGrid) {
             rGrid.classList.remove("hidden");
+        }
+    }
+
+    // Toggle In-Person Controls Sub-Toolbar & Focus styling
+    if (inPersonControls) {
+        if (mode === "inperson") {
+            inPersonControls.classList.remove("hidden");
+            applyInPersonFocusMode();
+        } else {
+            inPersonControls.classList.add("hidden");
+            document.body.classList.remove("inperson-focus-mode");
         }
     }
 
@@ -2431,6 +2501,420 @@ function setViewMode(mode) {
             updateSwipeDeckPosition("deals-swipe-track");
         } else if (dGrid) {
             dGrid.classList.remove("hidden");
+        }
+    }
+}
+
+// =========================================================================
+// In-Person Specialized Watchlist Sub-Views, Filtering & Grouping
+// =========================================================================
+function setInPersonSubView(subView) {
+    activeInPersonSubView = subView || "art";
+    localStorage.setItem("chimaera_inperson_subview", activeInPersonSubView);
+    applyInPersonSubView();
+    renderInPersonGroups();
+    updateInPersonGroupHeadersVisibility();
+}
+
+function applyInPersonSubView() {
+    const artBtn = document.getElementById("btn-inperson-sub-art");
+    const checkBtn = document.getElementById("btn-inperson-sub-checklist");
+    const artGrid = document.getElementById("inperson-art-grid");
+    const checklist = document.getElementById("inperson-checklist");
+
+    if (artBtn && checkBtn) {
+        if (activeInPersonSubView === "checklist") {
+            checkBtn.classList.add("active");
+            artBtn.classList.remove("active");
+        } else {
+            artBtn.classList.add("active");
+            checkBtn.classList.remove("active");
+        }
+    }
+
+    if (artGrid && checklist) {
+        if (activeInPersonSubView === "checklist") {
+            artGrid.classList.add("hidden");
+            checklist.classList.remove("hidden");
+        } else {
+            checklist.classList.add("hidden");
+            artGrid.classList.remove("hidden");
+        }
+    }
+}
+
+function toggleInPersonFocusMode() {
+    isInPersonFocus = !isInPersonFocus;
+    localStorage.setItem("chimaera_inperson_focus", isInPersonFocus ? "true" : "false");
+    applyInPersonFocusMode();
+}
+
+function applyInPersonFocusMode() {
+    const focusBtn = document.getElementById("btn-inperson-focus");
+    const focusLabel = document.getElementById("focus-btn-label");
+    if (activeViewMode === "inperson" && isInPersonFocus) {
+        document.body.classList.add("inperson-focus-mode");
+        if (focusLabel) focusLabel.textContent = "Focus: ON";
+        if (focusBtn) {
+            focusBtn.classList.add("border-[#00CED1]", "text-[#00CED1]", "bg-[#00CED1]/10");
+        }
+    } else {
+        document.body.classList.remove("inperson-focus-mode");
+        if (focusLabel) focusLabel.textContent = "Focus: OFF";
+        if (focusBtn) {
+            focusBtn.classList.remove("border-[#00CED1]", "text-[#00CED1]", "bg-[#00CED1]/10");
+        }
+    }
+}
+
+function setInPersonGroupBy(mode) {
+    activeInPersonGroupBy = mode || "color";
+    localStorage.setItem("chimaera_inperson_groupby", activeInPersonGroupBy);
+    const select = document.getElementById("inperson-group-select");
+    if (select && select.value !== activeInPersonGroupBy) {
+        select.value = activeInPersonGroupBy;
+    }
+    renderInPersonGroups();
+    updateInPersonGroupHeadersVisibility();
+}
+
+function filterInPersonColor(color) {
+    activeInPersonColor = (color || "all").toLowerCase();
+    const pills = document.querySelectorAll(".inperson-color-pill");
+    pills.forEach(p => {
+        if ((p.dataset.color || "").toLowerCase() === activeInPersonColor) {
+            p.classList.add("active");
+        } else {
+            p.classList.remove("active");
+        }
+    });
+    filterWatchlist();
+}
+
+function filterInPersonType(type) {
+    activeInPersonType = (type || "all").toLowerCase();
+    const pills = document.querySelectorAll(".inperson-type-pill");
+    pills.forEach(p => {
+        if ((p.dataset.type || "").toLowerCase() === activeInPersonType) {
+            p.classList.add("active");
+        } else {
+            p.classList.remove("active");
+        }
+    });
+    filterWatchlist();
+}
+
+function renderInPersonGroups() {
+    const containers = [
+        { el: document.getElementById("inperson-art-grid"), isGrid: true },
+        { el: document.getElementById("inperson-checklist"), isGrid: false }
+    ];
+
+    containers.forEach(({ el, isGrid }) => {
+        if (!el) return;
+
+        // Remove existing headers
+        el.querySelectorAll(".inperson-group-header").forEach(h => h.remove());
+
+        if (activeInPersonGroupBy === "none") {
+            return;
+        }
+
+        const cards = Array.from(el.children).filter(c => c.classList.contains("watchlist-card"));
+        if (cards.length === 0) return;
+
+        // Bucketing definition
+        let groupOrder = [];
+        let groupLabels = {};
+        let groupIcons = {};
+
+        if (activeInPersonGroupBy === "color") {
+            groupOrder = ["w", "u", "b", "r", "g", "multicolor", "colorless", "land", "other"];
+            groupLabels = {
+                w: "White (W)",
+                u: "Blue (U)",
+                b: "Black (B)",
+                r: "Red (R)",
+                g: "Green (G)",
+                multicolor: "Multicolor",
+                colorless: "Colorless / Artifacts",
+                land: "Lands",
+                other: "Other"
+            };
+            groupIcons = {
+                w: "☀️",
+                u: "💧",
+                b: "💀",
+                r: "🔥",
+                g: "🌲",
+                multicolor: "🌈",
+                colorless: "⚙️",
+                land: "🏔️",
+                other: "🃏"
+            };
+        } else if (activeInPersonGroupBy === "type") {
+            groupOrder = ["creature", "instant", "sorcery", "artifact", "enchantment", "planeswalker", "land", "other"];
+            groupLabels = {
+                creature: "Creatures",
+                instant: "Instants",
+                sorcery: "Sorceries",
+                artifact: "Artifacts",
+                enchantment: "Enchantments",
+                planeswalker: "Planeswalkers",
+                land: "Lands",
+                other: "Other Types"
+            };
+            groupIcons = {
+                creature: "⚔️",
+                instant: "⚡",
+                sorcery: "📜",
+                artifact: "🛡️",
+                enchantment: "✨",
+                planeswalker: "👑",
+                land: "🏔️",
+                other: "🃏"
+            };
+        } else if (activeInPersonGroupBy === "tag") {
+            const rawTags = new Set();
+            cards.forEach(c => {
+                const t = (c.dataset.tag || "").toLowerCase().trim();
+                if (t) rawTags.add(t);
+            });
+            groupOrder = Array.from(rawTags).sort();
+            groupOrder.push("__untagged__");
+            groupOrder.forEach(t => {
+                if (t === "__untagged__") {
+                    groupLabels[t] = "Untagged Targets";
+                    groupIcons[t] = "📋";
+                } else {
+                    groupLabels[t] = t.toUpperCase();
+                    groupIcons[t] = "🏷️";
+                }
+            });
+        } else if (activeInPersonGroupBy === "alpha") {
+            groupOrder = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("");
+            groupOrder.forEach(letter => {
+                groupLabels[letter] = letter;
+                groupIcons[letter] = "🔤";
+            });
+        }
+
+        // Map cards to group keys
+        const buckets = {};
+        groupOrder.forEach(k => { buckets[k] = []; });
+
+        cards.forEach(card => {
+            let key = "other";
+            if (activeInPersonGroupBy === "color") {
+                key = (card.dataset.colorBucket || "colorless").toLowerCase();
+                if (!buckets[key]) key = "other";
+            } else if (activeInPersonGroupBy === "type") {
+                key = (card.dataset.primaryType || "other").toLowerCase();
+                if (!buckets[key]) key = "other";
+            } else if (activeInPersonGroupBy === "tag") {
+                key = (card.dataset.tag || "").toLowerCase().trim();
+                if (!key) key = "__untagged__";
+                if (!buckets[key]) {
+                    buckets[key] = [];
+                    groupOrder.push(key);
+                    groupLabels[key] = key.toUpperCase();
+                    groupIcons[key] = "🏷️";
+                }
+            } else if (activeInPersonGroupBy === "alpha") {
+                const firstChar = (card.dataset.name || "")[0]?.toUpperCase() || "#";
+                key = /^[A-Z]$/.test(firstChar) ? firstChar : "#";
+            }
+            if (buckets[key]) {
+                buckets[key].push(card);
+            }
+        });
+
+        // Re-append to container grouped
+        groupOrder.forEach(k => {
+            const groupCards = buckets[k];
+            if (!groupCards || groupCards.length === 0) return;
+
+            const icon = groupIcons[k] || "❖";
+            const label = groupLabels[k] || k.toUpperCase();
+
+            const header = document.createElement("div");
+            header.className = isGrid
+                ? "col-span-full inperson-group-header bg-[#10141D] border-l-4 border-[#00CED1] px-3 py-1.5 flex items-center justify-between font-mono text-xs my-1"
+                : "inperson-group-header bg-[#10141D] border-l-4 border-[#00CED1] px-3 py-1.5 flex items-center justify-between font-mono text-xs";
+            header.dataset.groupKey = k;
+            header.innerHTML = `
+                <span class="font-bold text-[#00CED1] tracking-wider uppercase">${icon} ${label}</span>
+                <span class="text-[#94A3B8] text-[10px] uppercase font-bold group-count-badge">${groupCards.length} TARGET${groupCards.length === 1 ? '' : 'S'}</span>
+            `;
+
+            el.appendChild(header);
+            groupCards.forEach(c => el.appendChild(c));
+        });
+    });
+}
+
+function updateInPersonGroupHeadersVisibility() {
+    const containers = [
+        document.getElementById("inperson-art-grid"),
+        document.getElementById("inperson-checklist")
+    ];
+    containers.forEach(container => {
+        if (!container) return;
+        const headers = container.querySelectorAll(".inperson-group-header");
+        headers.forEach(header => {
+            let nextEl = header.nextElementSibling;
+            let visibleCount = 0;
+            while (nextEl && !nextEl.classList.contains("inperson-group-header")) {
+                if (nextEl.classList.contains("watchlist-card") && !nextEl.classList.contains("hidden")) {
+                    visibleCount++;
+                }
+                nextEl = nextEl.nextElementSibling;
+            }
+            if (visibleCount === 0) {
+                header.classList.add("hidden");
+            } else {
+                header.classList.remove("hidden");
+                const badge = header.querySelector(".group-count-badge");
+                if (badge) {
+                    badge.textContent = `${visibleCount} TARGET${visibleCount === 1 ? '' : 'S'}`;
+                }
+            }
+        });
+    });
+}
+
+// =========================================================================
+// In-Person Target Acquisition Modal Controls
+// =========================================================================
+function openAcquireCardModal(id, name, targetPrice, lowestPrice, setCode, collectorNumber, finish, imageUri) {
+    const modal = document.getElementById("modal-inperson-acquire");
+    if (!modal) return;
+
+    const idInput = document.getElementById("acquire-modal-item-id");
+    if (idInput) idInput.value = id;
+
+    const nameEl = document.getElementById("acquire-modal-card-name");
+    if (nameEl) nameEl.textContent = name;
+
+    const setUpper = (setCode && setCode.toUpperCase() !== "ANY") ? setCode.toUpperCase() : "ANY";
+    const numStr = collectorNumber ? ` #${collectorNumber}` : "";
+    const finishUpper = finish ? finish.toUpperCase() : "NONFOIL";
+    const metaEl = document.getElementById("acquire-modal-card-meta");
+    if (metaEl) metaEl.textContent = `${setUpper}${numStr} • ${finishUpper}`;
+
+    const tgtEl = document.getElementById("acquire-modal-card-target");
+    if (tgtEl) {
+        tgtEl.textContent = (targetPrice !== null && targetPrice !== undefined && targetPrice > 0)
+            ? `$${parseFloat(targetPrice).toFixed(2)}`
+            : "--";
+    }
+
+    const mktEl = document.getElementById("acquire-modal-card-market");
+    if (mktEl) {
+        mktEl.textContent = (lowestPrice !== null && lowestPrice !== undefined && lowestPrice < 999999)
+            ? `$${parseFloat(lowestPrice).toFixed(2)}`
+            : "OOS";
+    }
+
+    const imgEl = document.getElementById("acquire-modal-card-img");
+    if (imgEl) {
+        imgEl.src = imageUri || "";
+        imgEl.alt = name;
+    }
+
+    const priceInput = document.getElementById("acquire-price-paid-input");
+    if (priceInput) {
+        const defaultPrice = (targetPrice !== null && targetPrice !== undefined && targetPrice > 0)
+            ? targetPrice
+            : ((lowestPrice !== null && lowestPrice !== undefined && lowestPrice < 999999) ? lowestPrice : "");
+        priceInput.value = defaultPrice ? parseFloat(defaultPrice).toFixed(2) : "";
+    }
+
+    const binderInput = document.getElementById("acquire-binder-name-input");
+    if (binderInput) binderInput.value = "In-Person Pickup";
+
+    const condSelect = document.getElementById("acquire-condition-select");
+    if (condSelect) condSelect.value = "Near Mint";
+
+    const check = document.getElementById("acquire-add-inventory-check");
+    if (check) {
+        check.checked = true;
+        toggleAcquireInventoryFields(true);
+    }
+
+    modal.classList.remove("hidden");
+}
+
+function closeAcquireCardModal() {
+    const modal = document.getElementById("modal-inperson-acquire");
+    if (modal) modal.classList.add("hidden");
+}
+
+function handleInPersonAcquireBackdropClick(event) {
+    if (event.target.id === "modal-inperson-acquire") {
+        closeAcquireCardModal();
+    }
+}
+
+function toggleAcquireInventoryFields(checked) {
+    const fields = document.getElementById("acquire-inventory-fields");
+    if (fields) {
+        if (checked) {
+            fields.classList.remove("opacity-40", "pointer-events-none");
+        } else {
+            fields.classList.add("opacity-40", "pointer-events-none");
+        }
+    }
+}
+
+async function submitAcquireCard() {
+    const itemId = document.getElementById("acquire-modal-item-id")?.value;
+    if (!itemId) return;
+
+    const btn = document.getElementById("btn-submit-acquire");
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span>⏳ Ingesting...</span>`;
+    }
+
+    const addToInventory = document.getElementById("acquire-add-inventory-check")?.checked ?? true;
+    const binderName = document.getElementById("acquire-binder-name-input")?.value?.trim() || "In-Person Pickup";
+    const rawPrice = document.getElementById("acquire-price-paid-input")?.value;
+    const purchasePrice = rawPrice ? parseFloat(rawPrice) : null;
+    const condition = document.getElementById("acquire-condition-select")?.value || "Near Mint";
+
+    try {
+        const resp = await fetch(`/api/watchlist/acquire/${itemId}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                add_to_inventory: addToInventory,
+                binder_name: binderName,
+                purchase_price: purchasePrice,
+                condition: condition
+            })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || "Failed to mark target as acquired");
+        }
+
+        closeAcquireCardModal();
+        removeCardsFromDomInPlace([itemId]);
+
+        const cardName = data.card_name || "Target";
+        const invMsg = data.inventory_item_id ? ` and added to '${binderName}'` : "";
+        showToast(data.message || `Acquired "${cardName}"${invMsg}.`, "success");
+    } catch (err) {
+        showToast(`Acquisition failed: ${err.message}`, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
         }
     }
 }
@@ -2565,7 +3049,9 @@ function sortWatchlist(sortMode) {
     const containers = [
         document.getElementById("watchlist-grid"),
         document.getElementById("watchlist-compact"),
-        document.getElementById("registry-swipe-track")
+        document.getElementById("registry-swipe-track"),
+        document.getElementById("inperson-art-grid"),
+        document.getElementById("inperson-checklist")
     ];
 
     containers.forEach(container => {
@@ -2619,6 +3105,8 @@ function sortWatchlist(sortMode) {
         swipeTrackState["registry-swipe-track"].index = 0;
     }
     updateSwipeDeckPosition("registry-swipe-track");
+    renderInPersonGroups();
+    updateInPersonGroupHeadersVisibility();
 }
 
 function filterWatchlist() {
@@ -2671,9 +3159,21 @@ function filterWatchlist() {
             matchesTag = (tag === tagFilter);
         }
 
-        if (matchesSearch && matchesDeal && matchesTag) {
+        let matchesInPersonColor = true;
+        if (activeInPersonColor && activeInPersonColor !== "all") {
+            const cardColor = (card.dataset.colorBucket || "colorless").toLowerCase();
+            matchesInPersonColor = (cardColor === activeInPersonColor);
+        }
+
+        let matchesInPersonType = true;
+        if (activeInPersonType && activeInPersonType !== "all") {
+            const cardType = (card.dataset.primaryType || "other").toLowerCase();
+            matchesInPersonType = (cardType === activeInPersonType);
+        }
+
+        if (matchesSearch && matchesDeal && matchesTag && matchesInPersonColor && matchesInPersonType) {
             card.classList.remove("hidden");
-            if (card.closest("#watchlist-grid")) visibleGridCount++;
+            if (card.closest("#watchlist-grid") || (activeViewMode === "inperson" && (card.closest("#inperson-art-grid") || card.closest("#inperson-checklist")))) visibleGridCount++;
         } else {
             card.classList.add("hidden");
         }
@@ -2683,6 +3183,8 @@ function filterWatchlist() {
     if (headerCounter) {
         headerCounter.textContent = `[ ${visibleGridCount} ASSETS ]`;
     }
+
+    updateInPersonGroupHeadersVisibility();
 
     if (swipeTrackState["registry-swipe-track"]) {
         swipeTrackState["registry-swipe-track"].index = 0;
@@ -3082,6 +3584,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initialize Swipe Decks for touch gestures
     initSwipeDeck("registry-swipe-track", "registry-swipe-wrapper");
     initSwipeDeck("deals-swipe-track", "deals-swipe-wrapper");
+
+    // Restore saved in-person preferences
+    activeInPersonSubView = localStorage.getItem("chimaera_inperson_subview") || "art";
+    activeInPersonGroupBy = localStorage.getItem("chimaera_inperson_groupby") || "color";
+    const groupSelect = document.getElementById("inperson-group-select");
+    if (groupSelect) groupSelect.value = activeInPersonGroupBy;
+    isInPersonFocus = localStorage.getItem("chimaera_inperson_focus") === "true";
+    applyInPersonSubView();
+    applyInPersonFocusMode();
 
     // Restore saved view mode preference
     const savedMode = localStorage.getItem("chimaera_view_mode") || "grid";
@@ -4370,6 +4881,8 @@ function getCommandPaletteCatalog() {
         { id: "act-tcg-reconcile", category: "TACTICAL ACTIONS", title: "Reconcile TCGplayer Purchase", subtitle: "De-register purchased targets & sync to binder", badge: "ACTION", action: () => { closeCommandPalette(); if (document.getElementById("modal-tcgplayer-purchase")) { openTcgPurchaseModal(); } else { window.location.href = "/?action=reconcile"; } } },
         { id: "act-view-grid", category: "TACTICAL ACTIONS", title: "Switch to Detailed Grid View", subtitle: "Set card display layout to Grid", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("grid"); } },
         { id: "act-view-list", category: "TACTICAL ACTIONS", title: "Switch to High-Density List View", subtitle: "Set card display layout to Compact List", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("compact"); } },
+        { id: "act-view-swipe", category: "TACTICAL ACTIONS", title: "Switch to Swipe Deck Carousel", subtitle: "Set card display layout to Swipe Carousel", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("swipe"); } },
+        { id: "act-view-inperson", category: "TACTICAL ACTIONS", title: "Switch to In-Person Surveillance View", subtitle: "Store binder & showcase layout with WUBRG grouping", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("inperson"); } },
     ];
 
     // Dynamically index cards currently on page (Registry or Deals)

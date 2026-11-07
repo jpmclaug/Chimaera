@@ -292,19 +292,44 @@ MCP_TOOLS: list[dict[str, Any]] = [
     {
         "name": "add_to_watchlist",
         "description": (
-            "Adds a Magic: The Gathering card to the user's Chimera surveillance watchlist with an optional "
-            "target buy price, set code, finish, and tag."
+            "Adds one or multiple Magic: The Gathering cards to the user's Chimera surveillance watchlist "
+            "with optional target buy prices, set codes, finishes, and tags. Accepts a list of card names, "
+            "an array of card objects, a semicolon-separated list, or a single card name."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "object"}
+                        ]
+                    },
+                    "description": "List of card names (e.g. ['Smothering Tithe', 'Rhystic Study']) or objects with per-card settings (card_name, target_price, set_code, finish, tag).",
+                },
+                "card_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alias for 'cards' - list of card names to add to the watchlist.",
+                },
                 "card_name": {
                     "type": "string",
-                    "description": "Name of the MTG card to add to the watchlist.",
+                    "description": "A single card name, or semicolon-separated card list (e.g. 'Smothering Tithe' or 'Smothering Tithe; Esper Sentinel').",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Decklist or multi-line text containing card names to add.",
                 },
                 "target_price": {
                     "type": "number",
-                    "description": "Target USD acquisition price threshold for deal alerts.",
+                    "description": "Target USD acquisition price threshold for deal alerts. Applied to all added cards that do not specify an individual target price.",
+                },
+                "target_strategy": {
+                    "type": "string",
+                    "enum": ["none", "good_deal", "great_deal"],
+                    "description": "Optional automatic target price strategy: 'good_deal' (10% discount off market) or 'great_deal' (20% discount off market).",
                 },
                 "set_code": {
                     "type": "string",
@@ -317,10 +342,10 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
                 "tag": {
                     "type": "string",
-                    "description": "Optional category tag (e.g. 'Staples', 'Ur-Dragon Upgrades').",
+                    "description": "Optional category tag (e.g. 'Staples', 'Ur-Dragon Upgrades'). Applied to all added cards that do not specify a tag.",
                 },
             },
-            "required": ["card_name"],
+            "required": [],
         },
     },
     {
@@ -1073,46 +1098,306 @@ def _execute_search_card_prices(user: User, args: dict[str, Any]) -> dict[str, A
     }
 
 
-def _execute_add_to_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    card_name = (args.get("card_name") or "").strip()
-    if not card_name:
-        return {"error": "card_name is required."}
-
-    target_price = args.get("target_price")
-    if target_price is not None:
+def _parse_watchlist_card_entries(args: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Extracts and standardizes requested card items for watchlist monitoring from diverse argument shapes:
+    - args["cards"]: list of strings, list of dicts, or semicolon/newline/comma delimited string
+    - args["card_names"]: list of strings or delimited string
+    - args["card_name"]: single string or semicolon-separated string
+    - args["text"]: decklist or multi-line string
+    """
+    default_target_price = args.get("target_price")
+    if default_target_price is not None:
         try:
-            target_price = round(float(target_price), 2)
+            default_target_price = round(float(default_target_price), 2)
         except (ValueError, TypeError):
-            target_price = None
+            default_target_price = None
 
-    set_code = (args.get("set_code") or "").strip().upper()
-    if set_code in ("", "ANY"):
-        set_code = None
+    default_target_strategy = (args.get("target_strategy") or "none").strip().lower()
 
-    finish = (args.get("finish") or "nonfoil").strip().lower()
-    if finish not in ("nonfoil", "foil", "etched"):
-        finish = "nonfoil"
+    default_set_code = (args.get("set_code") or "").strip().upper()
+    if default_set_code in ("", "ANY"):
+        default_set_code = None
 
-    tag = (args.get("tag") or "").strip() or None
+    default_finish = (args.get("finish") or "nonfoil").strip().lower()
+    if default_finish not in ("nonfoil", "foil", "etched"):
+        default_finish = "nonfoil"
 
-    resolved_name = card_name
-    scryfall_id = None
-    collector_number = None
-    image_uri = None
-    tcg_price = None
-    tcg_url = None
+    default_tag = (args.get("tag") or "").strip() or None
 
+    raw_candidates: list[Any] = []
+    for key in ("cards", "card_names"):
+        val = args.get(key)
+        if val is not None:
+            if isinstance(val, list):
+                raw_candidates.extend(val)
+            elif isinstance(val, str) and val.strip():
+                raw_candidates.append(val)
+
+    single_name = args.get("card_name")
+    if single_name and isinstance(single_name, str) and single_name.strip():
+        raw_candidates.append(single_name)
+
+    text_val = args.get("text")
+    if text_val and isinstance(text_val, str) and text_val.strip():
+        raw_candidates.append(text_val)
+
+    line_pattern = re.compile(
+        r"^(?:(\d+)[xX]?\s+)?([^\r\n()]+?)(?:\s+\(([A-Za-z0-9]+)\)\s*([A-Za-z0-9]+)?)?(?:\s+\*.*?\*)?$"
+    )
+
+    extracted_entries: list[dict[str, Any]] = []
+
+    for item in raw_candidates:
+        if isinstance(item, dict):
+            c_name = (item.get("card_name") or item.get("name") or "").strip()
+            if not c_name:
+                continue
+
+            t_price = item.get("target_price")
+            if t_price is not None:
+                try:
+                    t_price = round(float(t_price), 2)
+                except (ValueError, TypeError):
+                    t_price = default_target_price
+            else:
+                t_price = default_target_price
+
+            t_strat = (item.get("target_strategy") or default_target_strategy or "none").strip().lower()
+
+            s_code = (item.get("set_code") or default_set_code or "").strip().upper()
+            if s_code in ("", "ANY"):
+                s_code = None
+
+            fin = (item.get("finish") or default_finish).strip().lower()
+            if fin not in ("nonfoil", "foil", "etched"):
+                fin = "nonfoil"
+
+            tg = (item.get("tag") or default_tag or "").strip() or None
+
+            extracted_entries.append({
+                "raw_name": c_name,
+                "clean_name": normalize_card_name(c_name),
+                "target_price": t_price,
+                "target_strategy": t_strat,
+                "set_code": s_code,
+                "finish": fin,
+                "tag": tg,
+            })
+        elif isinstance(item, str):
+            clean_str = item.strip()
+            if not clean_str:
+                continue
+
+            # Check if semicolon or newline delimited
+            if ";" in clean_str or "\n" in clean_str:
+                lines = [ln.strip() for ln in clean_str.replace("\r\n", "\n").replace("\r", "\n").split("\n") if ln.strip()]
+                for line in lines:
+                    parts = [p.strip() for p in line.split(";") if p.strip()]
+                    for part in parts:
+                        if part.startswith(("//", "#")) or part.lower() in ("deck", "commander", "mainboard", "sideboard"):
+                            continue
+                        m = line_pattern.match(part)
+                        if m:
+                            _, cname, scode, _ = m.groups()
+                            resolved_set = (scode or default_set_code or "").strip().upper() or None
+                            if resolved_set in ("", "ANY"):
+                                resolved_set = None
+                            c_clean = normalize_card_name(cname or part)
+                            if c_clean:
+                                extracted_entries.append({
+                                    "raw_name": part,
+                                    "clean_name": c_clean,
+                                    "target_price": default_target_price,
+                                    "target_strategy": default_target_strategy,
+                                    "set_code": resolved_set,
+                                    "finish": default_finish,
+                                    "tag": default_tag,
+                                })
+                        else:
+                            c_clean = normalize_card_name(part)
+                            if c_clean:
+                                extracted_entries.append({
+                                    "raw_name": part,
+                                    "clean_name": c_clean,
+                                    "target_price": default_target_price,
+                                    "target_strategy": default_target_strategy,
+                                    "set_code": default_set_code,
+                                    "finish": default_finish,
+                                    "tag": default_tag,
+                                })
+            else:
+                # Single line string: could still be comma-separated if multiple cards were passed in a single string,
+                # but preserve legendary names containing commas like 'Omnath, Locus of Creation'
+                if len(raw_candidates) == 1 and "," in clean_str:
+                    is_legendary_prefix = any(
+                        clean_str.lower().startswith(p)
+                        for p in (
+                            "jace,", "teferi,", "chandra,", "urza,", "karn,",
+                            "liliana,", "nissa,", "nicol bolas,", "omnath,", "gisela,"
+                        )
+                    )
+                    comma_parts = [p.strip() for p in clean_str.split(",") if p.strip()]
+                    if not is_legendary_prefix and len(comma_parts) > 1:
+                        for part in comma_parts:
+                            m = line_pattern.match(part)
+                            if m:
+                                _, cname, scode, _ = m.groups()
+                                resolved_set = (scode or default_set_code or "").strip().upper() or None
+                                if resolved_set in ("", "ANY"):
+                                    resolved_set = None
+                                c_clean = normalize_card_name(cname or part)
+                                if c_clean:
+                                    extracted_entries.append({
+                                        "raw_name": part,
+                                        "clean_name": c_clean,
+                                        "target_price": default_target_price,
+                                        "target_strategy": default_target_strategy,
+                                        "set_code": resolved_set,
+                                        "finish": default_finish,
+                                        "tag": default_tag,
+                                    })
+                            else:
+                                c_clean = normalize_card_name(part)
+                                if c_clean:
+                                    extracted_entries.append({
+                                        "raw_name": part,
+                                        "clean_name": c_clean,
+                                        "target_price": default_target_price,
+                                        "target_strategy": default_target_strategy,
+                                        "set_code": default_set_code,
+                                        "finish": default_finish,
+                                        "tag": default_tag,
+                                    })
+                        continue
+
+                m = line_pattern.match(clean_str)
+                if m:
+                    _, cname, scode, _ = m.groups()
+                    resolved_set = (scode or default_set_code or "").strip().upper() or None
+                    if resolved_set in ("", "ANY"):
+                        resolved_set = None
+                    c_clean = normalize_card_name(cname or clean_str)
+                    if c_clean:
+                        extracted_entries.append({
+                            "raw_name": clean_str,
+                            "clean_name": c_clean,
+                            "target_price": default_target_price,
+                            "target_strategy": default_target_strategy,
+                            "set_code": resolved_set,
+                            "finish": default_finish,
+                            "tag": default_tag,
+                        })
+                else:
+                    c_clean = normalize_card_name(clean_str)
+                    if c_clean:
+                        extracted_entries.append({
+                            "raw_name": clean_str,
+                            "clean_name": c_clean,
+                            "target_price": default_target_price,
+                            "target_strategy": default_target_strategy,
+                            "set_code": default_set_code,
+                            "finish": default_finish,
+                            "tag": default_tag,
+                        })
+
+    # Deduplicate entries by (clean_name.lower(), set_code, finish), preserving order and merging updates
+    deduped_map: dict[tuple[str, str | None, str], dict[str, Any]] = {}
+    for entry in extracted_entries:
+        key = (entry["clean_name"].lower(), entry["set_code"], entry["finish"])
+        if key in deduped_map:
+            existing_ent = deduped_map[key]
+            if entry["target_price"] is not None:
+                existing_ent["target_price"] = entry["target_price"]
+            if entry["tag"] is not None:
+                existing_ent["tag"] = entry["tag"]
+            if entry["target_strategy"] != "none":
+                existing_ent["target_strategy"] = entry["target_strategy"]
+        else:
+            deduped_map[key] = entry
+
+    return list(deduped_map.values())
+
+
+def _execute_add_to_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    entries = _parse_watchlist_card_entries(args)
+    if not entries:
+        return {"error": "card_name is required (or provide a 'cards' array)."}
+
+    # Scryfall metadata enrichment
+    sf_meta: dict[str, dict[str, Any]] = {}
     try:
         from providers.scryfall import ScryfallProvider
         provider = ScryfallProvider()
-        card_info = provider.get_card_named(card_name)
+
+        if len(entries) == 1:
+            clean_q = entries[0]["clean_name"]
+            card_info = provider.get_card_named(clean_q)
+            if card_info:
+                sf_meta[clean_q.lower()] = card_info
+        else:
+            names_to_fetch = [e["clean_name"] for e in entries]
+            found_map, _ = provider.get_cards_collection(names_to_fetch)
+            for e in entries:
+                clean_q = e["clean_name"]
+                c_info = found_map.get(clean_q.lower())
+                if not c_info:
+                    for k in get_card_match_keys(clean_q):
+                        if k in found_map:
+                            c_info = found_map[k]
+                            break
+                if not c_info:
+                    try:
+                        c_info = provider.get_card_named(clean_q)
+                    except Exception:
+                        c_info = None
+                if c_info:
+                    sf_meta[clean_q.lower()] = c_info
+    except Exception as exc:
+        logger.warning(f"MCP add_to_watchlist Scryfall enrichment warning: {exc}")
+
+    added_items: list[WatchlistItem] = []
+    updated_items: list[WatchlistItem] = []
+    all_processed_items: list[WatchlistItem] = []
+
+    for entry in entries:
+        clean_name = entry["clean_name"]
+        set_code = entry["set_code"]
+        finish = entry["finish"]
+        tag = entry["tag"]
+        target_price = entry["target_price"]
+        target_strategy = entry["target_strategy"]
+
+        resolved_name = clean_name
+        scryfall_id = None
+        collector_number = None
+        image_uri = None
+        tcg_price = None
+        tcg_url = None
+        type_line = None
+        color_identity = None
+        colors = None
+        mana_cost = None
+        cmc = None
+
+        card_info = sf_meta.get(clean_name.lower())
         if card_info:
-            resolved_name = card_info.get("name") or card_name
+            resolved_name = card_info.get("name") or clean_name
             scryfall_id = card_info.get("scryfall_id") or card_info.get("id")
             if set_code:
                 set_code = (card_info.get("set_code") or set_code).upper()
                 collector_number = card_info.get("collector_number")
             image_uri = card_info.get("image_uri")
+            type_line = card_info.get("type_line")
+            cid = card_info.get("color_identity")
+            if cid is not None:
+                color_identity = ",".join(cid) if isinstance(cid, (list, tuple)) else str(cid)
+            cols = card_info.get("colors")
+            if cols is not None:
+                colors = ",".join(cols) if isinstance(cols, (list, tuple)) else str(cols)
+            mana_cost = card_info.get("mana_cost")
+            cmc = card_info.get("cmc")
+
             prices = card_info.get("prices") or {}
             if finish == "foil":
                 tcg_price = prices.get("usd_foil") or card_info.get("usd_foil")
@@ -1121,62 +1406,131 @@ def _execute_add_to_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any
             else:
                 tcg_price = prices.get("usd") or card_info.get("usd")
             tcg_url = card_info.get("tcgplayer_url")
-    except Exception as exc:
-        logger.warning(f"MCP add_to_watchlist Scryfall enrichment warning for '{card_name}': {exc}")
 
-    existing = WatchlistItem.query.filter(
-        WatchlistItem.user_id == user.id,
-        db.func.lower(WatchlistItem.name) == resolved_name.lower(),
-        WatchlistItem.set_code == set_code,
-        WatchlistItem.finish == finish,
-    ).first()
+        # Automatic deal target calculation if strategy requested and target_price absent
+        if target_price is None and target_strategy in ("good", "good_deal", "good_deal_10", "great", "great_deal", "great_deal_20"):
+            if tcg_price is not None:
+                try:
+                    num = float(tcg_price)
+                    if num > 0:
+                        discount = 0.80 if "great" in target_strategy else 0.90
+                        target_price = round(num * discount, 2)
+                except (ValueError, TypeError):
+                    pass
 
-    if existing:
-        if target_price is not None:
-            existing.target_price = target_price
-        if tag is not None:
-            existing.tag = tag
-        db.session.commit()
-        return {
-            "status": "updated_existing",
-            "message": f"Updated existing watchlist entry for '{resolved_name}'.",
-            "item": existing.to_dict(),
-        }
+        # Look up existing watchlist entry for user
+        if set_code is None:
+            existing = WatchlistItem.query.filter(
+                WatchlistItem.user_id == user.id,
+                WatchlistItem.name.ilike(resolved_name),
+                (WatchlistItem.set_code == None) | (WatchlistItem.set_code == "") | (WatchlistItem.set_code == "ANY"),
+                WatchlistItem.finish == finish,
+            ).first()
+        else:
+            existing = WatchlistItem.query.filter(
+                WatchlistItem.user_id == user.id,
+                WatchlistItem.name.ilike(resolved_name),
+                WatchlistItem.set_code == set_code,
+                WatchlistItem.finish == finish,
+            ).first()
 
-    new_item = WatchlistItem(
-        user_id=user.id,
-        name=resolved_name,
-        scryfall_id=scryfall_id,
-        set_code=set_code,
-        collector_number=collector_number,
-        image_uri=image_uri,
-        finish=finish,
-        target_price=target_price,
-        notify_mm_stock=True,
-        tag=tag,
-    )
-    db.session.add(new_item)
-    db.session.flush()
-
-    if tcg_price is not None:
-        try:
-            vp = VendorPrice(
-                watchlist_id=new_item.id,
-                vendor_name="TCGplayer",
-                price=float(tcg_price),
-                condition="NM",
-                in_stock=True,
-                product_url=tcg_url,
+        if existing:
+            if target_price is not None:
+                existing.target_price = target_price
+            if tag is not None:
+                existing.tag = tag
+            if type_line and not getattr(existing, "type_line", None):
+                existing.type_line = type_line
+            if color_identity and getattr(existing, "color_identity", None) is None:
+                existing.color_identity = color_identity
+            if colors and getattr(existing, "colors", None) is None:
+                existing.colors = colors
+            if mana_cost and not getattr(existing, "mana_cost", None):
+                existing.mana_cost = mana_cost
+            if cmc is not None and getattr(existing, "cmc", None) is None:
+                existing.cmc = cmc
+            updated_items.append(existing)
+            all_processed_items.append(existing)
+        else:
+            new_item = WatchlistItem(
+                user_id=user.id,
+                name=resolved_name,
+                scryfall_id=scryfall_id,
+                set_code=set_code,
+                collector_number=collector_number,
+                image_uri=image_uri,
+                finish=finish,
+                type_line=type_line,
+                color_identity=color_identity,
+                colors=colors,
+                mana_cost=mana_cost,
+                cmc=cmc,
+                target_price=target_price,
+                notify_mm_stock=True,
+                tag=tag,
             )
-            db.session.add(vp)
-        except Exception:
-            pass
+            db.session.add(new_item)
+            db.session.flush()
+
+            if tcg_price is not None:
+                try:
+                    vp = VendorPrice(
+                        watchlist_id=new_item.id,
+                        vendor_name="TCGplayer",
+                        price=float(tcg_price),
+                        condition="NM",
+                        in_stock=True,
+                        product_url=tcg_url,
+                    )
+                    db.session.add(vp)
+                except Exception:
+                    pass
+
+            added_items.append(new_item)
+            all_processed_items.append(new_item)
 
     db.session.commit()
+
+    # Single-card backward compatibility response
+    if len(entries) == 1:
+        if added_items:
+            item = added_items[0]
+            return {
+                "status": "created",
+                "message": f"Added '{item.name}' to your Chimera watchlist.",
+                "item": item.to_dict(),
+                "total_requested": 1,
+                "added_count": 1,
+                "updated_count": 0,
+                "added_items": [item.to_dict()],
+                "updated_items": [],
+                "items": [item.to_dict()],
+            }
+        else:
+            item = updated_items[0]
+            return {
+                "status": "updated_existing",
+                "message": f"Updated existing watchlist entry for '{item.name}'.",
+                "item": item.to_dict(),
+                "total_requested": 1,
+                "added_count": 0,
+                "updated_count": 1,
+                "added_items": [],
+                "updated_items": [item.to_dict()],
+                "items": [item.to_dict()],
+            }
+
+    status = "created" if not updated_items else ("updated_existing" if not added_items else "completed")
     return {
-        "status": "created",
-        "message": f"Added '{resolved_name}' to your Chimera watchlist.",
-        "item": new_item.to_dict(),
+        "status": status,
+        "message": f"Successfully processed {len(entries)} watchlist targets ({len(added_items)} added, {len(updated_items)} updated).",
+        "total_requested": len(entries),
+        "added_count": len(added_items),
+        "updated_count": len(updated_items),
+        "added_items": [i.to_dict() for i in added_items],
+        "updated_items": [i.to_dict() for i in updated_items],
+        "items": [i.to_dict() for i in all_processed_items],
+        "item": all_processed_items[0].to_dict() if all_processed_items else None,
     }
 
 
@@ -1273,6 +1627,8 @@ TOOL_HANDLERS = {
     "get_deck_cards": _execute_get_deck_cards,
     "search_card_prices": _execute_search_card_prices,
     "add_to_watchlist": _execute_add_to_watchlist,
+    "add_cards_to_watchlist": _execute_add_to_watchlist,
+    "bulk_add_to_watchlist": _execute_add_to_watchlist,
     "check_card_deck_fit": _execute_check_card_deck_fit,
 }
 

@@ -556,3 +556,45 @@ input:focus, select:focus, textarea:focus {
     }
 }
 
+/* =========================================================================
+   In-Person Watchlist View & Focus Mode Styles
+   ========================================================================= */
+.color-pill-btn,
+.type-pill-btn {
+    user-select: none;
+    transition: all 0.15s ease;
+    cursor: pointer;
+}
+
+.color-pill-btn:hover,
+.type-pill-btn:hover {
+    border-color: var(--accent-teal-bright);
+    color: #FFFFFF;
+}
+
+.color-pill-btn.active,
+.type-pill-btn.active {
+    background-color: var(--surface-elevated);
+    border-color: var(--accent-teal-bright);
+    color: var(--accent-teal-bright);
+    font-weight: 700;
+}
+
+.inperson-focus-mode #watchlist-kpi-bar,
+.inperson-focus-mode #registry-telemetry-status {
+    display: none !important;
+}
+
+.inperson-group-header {
+    background: linear-gradient(90deg, #1B2230 0%, #10141D 100%);
+    border-left: 3px solid var(--accent-teal-bright);
+    border-top: 1px solid var(--border-bridge);
+    border-bottom: 1px solid var(--border-bridge);
+}
+
+.inperson-checklist-row:hover {
+    border-color: var(--accent-teal-bright);
+    background-color: var(--surface-elevated);
+}
+
+

@@ -262,7 +262,7 @@ class TestChimeraMcpServer(unittest.TestCase):
         self.assertEqual(msg_resp.status_code, 200)
         self.assertEqual(len(msg_resp.get_json()["result"]["tools"]), 10)
 
-    def _call_tool(self, name: str, arguments: dict | None = None) -> dict:
+    def _call_tool(self, name: str, arguments: dict | None = None, expect_error: bool = False) -> dict:
         resp = self.client.post(
             f"/mcp?token={self.api_token}",
             json={
@@ -274,7 +274,10 @@ class TestChimeraMcpServer(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         result = resp.get_json()["result"]
-        self.assertFalse(result.get("isError", False), f"Tool {name} returned error: {result}")
+        if not expect_error:
+            self.assertFalse(result.get("isError", False), f"Tool {name} returned error: {result}")
+        else:
+            self.assertTrue(result.get("isError", False), f"Expected error for tool {name}, but isError was not set: {result}")
         return json.loads(result["content"][0]["text"])
 
     def test_inventory_tools(self):
@@ -416,6 +419,107 @@ class TestChimeraMcpServer(unittest.TestCase):
             self.assertEqual(added["status"], "created")
             self.assertEqual(added["item"]["name"], "Cyclonic Rift")
             self.assertEqual(added["item"]["target_price"], 25.0)
+
+        # Multi-card watchlist tests
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = (
+                {
+                    "smothering tithe": {
+                        "id": "sf-smoth-1",
+                        "name": "Smothering Tithe",
+                        "prices": {"usd": "30.00"},
+                    },
+                    "esper sentinel": {
+                        "id": "sf-esper-1",
+                        "name": "Esper Sentinel",
+                        "prices": {"usd": "35.00"},
+                    },
+                },
+                [],
+            )
+            multi_added = self._call_tool(
+                "add_to_watchlist",
+                {
+                    "cards": ["Smothering Tithe", "Esper Sentinel"],
+                    "target_price": 22.0,
+                    "tag": "White Staples",
+                },
+            )
+            self.assertEqual(multi_added["total_requested"], 2)
+            self.assertEqual(multi_added["added_count"], 2)
+            self.assertEqual(len(multi_added["added_items"]), 2)
+            self.assertEqual(multi_added["added_items"][0]["tag"], "White Staples")
+            self.assertEqual(multi_added["added_items"][0]["target_price"], 22.0)
+
+        # Multi-card mixed update & create with dict objects
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = (
+                {
+                    "cyclonic rift": {
+                        "id": "sf-cyc-1",
+                        "name": "Cyclonic Rift",
+                        "set_code": "RVR",
+                        "collector_number": "40",
+                        "prices": {"usd": "28.50"},
+                    },
+                    "mystic remora": {
+                        "id": "sf-remora-1",
+                        "name": "Mystic Remora",
+                        "prices": {"usd": "10.00", "usd_foil": "15.00"},
+                    },
+                },
+                [],
+            )
+            mixed_res = self._call_tool(
+                "add_to_watchlist",
+                {
+                    "cards": [
+                        {"name": "Cyclonic Rift", "target_price": 20.0, "set_code": "RVR", "tag": "Updated Blue"},
+                        {"name": "Mystic Remora", "target_price": 7.5, "finish": "foil", "tag": "Draw Engine"},
+                    ]
+                },
+            )
+            self.assertEqual(mixed_res["total_requested"], 2)
+            self.assertEqual(mixed_res["updated_count"], 1)
+            self.assertEqual(mixed_res["added_count"], 1)
+            self.assertEqual(mixed_res["updated_items"][0]["target_price"], 20.0)
+            self.assertEqual(mixed_res["updated_items"][0]["tag"], "Updated Blue")
+            self.assertEqual(mixed_res["added_items"][0]["finish"], "foil")
+
+        # Multi-card semicolon-separated card_name input
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = (
+                {
+                    "fierce guardianship": {
+                        "id": "sf-fierce-1",
+                        "name": "Fierce Guardianship",
+                        "prices": {"usd": "40.00"},
+                    },
+                    "deflecting swat": {
+                        "id": "sf-swat-1",
+                        "name": "Deflecting Swat",
+                        "prices": {"usd": "50.00"},
+                    },
+                },
+                [],
+            )
+            semi_res = self._call_tool(
+                "add_to_watchlist",
+                {
+                    "card_name": "Fierce Guardianship; Deflecting Swat",
+                    "target_strategy": "good_deal",
+                    "tag": "Free Spells",
+                },
+            )
+            self.assertEqual(semi_res["total_requested"], 2)
+            self.assertEqual(semi_res["added_count"], 2)
+            # 40 * 0.90 = 36.00, 50 * 0.90 = 45.00
+            self.assertEqual(semi_res["added_items"][0]["target_price"], 36.00)
+            self.assertEqual(semi_res["added_items"][1]["target_price"], 45.00)
+
+        # Empty card input error handling
+        err_res = self._call_tool("add_to_watchlist", {}, expect_error=True)
+        self.assertIn("error", err_res)
 
         with patch("providers.scryfall.ScryfallProvider.get_card_named") as mock_named, patch(
             "providers.scryfall.ScryfallProvider.get_cheapest_tcgplayer_price"

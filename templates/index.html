@@ -6,7 +6,7 @@
 <div class="space-y-4 sm:space-y-6">
 
     <!-- Tactical Telemetry KPI Summary Bar -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5">
+    <div id="watchlist-kpi-bar" class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3.5 transition-all duration-300">
         <!-- Telemetry Module 1 -->
         <div class="bg-[#1B2230] border border-[#263245] p-2.5 sm:p-4 relative overflow-hidden">
             <div class="flex items-center justify-between">
@@ -85,6 +85,12 @@
                     <span class="hidden sm:inline">Swipe</span>
                     <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                    </svg>
+                </button>
+                <button onclick="setViewMode('inperson')" id="btn-view-inperson" class="view-btn h-full flex items-center justify-center px-2 sm:px-2.5" title="In-Person LGS / Binder View">
+                    <span class="hidden sm:inline">In-Person</span>
+                    <svg class="w-3.5 h-3.5 sm:hidden inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
                     </svg>
                 </button>
             </div>
@@ -200,6 +206,108 @@
         <div class="text-[10px] text-[#64748B] uppercase font-bold flex-shrink-0 flex items-center space-x-3">
             <button onclick="triggerRefreshAll()" class="hover:text-[#00CED1] transition flex items-center space-x-1 font-bold">
                 <span>⚡ Poll Registry Now &rarr;</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- In-Person Specialized Tactical Sub-Toolbar -->
+    <div id="inperson-controls-bar" class="hidden bg-[#161C28] border-2 border-[#00CED1]/40 p-2.5 sm:p-3 space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <!-- Left: Mode title + Focus Mode Toggle + Sub-View Switcher -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-[#00CED1] animate-pulse"></span>
+                    <span>IN-PERSON SURVEILLANCE</span>
+                </span>
+                
+                <!-- Focus Mode Button -->
+                <button type="button" onclick="toggleInPersonFocusMode()" id="btn-inperson-focus" class="btn-bridge h-7 px-2.5 text-[11px] uppercase font-mono font-bold flex items-center gap-1 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1]" title="Toggle Focus Mode (collapses telemetry & header for maximum viewport)">
+                    <span>🎯</span>
+                    <span id="focus-btn-label">Focus: OFF</span>
+                </button>
+
+                <!-- Sub-layout Switcher: Art Grid vs Checklist -->
+                <div class="flex items-center border border-[#263245] bg-[#10141D] p-0.5 h-7">
+                    <button type="button" onclick="setInPersonSubView('art')" id="btn-inperson-sub-art" class="view-btn active h-full px-2 text-[10px] uppercase font-mono font-bold" title="Visual Card Art Grid">
+                        🖼️ Art Grid
+                    </button>
+                    <button type="button" onclick="setInPersonSubView('checklist')" id="btn-inperson-sub-checklist" class="view-btn h-full px-2 text-[10px] uppercase font-mono font-bold" title="High-Density Checklist">
+                        📋 Checklist
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Grouping Selector -->
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold hidden xs:inline">Group By:</span>
+                <select id="inperson-group-select" onchange="setInPersonGroupBy(this.value)" class="bg-[#10141D] border border-[#263245] px-2 py-1 text-xs text-[#00CED1] focus:border-[#00CED1] uppercase font-mono font-bold h-7">
+                    <option value="color">Group: Color (WUBRG / Multi / Land)</option>
+                    <option value="type">Group: Card Type (Creature / Instant...)</option>
+                    <option value="tag">Group: Deck / Tag</option>
+                    <option value="alpha">Group: Alphabetical (A-Z)</option>
+                    <option value="none">Group: None (Flat List)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Color Section Filter Pills Bar -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#263245]/60 text-xs font-mono">
+            <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">COLOR:</span>
+            <button onclick="filterInPersonColor('all')" class="color-pill-btn inperson-color-pill active flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-color="all">
+                ALL
+            </button>
+            <button onclick="filterInPersonColor('W')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#FFFBD5] text-[10px] uppercase font-bold" data-color="w">
+                ☀️ White (W)
+            </button>
+            <button onclick="filterInPersonColor('U')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#00CED1] text-[10px] uppercase font-bold" data-color="u">
+                💧 Blue (U)
+            </button>
+            <button onclick="filterInPersonColor('B')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#C084FC] text-[10px] uppercase font-bold" data-color="b">
+                💀 Black (B)
+            </button>
+            <button onclick="filterInPersonColor('R')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#FF5555] text-[10px] uppercase font-bold" data-color="r">
+                🔥 Red (R)
+            </button>
+            <button onclick="filterInPersonColor('G')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#10B981] text-[10px] uppercase font-bold" data-color="g">
+                🌲 Green (G)
+            </button>
+            <button onclick="filterInPersonColor('Multicolor')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#F59E0B] text-[10px] uppercase font-bold" data-color="multicolor">
+                🌈 Multi
+            </button>
+            <button onclick="filterInPersonColor('Colorless')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-color="colorless">
+                ⚙️ Colorless
+            </button>
+            <button onclick="filterInPersonColor('Land')" class="color-pill-btn inperson-color-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#E2E8F0] text-[10px] uppercase font-bold" data-color="land">
+                🏔️ Land
+            </button>
+        </div>
+
+        <!-- Card Type Quick Filter Pills Bar -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-[#263245]/60 text-xs font-mono">
+            <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold mr-1 flex-shrink-0">TYPE:</span>
+            <button onclick="filterInPersonType('all')" class="type-pill-btn inperson-type-pill active flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="all">
+                ALL
+            </button>
+            <button onclick="filterInPersonType('creature')" class="type-pill-btn inperson-type-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="creature">
+                Creature
+            </button>
+            <button onclick="filterInPersonType('instant')" class="type-pill-btn inperson-type-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="instant">
+                Instant
+            </button>
+            <button onclick="filterInPersonType('sorcery')" class="type-pill-btn inperson-type-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="sorcery">
+                Sorcery
+            </button>
+            <button onclick="filterInPersonType('artifact')" class="type-pill-btn inperson-type-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="artifact">
+                Artifact
+            </button>
+            <button onclick="filterInPersonType('enchantment')" class="type-pill-btn inperson-type-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="enchantment">
+                Enchantment
+            </button>
+            <button onclick="filterInPersonType('planeswalker')" class="type-pill-btn inperson-type-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="planeswalker">
+                Planeswalker
+            </button>
+            <button onclick="filterInPersonType('land')" class="type-pill-btn inperson-type-pill flex-shrink-0 px-2 py-0.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] text-[10px] uppercase font-bold" data-type="land">
+                Land
             </button>
         </div>
     </div>
@@ -828,6 +936,241 @@
     </div>
 
     <!-- =========================================================================
+         VIEW 4: IN-PERSON WATCHLIST (STORE CASE / BINDER BROWSING)
+         ========================================================================= -->
+    <div class="watchlist-view-container hidden space-y-4" id="watchlist-inperson">
+        
+        <!-- SUB-VIEW 4A: Visual Art Grid (2 cols on mobile, 3 on sm, 4 on md, 5 on lg, 6 on xl) -->
+        <div id="inperson-art-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
+            {% for item in items %}
+            <div class="watchlist-card inperson-card bg-[#1B2230] border {% if item.is_deal %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245] hover:border-[#00CED1]{% endif %} p-2 flex flex-col justify-between transition-colors relative"
+                data-name="{{ item.name|lower }}"
+                data-set="{{ (item.set_code or '')|lower }}"
+                data-tag="{{ (item.tag or '')|lower }}"
+                data-card-finish="{{ (item.finish or 'any')|lower }}"
+                data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
+                data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
+                data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
+                data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
+                data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
+                data-binder-count="{{ item.binder_count or 0 }}"
+                data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
+                data-target="{{ item.target_price if item.target_price is not none else 0 }}"
+                data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
+                data-order="{{ loop.index0 }}"
+                data-color-bucket="{{ (item.color_bucket or 'colorless')|lower }}"
+                data-primary-type="{{ (item.primary_card_type or 'other')|lower }}"
+                data-mana-cost="{{ item.mana_cost or '' }}"
+                data-cmc="{{ item.cmc or 0 }}"
+                id="inperson-art-card-{{ item.id }}">
+
+                <!-- Visual Card Art Thumbnail & Floating Badges -->
+                <div class="relative group cursor-pointer w-full aspect-[5/7] bg-[#10141D] border border-[#263245] overflow-hidden flex items-center justify-center flex-shrink-0"
+                     onclick="openCardImageOverlay(this)"
+                     data-card-image="{{ item.image_uri or '' }}"
+                     data-card-name="{{ item.name }}"
+                     data-card-set="{{ (item.set_code or '')|upper }}"
+                     data-card-number="{{ item.collector_number or '' }}"
+                     data-card-finish="{{ item.finish or '' }}"
+                     title="Click to inspect {{ item.name }}">
+                    {% if item.image_uri %}
+                    <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-full h-full object-cover card-thumbnail-interactive">
+                    {% else %}
+                    <div class="text-[10px] text-[#64748B] font-mono uppercase text-center p-2">NO ART</div>
+                    {% endif %}
+
+                    <!-- Floating Top-Left: Color / Mana Badge -->
+                    {% if item.mana_cost %}
+                    <div class="absolute top-1 left-1 bg-[#10141D]/90 border border-[#263245] px-1 py-0.2 text-[9px] font-mono text-white pointer-events-none">
+                        {{ item.mana_cost }}
+                    </div>
+                    {% endif %}
+
+                    <!-- Floating Top-Right: Set / Finish Badge -->
+                    <div class="absolute top-1 right-1 flex flex-col items-end gap-0.5 pointer-events-none">
+                        {% if item.finish and item.finish|lower in ['foil', 'etched'] %}
+                        <span class="bg-[#F59E0B] text-black font-mono font-bold text-[8px] px-1 py-0.2 uppercase">★ {{ item.finish }}</span>
+                        {% endif %}
+                        {% if item.set_code and item.set_code.upper() != 'ANY' %}
+                        <span class="bg-[#10141D]/90 text-[#94A3B8] border border-[#263245] text-[8px] px-1 py-0.2 font-mono uppercase font-bold">{{ item.set_code }}</span>
+                        {% else %}
+                        <span class="bg-[#3D4F6B]/80 text-white text-[8px] px-1 py-0.2 font-mono uppercase font-bold">ANY</span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Floating Bottom: In Binder Badge -->
+                    {% if item.in_binder %}
+                    <div class="absolute bottom-1 left-1 right-1 bg-[#10B981]/90 text-slate-950 font-mono font-black text-[9px] px-1 py-0.5 text-center uppercase tracking-wider truncate shadow-md pointer-events-none">
+                        💼 IN BINDER ({{ item.binder_count }})
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Card Details & Pricing Block -->
+                <div class="mt-1.5 flex-1 flex flex-col justify-between space-y-1.5">
+                    <div>
+                        <!-- Title -->
+                        <h4 class="font-heading font-bold text-xs sm:text-sm text-white truncate" title="{{ item.name }}">
+                            {{ item.name }}
+                        </h4>
+                        <!-- Meta: Type + Tag -->
+                        <div class="flex items-center gap-1 text-[10px] font-mono text-[#94A3B8] truncate mt-0.5">
+                            <span class="truncate">{{ item.short_type_line }}</span>
+                            {% if item.tag %}
+                            <span class="text-[#C084FC] truncate">&bull; {{ item.tag }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- High-Contrast Price Display -->
+                    <div class="bg-[#10141D] border border-[#263245] p-1.5 font-mono text-[11px] space-y-0.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[#94A3B8] text-[9px] uppercase">Target:</span>
+                            <span class="font-bold text-white text-xs">
+                                {% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}--{% endif %}
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-[#94A3B8] text-[9px] uppercase">Market:</span>
+                            <span class="font-bold text-xs {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}">
+                                {% if item.lowest_in_stock_price is not none %}${{ "%.2f"|format(item.lowest_in_stock_price) }}{% else %}<span class="text-[#FF3358] text-[9px]">OOS</span>{% endif %}
+                            </span>
+                        </div>
+                        {% if item.mm_in_stock %}
+                        <div class="flex items-center justify-between text-[9px] text-[#10B981] font-bold border-t border-[#263245]/60 pt-0.5">
+                            <span>MM Stock:</span>
+                            <span>${{ "%.2f"|format(item.mm_vendor_price.price) }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="font-mono text-xs pt-1">
+                        <button type="button" 
+                            onclick="openAcquireCardModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 'null' }}, '{{ item.set_code or '' }}', '{{ item.collector_number or '' }}', '{{ item.finish or 'nonfoil' }}', '{{ item.image_uri or '' }}')"
+                            class="w-full btn-teal py-1 text-[11px] font-bold uppercase flex items-center justify-center space-x-1"
+                            title="Mark as Acquired in person and optionally ingest into inventory">
+                            <span>✓ Acquired</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- SUB-VIEW 4B: High-Density Checklist -->
+        <div id="inperson-checklist" class="hidden divide-y divide-[#263245] border border-[#263245] bg-[#1B2230]">
+            {% for item in items %}
+            <div class="watchlist-card inperson-checklist-row p-2 sm:p-2.5 flex items-center justify-between gap-2.5 hover:bg-[#222B3D]/70 transition font-mono"
+                data-name="{{ item.name|lower }}"
+                data-set="{{ (item.set_code or '')|lower }}"
+                data-tag="{{ (item.tag or '')|lower }}"
+                data-card-finish="{{ (item.finish or 'any')|lower }}"
+                data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
+                data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
+                data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
+                data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
+                data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
+                data-binder-count="{{ item.binder_count or 0 }}"
+                data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
+                data-target="{{ item.target_price if item.target_price is not none else 0 }}"
+                data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
+                data-order="{{ loop.index0 }}"
+                data-color-bucket="{{ (item.color_bucket or 'colorless')|lower }}"
+                data-primary-type="{{ (item.primary_card_type or 'other')|lower }}"
+                data-mana-cost="{{ item.mana_cost or '' }}"
+                data-cmc="{{ item.cmc or 0 }}"
+                id="inperson-check-row-{{ item.id }}">
+
+                <!-- Left: Color badge, thumbnail, Name & meta -->
+                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                    <!-- Color pip indicator -->
+                    <span class="w-6 h-6 flex items-center justify-center border border-[#263245] bg-[#10141D] text-[10px] font-bold flex-shrink-0
+                        {% if item.color_bucket == 'W' %}text-[#FFFBD5] border-[#FFFBD5]/40
+                        {% elif item.color_bucket == 'U' %}text-[#00CED1] border-[#00CED1]/40
+                        {% elif item.color_bucket == 'B' %}text-[#C084FC] border-[#C084FC]/40
+                        {% elif item.color_bucket == 'R' %}text-[#FF5555] border-[#FF5555]/40
+                        {% elif item.color_bucket == 'G' %}text-[#10B981] border-[#10B981]/40
+                        {% elif item.color_bucket == 'Multicolor' %}text-[#F59E0B] border-[#F59E0B]/40
+                        {% elif item.color_bucket == 'Land' %}text-[#E2E8F0] border-[#E2E8F0]/40
+                        {% else %}text-[#94A3B8] border-[#94A3B8]/40{% endif %}">
+                        {% if item.color_bucket == 'W' %}W
+                        {% elif item.color_bucket == 'U' %}U
+                        {% elif item.color_bucket == 'B' %}B
+                        {% elif item.color_bucket == 'R' %}R
+                        {% elif item.color_bucket == 'G' %}G
+                        {% elif item.color_bucket == 'Multicolor' %}M
+                        {% elif item.color_bucket == 'Land' %}L
+                        {% else %}C{% endif %}
+                    </span>
+
+                    <!-- Tiny thumbnail (click to enlarge) -->
+                    {% if item.image_uri %}
+                    <div class="w-8 h-11 bg-black border border-[#263245] overflow-hidden flex-shrink-0 cursor-pointer"
+                         onclick="openCardImageOverlay(this)"
+                         data-card-image="{{ item.image_uri }}"
+                         data-card-name="{{ item.name }}"
+                         data-card-set="{{ (item.set_code or '')|upper }}"
+                         data-card-number="{{ item.collector_number or '' }}"
+                         data-card-finish="{{ item.finish or '' }}"
+                         title="Click to enlarge {{ item.name }}">
+                        <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-full h-full object-cover card-thumbnail-interactive">
+                    </div>
+                    {% else %}
+                    <div class="w-8 h-11 bg-[#10141D] border border-[#263245] flex items-center justify-center text-[8px] text-[#64748B] flex-shrink-0">NO ART</div>
+                    {% endif %}
+
+                    <!-- Card Info -->
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center space-x-2">
+                            <h4 class="font-heading font-bold text-xs sm:text-sm text-white truncate">{{ item.name }}</h4>
+                            {% if item.is_deal %}
+                            <span class="bg-[#DC143C] text-white text-[8px] px-1 py-0.2 uppercase font-bold flex-shrink-0">DEAL</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10px] text-[#94A3B8]">
+                            <span class="bg-[#10141D] border border-[#263245] px-1 py-0.2 text-[#00CED1] uppercase font-bold">{{ item.set_code or 'ANY' }}</span>
+                            <span class="uppercase">{{ item.finish }}</span>
+                            <span class="text-[#64748B] truncate">&bull; {{ item.short_type_line }}</span>
+                            {% if item.tag %}
+                            <span class="text-[#C084FC] bg-[#9333EA]/20 px-1 py-0.2 uppercase">🏷️ {{ item.tag }}</span>
+                            {% endif %}
+                            {% if item.in_binder %}
+                            <span class="text-[#10B981] bg-[#10B981]/20 border border-[#10B981]/40 px-1 py-0.2 font-bold uppercase">💼 IN BINDER ({{ item.binder_count }})</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Price & Quick Acquire Button -->
+                <div class="flex items-center space-x-2.5 sm:space-x-3.5 flex-shrink-0">
+                    <div class="text-right">
+                        <div class="text-[9px] text-[#94A3B8] uppercase">Tgt / Mkt</div>
+                        <div class="text-xs font-bold">
+                            <span class="text-white">${{ "%.2f"|format(item.target_price) if item.target_price else '--' }}</span>
+                            <span class="text-[#64748B]"> / </span>
+                            <span class="{% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}">
+                                {% if item.lowest_in_stock_price is not none %}${{ "%.2f"|format(item.lowest_in_stock_price) }}{% else %}OOS{% endif %}
+                            </span>
+                        </div>
+                    </div>
+
+                    <button type="button" 
+                        onclick="openAcquireCardModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 'null' }}, '{{ item.set_code or '' }}', '{{ item.collector_number or '' }}', '{{ item.finish or 'nonfoil' }}', '{{ item.image_uri or '' }}')"
+                        class="btn-teal px-2.5 py-1 text-[11px] font-bold uppercase"
+                        title="Acquire card in person">
+                        ✓ Got It
+                    </button>
+                </div>
+
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- =========================================================================
          TACTICAL FLOATING BULK ACTION BAR
          ========================================================================= -->
     <div id="watchlist-bulk-bar" class="hidden fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#1B2230] border-2 border-[#00CED1] shadow-2xl p-2.5 sm:p-3 px-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 font-mono text-xs max-w-2xl w-[94vw] sm:w-auto transition-all duration-300">
@@ -852,6 +1195,80 @@
         </div>
     </div>
     {% endif %}
+
+    <!-- =========================================================================
+         IN-PERSON ACQUIRE TARGET MODAL
+         ========================================================================= -->
+    <div id="modal-inperson-acquire" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-xs font-mono modal-scrollable" onclick="handleInPersonAcquireBackdropClick(event)">
+        <div class="bg-[#1B2230] border-2 border-[#00CED1] p-4 sm:p-5 w-full max-w-md shadow-2xl relative space-y-4" onclick="event.stopPropagation()">
+            <!-- Header -->
+            <div class="flex items-start justify-between border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 bg-[#00CED1] animate-pulse"></span>
+                    <span class="text-xs font-bold text-[#00CED1] uppercase tracking-wider">// ACQUIRE TARGET IN PERSON</span>
+                </div>
+                <button onclick="closeAcquireCardModal()" class="text-[#94A3B8] hover:text-white text-base leading-none">&times;</button>
+            </div>
+
+            <input type="hidden" id="acquire-modal-item-id">
+
+            <!-- Card Preview & Price Summary -->
+            <div class="flex items-start space-x-3 bg-[#10141D] p-3 border border-[#263245]">
+                <img id="acquire-modal-card-img" src="" alt="Card Art" class="w-12 h-16 object-cover border border-[#263245] flex-shrink-0 bg-black">
+                <div class="min-w-0 flex-1">
+                    <h4 id="acquire-modal-card-name" class="font-heading font-bold text-sm text-white truncate">Card Name</h4>
+                    <div id="acquire-modal-card-meta" class="text-[11px] text-[#94A3B8] mt-0.5 truncate">SET • FINISH</div>
+                    <div class="flex items-center space-x-3 mt-1.5 text-xs">
+                        <span class="text-[#94A3B8]">Target: <strong id="acquire-modal-card-target" class="text-white">$0.00</strong></span>
+                        <span class="text-[#64748B]">|</span>
+                        <span class="text-[#94A3B8]">Market: <strong id="acquire-modal-card-market" class="text-[#00CED1]">$0.00</strong></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inventory Ingestion Controls -->
+            <div class="space-y-3 bg-[#10141D]/60 p-3 border border-[#263245]">
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" id="acquire-add-inventory-check" class="w-4 h-4 text-[#10B981] bg-[#10141D] border-[#263245] focus:ring-0 rounded-none cursor-pointer" checked onchange="toggleAcquireInventoryFields(this.checked)">
+                    <span class="text-xs font-bold text-white uppercase tracking-wide">💼 Add 1x to Collection Inventory</span>
+                </label>
+
+                <div id="acquire-inventory-fields" class="space-y-2.5 pt-1 pl-6 border-l-2 border-[#10B981]/40">
+                    <div>
+                        <label class="text-[10px] text-[#94A3B8] uppercase block mb-1">Destination Binder:</label>
+                        <input type="text" id="acquire-binder-name-input" value="In-Person Pickup" placeholder="e.g. In-Person Pickup, Trades..." class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white uppercase focus:border-[#10B981] font-mono">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-[#94A3B8] uppercase block mb-1">Price Paid ($):</label>
+                            <input type="number" step="0.01" min="0" id="acquire-price-paid-input" placeholder="0.00" class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white focus:border-[#10B981] font-mono">
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-[#94A3B8] uppercase block mb-1">Condition:</label>
+                            <select id="acquire-condition-select" class="w-full bg-[#10141D] border border-[#263245] px-2 py-1.5 text-xs text-white focus:border-[#10B981] font-mono uppercase">
+                                <option value="Near Mint" selected>Near Mint</option>
+                                <option value="Lightly Played">Lightly Played</option>
+                                <option value="Moderately Played">Mod Played</option>
+                                <option value="Heavily Played">Heavily Played</option>
+                                <option value="Damaged">Damaged</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex items-center justify-end space-x-2 pt-2 border-t border-[#263245]">
+                <button type="button" onclick="closeAcquireCardModal()" class="btn-bridge px-3 py-1.5 text-xs uppercase font-bold text-[#94A3B8] hover:text-white">
+                    Cancel
+                </button>
+                <button type="button" id="btn-submit-acquire" onclick="submitAcquireCard()" class="btn-crimson px-4 py-1.5 text-xs uppercase font-bold flex items-center space-x-1.5">
+                    <span>✓ Confirm Acquired</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
 </div>
 {% endblock %}

@@ -245,6 +245,11 @@ class WatchlistItem(db.Model):
     target_price = db.Column(db.Float, nullable=True)
     notify_mm_stock = db.Column(db.Boolean, default=True, nullable=False)
     tag = db.Column(db.String(100), nullable=True, index=True)
+    type_line = db.Column(db.String(255), nullable=True)
+    color_identity = db.Column(db.String(50), nullable=True)
+    colors = db.Column(db.String(50), nullable=True)
+    mana_cost = db.Column(db.String(100), nullable=True)
+    cmc = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
 
     # Relationships
@@ -431,6 +436,64 @@ class WatchlistItem(db.Model):
             self._binder_count = 0
             self._binder_names = []
 
+    @property
+    def primary_card_type(self) -> str:
+        """Categorizes card into canonical store/binder section based on type_line."""
+        tl = (self.type_line or "").lower()
+        if "creature" in tl:
+            return "Creature"
+        if "instant" in tl:
+            return "Instant"
+        if "sorcery" in tl:
+            return "Sorcery"
+        if "artifact" in tl:
+            return "Artifact"
+        if "enchantment" in tl:
+            return "Enchantment"
+        if "planeswalker" in tl:
+            return "Planeswalker"
+        if "land" in tl:
+            return "Land"
+        if "battle" in tl:
+            return "Battle"
+        return "Other"
+
+    @property
+    def short_type_line(self) -> str:
+        """Returns clean, concise type line for cards."""
+        if not self.type_line:
+            return self.primary_card_type
+        tl = self.type_line
+        if " — " in tl:
+            return tl.split(" — ")[0].strip()
+        if " // " in tl:
+            return tl.split(" // ")[0].strip()
+        return tl
+
+    @property
+    def color_bucket(self) -> str:
+        """Resolves physical binder color section: W, U, B, R, G, Multicolor, Colorless, Land."""
+        tl = (self.type_line or "").lower()
+        if "land" in tl:
+            return "Land"
+
+        color_str = self.colors if (self.colors is not None and str(self.colors).strip()) else (self.color_identity or "")
+        if isinstance(color_str, (list, tuple)):
+            c_set = {str(c).strip().upper() for c in color_str if str(c).strip()}
+        else:
+            cleaned = str(color_str).replace("[", "").replace("]", "").replace("'", "").replace('"', "").replace(" ", "")
+            c_set = {c.upper() for c in cleaned.split(",") if c}
+
+        if len(c_set) == 0:
+            return "Colorless"
+        elif len(c_set) > 1:
+            return "Multicolor"
+        else:
+            single = list(c_set)[0]
+            if single in ("W", "U", "B", "R", "G"):
+                return single
+            return "Colorless"
+
     def to_dict(self):
         """Serializes watchlist item and its vendor prices into a dict."""
         return {
@@ -442,6 +505,14 @@ class WatchlistItem(db.Model):
             "collector_number": self.collector_number,
             "image_uri": self.image_uri,
             "finish": self.finish,
+            "type_line": self.type_line,
+            "color_identity": self.color_identity,
+            "colors": self.colors,
+            "mana_cost": self.mana_cost,
+            "cmc": self.cmc,
+            "primary_card_type": self.primary_card_type,
+            "short_type_line": self.short_type_line,
+            "color_bucket": self.color_bucket,
             "target_price": self.target_price,
             "notify_mm_stock": bool(self.notify_mm_stock if self.notify_mm_stock is not None else True),
             "tag": self.tag,

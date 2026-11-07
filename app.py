@@ -152,6 +152,19 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN tag VARCHAR(100)"))
                         conn.commit()
 
+                    # Ensure in-person card metadata columns exist in watchlist_item
+                    for col_name, col_type in [
+                        ("type_line", "VARCHAR(255)"),
+                        ("color_identity", "VARCHAR(50)"),
+                        ("colors", "VARCHAR(50)"),
+                        ("mana_cost", "VARCHAR(100)"),
+                        ("cmc", "FLOAT"),
+                    ]:
+                        if col_name not in cols:
+                            logger.info(f"Adding {col_name} column to watchlist_item...")
+                            conn.execute(db.text(f"ALTER TABLE watchlist_item ADD COLUMN {col_name} {col_type}"))
+                            conn.commit()
+
                     # Ensure search_url column exists in vendor_price
                     vp_cols = [r[1] for r in conn.execute(db.text("PRAGMA table_info(vendor_price)")).fetchall()]
                     if "search_url" not in vp_cols:
@@ -394,6 +407,11 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS type_line VARCHAR(255)"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS colors VARCHAR(50)"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS mana_cost VARCHAR(100)"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS cmc FLOAT"))
                         conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                         conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
                         conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS inventory_gdrive_url TEXT"))
@@ -1525,36 +1543,73 @@ def create_app(test_config=None):
                     item.in_binder = False
                     item.binder_count = 0
                     item.binder_names = []
-                return watchlist_items
+            else:
+                owned_map: Dict[str, int] = defaultdict(int)
+                binder_names_map: Dict[str, set] = defaultdict(set)
 
-            owned_map: Dict[str, int] = defaultdict(int)
-            binder_names_map: Dict[str, set] = defaultdict(set)
+                for ic in inv_cards:
+                    qty = max(1, int(ic.quantity or 1))
+                    b_name = ic.binder_name.strip() if ic.binder_name else ""
+                    for k in get_card_match_keys(ic.name):
+                        owned_map[k] += qty
+                        if b_name:
+                            binder_names_map[k].add(b_name)
 
-            for ic in inv_cards:
-                qty = max(1, int(ic.quantity or 1))
-                b_name = ic.binder_name.strip() if ic.binder_name else ""
-                for k in get_card_match_keys(ic.name):
-                    owned_map[k] += qty
-                    if b_name:
-                        binder_names_map[k].add(b_name)
+                for item in watchlist_items:
+                    item_keys = get_card_match_keys(item.name)
+                    count = max([owned_map.get(k, 0) for k in item_keys] or [0])
+                    binders = set()
+                    for k in item_keys:
+                        if k in binder_names_map:
+                            binders.update(binder_names_map[k])
 
-            for item in watchlist_items:
-                item_keys = get_card_match_keys(item.name)
-                count = max([owned_map.get(k, 0) for k in item_keys] or [0])
-                binders = set()
-                for k in item_keys:
-                    if k in binder_names_map:
-                        binders.update(binder_names_map[k])
-
-                item.in_binder = (count > 0)
-                item.binder_count = count
-                item.binder_names = sorted(list(binders))
+                    item.in_binder = (count > 0)
+                    item.binder_count = count
+                    item.binder_names = sorted(list(binders))
         except Exception as e:
             logger.warning(f"Error enriching watchlist items with binder status: {e}")
             for item in watchlist_items:
                 item.in_binder = False
                 item.binder_count = 0
                 item.binder_names = []
+
+        # In-Person metadata enrichment (type_line, colors, color_identity, mana_cost, cmc)
+        try:
+            missing_meta = [item for item in watchlist_items if not item.type_line or item.color_identity is None]
+            if missing_meta:
+                names_to_fetch = list({item.name for item in missing_meta if item.name})
+                found_map = {}
+                if names_to_fetch:
+                    try:
+                        found_map, _ = scryfall_provider.get_cards_collection(names_to_fetch, fallback_named=False)
+                    except Exception as ex:
+                        logger.debug(f"Watchlist metadata collection enrichment skipped: {ex}")
+
+                updated_any = False
+                for item in missing_meta:
+                    meta = found_map.get(item.name.lower()) if found_map else None
+                    if not meta:
+                        meta = ScryfallProvider._card_cache.get(item.name.lower())
+                    if meta:
+                        item.type_line = meta.get("type_line") or item.type_line
+                        if meta.get("color_identity") is not None:
+                            cid = meta["color_identity"]
+                            item.color_identity = ",".join(cid) if isinstance(cid, list) else str(cid)
+                        if meta.get("colors") is not None:
+                            c = meta["colors"]
+                            item.colors = ",".join(c) if isinstance(c, list) else str(c)
+                        item.mana_cost = meta.get("mana_cost") or item.mana_cost
+                        if meta.get("cmc") is not None:
+                            item.cmc = meta.get("cmc")
+                        updated_any = True
+                if updated_any:
+                    try:
+                        db.session.commit()
+                    except Exception as commit_err:
+                        db.session.rollback()
+                        logger.debug(f"Commit of watchlist metadata failed: {commit_err}")
+        except Exception as meta_err:
+            logger.debug(f"Error enriching in-person card metadata: {meta_err}")
 
         return watchlist_items
 
@@ -2298,14 +2353,20 @@ def create_app(test_config=None):
             if existing:
                 return jsonify({"error": f"'{name}' ({set_code} #{collector_number or '?'}, {finish.capitalize()}) is already on your watchlist."}), 409
 
-        # If scryfall_id or image_uri missing, resolve canonical info from Scryfall
-        if not scryfall_id or not image_uri:
-            card_info = scryfall_provider.get_card_named(name)
-            if card_info:
-                if not scryfall_id:
-                    scryfall_id = card_info.get("id")
-                if not image_uri:
-                    image_uri = card_info.get("image_uri")
+        # Resolve canonical info and metadata from Scryfall
+        card_info = scryfall_provider.get_card_named(name)
+        if card_info:
+            if not scryfall_id:
+                scryfall_id = card_info.get("id")
+            if not image_uri:
+                image_uri = card_info.get("image_uri")
+            type_line = card_info.get("type_line")
+            colors_str = ",".join(card_info.get("colors") or []) if card_info.get("colors") is not None else None
+            cid_str = ",".join(card_info.get("color_identity") or []) if card_info.get("color_identity") is not None else None
+            mana_cost = card_info.get("mana_cost")
+            cmc = card_info.get("cmc")
+        else:
+            type_line, colors_str, cid_str, mana_cost, cmc = None, None, None, None, None
 
         target_price = None
         if target_price_raw is not None and str(target_price_raw).strip() != "":
@@ -2322,6 +2383,11 @@ def create_app(test_config=None):
             collector_number=collector_number,
             image_uri=image_uri,
             finish=finish,
+            type_line=type_line,
+            color_identity=cid_str,
+            colors=colors_str,
+            mana_cost=mana_cost,
+            cmc=cmc,
             target_price=target_price,
             notify_mm_stock=notify_mm_stock,
             tag=tag,
@@ -2425,6 +2491,9 @@ def create_app(test_config=None):
                     except (ValueError, TypeError):
                         target_price = None
 
+            colors_str = ",".join(card_info.get("colors") or []) if card_info and card_info.get("colors") is not None else None
+            cid_str = ",".join(card_info.get("color_identity") or []) if card_info and card_info.get("color_identity") is not None else None
+
             new_item = WatchlistItem(
                 user_id=user.id,
                 name=canonical_name,
@@ -2433,6 +2502,11 @@ def create_app(test_config=None):
                 collector_number=None,
                 image_uri=card_info.get("image_uri"),
                 finish=finish,
+                type_line=card_info.get("type_line") if card_info else None,
+                color_identity=cid_str,
+                colors=colors_str,
+                mana_cost=card_info.get("mana_cost") if card_info else None,
+                cmc=card_info.get("cmc") if card_info else None,
                 target_price=target_price,
                 notify_mm_stock=notify_mm_stock,
                 tag=tag,
@@ -2667,6 +2741,105 @@ def create_app(test_config=None):
         return jsonify({
             "message": f"Removed {card_name} from watchlist.",
             "deleted_id": item_id,
+        })
+
+    @app.route("/api/watchlist/acquire/<int:item_id>", methods=["POST"])
+    @login_required
+    def acquire_card_in_person(item_id: int):
+        """
+        Marks a watchlist target as acquired in person, deletes it from the watchlist,
+        and optionally ingests the card into the user's physical collection inventory.
+        """
+        user = get_current_user()
+        item = db.session.get(WatchlistItem, item_id)
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Target not found on your watchlist."}), 404
+
+        data = request.get_json(silent=True) or {}
+        add_to_inventory = bool(data.get("add_to_inventory", True))
+        binder_name = (data.get("binder_name") or "In-Person Pickup").strip()
+        condition = (data.get("condition") or "Near Mint").strip()
+        purchase_price_raw = data.get("purchase_price")
+        purchase_price = None
+        if purchase_price_raw is not None and str(purchase_price_raw).strip() != "":
+            try:
+                purchase_price = round(float(purchase_price_raw), 2)
+            except (ValueError, TypeError):
+                purchase_price = None
+
+        card_name = item.name
+        card_set = item.set_code
+        card_col = item.collector_number
+        card_finish = item.finish or "nonfoil"
+        card_scryfall_id = item.scryfall_id
+        card_image = item.image_uri
+        card_type = item.type_line
+        card_cid = item.color_identity
+        card_mana = item.mana_cost
+        card_cmc = item.cmc
+
+        inventory_card_id = None
+        if add_to_inventory:
+            # Check if matching card already in inventory under same binder, set, and finish
+            existing_inv = UserInventoryCard.query.filter_by(
+                user_id=user.id,
+                name=card_name,
+                set_code=card_set,
+                collector_number=card_col,
+                binder_name=binder_name,
+                foil=card_finish,
+            ).first()
+
+            if existing_inv:
+                existing_inv.quantity = (existing_inv.quantity or 1) + 1
+                if purchase_price is not None:
+                    existing_inv.purchase_price = purchase_price
+                inventory_card_id = existing_inv.id
+            else:
+                new_inv = UserInventoryCard(
+                    user_id=user.id,
+                    name=card_name,
+                    raw_name=card_name,
+                    set_code=card_set,
+                    collector_number=card_col,
+                    scryfall_id=card_scryfall_id,
+                    quantity=1,
+                    foil=card_finish,
+                    condition=condition,
+                    purchase_price=purchase_price,
+                    binder_name=binder_name,
+                    type_line=card_type,
+                    color_identity=card_cid,
+                    mana_cost=card_mana,
+                    cmc=card_cmc,
+                    image_uri=card_image,
+                )
+                db.session.add(new_inv)
+                db.session.flush()
+                inventory_card_id = new_inv.id
+
+        # Delete from watchlist
+        VendorPrice.query.filter_by(watchlist_id=item.id).delete(synchronize_session=False)
+        db.session.delete(item)
+        db.session.commit()
+
+        msg = f"Acquired '{card_name}' in person!"
+        if add_to_inventory:
+            msg += f" Added to inventory binder '{binder_name}'."
+        log_activity(
+            "CARD_ACQUIRED_IN_PERSON",
+            details=f"Acquired target '{card_name}' (Inventory: {add_to_inventory}, Binder: '{binder_name}')",
+            user=user,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": msg,
+            "deleted_id": item_id,
+            "card_name": card_name,
+            "inventory_added": add_to_inventory,
+            "inventory_card_id": inventory_card_id,
+            "inventory_item_id": inventory_card_id,
         })
 
     @app.route("/api/watchlist/bulk-delete", methods=["POST"])
