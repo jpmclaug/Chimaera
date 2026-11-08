@@ -168,7 +168,8 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Retrieves the user's monitored MTG watchlist cards, including target acquisition prices, "
             "current lowest in-stock vendor prices across TCGplayer, Mighty Meeple, and eBay, "
-            "price ratings, and whether the card is currently an active deal."
+            "price ratings, and whether the card is currently an active deal. Supports filtering by "
+            "a single card or a batch of card names, tags, or decklist text."
         ),
         "inputSchema": {
             "type": "object",
@@ -177,9 +178,28 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional card name filter.",
                 },
+                "cards": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of card names to filter on the watchlist.",
+                },
+                "card_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alias for 'cards' - list of card names to filter.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Optional decklist or multi-line text to filter watchlist items.",
+                },
                 "tag": {
                     "type": "string",
                     "description": "Optional watchlist tag filter.",
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of tags to filter (returns cards matching any specified tag).",
                 },
                 "deals_only": {
                     "type": "boolean",
@@ -218,7 +238,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Lists the user's saved Commander decks and Gemini tactical deck analyses, or retrieves "
             "detailed analysis, card ratings, mana curve stats, weaknesses, tactics, and upgrade "
-            "recommendations for a specific deck."
+            "recommendations for a single deck or multiple decks."
         ),
         "inputSchema": {
             "type": "object",
@@ -227,13 +247,23 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "type": "integer",
                     "description": "Optional specific DeckAnalysis ID to inspect in full detail.",
                 },
+                "deck_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Optional list of DeckAnalysis IDs to inspect in batch.",
+                },
                 "query": {
                     "type": "string",
                     "description": "Optional deck name or commander name to search for (e.g. 'Ur-Dragon', 'Sauron').",
                 },
+                "queries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of deck or commander names to search/retrieve in batch.",
+                },
                 "include_cards": {
                     "type": "boolean",
-                    "description": "If true when inspecting a deck, includes the full parsed card list (defaults to True).",
+                    "description": "If true when inspecting decks, includes the full parsed card list (defaults to True).",
                     "default": True,
                 },
             },
@@ -243,10 +273,10 @@ MCP_TOOLS: list[dict[str, Any]] = [
     {
         "name": "get_deck_cards",
         "description": (
-            "Returns all cards in a Commander deck, including quantities, type lines, mana costs, "
+            "Returns cards in one or multiple Commander decks, including quantities, type lines, mana costs, "
             "CMC, USD prices, and color identity. Cards are returned grouped by category (Commander, "
-            "Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers, Lands) and as a "
-            "clean formatted text decklist."
+            "Creatures, Instants, Sorceries, Artifacts, Enchantments, Planeswalkers, Lands) and as "
+            "clean formatted text decklists."
         ),
         "inputSchema": {
             "type": "object",
@@ -255,9 +285,19 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Name of the deck or commander to retrieve (e.g. 'Ur-Dragon', 'Sauron'). Leave blank to get the user's latest deck.",
                 },
+                "queries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of deck names or commanders to retrieve in batch.",
+                },
                 "deck_id": {
                     "type": "integer",
                     "description": "Optional specific DeckAnalysis ID.",
+                },
+                "deck_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Optional list of DeckAnalysis IDs to retrieve in batch.",
                 },
                 "group_by_type": {
                     "type": "boolean",
@@ -271,22 +311,46 @@ MCP_TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_card_prices",
         "description": (
-            "Looks up live Scryfall market pricing and oracle metadata for any Magic: The Gathering card, "
-            "and cross-references whether the user already owns the card in inventory or tracks it on their watchlist."
+            "Looks up live Scryfall market pricing and oracle metadata for one or multiple Magic: The Gathering cards, "
+            "and cross-references whether the user already owns copies in inventory or tracks them on their watchlist. "
+            "Accepts a single card name, an array of card names, a decklist text, or CSV content."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "object"}
+                        ]
+                    },
+                    "description": "List of card names (e.g. ['Rhystic Study', 'Sol Ring']) or card objects to price in batch.",
+                },
+                "card_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alias for 'cards' - list of card names to look up.",
+                },
                 "card_name": {
                     "type": "string",
-                    "description": "Exact or partial Magic: The Gathering card name to look up.",
+                    "description": "Exact or partial Magic: The Gathering card name (or semicolon-separated card names) to look up.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Decklist or multi-line text containing card names to price in batch.",
+                },
+                "csv_content": {
+                    "type": "string",
+                    "description": "Optional CSV content containing card names to price in batch.",
                 },
                 "set_code": {
                     "type": "string",
                     "description": "Optional 3-4 letter set code (e.g. 'MH3', 'LTR').",
                 },
             },
-            "required": ["card_name"],
+            "required": [],
         },
     },
     {
@@ -294,7 +358,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Adds one or multiple Magic: The Gathering cards to the user's Chimera surveillance watchlist "
             "with optional target buy prices, set codes, finishes, and tags. Accepts a list of card names, "
-            "an array of card objects, a semicolon-separated list, or a single card name."
+            "an array of card objects, raw decklist text, ManaBox CSV content, or a single card name."
         ),
         "inputSchema": {
             "type": "object",
@@ -321,6 +385,10 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 "text": {
                     "type": "string",
                     "description": "Decklist or multi-line text containing card names to add.",
+                },
+                "csv_content": {
+                    "type": "string",
+                    "description": "Optional CSV spreadsheet content containing cards to add to the watchlist.",
                 },
                 "target_price": {
                     "type": "number",
@@ -351,19 +419,222 @@ MCP_TOOLS: list[dict[str, Any]] = [
     {
         "name": "check_card_deck_fit",
         "description": (
-            "Evaluates how a specific Magic: The Gathering card fits across the user's saved Commander decks: "
-            "checks color identity compatibility, whether the card is already in any deck, whether it appears "
-            "in saved upgrade recommendations or Card Add / Secret Lair analyses, and whether the user owns copies."
+            "Evaluates how one or multiple Magic: The Gathering cards fit across the user's saved Commander decks: "
+            "checks color identity compatibility, whether each card is already in any deck, whether it appears "
+            "in saved upgrade recommendations or Card Add / Secret Lair analyses, and whether the user owns copies. "
+            "Accepts a single card name, a list of card names or objects, decklist text, or CSV content."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "object"}
+                        ]
+                    },
+                    "description": "List of card names (e.g. ['Smothering Tithe', 'Rhystic Study']) or objects to evaluate across all saved decks.",
+                },
+                "card_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alias for 'cards' - list of card names to evaluate.",
+                },
                 "card_name": {
                     "type": "string",
-                    "description": "Name of the card to check across the user's Commander fleet.",
-                }
+                    "description": "Name of a card (or semicolon-separated list) to check across the user's Commander fleet.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Decklist or multi-line text containing card names to evaluate in batch.",
+                },
+                "csv_content": {
+                    "type": "string",
+                    "description": "Optional CSV content containing card names to evaluate in batch.",
+                },
+                "deck_id": {
+                    "type": "integer",
+                    "description": "Optional specific DeckAnalysis ID to restrict the evaluation to a single deck.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional deck or commander name filter to restrict the evaluation.",
+                },
             },
-            "required": ["card_name"],
+            "required": [],
+        },
+    },
+    {
+        "name": "upload_inventory",
+        "description": (
+            "Bulk uploads or imports Magic: The Gathering cards into the user's collection inventory in Chimera. "
+            "Accepts a list of card objects/names, raw decklist text, ManaBox CSV content, TCGplayer purchase order text, "
+            "or a public Google Drive CSV share link. Defaults to 'merge' mode (adds/increments quantities to existing cards) "
+            "and also supports 'replace' mode (clears existing inventory before importing)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "object"}
+                        ]
+                    },
+                    "description": "List of card names or objects with card fields (name, quantity, set_code, collector_number, foil, condition, binder_name, purchase_price).",
+                },
+                "card_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alias for 'cards' - list of card names to import.",
+                },
+                "card_name": {
+                    "type": "string",
+                    "description": "Single card name, or semicolon-delimited list of card names to import.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Decklist, multi-line card text, or TCGplayer purchase manifest text.",
+                },
+                "csv_content": {
+                    "type": "string",
+                    "description": "Raw ManaBox collection CSV export content.",
+                },
+                "gdrive_url": {
+                    "type": "string",
+                    "description": "Public Google Drive share URL or file ID to a ManaBox CSV export.",
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["merge", "replace"],
+                    "description": "Import mode: 'merge' (default, adds quantities to existing inventory) or 'replace' (purges existing inventory first).",
+                    "default": "merge",
+                },
+                "binder_name": {
+                    "type": "string",
+                    "description": "Default binder/folder name to assign to imported cards (e.g. 'Trade Binder', 'Commander Staples').",
+                },
+                "condition": {
+                    "type": "string",
+                    "description": "Default condition for imported cards (e.g. 'Near Mint', 'Lightly Played'). Defaults to 'Near Mint'.",
+                    "default": "Near Mint",
+                },
+                "foil": {
+                    "type": "string",
+                    "description": "Default finish for imported cards: 'normal', 'foil', or 'etched'. Defaults to 'normal'.",
+                    "default": "normal",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "upload_decks",
+        "description": (
+            "Bulk uploads or imports one or multiple Magic: The Gathering Commander decks into the user's Chimera Deck Vault. "
+            "Accepts ManaBox, Moxfield, Archidekt, Scryfall, or MTGGoldfish URLs, an array of deck objects, raw decklist text, "
+            "or CSV deck exports. Enriches all cards with Scryfall metadata and computes full tactical deck analysis metrics."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of public deck URLs to import (ManaBox, Moxfield, Archidekt, Scryfall, MTGGoldfish).",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "Single deck URL to import.",
+                },
+                "decks": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "List of deck objects containing {deck_name, commander, url, text, csv_content, cards, is_pauper}.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Decklist or multi-line text for a deck to import.",
+                },
+                "csv_content": {
+                    "type": "string",
+                    "description": "CSV content of a deck export to import.",
+                },
+                "deck_name": {
+                    "type": "string",
+                    "description": "Optional name for the deck when importing from text/csv.",
+                },
+                "commander_name": {
+                    "type": "string",
+                    "description": "Optional commander name when importing from text/csv.",
+                },
+                "is_pauper": {
+                    "type": "boolean",
+                    "description": "Whether the deck is Pauper Commander (PDH). Defaults to auto-detect.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "reconcile_watchlist",
+        "description": (
+            "Bulk removes or reconciles cards from the user's surveillance watchlist that were purchased or acquired. "
+            "Accepts a pasted TCGplayer order history manifest, a list of card names, raw text, or specific watchlist IDs. "
+            "Optionally ingests acquired cards directly into the user's collection inventory (UserInventoryCard)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "TCGplayer purchase manifest text, decklist, or multi-line card text to reconcile against watchlist.",
+                },
+                "cards": {
+                    "type": "array",
+                    "items": {
+                        "oneOf": [
+                            {"type": "string"},
+                            {"type": "object"}
+                        ]
+                    },
+                    "description": "List of card names or card objects that were acquired to remove from the watchlist.",
+                },
+                "card_names": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Alias for 'cards' - list of card names acquired.",
+                },
+                "card_name": {
+                    "type": "string",
+                    "description": "Single card name or semicolon-separated list of card names to reconcile.",
+                },
+                "card_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "Optional list of specific WatchlistItem IDs to de-register.",
+                },
+                "add_to_inventory": {
+                    "type": "boolean",
+                    "description": "If true, also adds/increments the acquired cards in the user's collection inventory. Defaults to false.",
+                    "default": False,
+                },
+                "binder_name": {
+                    "type": "string",
+                    "description": "Binder location to assign when add_to_inventory is true (default 'Acquired').",
+                    "default": "Acquired",
+                },
+                "condition": {
+                    "type": "string",
+                    "description": "Default card condition when adding to inventory (default 'Near Mint').",
+                    "default": "Near Mint",
+                },
+            },
+            "required": [],
         },
     },
 ]
@@ -472,11 +743,66 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
     - args["card_names"]: list of strings or comma/newline delimited string
     - args["card_name"]: single string
     - args["query"]: single string or comma/newline delimited string
-    - args["text"]: decklist or multi-line string
+    - args["text"]: decklist, multi-line string, or TCGplayer purchase manifest
+    - args["csv_content"]: ManaBox or standard MTG CSV export content
     """
+    # 0. Check for CSV content first
+    csv_text = args.get("csv_content")
+    if not csv_text and isinstance(args.get("text"), str):
+        candidate_header = args["text"].splitlines()[0].lower() if args["text"].splitlines() else ""
+        if "," in candidate_header and ("name" in candidate_header or "binder" in candidate_header or "scryfall" in candidate_header):
+            csv_text = args["text"]
+
+    if csv_text and isinstance(csv_text, str) and csv_text.strip():
+        try:
+            from inventory_parser import ManaBoxInventoryParser
+            parsed_csv = ManaBoxInventoryParser.parse(csv_text)
+            extracted_csv_cards = []
+            for item in parsed_csv.get("valid_cards", []):
+                name = item.get("name", "").strip()
+                if name:
+                    extracted_csv_cards.append({
+                        "raw_query": item.get("raw_name") or name,
+                        "clean_name": normalize_card_name(name),
+                        "quantity": max(1, int(item.get("quantity", 1) or 1)),
+                        "set_code": (item.get("set_code") or "").upper().strip() or None,
+                        "collector_number": str(item.get("collector_number") or "").strip() or None,
+                        "foil": item.get("foil") or "normal",
+                        "condition": item.get("condition") or "Near Mint",
+                        "binder_name": item.get("binder_name") or "",
+                        "purchase_price": item.get("purchase_price"),
+                    })
+            if extracted_csv_cards:
+                return extracted_csv_cards
+        except Exception:
+            pass
+
+    # 1. Check for TCGplayer purchase format in text
+    text_content = args.get("text")
+    if text_content and isinstance(text_content, str) and text_content.strip():
+        try:
+            from tcgplayer_parser import TCGPlayerPurchaseParser
+            tcg_items = TCGPlayerPurchaseParser.parse(text_content)
+            if tcg_items and len(tcg_items) > 0:
+                extracted_tcg = []
+                for item in tcg_items:
+                    extracted_tcg.append({
+                        "raw_query": item.raw_line or item.card_name,
+                        "clean_name": normalize_card_name(item.card_name),
+                        "quantity": max(1, int(item.quantity or 1)),
+                        "set_name": item.set_name,
+                        "collector_number": item.collector_number or None,
+                        "condition": item.condition or "Near Mint",
+                        "foil": item.finish or "nonfoil",
+                    })
+                if extracted_tcg:
+                    return extracted_tcg
+        except Exception:
+            pass
+
     raw_candidates: list[Any] = []
 
-    # 1. 'cards' or 'card_names'
+    # 2. 'cards' or 'card_names'
     for key in ("cards", "card_names"):
         val = args.get(key)
         if val is not None:
@@ -485,12 +811,12 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
             elif isinstance(val, str) and val.strip():
                 raw_candidates.append(val)
 
-    # 2. 'card_name'
+    # 3. 'card_name'
     single_name = args.get("card_name")
     if single_name and isinstance(single_name, str) and single_name.strip():
         raw_candidates.append(single_name)
 
-    # 3. 'text' or 'query'
+    # 4. 'text' or 'query'
     if not raw_candidates:
         for key in ("text", "query"):
             val = args.get(key)
@@ -512,6 +838,12 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
                     "raw_query": name,
                     "clean_name": normalize_card_name(name),
                     "quantity": max(1, qty),
+                    "set_code": (item.get("set_code") or "").upper().strip() or None,
+                    "collector_number": str(item.get("collector_number") or "").strip() or None,
+                    "foil": item.get("foil") or item.get("finish") or "normal",
+                    "condition": item.get("condition") or "Near Mint",
+                    "binder_name": item.get("binder_name") or "",
+                    "purchase_price": item.get("purchase_price"),
                 })
         elif isinstance(item, str):
             clean_str = item.strip()
@@ -525,7 +857,7 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
                         continue
                     m = line_pattern.match(line)
                     if m:
-                        qty_str, cname, _, _ = m.groups()
+                        qty_str, cname, scode, colnum = m.groups()
                         qty = int(qty_str) if qty_str else 1
                         cleaned = normalize_card_name(cname)
                         if cleaned and len(cleaned) >= 2:
@@ -533,6 +865,8 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
                                 "raw_query": line,
                                 "clean_name": cleaned,
                                 "quantity": max(1, qty),
+                                "set_code": (scode or "").upper().strip() or None,
+                                "collector_number": (colnum or "").strip() or None,
                             })
                     else:
                         cleaned = normalize_card_name(line)
@@ -558,7 +892,7 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
                         for part in comma_parts:
                             m = line_pattern.match(part)
                             if m:
-                                qty_str, cname, _, _ = m.groups()
+                                qty_str, cname, scode, colnum = m.groups()
                                 qty = int(qty_str) if qty_str else 1
                                 cleaned = normalize_card_name(cname)
                                 if cleaned:
@@ -566,6 +900,8 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
                                         "raw_query": part,
                                         "clean_name": cleaned,
                                         "quantity": max(1, qty),
+                                        "set_code": (scode or "").upper().strip() or None,
+                                        "collector_number": (colnum or "").strip() or None,
                                     })
                             else:
                                 cleaned = normalize_card_name(part)
@@ -579,7 +915,7 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
 
                 m = line_pattern.match(single_line)
                 if m:
-                    qty_str, cname, _, _ = m.groups()
+                    qty_str, cname, scode, colnum = m.groups()
                     qty = int(qty_str) if qty_str else 1
                     cleaned = normalize_card_name(cname)
                     if cleaned:
@@ -587,6 +923,8 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
                             "raw_query": single_line,
                             "clean_name": cleaned,
                             "quantity": max(1, qty),
+                            "set_code": (scode or "").upper().strip() or None,
+                            "collector_number": (colnum or "").strip() or None,
                         })
                 else:
                     cleaned = normalize_card_name(single_line)
@@ -850,18 +1188,30 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
     deals_only = bool(args.get("deals_only", False))
     query_str = (args.get("query") or "").strip()
     tag_str = (args.get("tag") or "").strip()
+    tags_list = [t.strip() for t in args.get("tags", []) if isinstance(t, str) and t.strip()]
+
+    # Check if bulk card names filter passed
+    filter_cards = _parse_card_input_list(args)
+    filter_names_lower = {c["clean_name"].lower() for c in filter_cards} if filter_cards else set()
 
     q = WatchlistItem.query.filter_by(user_id=user.id)
     if query_str:
         q = q.filter(WatchlistItem.name.ilike(f"%{query_str}%"))
     if tag_str:
         q = q.filter(WatchlistItem.tag.ilike(f"%{tag_str}%"))
+    if tags_list:
+        tag_filters = [WatchlistItem.tag.ilike(f"%{tg}%") for tg in tags_list]
+        q = q.filter(db.or_(*tag_filters))
 
     items = q.order_by(WatchlistItem.name.asc()).all()
     serialized = []
     for item in items:
         if deals_only and not item.is_deal:
             continue
+        if filter_names_lower:
+            i_name = (item.name or "").lower()
+            if not any(card_names_match(i_name, target) for target in filter_names_lower):
+                continue
         serialized.append(item.to_dict())
 
     return {
@@ -901,11 +1251,15 @@ def _execute_get_active_deals(user: User, args: dict[str, Any]) -> dict[str, Any
 
 def _execute_get_deck_analyses(user: User, args: dict[str, Any]) -> dict[str, Any]:
     deck_id = args.get("deck_id")
+    deck_ids = args.get("deck_ids")
     query_str = (args.get("query") or args.get("deck_name") or args.get("commander_name") or "").strip()
+    queries = [q.strip() for q in args.get("queries", []) if isinstance(q, str) and q.strip()]
     include_cards = bool(args.get("include_cards", True))
 
     q = DeckAnalysis.query.filter_by(user_id=user.id)
-    if deck_id is not None:
+
+    # 1. Single deck by ID
+    if deck_id is not None and not deck_ids:
         deck = q.filter_by(id=int(deck_id)).first()
         if not deck:
             return {"error": f"No Commander deck found with ID {deck_id}."}
@@ -914,6 +1268,51 @@ def _execute_get_deck_analyses(user: User, args: dict[str, Any]) -> dict[str, An
             full_data.pop("cards_data", None)
             full_data.pop("raw_decklist", None)
         return {"deck": full_data}
+
+    # 2. Batch deck IDs
+    if deck_ids and isinstance(deck_ids, list):
+        try:
+            int_ids = [int(i) for i in deck_ids]
+            decks = q.filter(DeckAnalysis.id.in_(int_ids)).order_by(DeckAnalysis.updated_at.desc()).all()
+            full_decks = []
+            for d in decks:
+                fdata = d.to_dict(include_full=True)
+                if not include_cards:
+                    fdata.pop("cards_data", None)
+                    fdata.pop("raw_decklist", None)
+                full_decks.append(fdata)
+            return {
+                "total_decks": len(full_decks),
+                "decks": full_decks,
+            }
+        except (ValueError, TypeError):
+            pass
+
+    # 3. Batch queries
+    if queries:
+        query_filters = []
+        for qterm in queries:
+            query_filters.append(
+                db.or_(
+                    DeckAnalysis.deck_name.ilike(f"%{qterm}%"),
+                    DeckAnalysis.commander_name.ilike(f"%{qterm}%"),
+                    DeckAnalysis.archetype.ilike(f"%{qterm}%"),
+                )
+            )
+        decks = q.filter(db.or_(*query_filters)).order_by(DeckAnalysis.updated_at.desc()).all()
+        summaries = []
+        for d in decks:
+            summary = d.to_dict(include_full=include_cards)
+            analysis = d.get_analysis()
+            if analysis:
+                summary["strategic_summary"] = analysis.get("strategic_summary") or analysis.get("summary")
+                summary["win_conditions"] = analysis.get("win_conditions", [])
+                summary["key_weaknesses"] = analysis.get("weaknesses") or analysis.get("key_weaknesses", [])
+            summaries.append(summary)
+        return {
+            "total_decks": len(summaries),
+            "decks": summaries,
+        }
 
     if query_str:
         q = q.filter(
@@ -948,35 +1347,7 @@ def _execute_get_deck_analyses(user: User, args: dict[str, Any]) -> dict[str, An
     }
 
 
-def _execute_get_deck_cards(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    deck_id = args.get("deck_id")
-    query_str = (args.get("query") or args.get("deck_name") or args.get("commander_name") or "").strip()
-    group_by_type = bool(args.get("group_by_type", True))
-
-    q = DeckAnalysis.query.filter_by(user_id=user.id)
-    deck = None
-    if deck_id is not None:
-        deck = q.filter_by(id=int(deck_id)).first()
-    elif query_str:
-        deck = q.filter(
-            db.or_(
-                DeckAnalysis.deck_name.ilike(f"%{query_str}%"),
-                DeckAnalysis.commander_name.ilike(f"%{query_str}%"),
-            )
-        ).order_by(DeckAnalysis.updated_at.desc()).first()
-    else:
-        deck = q.order_by(DeckAnalysis.updated_at.desc()).first()
-
-    if not deck:
-        avail_decks = [
-            {"id": d.id, "name": d.deck_name, "commander": d.commander_name}
-            for d in q.order_by(DeckAnalysis.deck_name.asc()).all()
-        ]
-        return {
-            "error": f"No Commander deck found matching '{query_str or deck_id}'.",
-            "available_decks": avail_decks,
-        }
-
+def _build_deck_cards_response(deck: DeckAnalysis, group_by_type: bool) -> dict[str, Any]:
     cards = deck.get_parsed_cards()
     commander_names = [c.strip() for c in (deck.commander_name or "").split(",") if c.strip()]
 
@@ -1040,7 +1411,7 @@ def _execute_get_deck_cards(user: User, args: dict[str, Any]) -> dict[str, Any]:
     filtered_categories = {cat: items for cat, items in type_categories.items() if items}
     category_counts = {cat: sum(item["quantity"] for item in items) for cat, items in filtered_categories.items()}
 
-    response_data: dict[str, Any] = {
+    resp = {
         "deck_id": deck.id,
         "deck_name": deck.deck_name,
         "commander_name": deck.commander_name,
@@ -1051,50 +1422,196 @@ def _execute_get_deck_cards(user: User, args: dict[str, Any]) -> dict[str, Any]:
         "category_counts": category_counts,
         "text_decklist": "\n".join(text_lines),
     }
-
     if group_by_type:
-        response_data["cards_by_type"] = filtered_categories
+        resp["cards_by_type"] = filtered_categories
     else:
-        response_data["cards"] = clean_cards_list
+        resp["cards"] = clean_cards_list
+    return resp
 
-    return response_data
+
+def _execute_get_deck_cards(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    deck_id = args.get("deck_id")
+    deck_ids = args.get("deck_ids")
+    query_str = (args.get("query") or args.get("deck_name") or args.get("commander_name") or "").strip()
+    queries = [q.strip() for q in args.get("queries", []) if isinstance(q, str) and q.strip()]
+    group_by_type = bool(args.get("group_by_type", True))
+
+    q = DeckAnalysis.query.filter_by(user_id=user.id)
+
+    # 1. Batch deck IDs
+    if deck_ids and isinstance(deck_ids, list):
+        try:
+            int_ids = [int(i) for i in deck_ids]
+            decks = q.filter(DeckAnalysis.id.in_(int_ids)).order_by(DeckAnalysis.updated_at.desc()).all()
+            deck_results = [_build_deck_cards_response(d, group_by_type) for d in decks]
+            return {
+                "total_decks": len(deck_results),
+                "decks": deck_results,
+            }
+        except (ValueError, TypeError):
+            pass
+
+    # 2. Batch queries
+    if queries:
+        query_filters = []
+        for qterm in queries:
+            query_filters.append(
+                db.or_(
+                    DeckAnalysis.deck_name.ilike(f"%{qterm}%"),
+                    DeckAnalysis.commander_name.ilike(f"%{qterm}%"),
+                )
+            )
+        decks = q.filter(db.or_(*query_filters)).order_by(DeckAnalysis.updated_at.desc()).all()
+        deck_results = [_build_deck_cards_response(d, group_by_type) for d in decks]
+        return {
+            "total_decks": len(deck_results),
+            "decks": deck_results,
+        }
+
+    # 3. Single deck
+    deck = None
+    if deck_id is not None:
+        deck = q.filter_by(id=int(deck_id)).first()
+    elif query_str:
+        deck = q.filter(
+            db.or_(
+                DeckAnalysis.deck_name.ilike(f"%{query_str}%"),
+                DeckAnalysis.commander_name.ilike(f"%{query_str}%"),
+            )
+        ).order_by(DeckAnalysis.updated_at.desc()).first()
+    else:
+        deck = q.order_by(DeckAnalysis.updated_at.desc()).first()
+
+    if not deck:
+        avail_decks = [
+            {"id": d.id, "name": d.deck_name, "commander": d.commander_name}
+            for d in q.order_by(DeckAnalysis.deck_name.asc()).all()
+        ]
+        return {
+            "error": f"No Commander deck found matching '{query_str or deck_id}'.",
+            "available_decks": avail_decks,
+        }
+
+    return _build_deck_cards_response(deck, group_by_type)
 
 
 def _execute_search_card_prices(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    card_name = (args.get("card_name") or "").strip()
+    extracted_items = _parse_card_input_list(args)
     set_code = (args.get("set_code") or "").strip()
-    if not card_name:
-        return {"error": "card_name is required."}
 
-    # Check user's inventory & watchlist first
-    owned = UserInventoryCard.query.filter(
-        UserInventoryCard.user_id == user.id,
-        UserInventoryCard.name.ilike(f"%{card_name}%"),
-    ).all()
+    # Fallback to legacy single card_name arg if parser found nothing
+    if not extracted_items:
+        legacy_name = (args.get("card_name") or "").strip()
+        if legacy_name:
+            extracted_items = [{"raw_query": legacy_name, "clean_name": normalize_card_name(legacy_name), "quantity": 1}]
 
-    watched = WatchlistItem.query.filter(
-        WatchlistItem.user_id == user.id,
-        WatchlistItem.name.ilike(f"%{card_name}%"),
-    ).all()
+    if not extracted_items:
+        return {"error": "card_name is required (or pass 'cards' array / 'text')."}
 
-    scryfall_data = None
-    lowest_printing = None
+    from providers.scryfall import ScryfallProvider
+    provider = ScryfallProvider()
+
+    # Pre-fetch user's entire inventory & watchlist for fast matching
+    owned_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
+    watched_items = WatchlistItem.query.filter_by(user_id=user.id).all()
+
+    # 1. Single-card query: retain full backward-compatible schema
+    if len(extracted_items) == 1 and not args.get("cards") and not args.get("card_names"):
+        single = extracted_items[0]
+        card_name = single["clean_name"]
+        matching_owned = [c for c in owned_cards if card_names_match(c.name, card_name)]
+        matching_watched = [w for w in watched_items if card_names_match(w.name, card_name)]
+
+        scryfall_data = None
+        lowest_printing = None
+        try:
+            scryfall_data = provider.get_card_named(card_name)
+            if not set_code or set_code.upper() == "ANY":
+                lowest_printing = provider.get_cheapest_tcgplayer_price(card_name)
+        except Exception as exc:
+            logger.warning(f"MCP search_card_prices Scryfall lookup error for '{card_name}': {exc}")
+
+        return {
+            "queried_card": single["raw_query"],
+            "scryfall_card": scryfall_data,
+            "lowest_market_printing": lowest_printing,
+            "owned_in_inventory": [c.to_dict(include_metadata=False) for c in matching_owned],
+            "total_owned_quantity": sum(c.quantity for c in matching_owned),
+            "tracked_on_watchlist": [w.to_dict() for w in matching_watched],
+        }
+
+    # 2. Multi-card batch query
+    names_to_fetch = [item["clean_name"] for item in extracted_items]
+    scryfall_map: dict[str, Any] = {}
     try:
-        from providers.scryfall import ScryfallProvider
-        provider = ScryfallProvider()
-        scryfall_data = provider.get_card_named(card_name)
-        if not set_code or set_code.upper() == "ANY":
-            lowest_printing = provider.get_cheapest_tcgplayer_price(card_name)
+        scryfall_map, _ = provider.get_cards_collection(names_to_fetch)
     except Exception as exc:
-        logger.warning(f"MCP search_card_prices Scryfall lookup error for '{card_name}': {exc}")
+        logger.warning(f"MCP batch search_card_prices Scryfall error: {exc}")
+
+    results = []
+    total_market_val = 0.0
+
+    for item in extracted_items:
+        c_clean = item["clean_name"]
+        raw_q = item["raw_query"]
+        req_qty = item.get("quantity", 1)
+
+        c_meta = scryfall_map.get(c_clean.lower())
+        if not c_meta:
+            for k in get_card_match_keys(c_clean):
+                if k in scryfall_map:
+                    c_meta = scryfall_map[k]
+                    break
+        if not c_meta:
+            try:
+                c_meta = provider.get_card_named(c_clean)
+            except Exception:
+                c_meta = None
+
+        prices = c_meta.get("prices", {}) if isinstance(c_meta, dict) else {}
+        usd_price = None
+        if prices.get("usd"):
+            try:
+                usd_price = float(prices["usd"])
+            except (ValueError, TypeError):
+                pass
+
+        usd_foil = None
+        if prices.get("usd_foil"):
+            try:
+                usd_foil = float(prices["usd_foil"])
+            except (ValueError, TypeError):
+                pass
+
+        if usd_price is not None:
+            total_market_val += usd_price * req_qty
+
+        matching_owned = [c for c in owned_cards if card_names_match(c.name, c_clean)]
+        matching_watched = [w for w in watched_items if card_names_match(w.name, c_clean)]
+
+        results.append({
+            "query": raw_q,
+            "card_name": c_clean,
+            "matched_name": c_meta.get("name") if isinstance(c_meta, dict) else c_clean,
+            "set_code": (c_meta.get("set_code") or set_code or "").upper(),
+            "price_usd": usd_price,
+            "price_usd_foil": usd_foil,
+            "type_line": c_meta.get("type_line") if isinstance(c_meta, dict) else None,
+            "mana_cost": c_meta.get("mana_cost") if isinstance(c_meta, dict) else None,
+            "cmc": c_meta.get("cmc") if isinstance(c_meta, dict) else None,
+            "color_identity": c_meta.get("color_identity") if isinstance(c_meta, dict) else [],
+            "image_uri": c_meta.get("image_uri") if isinstance(c_meta, dict) else None,
+            "owned_quantity": sum(c.quantity for c in matching_owned),
+            "owned_in_inventory": [c.to_dict(include_metadata=False) for c in matching_owned],
+            "tracked_on_watchlist": [w.to_dict() for w in matching_watched],
+            "is_tracked": len(matching_watched) > 0,
+        })
 
     return {
-        "queried_card": card_name,
-        "scryfall_card": scryfall_data,
-        "lowest_market_printing": lowest_printing,
-        "owned_in_inventory": [c.to_dict(include_metadata=False) for c in owned],
-        "total_owned_quantity": sum(c.quantity for c in owned),
-        "tracked_on_watchlist": [w.to_dict() for w in watched],
+        "total_queried": len(extracted_items),
+        "total_estimated_market_value_usd": round(total_market_val, 2),
+        "results": results,
+        "cards": results,
     }
 
 
@@ -1105,7 +1622,15 @@ def _parse_watchlist_card_entries(args: dict[str, Any]) -> list[dict[str, Any]]:
     - args["card_names"]: list of strings or delimited string
     - args["card_name"]: single string or semicolon-separated string
     - args["text"]: decklist or multi-line string
+    - args["csv_content"]: CSV spreadsheet content
     """
+    # Check for CSV content first
+    csv_text = args.get("csv_content")
+    if not csv_text and isinstance(args.get("text"), str):
+        candidate_header = args["text"].splitlines()[0].lower() if args["text"].splitlines() else ""
+        if "," in candidate_header and ("name" in candidate_header or "binder" in candidate_header or "scryfall" in candidate_header):
+            csv_text = args["text"]
+
     default_target_price = args.get("target_price")
     if default_target_price is not None:
         try:
@@ -1124,6 +1649,28 @@ def _parse_watchlist_card_entries(args: dict[str, Any]) -> list[dict[str, Any]]:
         default_finish = "nonfoil"
 
     default_tag = (args.get("tag") or "").strip() or None
+
+    if csv_text and isinstance(csv_text, str) and csv_text.strip():
+        try:
+            from inventory_parser import ManaBoxInventoryParser
+            parsed_csv = ManaBoxInventoryParser.parse(csv_text)
+            extracted_csv = []
+            for item in parsed_csv.get("valid_cards", []):
+                name = item.get("name", "").strip()
+                if name:
+                    extracted_csv.append({
+                        "raw_name": item.get("raw_name") or name,
+                        "clean_name": normalize_card_name(name),
+                        "target_price": item.get("purchase_price") or default_target_price,
+                        "target_strategy": default_target_strategy,
+                        "set_code": (item.get("set_code") or default_set_code or "").upper().strip() or None,
+                        "finish": item.get("foil") or default_finish,
+                        "tag": default_tag,
+                    })
+            if extracted_csv:
+                return extracted_csv
+        except Exception:
+            pass
 
     raw_candidates: list[Any] = []
     for key in ("cards", "card_names"):
@@ -1534,34 +2081,26 @@ def _execute_add_to_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any
     }
 
 
-def _execute_check_card_deck_fit(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    card_name = (args.get("card_name") or "").strip()
-    if not card_name:
-        return {"error": "card_name is required."}
-
+def _evaluate_single_card_deck_fit(card_name: str, raw_query: str, user: User, decks: list[DeckAnalysis], owned_cards: list[UserInventoryCard], add_analyses: list[CardAddAnalysis]) -> dict[str, Any]:
     card_lower = card_name.lower()
+    matching_owned = [c for c in owned_cards if card_names_match(c.name, card_name)]
 
-    # Check inventory ownership
-    owned_cards = UserInventoryCard.query.filter(
-        UserInventoryCard.user_id == user.id,
-        UserInventoryCard.name.ilike(f"%{card_name}%"),
-    ).all()
-
-    decks = DeckAnalysis.query.filter_by(user_id=user.id).order_by(DeckAnalysis.updated_at.desc()).all()
     deck_matches = []
+    in_any_deck = False
 
     for d in decks:
         parsed_cards = d.get_parsed_cards()
         in_deck_card = next(
-            (c for c in parsed_cards if (c.get("name") or "").strip().lower() == card_lower),
+            (c for c in parsed_cards if card_names_match(c.get("name") or "", card_name)),
             None,
         )
+        if in_deck_card:
+            in_any_deck = True
 
-        # Check if card is mentioned in deck's AI card ratings or upgrades
         analysis = d.get_analysis()
         card_rating = None
         for r in analysis.get("card_ratings", []):
-            if (r.get("name") or r.get("card_name") or "").strip().lower() == card_lower:
+            if card_names_match(r.get("name") or r.get("card_name") or "", card_name):
                 card_rating = r
                 break
 
@@ -1572,9 +2111,9 @@ def _execute_check_card_deck_fit(user: User, args: dict[str, Any]) -> dict[str, 
                 if isinstance(tier_val, list):
                     for u in tier_val:
                         if isinstance(u, dict):
-                            add_name = (u.get("add") or u.get("card_name") or u.get("name") or "").strip().lower()
-                            cut_name = (u.get("cut") or u.get("replace") or "").strip().lower()
-                            if card_lower in (add_name, cut_name):
+                            add_name = (u.get("add") or u.get("card_name") or u.get("name") or "").strip()
+                            cut_name = (u.get("cut") or u.get("replace") or "").strip()
+                            if card_names_match(add_name, card_name) or card_names_match(cut_name, card_name):
                                 upgrade_mention = {"tier": tier_key, "entry": u}
                                 break
 
@@ -1591,12 +2130,10 @@ def _execute_check_card_deck_fit(user: User, args: dict[str, Any]) -> dict[str, 
             "upgrade_recommendation": upgrade_mention,
         })
 
-    # Check saved CardAddAnalysis records
-    add_analyses = CardAddAnalysis.query.filter_by(user_id=user.id).order_by(CardAddAnalysis.created_at.desc()).limit(20).all()
     prior_evaluations = []
     for ca in add_analyses:
         for c in ca.get_cards():
-            if card_lower in (c.get("name") or "").strip().lower():
+            if card_names_match(c.get("name") or "", card_name):
                 prior_evaluations.append({
                     "analysis_id": ca.id,
                     "title": ca.title,
@@ -1606,12 +2143,521 @@ def _execute_check_card_deck_fit(user: User, args: dict[str, Any]) -> dict[str, 
                 break
 
     return {
+        "query": raw_query,
         "card_name": card_name,
-        "owned_copies": sum(c.quantity for c in owned_cards),
-        "inventory_entries": [c.to_dict(include_metadata=False) for c in owned_cards],
+        "owned_copies": sum(c.quantity for c in matching_owned),
+        "in_any_deck": in_any_deck,
+        "inventory_entries": [c.to_dict(include_metadata=False) for c in matching_owned],
         "decks_evaluated": len(deck_matches),
         "deck_fit_breakdown": deck_matches,
         "prior_card_add_evaluations": prior_evaluations,
+    }
+
+
+def _execute_check_card_deck_fit(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    extracted_items = _parse_card_input_list(args)
+    if not extracted_items:
+        legacy_name = (args.get("card_name") or "").strip()
+        if legacy_name:
+            extracted_items = [{"raw_query": legacy_name, "clean_name": normalize_card_name(legacy_name), "quantity": 1}]
+
+    if not extracted_items:
+        return {"error": "card_name is required (or pass 'cards' array / 'text')."}
+
+    # Load decks and inventory once
+    deck_id = args.get("deck_id")
+    query_str = (args.get("query") or "").strip()
+
+    q = DeckAnalysis.query.filter_by(user_id=user.id)
+    if deck_id is not None:
+        q = q.filter_by(id=int(deck_id))
+    elif query_str:
+        q = q.filter(
+            db.or_(
+                DeckAnalysis.deck_name.ilike(f"%{query_str}%"),
+                DeckAnalysis.commander_name.ilike(f"%{query_str}%"),
+            )
+        )
+    decks = q.order_by(DeckAnalysis.updated_at.desc()).all()
+    owned_cards = UserInventoryCard.query.filter_by(user_id=user.id).all()
+    add_analyses = CardAddAnalysis.query.filter_by(user_id=user.id).order_by(CardAddAnalysis.created_at.desc()).limit(20).all()
+
+    # 1. Single card query without batch wrapper
+    if len(extracted_items) == 1 and not args.get("cards") and not args.get("card_names"):
+        first = extracted_items[0]
+        res = _evaluate_single_card_deck_fit(first["clean_name"], first["raw_query"], user, decks, owned_cards, add_analyses)
+        return res
+
+    # 2. Batch cards query
+    results = []
+    for item in extracted_items:
+        c_res = _evaluate_single_card_deck_fit(item["clean_name"], item["raw_query"], user, decks, owned_cards, add_analyses)
+        results.append(c_res)
+
+    return {
+        "total_cards_evaluated": len(results),
+        "decks_count": len(decks),
+        "cards": results,
+        "results": results,
+    }
+
+
+def _execute_upload_inventory(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """
+    Bulk uploads / imports cards into user's collection inventory (UserInventoryCard).
+    Accepts:
+    - gdrive_url: Google Drive CSV share link
+    - csv_content: ManaBox CSV string
+    - text: Decklist text or TCGplayer purchase order text
+    - cards: List of card dicts or card name strings
+    - mode: 'merge' (default) or 'replace'
+    """
+    mode = (args.get("mode") or "merge").strip().lower()
+    if mode not in ("merge", "replace"):
+        mode = "merge"
+
+    default_binder = (args.get("binder_name") or "").strip()
+    default_condition = (args.get("condition") or "Near Mint").strip()
+    default_foil = (args.get("foil") or "normal").strip().lower()
+    if default_foil not in ("normal", "foil", "etched"):
+        default_foil = "normal"
+
+    from inventory_parser import ManaBoxInventoryParser, InventoryParseError
+    from inventory_manager import InventoryManager
+
+    csv_content = ""
+    gdrive_url = (args.get("gdrive_url") or "").strip()
+
+    if gdrive_url:
+        try:
+            csv_content = ManaBoxInventoryParser.download_gdrive_csv(gdrive_url)
+            user.inventory_gdrive_url = gdrive_url
+            db.session.commit()
+        except InventoryParseError as e:
+            return {"error": f"Google Drive download error: {str(e)}"}
+        except Exception as e:
+            logger.error(f"MCP upload_inventory GDrive error: {e}", exc_info=True)
+            return {"error": f"Failed to download Google Drive CSV: {str(e)}"}
+    elif args.get("csv_content"):
+        csv_content = str(args["csv_content"]).strip()
+
+    parsed_cards: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+
+    if csv_content:
+        try:
+            parsed = ManaBoxInventoryParser.parse(csv_content)
+            parsed_cards = parsed.get("valid_cards", [])
+            errors = parsed.get("errors", [])
+        except InventoryParseError as e:
+            return {"error": f"CSV parse error: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Failed to parse CSV: {str(e)}"}
+    else:
+        # Check text or cards array via _parse_card_input_list
+        raw_items = _parse_card_input_list(args)
+        if not raw_items:
+            return {"error": "No cards, decklist text, CSV content, or Google Drive URL provided to upload."}
+
+        for item in raw_items:
+            c_name = item.get("clean_name") or normalize_card_name(item.get("raw_query") or "")
+            if not c_name:
+                continue
+            parsed_cards.append({
+                "name": c_name,
+                "raw_name": item.get("raw_query") or c_name,
+                "set_code": (item.get("set_code") or "").upper().strip(),
+                "set_name": item.get("set_name") or "",
+                "collector_number": str(item.get("collector_number") or "").strip(),
+                "scryfall_id": item.get("scryfall_id"),
+                "quantity": max(1, int(item.get("quantity", 1) or 1)),
+                "foil": item.get("foil") or default_foil,
+                "condition": item.get("condition") or default_condition,
+                "language": item.get("language") or "en",
+                "purchase_price": item.get("purchase_price"),
+                "binder_name": item.get("binder_name") or default_binder,
+            })
+
+    if not parsed_cards:
+        return {"error": "No valid cards could be parsed from input.", "errors": errors}
+
+    inv_mgr = InventoryManager()
+    import_result = inv_mgr.import_inventory(
+        user_id=user.id,
+        parsed_cards=parsed_cards,
+        mode=mode,
+    )
+
+    return {
+        "success": True,
+        "mode": mode,
+        "cards_parsed_count": len(parsed_cards),
+        "added_count": import_result.get("added_count", 0),
+        "updated_count": import_result.get("updated_count", 0),
+        "total_cards_quantity": import_result.get("total_cards", 0),
+        "unique_cards_count": import_result.get("unique_cards", 0),
+        "total_collection_value_usd": import_result.get("total_value", 0.0),
+        "errors": errors,
+        "message": f"Successfully imported {len(parsed_cards)} cards into inventory ({mode} mode).",
+    }
+
+
+def _execute_upload_decks(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """
+    Bulk uploads or imports Commander decks into user's Deck Vault.
+    Accepts:
+    - urls: list of deck URLs (ManaBox, Moxfield, Archidekt, Scryfall, MTGGoldfish)
+    - url: single deck URL
+    - decks: list of deck objects ({deck_name, commander, url, text, csv_content, cards, is_pauper})
+    - text / csv_content: decklist text or CSV
+    - deck_name, commander_name, is_pauper: metadata for single deck import
+    """
+    from deck_parser import DeckParser, DeckParseError
+    from deck_analyzer import DeckAnalyzer
+    from providers.scryfall import ScryfallProvider
+
+    raw_urls: list[str] = []
+    if args.get("urls") and isinstance(args["urls"], list):
+        raw_urls.extend([str(u).strip() for u in args["urls"] if str(u).strip()])
+    if args.get("url") and isinstance(args["url"], str) and args["url"].strip():
+        raw_urls.append(args["url"].strip())
+
+    deck_objects = args.get("decks") if isinstance(args.get("decks"), list) else []
+
+    scryfall = ScryfallProvider()
+    analyzer = DeckAnalyzer(scryfall_provider=scryfall)
+
+    imported_decks: list[DeckAnalysis] = []
+    failed_items: list[dict[str, Any]] = []
+
+    # 1. Process URL imports
+    for url in raw_urls:
+        try:
+            parsed = DeckParser.parse(url, source_type="auto")
+            card_names = [c["name"] for c in parsed.get("cards", [])]
+            scryfall_map, _ = scryfall.get_cards_collection(card_names)
+
+            enriched_cards = []
+            for c in parsed.get("cards", []):
+                cname = normalize_card_name(c["name"])
+                meta = scryfall_map.get(cname.lower(), {})
+                if not meta:
+                    for k in get_card_match_keys(cname):
+                        if k in scryfall_map:
+                            meta = scryfall_map[k]
+                            break
+
+                img_uri = meta.get("image_uri") or meta.get("small_image_uri") or c.get("image_uri")
+                art_crop = meta.get("art_crop_uri") or img_uri
+                price_usd = meta.get("prices", {}).get("usd") or c.get("price_usd")
+                card_cmc = meta.get("cmc") if meta.get("cmc") is not None else (c.get("cmc") if c.get("cmc") is not None else 0)
+
+                enriched_cards.append({
+                    "name": cname,
+                    "quantity": c.get("quantity", 1),
+                    "section": c.get("section", "mainboard"),
+                    "set_code": c.get("set_code") or meta.get("set_code", ""),
+                    "collector_number": c.get("collector_number") or meta.get("collector_number", ""),
+                    "image_uri": img_uri,
+                    "small_image_uri": meta.get("small_image_uri") or img_uri,
+                    "art_crop_uri": art_crop,
+                    "mana_cost": meta.get("mana_cost", "") or c.get("mana_cost", ""),
+                    "cmc": card_cmc,
+                    "type_line": meta.get("type_line", "Unknown"),
+                    "oracle_text": meta.get("oracle_text", ""),
+                    "colors": meta.get("colors", []),
+                    "color_identity": meta.get("color_identity", []),
+                    "rarity": meta.get("rarity", ""),
+                    "price_usd": price_usd,
+                    "price_usd_foil": meta.get("prices", {}).get("usd_foil"),
+                })
+
+            cmdr_art = parsed.get("commander_art")
+            if not cmdr_art:
+                for cmd_name in parsed.get("commander", []):
+                    clean_cmd = normalize_card_name(cmd_name)
+                    cmd_meta = scryfall_map.get(clean_cmd.lower(), {})
+                    if cmd_meta.get("art_crop_uri") or cmd_meta.get("image_uri"):
+                        cmdr_art = cmd_meta.get("art_crop_uri") or cmd_meta.get("image_uri")
+                        break
+
+            is_pauper_flag = bool(parsed.get("is_pauper") or parsed.get("deck_format") == "pauper_commander")
+            analyzed = analyzer.analyze({
+                "deck_name": parsed.get("deck_name") or "Commander Deck",
+                "commander": parsed.get("commander", []),
+                "commander_art": cmdr_art,
+                "cards": enriched_cards,
+                "source_type": parsed.get("source_type", "url"),
+                "raw_text": parsed.get("raw_text", ""),
+                "is_pauper": is_pauper_flag,
+                "deck_format": "pauper_commander" if is_pauper_flag else "commander",
+            })
+
+            stats = analyzed.get("stats", {})
+            cmdr_name = ", ".join(analyzed.get("commander", [])) or "Commander"
+            color_id_str = ",".join(stats.get("color_identity", []))
+
+            entry = DeckAnalysis(
+                user_id=user.id,
+                deck_name=analyzed.get("deck_name", "Commander Deck"),
+                commander_name=cmdr_name,
+                commander_art=cmdr_art,
+                source_url=url,
+                source_type=parsed.get("source_type", "url"),
+                raw_decklist=parsed.get("raw_text", ""),
+                cards_data=json.dumps(analyzed.get("cards", [])),
+                stats_json=json.dumps(stats),
+                total_cards=analyzed.get("total_cards", 100),
+                total_value=stats.get("total_value"),
+                avg_cmc=stats.get("avg_cmc"),
+                color_identity=color_id_str,
+                is_pauper=is_pauper_flag,
+                deck_format="pauper_commander" if is_pauper_flag else "commander",
+            )
+            db.session.add(entry)
+            imported_decks.append(entry)
+        except Exception as e:
+            logger.warning(f"MCP upload_decks error for URL {url}: {e}")
+            failed_items.append({"source": url, "error": str(e)})
+
+    # 2. Process deck objects or raw text/csv
+    if deck_objects:
+        candidate_decks = deck_objects
+    elif args.get("text") or args.get("csv_content"):
+        candidate_decks = [{
+            "deck_name": args.get("deck_name") or "Commander Deck",
+            "commander_name": args.get("commander_name"),
+            "text": args.get("text"),
+            "csv_content": args.get("csv_content"),
+            "is_pauper": args.get("is_pauper"),
+        }]
+    else:
+        candidate_decks = []
+
+    for dobj in candidate_decks:
+        try:
+            d_source = dobj.get("text") or dobj.get("csv_content") or dobj.get("url") or ""
+            d_cards = dobj.get("cards")
+            is_pauper_val = dobj.get("is_pauper")
+
+            if d_source:
+                parsed = DeckParser.parse(d_source, source_type="auto", is_pauper=is_pauper_val)
+            elif d_cards and isinstance(d_cards, list):
+                parsed = {
+                    "deck_name": dobj.get("deck_name") or "Commander Deck",
+                    "commander": [dobj["commander_name"]] if dobj.get("commander_name") else [],
+                    "cards": [{"name": (c.get("name") if isinstance(c, dict) else str(c)), "quantity": (c.get("quantity", 1) if isinstance(c, dict) else 1)} for c in d_cards],
+                    "total_cards": sum((c.get("quantity", 1) if isinstance(c, dict) else 1) for c in d_cards),
+                    "source_type": "object",
+                    "raw_text": "",
+                    "is_pauper": bool(is_pauper_val),
+                }
+            else:
+                continue
+
+            if dobj.get("deck_name"):
+                parsed["deck_name"] = dobj["deck_name"]
+            if dobj.get("commander_name"):
+                parsed["commander"] = [dobj["commander_name"]]
+
+            card_names = [c["name"] for c in parsed.get("cards", [])]
+            scryfall_map, _ = scryfall.get_cards_collection(card_names)
+
+            enriched_cards = []
+            for c in parsed.get("cards", []):
+                cname = normalize_card_name(c["name"])
+                meta = scryfall_map.get(cname.lower(), {})
+                if not meta:
+                    for k in get_card_match_keys(cname):
+                        if k in scryfall_map:
+                            meta = scryfall_map[k]
+                            break
+
+                img_uri = meta.get("image_uri") or meta.get("small_image_uri") or c.get("image_uri")
+                art_crop = meta.get("art_crop_uri") or img_uri
+                price_usd = meta.get("prices", {}).get("usd") or c.get("price_usd")
+                card_cmc = meta.get("cmc") if meta.get("cmc") is not None else (c.get("cmc") if c.get("cmc") is not None else 0)
+
+                enriched_cards.append({
+                    "name": cname,
+                    "quantity": c.get("quantity", 1),
+                    "section": c.get("section", "mainboard"),
+                    "set_code": c.get("set_code") or meta.get("set_code", ""),
+                    "collector_number": c.get("collector_number") or meta.get("collector_number", ""),
+                    "image_uri": img_uri,
+                    "small_image_uri": meta.get("small_image_uri") or img_uri,
+                    "art_crop_uri": art_crop,
+                    "mana_cost": meta.get("mana_cost", "") or c.get("mana_cost", ""),
+                    "cmc": card_cmc,
+                    "type_line": meta.get("type_line", "Unknown"),
+                    "oracle_text": meta.get("oracle_text", ""),
+                    "colors": meta.get("colors", []),
+                    "color_identity": meta.get("color_identity", []),
+                    "rarity": meta.get("rarity", ""),
+                    "price_usd": price_usd,
+                    "price_usd_foil": meta.get("prices", {}).get("usd_foil"),
+                })
+
+            cmdr_art = parsed.get("commander_art")
+            if not cmdr_art:
+                for cmd_name in parsed.get("commander", []):
+                    clean_cmd = normalize_card_name(cmd_name)
+                    cmd_meta = scryfall_map.get(clean_cmd.lower(), {})
+                    if cmd_meta.get("art_crop_uri") or cmd_meta.get("image_uri"):
+                        cmdr_art = cmd_meta.get("art_crop_uri") or cmd_meta.get("image_uri")
+                        break
+
+            is_pauper_flag = bool(parsed.get("is_pauper") or parsed.get("deck_format") == "pauper_commander")
+            analyzed = analyzer.analyze({
+                "deck_name": parsed.get("deck_name") or "Commander Deck",
+                "commander": parsed.get("commander", []),
+                "commander_art": cmdr_art,
+                "cards": enriched_cards,
+                "source_type": parsed.get("source_type", "text"),
+                "raw_text": parsed.get("raw_text", ""),
+                "is_pauper": is_pauper_flag,
+                "deck_format": "pauper_commander" if is_pauper_flag else "commander",
+            })
+
+            stats = analyzed.get("stats", {})
+            cmdr_name = ", ".join(analyzed.get("commander", [])) or "Commander"
+            color_id_str = ",".join(stats.get("color_identity", []))
+
+            entry = DeckAnalysis(
+                user_id=user.id,
+                deck_name=analyzed.get("deck_name", "Commander Deck"),
+                commander_name=cmdr_name,
+                commander_art=cmdr_art,
+                source_url=dobj.get("url"),
+                source_type=parsed.get("source_type", "text"),
+                raw_decklist=parsed.get("raw_text", ""),
+                cards_data=json.dumps(analyzed.get("cards", [])),
+                stats_json=json.dumps(stats),
+                total_cards=analyzed.get("total_cards", 100),
+                total_value=stats.get("total_value"),
+                avg_cmc=stats.get("avg_cmc"),
+                color_identity=color_id_str,
+                is_pauper=is_pauper_flag,
+                deck_format="pauper_commander" if is_pauper_flag else "commander",
+            )
+            db.session.add(entry)
+            imported_decks.append(entry)
+        except Exception as e:
+            logger.warning(f"MCP upload_decks error for object {dobj}: {e}")
+            failed_items.append({"source": dobj.get("deck_name") or str(dobj)[:50], "error": str(e)})
+
+    if imported_decks:
+        db.session.commit()
+
+    if not imported_decks and failed_items:
+        return {
+            "error": "Failed to import any Commander decks.",
+            "failed_count": len(failed_items),
+            "failed": failed_items,
+        }
+
+    return {
+        "success": True,
+        "imported_count": len(imported_decks),
+        "failed_count": len(failed_items),
+        "decks": [d.to_dict(include_full=False) for d in imported_decks],
+        "failed": failed_items,
+        "message": f"Successfully imported {len(imported_decks)} Commander deck(s) into your Vault.",
+    }
+
+
+def _execute_reconcile_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """
+    Bulk removes or reconciles cards from user's watchlist that were acquired/purchased.
+    Optionally ingests them into UserInventoryCard if add_to_inventory=True.
+    """
+    card_ids = args.get("card_ids") if isinstance(args.get("card_ids"), list) else []
+    add_to_inventory = bool(args.get("add_to_inventory", False))
+    binder_name = (args.get("binder_name") or "Acquired").strip() or "Acquired"
+    condition = (args.get("condition") or "Near Mint").strip() or "Near Mint"
+
+    user_targets = WatchlistItem.query.filter_by(user_id=user.id).all()
+    if not user_targets:
+        return {
+            "total_requested": 0,
+            "removed_count": 0,
+            "inventory_added_count": 0,
+            "removed_items": [],
+            "message": "Watchlist is currently empty; no items to reconcile.",
+        }
+
+    matched_targets: dict[int, WatchlistItem] = {}
+    purchased_entries: list[dict[str, Any]] = []
+
+    # 1. Direct card_ids
+    if card_ids:
+        for cid in card_ids:
+            try:
+                target = next((t for t in user_targets if t.id == int(cid)), None)
+                if target:
+                    matched_targets[target.id] = target
+                    purchased_entries.append({
+                        "name": target.name,
+                        "set_code": target.set_code,
+                        "collector_number": target.collector_number,
+                        "foil": target.finish or "nonfoil",
+                        "quantity": 1,
+                    })
+            except (ValueError, TypeError):
+                pass
+
+    # 2. Text / cards input
+    extracted_items = _parse_card_input_list(args)
+    for item in extracted_items:
+        clean_name = item["clean_name"]
+        item_qty = item.get("quantity", 1)
+        purchased_entries.append(item)
+        for target in user_targets:
+            if card_names_match(target.name, clean_name):
+                matched_targets[target.id] = target
+
+    if not matched_targets and not extracted_items and not card_ids:
+        return {"error": "No purchase text, card names, or card_ids provided to reconcile."}
+
+    removed_items_serialized = [t.to_dict() for t in matched_targets.values()]
+
+    # Delete watchlist rows (SQLAlchemy cascade deletes associated vendor_price records)
+    if matched_targets:
+        for t in matched_targets.values():
+            db.session.delete(t)
+
+    # Ingest into inventory if requested
+    inventory_added_count = 0
+    if add_to_inventory and purchased_entries:
+        from inventory_manager import InventoryManager
+        inv_cards = []
+        for p in purchased_entries:
+            cname = p.get("clean_name") or p.get("raw_query") or p.get("name")
+            if not cname:
+                continue
+            inv_cards.append({
+                "name": cname,
+                "raw_name": p.get("raw_query") or cname,
+                "set_code": p.get("set_code") or "",
+                "collector_number": p.get("collector_number") or "",
+                "quantity": p.get("quantity", 1),
+                "foil": p.get("foil") or "normal",
+                "condition": p.get("condition") or condition,
+                "binder_name": p.get("binder_name") or binder_name,
+            })
+        if inv_cards:
+            inv_mgr = InventoryManager()
+            inv_mgr.import_inventory(user_id=user.id, parsed_cards=inv_cards, mode="merge")
+            inventory_added_count = len(inv_cards)
+
+    db.session.commit()
+
+    return {
+        "success": True,
+        "removed_count": len(matched_targets),
+        "removed_items": removed_items_serialized,
+        "inventory_added_count": inventory_added_count,
+        "message": f"Successfully de-registered {len(matched_targets)} watchlist card(s)." + (f" Ingested {inventory_added_count} item(s) into inventory under '{binder_name}'." if add_to_inventory else ""),
     }
 
 
@@ -1626,10 +2672,24 @@ TOOL_HANDLERS = {
     "get_deck_analyses": _execute_get_deck_analyses,
     "get_deck_cards": _execute_get_deck_cards,
     "search_card_prices": _execute_search_card_prices,
+    "bulk_search_card_prices": _execute_search_card_prices,
     "add_to_watchlist": _execute_add_to_watchlist,
     "add_cards_to_watchlist": _execute_add_to_watchlist,
     "bulk_add_to_watchlist": _execute_add_to_watchlist,
     "check_card_deck_fit": _execute_check_card_deck_fit,
+    "bulk_check_card_deck_fit": _execute_check_card_deck_fit,
+    "upload_inventory": _execute_upload_inventory,
+    "add_to_inventory": _execute_upload_inventory,
+    "bulk_upload_inventory": _execute_upload_inventory,
+    "import_inventory": _execute_upload_inventory,
+    "upload_decks": _execute_upload_decks,
+    "import_decks": _execute_upload_decks,
+    "bulk_import_decks": _execute_upload_decks,
+    "save_deck": _execute_upload_decks,
+    "reconcile_watchlist": _execute_reconcile_watchlist,
+    "remove_from_watchlist": _execute_reconcile_watchlist,
+    "bulk_remove_watchlist": _execute_reconcile_watchlist,
+    "reconcile_purchases": _execute_reconcile_watchlist,
 }
 
 

@@ -228,7 +228,7 @@ class TestChimeraMcpServer(unittest.TestCase):
         )
         self.assertEqual(list_resp.status_code, 200)
         tools = list_resp.get_json()["result"]["tools"]
-        self.assertEqual(len(tools), 10)
+        self.assertEqual(len(tools), 13)
         tool_names = {t["name"] for t in tools}
         self.assertIn("get_inventory_summary", tool_names)
         self.assertIn("check_inventory_cards", tool_names)
@@ -240,6 +240,9 @@ class TestChimeraMcpServer(unittest.TestCase):
         self.assertIn("search_card_prices", tool_names)
         self.assertIn("add_to_watchlist", tool_names)
         self.assertIn("check_card_deck_fit", tool_names)
+        self.assertIn("upload_inventory", tool_names)
+        self.assertIn("upload_decks", tool_names)
+        self.assertIn("reconcile_watchlist", tool_names)
 
     def test_mcp_sse_transport_and_messages(self):
         """Verifies GET /mcp returns 405 per Streamable HTTP spec and /mcp/sse + /mcp/messages works for legacy SSE."""
@@ -260,7 +263,7 @@ class TestChimeraMcpServer(unittest.TestCase):
             json={"jsonrpc": "2.0", "id": 10, "method": "tools/list"},
         )
         self.assertEqual(msg_resp.status_code, 200)
-        self.assertEqual(len(msg_resp.get_json()["result"]["tools"]), 10)
+        self.assertEqual(len(msg_resp.get_json()["result"]["tools"]), 13)
 
     def _call_tool(self, name: str, arguments: dict | None = None, expect_error: bool = False) -> dict:
         resp = self.client.post(
@@ -566,6 +569,191 @@ class TestChimeraMcpServer(unittest.TestCase):
         sol_fit = self._call_tool("check_card_deck_fit", {"card_name": "Sol Ring"})
         self.assertTrue(sol_fit["deck_fit_breakdown"][0]["already_in_deck"])
         self.assertEqual(sol_fit["deck_fit_breakdown"][0]["ai_rating_in_deck"]["rating"], 10)
+
+        # Bulk check fit
+        bulk_fit = self._call_tool("check_card_deck_fit", {"cards": ["Rhystic Study", "Sol Ring"]})
+        self.assertEqual(bulk_fit["total_cards_evaluated"], 2)
+        self.assertEqual(len(bulk_fit["cards"]), 2)
+
+        # Batch deck cards and analyses
+        batch_deck_cards = self._call_tool("get_deck_cards", {"deck_ids": [self.deck_id]})
+        self.assertEqual(batch_deck_cards["total_decks"], 1)
+
+        batch_deck_analyses = self._call_tool("get_deck_analyses", {"deck_ids": [self.deck_id]})
+        self.assertEqual(batch_deck_analyses["total_decks"], 1)
+
+    @patch("inventory_manager.InventoryManager.start_background_enrichment")
+    def test_bulk_upload_inventory(self, mock_enrich):
+        """Verifies upload_inventory tool with card objects, decklist text, and CSV content."""
+        mock_enrich.return_value = {"is_running": False}
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = ({}, [])
+            # 1. Upload inventory via card objects in merge mode
+            res1 = self._call_tool(
+                "upload_inventory",
+                {
+                    "cards": [
+                        {"name": "Mana Drain", "quantity": 2, "foil": "foil", "binder_name": "Blue Counterspells"},
+                        {"name": "Sol Ring", "quantity": 1, "foil": "normal", "binder_name": "Commander Core"},
+                    ],
+                    "mode": "merge",
+                },
+            )
+            self.assertTrue(res1["success"])
+            self.assertEqual(res1["mode"], "merge")
+            self.assertEqual(res1["cards_parsed_count"], 2)
+
+            # Verify inventory has incremented Sol Ring count to 5 and added Mana Drain
+            check_sol = self._call_tool("check_inventory_cards", {"card_name": "Sol Ring"})
+            self.assertEqual(check_sol["total_owned_quantity"], 5)
+
+            check_drain = self._call_tool("check_inventory_cards", {"card_name": "Mana Drain"})
+            self.assertEqual(check_drain["total_owned_quantity"], 2)
+            self.assertTrue(check_drain["found_cards"][0]["has_foil"])
+
+            # 2. Upload inventory via decklist text
+            res2 = self._call_tool(
+                "upload_inventory",
+                {
+                    "text": "1x Fierce Guardianship\n2 Deflecting Swat",
+                    "binder_name": "Commander Free Spells",
+                },
+            )
+            self.assertTrue(res2["success"])
+            self.assertEqual(res2["cards_parsed_count"], 2)
+
+            check_free = self._call_tool("check_inventory_cards", {"cards": ["Fierce Guardianship", "Deflecting Swat"]})
+            self.assertEqual(check_free["found_count"], 2)
+
+            # 3. Upload inventory via ManaBox CSV content
+            csv_sample = (
+                "Binder Name,Name,Set code,Set name,Collector number,Foil,Rarity,Quantity\n"
+                "Vintage,Black Lotus,2ED,Unlimited Edition,232,normal,Rare,1\n"
+                "Vintage,Mox Sapphire,2ED,Unlimited Edition,264,normal,Rare,1\n"
+            )
+            res3 = self._call_tool("upload_inventory", {"csv_content": csv_sample, "mode": "merge"})
+            self.assertTrue(res3["success"])
+            self.assertEqual(res3["cards_parsed_count"], 2)
+
+            check_p9 = self._call_tool("check_inventory_cards", {"cards": ["Black Lotus", "Mox Sapphire"]})
+            self.assertEqual(check_p9["found_count"], 2)
+
+    def test_bulk_upload_decks(self):
+        """Verifies upload_decks tool with text decklist and deck objects."""
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = ({}, [])
+            # 1. Upload deck via text
+            decklist = (
+                "// Commander\n"
+                "1 Edgar Markov\n\n"
+                "// Mainboard\n"
+                "1 Sol Ring\n"
+                "1 Blood Artist\n"
+                "1 Cordial Vampire\n"
+            )
+            res = self._call_tool(
+                "upload_decks",
+                {
+                    "text": decklist,
+                    "deck_name": "Edgar Markov Vampire Aristocrats",
+                    "commander_name": "Edgar Markov",
+                },
+            )
+            self.assertTrue(res["success"])
+            self.assertEqual(res["imported_count"], 1)
+            self.assertEqual(res["decks"][0]["deck_name"], "Edgar Markov Vampire Aristocrats")
+
+            # 2. Upload multiple deck objects
+            res_multi = self._call_tool(
+                "upload_decks",
+                {
+                    "decks": [
+                        {
+                            "deck_name": "Krenko Goblin Mob",
+                            "commander_name": "Krenko, Mob Boss",
+                            "text": "1 Krenko, Mob Boss\n1 Goblin Chieftain\n1 Sol Ring",
+                        },
+                        {
+                            "deck_name": "Atraxa Superfriends",
+                            "commander_name": "Atraxa, Praetors' Voice",
+                            "text": "1 Atraxa, Praetors' Voice\n1 Sol Ring",
+                        },
+                    ]
+                },
+            )
+            self.assertTrue(res_multi["success"])
+            self.assertEqual(res_multi["imported_count"], 2)
+
+            # Query deck analyses via MCP
+            q_decks = self._call_tool("get_deck_analyses", {"queries": ["Edgar", "Krenko", "Atraxa"]})
+            self.assertEqual(q_decks["total_decks"], 3)
+
+    @patch("inventory_manager.InventoryManager.start_background_enrichment")
+    def test_reconcile_watchlist(self, mock_enrich):
+        """Verifies reconcile_watchlist tool with card names, TCGplayer purchase manifest, and inventory ingestion."""
+        mock_enrich.return_value = {"is_running": False}
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = (
+                {
+                    "force of will": {"id": "sf-fow-1", "name": "Force of Will", "prices": {"usd": "65.00"}},
+                    "mana vault": {"id": "sf-mv-1", "name": "Mana Vault", "prices": {"usd": "45.00"}},
+                },
+                [],
+            )
+            self._call_tool("add_to_watchlist", {"cards": ["Force of Will", "Mana Vault"], "target_price": 50.0})
+
+        # Verify added to watchlist
+        wl_before = self._call_tool("get_watchlist", {"cards": ["Force of Will", "Mana Vault"]})
+        self.assertEqual(wl_before["total_matching"], 2)
+
+        # Reconcile Force of Will via card name with add_to_inventory=True
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = ({}, [])
+            rec_res1 = self._call_tool(
+                "reconcile_watchlist",
+                {
+                    "cards": ["Force of Will"],
+                    "add_to_inventory": True,
+                    "binder_name": "Acquired Purchases",
+                },
+            )
+            self.assertTrue(rec_res1["success"])
+            self.assertEqual(rec_res1["removed_count"], 1)
+            self.assertEqual(rec_res1["inventory_added_count"], 1)
+
+        # Verify Force of Will removed from watchlist and present in inventory
+        wl_after1 = self._call_tool("get_watchlist", {"cards": ["Force of Will"]})
+        self.assertEqual(wl_after1["total_matching"], 0)
+
+        inv_check = self._call_tool("check_inventory_cards", {"card_name": "Force of Will"})
+        self.assertTrue(inv_check["all_owned"])
+        self.assertEqual(inv_check["found_cards"][0]["binders"], ["Acquired Purchases"])
+
+        # Reconcile Mana Vault via TCGplayer format text
+        tcg_text = "1\tMagic - Double Masters - Mana Vault - Near Mint"
+        rec_res2 = self._call_tool("reconcile_watchlist", {"text": tcg_text})
+        self.assertTrue(rec_res2["success"])
+        self.assertEqual(rec_res2["removed_count"], 1)
+
+        wl_after2 = self._call_tool("get_watchlist", {"cards": ["Mana Vault"]})
+        self.assertEqual(wl_after2["total_matching"], 0)
+
+    def test_bulk_search_card_prices(self):
+        """Verifies search_card_prices tool with single card and bulk list."""
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = (
+                {
+                    "cyclonic rift": {"name": "Cyclonic Rift", "set_code": "RVR", "prices": {"usd": "28.50"}},
+                    "rhystic study": {"name": "Rhystic Study", "set_code": "WOT", "prices": {"usd": "42.00"}},
+                },
+                [],
+            )
+            bulk_prices = self._call_tool("search_card_prices", {"cards": ["Cyclonic Rift", "Rhystic Study"]})
+            self.assertEqual(bulk_prices["total_queried"], 2)
+            self.assertEqual(len(bulk_prices["results"]), 2)
+            # Sol Ring and Rhystic Study were seeded in setUp; Rhystic Study should be owned
+            rhystic = next(c for c in bulk_prices["results"] if c["card_name"] == "Rhystic Study")
+            self.assertEqual(rhystic["owned_quantity"], 2)
 
     def test_gemini_hub_ui_and_cloud_run_https_url(self):
         """Verifies /gemini-hub renders Cloud Run HTTPS MCP URL, token rotation, and tool testing API."""

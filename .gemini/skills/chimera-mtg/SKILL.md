@@ -9,17 +9,21 @@ Use this skill when the user asks questions about their Magic: The Gathering col
 
 ## Available MCP Tools
 
-The Chimaera MCP engine ([chimera_mcp.py](file:///c:/Users/jpmcl/Python%20Development/Chimera/chimera_mcp.py)) exposes 8 tools:
+The Chimaera MCP engine ([chimera_mcp.py](file:///c:/Users/jpmcl/Python%20Development/Chimera/chimera_mcp.py)) exposes 13 tools with full bulk upload and batch input support:
 
 1. `get_inventory_summary(top_n=15)`: Returns total card quantity, unique printings, total USD market value, foil breakdown, binder breakdown, color identity distribution, and top valuable cards.
-2. `search_inventory(query, set_code, foil, condition, binder_name, type_line, color_identity, min_price, limit)`: Searches owned cards in `UserInventoryCard`.
-3. `get_watchlist(query, tag, deals_only, limit)`: Lists monitored cards on the user's `WatchlistItem` registry with current vendor prices and target thresholds.
-4. `get_active_deals(category="all")`: Returns active deals across single-card watchlists, MicroCenter Charlotte (`MicrocenterItem`), and Best Buy (`BestBuyItem`).
-5. `get_deck_analyses(deck_id, query, include_cards)`: Lists saved Commander decks or retrieves full AI tactical breakdown, card ratings, stats, and upgrades for a deck.
-6. `get_deck_cards(query, deck_id, group_by_type)`: Returns all cards in a Commander deck, with quantities, types, mana costs, CMC, USD prices, categorized by card type and formatted as a clean text decklist.
-7. `search_card_prices(card_name, set_code)`: Queries live Scryfall pricing and checks inventory ownership + watchlist status.
-8. `add_to_watchlist(cards, card_names, card_name, text, target_price, target_strategy, set_code, finish, tag)`: Adds or updates one or multiple cards on the user's surveillance watchlist. Accepts a list of card names or card objects, semicolon-separated names, or a single card name.
-9. `check_card_deck_fit(card_name)`: Evaluates whether a card is already in the user's Commander decks, recommended in saved upgrade plans, or owned in inventory.
+2. `check_inventory_cards(cards, card_names, card_name, text, csv_content, binder_name, include_details, match_mode)`: Fast batch or single ownership verification across inventory.
+3. `search_inventory(query, set_code, foil, condition, binder_name, type_line, color_identity, min_price, limit)`: Searches owned cards in `UserInventoryCard`. Automatically routes bulk card inputs to `check_inventory_cards`.
+4. `upload_inventory(cards, card_names, card_name, text, csv_content, gdrive_url, mode="merge", binder_name, condition, foil)`: Bulk uploads or imports cards into collection inventory from lists, decklists, ManaBox CSV, or Google Drive link.
+5. `get_watchlist(query, cards, card_names, text, tag, tags, deals_only, limit)`: Lists monitored cards on the user's `WatchlistItem` registry with current vendor prices and target thresholds. Supports single and bulk card/tag filtering.
+6. `get_active_deals(category="all")`: Returns active deals across single-card watchlists, MicroCenter Charlotte (`MicrocenterItem`), and Best Buy (`BestBuyItem`).
+7. `get_deck_analyses(deck_id, deck_ids, query, queries, include_cards)`: Lists saved Commander decks or retrieves full AI tactical breakdowns, card ratings, stats, and upgrades for single or multiple decks.
+8. `get_deck_cards(query, queries, deck_id, deck_ids, group_by_type)`: Returns all cards in one or multiple Commander decks categorized by card type and formatted as clean text decklists.
+9. `upload_decks(urls, url, decks, text, csv_content, deck_name, commander_name, is_pauper)`: Bulk imports or saves Commander decks into the Vault from ManaBox/Moxfield/Archidekt/Scryfall URLs, text decklists, or CSV exports.
+10. `search_card_prices(cards, card_names, card_name, text, csv_content, set_code)`: Queries live Scryfall pricing for a single card or bulk list of cards, cross-referencing inventory ownership and watchlist status.
+11. `add_to_watchlist(cards, card_names, card_name, text, csv_content, target_price, target_strategy, set_code, finish, tag)`: Bulk adds or updates cards on the surveillance watchlist from card arrays, decklists, or CSV.
+12. `reconcile_watchlist(text, cards, card_names, card_name, card_ids, add_to_inventory, binder_name, condition)`: Bulk removes acquired cards from watchlist using TCGplayer order text, card lists, or IDs, with optional collection inventory ingestion.
+13. `check_card_deck_fit(cards, card_names, card_name, text, csv_content, deck_id, query)`: Evaluates how one or multiple candidate cards fit across the user's saved Commander decks, checking ownership, current inclusion, and upgrade recommendations.
 
 ## Connecting via Google Cloud Run (Gemini Mobile App & Connected Apps)
 
