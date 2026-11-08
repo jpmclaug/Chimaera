@@ -753,15 +753,15 @@ function switchVaultMode(mode) {
     if (mode === 'table') {
         if (gridContainer) gridContainer.classList.add('hidden');
         if (tableContainer) tableContainer.classList.remove('hidden');
-        if (gridBtn) gridBtn.className = "px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-mono rounded-none text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1";
-        if (tableBtn) tableBtn.className = "px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-mono rounded-none bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer flex items-center gap-1";
+        if (gridBtn) gridBtn.className = "cmdr-touch-btn min-h-[38px] px-3 py-1 text-xs font-mono rounded-none text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1.5";
+        if (tableBtn) tableBtn.className = "cmdr-touch-btn min-h-[38px] px-3 py-1 text-xs font-mono rounded-none bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer flex items-center gap-1.5";
         if (tableControls) tableControls.classList.remove('hidden');
         renderMatrixTable(filteredDecks);
     } else {
         if (gridContainer) gridContainer.classList.remove('hidden');
         if (tableContainer) tableContainer.classList.add('hidden');
-        if (gridBtn) gridBtn.className = "px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-mono rounded-none bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer flex items-center gap-1";
-        if (tableBtn) tableBtn.className = "px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-mono rounded-none text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1";
+        if (gridBtn) gridBtn.className = "cmdr-touch-btn min-h-[38px] px-3 py-1 text-xs font-mono rounded-none bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer flex items-center gap-1.5";
+        if (tableBtn) tableBtn.className = "cmdr-touch-btn min-h-[38px] px-3 py-1 text-xs font-mono rounded-none text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1.5";
         if (tableControls) tableControls.classList.add('hidden');
         renderVaultGrid(filteredDecks);
     }
@@ -793,7 +793,7 @@ function switchMainView(viewName) {
     // Reset buttons to inactive styling
     Object.entries(buttons).forEach(([k, b]) => {
         if (!b) return;
-        b.className = "px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
+        b.className = "cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
     });
 
     // Activate the requested view
@@ -802,7 +802,7 @@ function switchMainView(viewName) {
 
     const targetBtn = buttons[viewName] || buttons.vault;
     if (targetBtn) {
-        targetBtn.className = "px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
+        targetBtn.className = "cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap";
     }
 
     if (viewName === 'vault') {
@@ -989,21 +989,21 @@ function renderVaultGrid(decks) {
                 </div>
 
                 <!-- Card Actions Footer -->
-                <div class="p-3 sm:p-4 pt-0 grid grid-cols-2 sm:grid-cols-4 gap-1.5 border-t border-[#263245] mt-2">
-                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="px-2 py-1.5 sm:py-2 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-none border border-cyan-500/30 hover:border-cyan-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Deep-dive deck analysis">
-                        <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <div class="p-3 sm:p-4 pt-0 grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-[#263245] mt-2">
+                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id})" class="cmdr-touch-btn min-h-[42px] sm:min-h-[38px] px-2.5 py-2 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 font-mono text-xs font-bold uppercase rounded-none border border-cyan-500/30 hover:border-cyan-500 transition text-center flex items-center justify-center gap-1.5 cursor-pointer" title="Deep-dive deck analysis">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         <span>Inspect</span>
                     </button>
-                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id}, 'upgrades')" class="px-2 py-1.5 sm:py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-none border border-emerald-500/30 hover:border-emerald-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="View deck upgrades & binder swaps">
-                        <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    <button onclick="event.stopPropagation(); loadSavedDeckIntoInspector(${d.id}, 'upgrades')" class="cmdr-touch-btn min-h-[42px] sm:min-h-[38px] px-2.5 py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 font-mono text-xs font-bold uppercase rounded-none border border-emerald-500/30 hover:border-emerald-500 transition text-center flex items-center justify-center gap-1.5 cursor-pointer" title="View deck upgrades & binder swaps">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
                         <span>Upgrade</span>
                     </button>
-                    <button onclick="event.stopPropagation(); syncSavedDeck(${d.id})" class="px-2 py-1.5 sm:py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-none border border-[#263245] hover:border-slate-600 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Re-sync deck list from ManaBox">
-                        <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <button onclick="event.stopPropagation(); syncSavedDeck(${d.id})" class="cmdr-touch-btn cmdr-refresh-btn min-h-[42px] sm:min-h-[38px] px-2.5 py-2 font-mono text-xs font-bold uppercase rounded-none transition text-center flex items-center justify-center gap-1.5 cursor-pointer" title="Re-sync deck list from ManaBox">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         <span>Sync</span>
                     </button>
-                    <button onclick="event.stopPropagation(); handleDeleteDeckClick(${d.id})" class="px-2 py-1.5 sm:py-2 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-mono text-[9px] xs:text-[10px] sm:text-[11px] font-bold uppercase rounded-none border border-rose-500/30 hover:border-rose-500 transition text-center flex items-center justify-center gap-1 cursor-pointer" title="Delete deck from Vault">
-                        <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    <button onclick="event.stopPropagation(); handleDeleteDeckClick(${d.id})" class="cmdr-touch-btn min-h-[42px] sm:min-h-[38px] px-2.5 py-2 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white font-mono text-xs font-bold uppercase rounded-none border border-rose-500/30 hover:border-rose-500 transition text-center flex items-center justify-center gap-1.5 cursor-pointer" title="Delete deck from Vault">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         <span>Delete</span>
                     </button>
                 </div>
@@ -2428,21 +2428,21 @@ function renderMobileTiles(cards, ratingsMap) {
                         ${sharedBadge}
                         ${roleBadges}
                     </div>
-                    <div class="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+                    <div class="flex items-center gap-2 flex-shrink-0 ml-auto">
                         <button onclick="handleWatchClick(this)" 
                                 data-name="${escapeHtml(name)}" 
                                 data-set="${escapeHtml(setCode)}" 
                                 title="Track in Watchlist"
-                                class="watch-card-btn px-2 py-1 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded-none text-[9px] sm:text-[10px] font-mono uppercase font-bold border border-[#263245] transition flex items-center gap-1 cursor-pointer">
-                            <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                class="watch-card-btn cmdr-touch-btn min-h-[38px] px-3 py-1.5 bg-[#1B2230] hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded-none text-xs font-mono uppercase font-bold border border-[#263245] transition flex items-center justify-center gap-1.5 cursor-pointer">
+                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             <span>Watch</span>
                         </button>
                         ${c.section !== 'commander' ? `
                         <button onclick="handleCutCardClick(this)"
                                 data-card-name="${escapeHtml(name)}"
                                 title="Cut / Remove card from deck"
-                                class="cut-card-btn px-2 py-1 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-400 rounded-none text-[9px] sm:text-[10px] font-mono uppercase font-bold border border-rose-500/30 transition flex items-center gap-1 cursor-pointer">
-                            <svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                class="cut-card-btn cmdr-touch-btn min-h-[38px] px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-400 rounded-none text-xs font-mono uppercase font-bold border border-rose-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer">
+                            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             <span>Cut</span>
                         </button>` : ''}
                     </div>
@@ -3713,6 +3713,9 @@ async function deleteSavedDeck(deckId, deckName) {
 
 // Refresh Vault List
 async function refreshVaultList() {
+    const refreshBtn = document.getElementById('vaultRefreshBtn');
+    const icon = refreshBtn ? refreshBtn.querySelector('svg') : null;
+    if (icon) icon.classList.add('animate-spin');
     try {
         const resp = await fetch('/api/deck/history');
         if (resp.ok) {
@@ -3725,9 +3728,17 @@ async function refreshVaultList() {
                 const inspSel = document.getElementById('inspectorDeckSelect');
                 if (inspSel) inspSel.value = activeDeck.id;
             }
+            if (typeof showToast === 'function') {
+                showToast("Deck Vault refreshed", "success");
+            }
         }
     } catch (e) {
         console.error("Failed to refresh vault list", e);
+        if (typeof showToast === 'function') {
+            showToast("Failed to refresh vault", "error");
+        }
+    } finally {
+        if (icon) icon.classList.remove('animate-spin');
     }
 }
 
@@ -3840,19 +3851,20 @@ function renderMatrixTable(decks) {
                 </td>
                 <td class="py-3 px-4 text-right">
                     <div class="flex items-center justify-end gap-1.5">
-                        <button onclick="syncSavedDeck(${d.id})" title="Re-sync deck list from ManaBox" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-none text-[10px] border border-[#263245] transition cursor-pointer">
+                        <button onclick="syncSavedDeck(${d.id})" title="Re-sync deck list from ManaBox" class="cmdr-touch-btn cmdr-refresh-btn min-h-[38px] px-2.5 py-1 text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1 rounded-none">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            <span>Sync</span>
                         </button>
-                        <button onclick="quickCompareWithFirst(${d.id})" title="Quick compare with Slot 1" class="px-2 py-1 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded-none text-[10px] font-bold border border-[#263245] transition cursor-pointer">
+                        <button onclick="quickCompareWithFirst(${d.id})" title="Quick compare with Slot 1" class="cmdr-touch-btn min-h-[38px] px-2.5 py-1 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 rounded-none text-xs font-bold border border-[#263245] transition cursor-pointer flex items-center justify-center">
                             VS
                         </button>
-                        <button onclick="loadSavedDeckIntoInspector(${d.id}, 'upgrades')" title="View deck upgrades & binder swaps" class="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 rounded-none text-[10px] font-bold border border-emerald-500/30 transition cursor-pointer">
+                        <button onclick="loadSavedDeckIntoInspector(${d.id}, 'upgrades')" title="View deck upgrades & binder swaps" class="cmdr-touch-btn min-h-[38px] px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 rounded-none text-xs font-bold border border-emerald-500/30 transition cursor-pointer flex items-center justify-center">
                             Upgrades
                         </button>
-                        <button onclick="loadSavedDeckIntoInspector(${d.id})" title="Inspect Deck" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-none text-[10px] font-bold border border-[#263245] transition cursor-pointer">
+                        <button onclick="loadSavedDeckIntoInspector(${d.id})" title="Inspect Deck" class="cmdr-touch-btn min-h-[38px] px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-none text-xs font-bold border border-[#263245] transition cursor-pointer flex items-center justify-center">
                             Inspect &rarr;
                         </button>
-                        <button onclick="handleDeleteDeckClick(${d.id})" title="Delete deck from Vault" class="p-1.5 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white rounded-none text-[10px] border border-rose-500/30 transition cursor-pointer">
+                        <button onclick="handleDeleteDeckClick(${d.id})" title="Delete deck from Vault" class="cmdr-touch-btn min-h-[38px] px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white rounded-none text-xs border border-rose-500/30 transition cursor-pointer flex items-center justify-center">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     </div>
@@ -3909,9 +3921,9 @@ function setColorFilter(color) {
     currentColorFilter = color;
     document.querySelectorAll('.color-filter-btn').forEach(btn => {
         if (btn.getAttribute('data-color') === color) {
-            btn.className = "color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 cursor-pointer shadow-sm";
+            btn.className = "color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 cursor-pointer shadow-sm flex items-center justify-center";
         } else {
-            btn.className = "color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] cursor-pointer";
+            btn.className = "color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] cursor-pointer flex items-center justify-center";
         }
     });
     filterVaultDecks();
@@ -3923,15 +3935,15 @@ function setFormatFilter(fmt) {
         const btnFmt = btn.getAttribute('data-format');
         if (btnFmt === fmt) {
             if (fmt === 'pauper_commander') {
-                btn.className = "format-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-purple-600 text-white shadow-sm cursor-pointer";
+                btn.className = "format-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-h-[36px] sm:min-h-[28px] text-[11px] font-mono font-bold rounded-none bg-purple-600 text-white shadow-sm cursor-pointer flex items-center justify-center";
             } else {
-                btn.className = "format-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 font-bold shadow-sm cursor-pointer";
+                btn.className = "format-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-h-[36px] sm:min-h-[28px] text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 font-bold shadow-sm cursor-pointer flex items-center justify-center";
             }
         } else {
             if (btnFmt === 'pauper_commander') {
-                btn.className = "format-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-purple-950/40 text-purple-300 hover:text-purple-100 border border-purple-500/40 transition cursor-pointer";
+                btn.className = "format-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-h-[36px] sm:min-h-[28px] text-[11px] font-mono font-bold rounded-none bg-purple-950/40 text-purple-300 hover:text-purple-100 border border-purple-500/40 transition cursor-pointer flex items-center justify-center";
             } else {
-                btn.className = "format-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer";
+                btn.className = "format-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-h-[36px] sm:min-h-[28px] text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer flex items-center justify-center";
             }
         }
     });
@@ -5850,7 +5862,7 @@ function renderTacticsCard(secKey, entry, isStale) {
                     <span class="text-base">${getTacticsIcon(secKey)}</span>
                     <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider">${escapeHtml(getTacticsTitle(secKey))}</h4>
                 </div>
-                <button onclick="generateTacticsSection('${secKey}')" class="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-[10px] font-mono font-bold uppercase transition rounded-none cursor-pointer">
+                <button onclick="generateTacticsSection('${secKey}')" class="cmdr-touch-btn min-h-[38px] px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase transition rounded-none cursor-pointer flex items-center gap-1">
                     ⚡ Generate
                 </button>
             </div>
@@ -5872,10 +5884,11 @@ function renderTacticsCard(secKey, entry, isStale) {
                 <h4 class="text-xs font-mono font-bold text-white uppercase tracking-wider">${escapeHtml(getTacticsTitle(secKey))}</h4>
                 ${isStale ? `<span class="text-[9px] px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold uppercase">Stale</span>` : `<span class="text-[9px] px-1.5 py-0.2 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">Synced</span>`}
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                 <span class="text-[10px] font-mono text-slate-500">${escapeHtml(genDate)} &bull; ${escapeHtml(modelUsed)}</span>
-                <button onclick="generateTacticsSection('${secKey}')" id="btn-regen-${secKey}" title="Regenerate this advice card" class="p-1 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 border border-[#263245] rounded-none transition cursor-pointer">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <button onclick="generateTacticsSection('${secKey}')" id="btn-regen-${secKey}" title="Regenerate this advice card" class="cmdr-touch-btn cmdr-refresh-btn min-h-[38px] px-3 py-1 text-xs font-mono font-bold uppercase rounded-none transition cursor-pointer flex items-center gap-1.5 flex-shrink-0">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Refresh</span>
                 </button>
             </div>
         </div>

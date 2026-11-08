@@ -141,6 +141,72 @@ class TestMobileIconsAndManifest(unittest.TestCase):
         self.assertIn("function closeMobileDrawer()", js)
         self.assertIn("function toggleMobileDrawer()", js)
 
+    def test_commander_hub_mobile_ui(self):
+        """Verify mobile Commander Hub UI touch targets, refresh buttons, and responsive controls."""
+        from models import db, User, AllowedEmail
+        with self.app.app_context():
+            db.create_all()
+            if not User.query.filter_by(email="pilot@chimaera.mtg").first():
+                user = User(
+                    email="pilot@chimaera.mtg",
+                    name="Pilot",
+                    is_admin=True,
+                    is_active=True,
+                )
+                db.session.add(user)
+                db.session.commit()
+            user = User.query.filter_by(email="pilot@chimaera.mtg").first()
+            user_id = user.id
+
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = user_id
+            sess["user_email"] = "pilot@chimaera.mtg"
+            sess["is_admin"] = True
+
+        # 1. Verify custom.css has mobile touch target utilities
+        css_res = self.client.get("/static/css/custom.css")
+        self.assertEqual(css_res.status_code, 200)
+        css = css_res.data.decode("utf-8")
+        self.assertIn(".cmdr-touch-btn", css)
+        self.assertIn(".cmdr-refresh-btn", css)
+        self.assertIn(".cmdr-pill-btn", css)
+        self.assertIn("min-height: 42px", css)
+
+        # 2. Verify Commander Hub renders optimized mobile action buttons
+        hub_res = self.client.get("/commander")
+        self.assertEqual(hub_res.status_code, 200)
+        html = hub_res.data.decode("utf-8")
+
+        # Top view buttons & mobile quick deck select
+        self.assertIn('id="viewVaultBtn"', html)
+        self.assertIn('id="quickDeckSelectMobile"', html)
+        self.assertIn('cmdr-touch-btn', html)
+
+        # Vault filter & grid
+        self.assertIn('id="vaultRefreshBtn"', html)
+        self.assertIn('grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', html)
+        self.assertIn('id="vaultSortSelect"', html)
+
+        # Inspector action bar (no longer hidden behind collapsed toggle on mobile)
+        self.assertIn('id="inspectorActionBtns"', html)
+        self.assertIn('id="inspectorSyncBtn"', html)
+        self.assertIn('id="inspectorRerunAiBtn"', html)
+
+        # Tabs & Tactical sub-actions
+        self.assertIn('id="insp-tab-stats"', html)
+        self.assertIn('id="insp-tab-cards"', html)
+        self.assertIn('id="insp-tab-tactics"', html)
+        self.assertIn('id="refreshUpgradesBtn"', html)
+        self.assertIn('id="btnRegenerateStaleTactics"', html)
+
+        # 3. Verify static/js/commander_hub.js has mobile touch & refresh updates
+        js_res = self.client.get("/static/js/commander_hub.js")
+        self.assertEqual(js_res.status_code, 200)
+        hub_js = js_res.data.decode("utf-8")
+        self.assertIn("cmdr-refresh-btn", hub_js)
+        self.assertIn("cmdr-touch-btn", hub_js)
+        self.assertIn("btn-regen-", hub_js)
+
 if __name__ == "__main__":
     unittest.main()
 

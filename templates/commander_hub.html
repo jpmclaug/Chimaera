@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Chimaera // Commander Hub{% endblock %}
 
@@ -30,34 +30,34 @@
             <!-- View Switcher & Action Controls -->
             <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
                 <div class="bg-[#1B2230] p-1 rounded-none border border-[#263245] flex flex-wrap items-center gap-1 w-full sm:w-auto">
-                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Deck Vault (Grid & Table)">
+                    <button id="viewVaultBtn" onclick="switchMainView('vault')" class="cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-cyan-500 text-slate-950 shadow-md cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Deck Vault (Grid & Table)">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
                         <span>Vault</span>
-                        <span id="savedDecksCount" class="text-[8px] xs:text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
+                        <span id="savedDecksCount" class="text-[9px] sm:text-[10px] px-1.5 py-0.2 rounded-full bg-slate-950/40 font-mono font-bold">{{ recent_decks|length }}</span>
                     </button>
-                    <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Inspect Selected Deck">
+                    <button id="viewInspectorBtn" onclick="switchMainView('inspector')" class="cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Inspect Selected Deck">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         <span>Inspector</span>
                         <span id="inspectorActiveNameBadge" class="hidden text-[9px] sm:text-[10px] text-cyan-300 font-normal truncate max-w-[85px]"></span>
                     </button>
-                    <button id="viewCompareBtn" onclick="switchMainView('compare')" class="px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Head-to-Head Comparison">
+                    <button id="viewCompareBtn" onclick="switchMainView('compare')" class="cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Head-to-Head Comparison">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                         <span>Compare</span>
                         <span id="compareCountBadge" class="hidden px-1.5 py-0.2 rounded-full bg-cyan-500/20 text-cyan-400 text-[8px] sm:text-[10px] font-mono">0</span>
                     </button>
-                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Analytics & Distributions">
+                    <button id="viewAnalyticsBtn" onclick="switchMainView('analytics')" class="cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Analytics & Distributions">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                         <span>Analytics</span>
                     </button>
-                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Import New Deck">
+                    <button id="viewIngestBtn" onclick="switchMainView('ingest')" class="cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all text-slate-400 hover:text-white cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Import New Deck">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         <span>Import</span>
                     </button>
-                    <a href="/commander/playtest" class="px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white border border-red-800/60 cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Playtest Arena">
+                    <a href="/commander/playtest" class="cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-red-950/40 hover:bg-red-600 text-red-300 hover:text-white border border-red-800/60 cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Playtest Arena">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         <span>Playtest</span>
                     </a>
-                    <a href="/timewalked" onclick="const sel = document.getElementById('quickDeckSelect')?.value || document.getElementById('quickDeckSelectMobile')?.value; if (sel) { this.href = '/timewalked?deck_id=' + encodeURIComponent(sel); }" class="px-2 sm:px-3.5 py-1.5 rounded-none text-[9px] xs:text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-[#A855F7]/20 hover:bg-[#A855F7] text-[#C084FC] hover:text-white border border-[#A855F7]/50 cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Open Timewalked Bracket & Feels-Like Analyzer">
+                    <a href="/timewalked" onclick="const sel = document.getElementById('quickDeckSelect')?.value || document.getElementById('quickDeckSelectMobile')?.value; if (sel) { this.href = '/timewalked?deck_id=' + encodeURIComponent(sel); }" class="cmdr-touch-btn min-h-[40px] sm:min-h-[34px] px-2.5 sm:px-3.5 py-1.5 rounded-none text-[10px] sm:text-xs font-mono font-bold uppercase transition-all bg-[#A855F7]/20 hover:bg-[#A855F7] text-[#C084FC] hover:text-white border border-[#A855F7]/50 cursor-pointer flex items-center justify-center gap-1 sm:gap-1.5 flex-1 sm:flex-initial whitespace-nowrap" title="Open Timewalked Bracket & Feels-Like Analyzer">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                         <span>Timewalked</span>
                     </a>
@@ -94,18 +94,18 @@
                 </div>
 
                 <!-- Mobile Secondary Actions Overlay Trigger -->
-                <div class="flex sm:hidden items-center gap-1.5">
-                    <div class="relative flex items-center">
+                <div class="flex sm:hidden items-center gap-1.5 w-full">
+                    <div class="relative flex items-center flex-1 min-w-0">
                         <select id="quickDeckSelectMobile" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
-                                class="bg-[#1B2230] hover:bg-slate-800 border border-[#263245] hover:border-cyan-500/50 focus:border-cyan-400 rounded-none px-2 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer max-w-[120px] truncate"
+                                class="cmdr-touch-btn min-h-[42px] w-full bg-[#1B2230] hover:bg-slate-800 border border-[#263245] hover:border-cyan-500/50 focus:border-cyan-400 rounded-none px-3 py-2 text-xs text-cyan-300 font-mono transition cursor-pointer truncate"
                                 title="Quick Switch Deck">
-                            <option value="">⚡ Select Deck...</option>
+                            <option value="">⚡ Select Deck to Inspect...</option>
                             {% for d in recent_decks %}
                             <option value="{{ d.id }}">{{ d.deck_name }}{% if d.commander_name %} ({{ d.commander_name }}){% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <button onclick="document.getElementById('mobileCommanderActions').classList.toggle('hidden')" class="p-2 rounded-none bg-[#1B2230] border border-[#263245] text-slate-400 hover:text-white transition">
+                    <button onclick="document.getElementById('mobileCommanderActions').classList.toggle('hidden')" class="cmdr-touch-btn min-h-[42px] min-w-[42px] p-2 rounded-none bg-[#1B2230] border border-[#263245] text-slate-300 hover:text-white transition flex items-center justify-center cursor-pointer" title="More Options">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/></svg>
                     </button>
                 </div>
@@ -114,10 +114,10 @@
         
         <!-- Mobile Commander Actions Overflow -->
         <div id="mobileCommanderActions" class="hidden sm:hidden bg-[#1B2230] border border-[#263245] rounded-none p-3 mt-2 flex flex-wrap items-center gap-2">
-            <a href="/system-overview#commander-stats" class="px-2.5 py-1.5 rounded-none bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm">
+            <a href="/system-overview#commander-stats" class="cmdr-touch-btn min-h-[42px] px-3.5 py-2 rounded-none bg-purple-500/10 hover:bg-purple-500 text-purple-300 hover:text-slate-950 border border-purple-500/30 text-xs font-mono font-bold uppercase flex items-center space-x-1.5 transition shadow-sm flex-1 justify-center">
                 <span>📖 Stats Guide</span>
             </a>
-            <button onclick="openApiKeyModal()" class="px-2.5 py-1.5 rounded-none bg-[#10141D] hover:bg-slate-800 border border-[#263245] text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition">
+            <button onclick="openApiKeyModal()" class="cmdr-touch-btn min-h-[42px] px-3.5 py-2 rounded-none bg-[#10141D] hover:bg-slate-800 border border-[#263245] text-slate-300 text-xs font-mono font-semibold flex items-center space-x-1.5 transition flex-1 justify-center cursor-pointer">
                 <svg class="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
                 <span>Gemini Key</span>
                 <span id="geminiKeyDotMobile" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
@@ -247,41 +247,47 @@
                 </div>
 
                 <!-- Color Filter Pills -->
-                <div class="flex items-center gap-1">
-                    <button type="button" onclick="setColorFilter('all')" class="color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 transition cursor-pointer" data-color="all">All</button>
-                    <button type="button" onclick="setColorFilter('W')" class="color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer" data-color="W" title="White">W</button>
-                    <button type="button" onclick="setColorFilter('U')" class="color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer" data-color="U" title="Blue">U</button>
-                    <button type="button" onclick="setColorFilter('B')" class="color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer" data-color="B" title="Black">B</button>
-                    <button type="button" onclick="setColorFilter('R')" class="color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer" data-color="R" title="Red">R</button>
-                    <button type="button" onclick="setColorFilter('G')" class="color-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer" data-color="G" title="Green">G</button>
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <button type="button" onclick="setColorFilter('all')" class="color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 transition cursor-pointer flex items-center justify-center shadow-sm" data-color="all">All</button>
+                    <button type="button" onclick="setColorFilter('W')" class="color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer flex items-center justify-center" data-color="W" title="White">W</button>
+                    <button type="button" onclick="setColorFilter('U')" class="color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer flex items-center justify-center" data-color="U" title="Blue">U</button>
+                    <button type="button" onclick="setColorFilter('B')" class="color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer flex items-center justify-center" data-color="B" title="Black">B</button>
+                    <button type="button" onclick="setColorFilter('R')" class="color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer flex items-center justify-center" data-color="R" title="Red">R</button>
+                    <button type="button" onclick="setColorFilter('G')" class="color-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-w-[34px] sm:min-w-[28px] min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer flex items-center justify-center" data-color="G" title="Green">G</button>
                 </div>
 
                 <!-- Format Filter Pills -->
-                <div class="flex items-center gap-1 border-l border-[#263245] pl-2">
-                    <button type="button" onclick="setFormatFilter('all')" class="format-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 transition cursor-pointer" data-format="all">All</button>
-                    <button type="button" onclick="setFormatFilter('commander')" class="format-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer" data-format="commander" title="Regular Commander (EDH)">EDH</button>
-                    <button type="button" onclick="setFormatFilter('pauper_commander')" class="format-filter-btn px-1.5 sm:px-2 py-0.5 sm:py-1 text-[10px] sm:text-[11px] font-mono font-bold rounded-none bg-purple-950/40 text-purple-300 hover:text-purple-100 border border-purple-500/40 transition cursor-pointer" data-format="pauper_commander" title="Pauper Commander (PDH)">PDH</button>
+                <div class="flex items-center gap-1.5 border-l border-[#263245] pl-2 flex-wrap">
+                    <button type="button" onclick="setFormatFilter('all')" class="format-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-cyan-500 text-slate-950 transition cursor-pointer flex items-center justify-center shadow-sm" data-format="all">All</button>
+                    <button type="button" onclick="setFormatFilter('commander')" class="format-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-[#1B2230] text-slate-300 hover:text-white border border-[#263245] transition cursor-pointer flex items-center justify-center" data-format="commander" title="Regular Commander (EDH)">EDH</button>
+                    <button type="button" onclick="setFormatFilter('pauper_commander')" class="format-filter-btn cmdr-pill-btn px-2.5 sm:px-2 py-1 min-h-[36px] sm:min-h-[28px] text-[11px] sm:text-[11px] font-mono font-bold rounded-none bg-purple-950/40 text-purple-300 hover:text-purple-100 border border-purple-500/40 transition cursor-pointer flex items-center justify-center" data-format="pauper_commander" title="Pauper Commander (PDH)">PDH</button>
                 </div>
             </div>
 
             <!-- View Mode Switcher, Sort & Table Actions -->
             <div class="flex items-center gap-2.5 w-full lg:w-auto justify-end flex-wrap">
+                <!-- Dedicated Vault Refresh Button -->
+                <button type="button" id="vaultRefreshBtn" onclick="refreshVaultList()" class="cmdr-touch-btn cmdr-refresh-btn px-3 py-1.5 text-xs font-mono font-bold uppercase transition flex items-center justify-center gap-1.5 cursor-pointer min-h-[38px] flex-shrink-0" title="Refresh Vault Fleet">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Refresh</span>
+                </button>
+
                 <!-- Grid vs Table View Mode Switcher -->
                 <div class="inline-flex rounded-none border border-[#263245] bg-[#1B2230] p-0.5 font-mono text-xs">
-                    <button type="button" id="vaultModeGridBtn" onclick="switchVaultMode('grid')" class="px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-mono rounded-none bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer flex items-center gap-1" title="Cards Grid View">
+                    <button type="button" id="vaultModeGridBtn" onclick="switchVaultMode('grid')" class="cmdr-touch-btn min-h-[38px] px-3 py-1 text-xs font-mono rounded-none bg-cyan-500 text-slate-950 font-bold transition shadow-sm cursor-pointer flex items-center gap-1.5" title="Cards Grid View">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
                         <span class="inline">Grid</span>
                     </button>
-                    <button type="button" id="vaultModeTableBtn" onclick="switchVaultMode('table')" class="px-2 sm:px-2.5 py-1 text-[10px] sm:text-xs font-mono rounded-none text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1" title="Comparative Matrix Table View">
+                    <button type="button" id="vaultModeTableBtn" onclick="switchVaultMode('table')" class="cmdr-touch-btn min-h-[38px] px-3 py-1 text-xs font-mono rounded-none text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1.5" title="Comparative Matrix Table View">
                         <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                         <span class="inline">Table</span>
                     </button>
                 </div>
 
-                <!-- Sort Dropdown -->
-                <div class="hidden sm:flex items-center gap-1.5">
+                <!-- Sort Dropdown (Visible on both mobile & desktop) -->
+                <div class="flex items-center gap-1.5">
                     <span class="text-xs text-slate-400 font-mono hidden sm:inline">Sort:</span>
-                    <select id="vaultSortSelect" onchange="sortVaultDecks()" class="bg-[#1B2230] border border-[#263245] rounded-none px-2.5 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500">
+                    <select id="vaultSortSelect" onchange="sortVaultDecks()" class="cmdr-touch-btn min-h-[38px] bg-[#1B2230] border border-[#263245] rounded-none px-2.5 py-1 text-xs text-slate-300 font-mono focus:outline-none focus:border-cyan-500 cursor-pointer">
                         <option value="recent">Recently Added</option>
                         <option value="name">Deck Name (A-Z)</option>
                         <option value="price_desc">Market Value ($ High &rarr; Low)</option>
@@ -292,11 +298,11 @@
 
                 <!-- Table Specific Actions (shown when in Table mode) -->
                 <div id="tableActionControls" class="hidden flex items-center gap-1.5">
-                    <button type="button" onclick="toggleSelectAllDecks()" id="selectAllBtn" class="px-2 py-1 rounded-none bg-[#1B2230] hover:bg-slate-800 border border-[#263245] text-slate-300 text-xs font-mono transition">
+                    <button type="button" onclick="toggleSelectAllDecks()" id="selectAllBtn" class="cmdr-touch-btn min-h-[38px] px-3 py-1 rounded-none bg-[#1B2230] hover:bg-slate-800 border border-[#263245] text-slate-300 text-xs font-mono transition">
                         Select All
                     </button>
                     <button type="button" onclick="launchComparisonFromSelection()" id="launchCompareBtn" 
-                            class="px-3 py-1 rounded-none bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase shadow-md transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                            class="cmdr-touch-btn min-h-[38px] px-3.5 py-1 rounded-none bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs uppercase shadow-md transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
                         <span>Compare (<span id="selectedCountText">0</span>)</span>
                     </button>
@@ -306,7 +312,7 @@
 
         <!-- SUB-CONTAINER 1A: CARD GRID -->
         <div id="vaultGridContainer" class="space-y-4">
-            <div id="vaultGrid" class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+            <div id="vaultGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
                 <!-- Rendered dynamically by renderVaultGrid() -->
             </div>
         </div>
@@ -596,13 +602,9 @@
 
                     <!-- Action Buttons -->
                     <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end pt-2 lg:pt-0 border-t lg:border-t-0 lg:border-l border-[#263245]">
-                        <button type="button" onclick="document.getElementById('inspectorActionBtns').classList.toggle('hidden')" class="sm:hidden w-full text-center text-[11px] font-mono text-slate-400 hover:text-white py-1 flex items-center justify-center gap-1 transition">
-                            <span>Actions</span>
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                        </button>
-                        <div id="inspectorActionBtns" class="hidden sm:flex flex-wrap items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end">
+                        <div id="inspectorActionBtns" class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto justify-between sm:justify-start lg:justify-end">
                             <select id="inspectorDeckSelect" onchange="if(this.value) loadSavedDeckIntoInspector(this.value)" 
-                                    class="flex-1 sm:flex-initial bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-none px-2 sm:px-2.5 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer min-w-0 max-w-[155px] sm:max-w-[200px] truncate"
+                                    class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] w-full sm:w-auto bg-[#10141D] hover:bg-slate-800 border border-cyan-500/40 focus:border-cyan-400 rounded-none px-3 py-1.5 text-xs text-cyan-300 font-mono transition cursor-pointer min-w-0 max-w-full sm:max-w-[200px] truncate"
                                     title="Switch Deck in Inspector">
                                 <option value="">⚡ Switch Deck...</option>
                                 {% for d in recent_decks %}
@@ -610,33 +612,36 @@
                                 {% endfor %}
                             </select>
 
-                            <button id="inspectorCompareBtn" onclick="launchCompareFromActiveDeck()" title="Compare this deck head-to-head" 
-                                    class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-none bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500 hover:to-blue-500 hover:text-slate-950 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] sm:text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-                                <span>⚔️ Compare</span>
-                            </button>
+                            <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+                                <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
+                                        class="cmdr-touch-btn cmdr-refresh-btn min-h-[42px] sm:min-h-[36px] px-3 py-1.5 rounded-none text-xs font-mono font-bold uppercase transition cursor-pointer flex items-center justify-center gap-1.5 flex-1 sm:flex-initial">
+                                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    <span>Sync Deck</span>
+                                </button>
 
-                            <button id="inspectorPlaytestBtn" onclick="launchPlaytestFromActiveDeck()" title="Playtest this deck in Arena" 
-                                    class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-none bg-red-950/40 hover:bg-red-600 border border-red-800/60 text-red-300 hover:text-white font-mono text-[10px] sm:text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-                                <span>▶ Playtest</span>
-                            </button>
+                                <button id="inspectorRerunAiBtn" onclick="runAiAnalysisOnSavedDeck(this)" title="Rerun Gemini AI Strategic Intel on this deck" 
+                                        class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] px-3 py-1.5 rounded-none bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center justify-center gap-1.5 flex-1 sm:flex-initial">
+                                    <span>⚡</span>
+                                    <span>Rerun Intel</span>
+                                </button>
 
-                            <button id="inspectorSyncBtn" onclick="syncActiveDeckFromSource()" title="Re-sync deck from ManaBox link" 
-                                    class="p-1.5 sm:p-2 rounded-none bg-slate-800 hover:bg-slate-700 border border-[#263245] text-slate-300 hover:text-white transition cursor-pointer flex-shrink-0">
-                                <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                            </button>
+                                <button id="inspectorCompareBtn" onclick="launchCompareFromActiveDeck()" title="Compare this deck head-to-head" 
+                                        class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] px-3 py-1.5 rounded-none bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500 hover:to-blue-500 hover:text-slate-950 border border-cyan-500/40 text-cyan-300 font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center justify-center gap-1.5 flex-1 sm:flex-initial">
+                                    <span>⚔️ Compare</span>
+                                </button>
 
-                            <button id="inspectorRerunAiBtn" onclick="runAiAnalysisOnSavedDeck(this)" title="Rerun Gemini AI Strategic Intel on this deck" 
-                                    class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-none bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/40 text-amber-300 font-mono text-[10px] sm:text-xs font-bold uppercase transition cursor-pointer flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-                                <span>⚡</span>
-                                <span class="hidden md:inline">Rerun Intel</span>
-                            </button>
-                            
-                            <button onclick="switchMainView('vault')" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-none bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-[#263245] hover:border-cyan-500 text-slate-300 font-mono text-[10px] sm:text-xs font-semibold uppercase transition cursor-pointer flex items-center gap-1 flex-shrink-0" title="Return to Deck Vault">
-                                <span>&larr;</span>
-                                <span>Deck Vault</span>
-                            </button>
+                                <button id="inspectorPlaytestBtn" onclick="launchPlaytestFromActiveDeck()" title="Playtest this deck in Arena" 
+                                        class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] px-3 py-1.5 rounded-none bg-red-950/40 hover:bg-red-600 border border-red-800/60 text-red-300 hover:text-white font-mono text-xs font-bold uppercase transition cursor-pointer flex items-center justify-center gap-1.5 flex-1 sm:flex-initial">
+                                    <span>▶ Playtest</span>
+                                </button>
+
+                                <button onclick="switchMainView('vault')" class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] px-3 py-1.5 col-span-2 sm:col-auto rounded-none bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 border border-[#263245] hover:border-cyan-500 text-slate-300 font-mono text-xs font-semibold uppercase transition cursor-pointer flex items-center justify-center gap-1.5 flex-1 sm:flex-initial" title="Return to Deck Vault">
+                                    <span>&larr;</span>
+                                    <span>Deck Vault</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -648,42 +653,42 @@
             <div class="flex items-center p-1 md:px-4 md:py-0 gap-1 md:gap-2 overflow-x-auto no-scrollbar snap-x snap-mandatory">
                 <!-- Tab 1: Mana Curve & Composition -->
                 <button type="button" onclick="switchInspectorTab('stats')" id="insp-tab-stats" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
+                        class="cmdr-touch-btn min-h-[44px] snap-start py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 text-[10px] xs:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-cyan-400 border-cyan-400 bg-cyan-500/10 md:bg-transparent flex-1 min-w-[70px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Curve</span>
+                    <span class="block md:hidden text-[10px] xs:text-[11px] tracking-tight">Curve</span>
                     <span class="hidden md:inline whitespace-nowrap">Mana Curve & Composition</span>
                 </button>
 
                 <!-- Tab 2: Full Card Registry -->
                 <button type="button" onclick="switchInspectorTab('cards')" id="insp-tab-cards" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
+                        class="cmdr-touch-btn min-h-[44px] snap-start py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 text-[10px] xs:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[70px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
+                    <span class="block md:hidden text-[10px] xs:text-[11px] tracking-tight">Cards (<span class="tabCardCountMobile">100</span>)</span>
                     <span class="hidden md:inline whitespace-nowrap">Full Card Registry (<span id="tabCardCount">100</span>)</span>
                 </button>
 
                 <!-- Tab 3: Gemini AI Strategic Intel -->
                 <button type="button" onclick="switchInspectorTab('ai')" id="insp-tab-ai" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
+                        class="cmdr-touch-btn min-h-[44px] snap-start py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 text-[10px] xs:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[70px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">AI Intel</span>
+                    <span class="block md:hidden text-[10px] xs:text-[11px] tracking-tight">AI Intel</span>
                     <span class="hidden md:inline whitespace-nowrap">Gemini AI Strategic Intel</span>
                     <span id="aiTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Ready</span>
                 </button>
 
                 <!-- Tab 4: Tactical Upgrades -->
                 <button type="button" onclick="switchInspectorTab('upgrades')" id="insp-tab-upgrades" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
+                        class="cmdr-touch-btn min-h-[44px] snap-start py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 text-[10px] xs:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[70px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
-                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Upgrades</span>
+                    <span class="block md:hidden text-[10px] xs:text-[11px] tracking-tight">Upgrades</span>
                     <span class="hidden md:inline whitespace-nowrap">Tactical Upgrades</span>
                     <span id="upgradesTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Dual-Tier</span>
                 </button>
                 <!-- Tab 5: Commander Tactics -->
                 <button type="button" onclick="switchInspectorTab('tactics')" id="insp-tab-tactics" 
-                        class="snap-start py-2 md:py-3 px-1.5 sm:px-2 md:px-4 text-[9px] xs:text-[10px] sm:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[65px] text-center whitespace-nowrap">
+                        class="cmdr-touch-btn min-h-[44px] snap-start py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 text-[10px] xs:text-[11px] md:text-xs font-mono font-bold uppercase tracking-tight md:tracking-wider border-b-2 transition flex items-center justify-center gap-1 sm:gap-1.5 md:gap-2 cursor-pointer rounded-none md:rounded-none text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-800/40 md:hover:bg-transparent flex-1 min-w-[70px] text-center whitespace-nowrap">
                     <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                    <span class="block md:hidden text-[9px] xs:text-[10px] tracking-tight">Tactics</span>
+                    <span class="block md:hidden text-[10px] xs:text-[11px] tracking-tight">Tactics</span>
                     <span class="hidden md:inline whitespace-nowrap">Commander Tactics</span>
                     <span id="tacticsTabBadge" class="hidden sm:inline-block text-[8px] md:text-[9px] px-1 md:px-1.5 py-0.2 rounded-none bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono">5 Intel</span>
                 </button>
@@ -1526,15 +1531,15 @@
 
                     <div class="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto justify-end">
                         <div class="w-full sm:w-auto">
-                            <select id="rerunDeckAiModel" class="w-full sm:w-auto bg-[#1B2230] border border-[#263245] rounded-none px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                            <select id="rerunDeckAiModel" class="cmdr-touch-btn min-h-[42px] sm:min-h-[38px] w-full sm:w-auto bg-[#1B2230] border border-[#263245] rounded-none px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500 cursor-pointer">
                                 {% for m in supported_models %}
                                 <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <button onclick="runAiAnalysisOnSavedDeck(this)" id="btnRerunAiIntel" 
-                                class="w-full sm:w-auto min-w-[140px] px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-none shadow-lg transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                class="cmdr-touch-btn cmdr-refresh-btn min-h-[44px] w-full sm:w-auto min-w-[140px] px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-none shadow-lg transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer">
+                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                             <span>⚡ Rerun AI Intel</span>
                         </button>
                     </div>
@@ -1653,22 +1658,22 @@
                         Cross-referenced against your physical ManaBox collection. Swap owned cards from your binder for immediate zero-cost power boosts, or export prioritized acquisition wishlists.
                     </p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
                     <!-- Archetype Theme Selector -->
                     <select id="upgradeThemeSelect" onchange="handleUpgradeThemeChange(this.value)" 
-                            class="bg-[#1B2230] hover:bg-[#222B3D] text-amber-300 border border-[#263245] hover:border-amber-500/50 text-xs font-mono font-bold px-2.5 py-1.5 rounded-none transition cursor-pointer max-w-[180px] truncate"
+                            class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] bg-[#1B2230] hover:bg-[#222B3D] text-amber-300 border border-[#263245] hover:border-amber-500/50 text-xs font-mono font-bold px-3 py-2 rounded-none transition cursor-pointer max-w-full sm:max-w-[180px] truncate"
                             title="Filter recommendations by commander archetype/theme">
                         <option value="">🎯 All Themes (Average)</option>
                     </select>
 
                     <!-- Anti-Salt Filter Toggle -->
                     <button id="antiSaltToggleBtn" type="button" onclick="toggleAntiSaltFilter()" 
-                            class="px-2.5 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-slate-300 border border-[#263245] text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer"
+                            class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] px-3 py-2 bg-[#1B2230] hover:bg-[#222B3D] text-slate-300 border border-[#263245] text-xs font-mono font-bold uppercase transition flex items-center justify-center gap-1.5 cursor-pointer"
                             title="Exclude high-salt cards from purchase recommendations">
                         <span>🧂 Casual Mode: <strong id="antiSaltStateText" class="text-slate-400">OFF</strong></span>
                     </button>
 
-                    <a href="/inventory" target="_blank" class="px-3 py-1.5 bg-[#1B2230] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5">
+                    <a href="/inventory" target="_blank" class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] px-3 py-2 bg-[#1B2230] hover:bg-[#222B3D] text-[#00CED1] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono font-bold uppercase transition flex items-center justify-center gap-1.5">
                         <span>Open Binder Vault</span>
                         <span>&rarr;</span>
                     </a>
@@ -1682,15 +1687,15 @@
                         <span id="collectionEnrichText">Enriching Binder...</span>
                     </div>
 
-                    <a href="/add-evaluator" class="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer" title="Evaluate specific card additions against your decks">
+                    <a href="/add-evaluator" class="cmdr-touch-btn min-h-[42px] sm:min-h-[36px] px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500 text-cyan-400 hover:text-slate-950 border border-cyan-500/30 text-xs font-mono font-bold uppercase transition flex items-center justify-center gap-1.5 cursor-pointer" title="Evaluate specific card additions against your decks">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                         </svg>
                         <span>Add Evaluator</span>
                     </a>
 
-                    <button id="refreshUpgradesBtn" onclick="refreshDualTierUpgrades()" class="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 text-xs font-mono font-bold uppercase transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-                        <svg id="refreshUpgradesIcon" class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <button id="refreshUpgradesBtn" onclick="refreshDualTierUpgrades()" class="cmdr-touch-btn cmdr-refresh-btn min-h-[42px] sm:min-h-[36px] px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 border border-emerald-500/30 text-xs font-mono font-bold uppercase transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                        <svg id="refreshUpgradesIcon" class="w-4 h-4 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
                         <span id="refreshUpgradesText">Re-evaluate</span>
@@ -1701,28 +1706,31 @@
             <!-- Dual-Tier Sub-Tab Navigation Bar -->
             <div class="grid grid-cols-2 sm:grid-cols-2 sm:grid-cols-5 border-b border-[#263245] bg-[#0B0F17] rounded-none p-1 sm:px-4 sm:py-0 gap-1 sm:gap-2">
                 <button type="button" onclick="switchUpgradeSubtab('timewalked')" id="subtab-btn-timewalked" 
-                        class="py-2 sm:py-3 px-1.5 sm:px-4 text-[10px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
+                        class="cmdr-touch-btn min-h-[44px] py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
                     <span class="whitespace-nowrap">⭐ Popular (Timewalked)</span>
-                    <span id="timewalkedCountBadge" class="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded-none bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-bold">0 Free</span>
+                    <span id="timewalkedCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-none bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-bold">0 Free</span>
                 </button>
                 <button type="button" onclick="switchUpgradeSubtab('owned')" id="subtab-btn-owned" 
-                        class="py-2 sm:py-3 px-1.5 sm:px-4 text-[10px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-emerald-400 border-b-2 border-emerald-400 bg-emerald-500/10 sm:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
+                        class="cmdr-touch-btn min-h-[44px] py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-emerald-400 border-b-2 border-emerald-400 bg-emerald-500/10 sm:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
                     <span class="whitespace-nowrap">🎴 In Binder</span>
-                    <span id="ownedSwapsCountBadge" class="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded-none bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold">0 Swaps</span>
+                    <span id="ownedSwapsCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-none bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold">0 Swaps</span>
                 </button>
                 <button type="button" onclick="switchUpgradeSubtab('shop')" id="subtab-btn-shop" 
-                        class="py-2 sm:py-3 px-1.5 sm:px-4 text-[10px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
+                        class="cmdr-touch-btn min-h-[44px] py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
                     <span class="whitespace-nowrap">🛒 Shopping List</span>
-                    <span id="shoppingCountBadge" class="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded-none bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold">0 Cards</span>
+                    <span id="shoppingCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-none bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-mono font-bold">0 Cards</span>
                 </button>
                 <button type="button" onclick="switchUpgradeSubtab('primers')" id="subtab-btn-primers" 
-                        class="py-2 sm:py-3 px-1.5 sm:px-4 text-[10px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
+                        class="cmdr-touch-btn min-h-[44px] py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
                     <span class="whitespace-nowrap">📖 Primers & Guides</span>
-                    <span id="articlesCountBadge" class="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded-none bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold">0</span>
+                    <span id="articlesCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-none bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold">0</span>
                 </button>
                 <button type="button" onclick="switchUpgradeSubtab('combos')" id="subtab-btn-combos" 
-                        class="py-2 sm:py-3 px-1.5 sm:px-4 text-[10px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
+                        class="cmdr-touch-btn min-h-[44px] py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center">
                     <span class="whitespace-nowrap">⚡ Known Combos</span>
+                    <span id="combosCountBadge" class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-none bg-purple-500/20 text-purple-400 border border-purple-500/30 font-mono font-bold">0</span>
+                </button>
+            </div>
                     <span id="combosCountBadge" class="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded-none bg-purple-500/20 text-purple-400 border border-purple-500/30 font-mono font-bold">0</span>
                 </button>
             </div>
@@ -1908,8 +1916,9 @@
                         </div>
                     </div>
                     <button onclick="generateAllTactics({ onlyStale: true })" id="btnRegenerateStaleTactics" 
-                            class="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-mono font-black uppercase tracking-wider rounded-none shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap">
-                        <span>↻ Regenerate Stale</span>
+                            class="cmdr-touch-btn cmdr-refresh-btn min-h-[44px] px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-mono font-black uppercase tracking-wider rounded-none shadow-md transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        <span>Regenerate Stale</span>
                     </button>
                 </div>
             </div>
@@ -1930,15 +1939,15 @@
                     </p>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2.5">
-                    <select id="tacticsAiModel" class="bg-[#1B2230] border border-[#263245] rounded-none px-3 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500">
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+                    <select id="tacticsAiModel" class="cmdr-touch-btn min-h-[42px] sm:min-h-[38px] w-full sm:w-auto bg-[#1B2230] border border-[#263245] rounded-none px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500 cursor-pointer">
                         {% for m in supported_models %}
                         <option value="{{ m.id }}" {% if m.id == default_model %}selected{% endif %}>{{ m.name }}</option>
                         {% endfor %}
                     </select>
 
                     <button onclick="generateAllTactics({ onlyStale: false })" id="btnGenerateAllTactics"
-                            class="px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-none shadow-lg transition flex items-center gap-1.5 cursor-pointer">
+                            class="cmdr-touch-btn min-h-[44px] w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-black text-xs uppercase tracking-wider rounded-none shadow-lg transition flex items-center justify-center gap-2 cursor-pointer">
                         <span>⚡ Generate All Tactics</span>
                     </button>
                 </div>
@@ -2009,11 +2018,11 @@
                 </div>
 
                 <div class="flex items-center gap-2">
-                    <button type="button" onclick="runActiveComparison()" class="px-2.5 sm:px-4 py-1 sm:py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-bold text-[10px] sm:text-xs uppercase rounded-none shadow-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    <button type="button" onclick="runActiveComparison()" class="cmdr-touch-btn cmdr-refresh-btn min-h-[42px] px-3.5 sm:px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-mono font-bold text-xs uppercase rounded-none shadow-lg transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         <span>Refresh Matchup</span>
                     </button>
-                    <button type="button" onclick="switchMainView('vault')" class="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] sm:text-xs uppercase rounded-none transition cursor-pointer whitespace-nowrap">
+                    <button type="button" onclick="switchMainView('vault')" class="cmdr-touch-btn min-h-[42px] px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs uppercase rounded-none transition cursor-pointer whitespace-nowrap flex items-center justify-center">
                         &larr; Vault
                     </button>
                 </div>
