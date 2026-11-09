@@ -5017,7 +5017,438 @@ function executeCommandPaletteItem(idx) {
     }
 }
 
+// =========================================================================
+// TCGplayer Seller Lot Finder (Consolidation & Budget Optimizer)
+// =========================================================================
+let currentLotFinderMode = "lots";
+let currentSellerLots = [];
+
+function switchDealsSection(section) {
+    const singleContainer = document.getElementById("deals-single-container");
+    const lotsContainer = document.getElementById("deals-lot-finder-container");
+    const btnSingle = document.getElementById("btn-deals-sec-single");
+    const btnLots = document.getElementById("btn-deals-sec-lots");
+
+    if (!singleContainer || !lotsContainer) return;
+
+    if (section === "lots") {
+        singleContainer.classList.add("hidden");
+        lotsContainer.classList.remove("hidden");
+
+        if (btnSingle) {
+            btnSingle.className = "flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]";
+        }
+        if (btnLots) {
+            btnLots.className = "flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#00CED1] text-[#10141D]";
+        }
+        
+        try { history.replaceState(null, "", "#lots"); } catch (e) {}
+    } else {
+        lotsContainer.classList.add("hidden");
+        singleContainer.classList.remove("hidden");
+
+        if (btnLots) {
+            btnLots.className = "flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]";
+        }
+        if (btnSingle) {
+            btnSingle.className = "flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#DC143C] text-white";
+        }
+
+        try { history.replaceState(null, "", "#single"); } catch (e) {}
+    }
+}
+
+function setLotFinderMode(mode) {
+    currentLotFinderMode = mode;
+    const modes = ["lots", "anchor_card", "dollar_amount"];
+    modes.forEach(m => {
+        const btn = document.getElementById(`btn-mode-${m}`);
+        if (btn) {
+            if (m === mode) {
+                btn.className = "lot-mode-btn active p-2.5 sm:p-3 text-left border border-[#00CED1] bg-[#00CED1]/10 text-white transition";
+            } else {
+                btn.className = "lot-mode-btn p-2.5 sm:p-3 text-left border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition";
+            }
+        }
+    });
+
+    const anchorBox = document.getElementById("lot-anchor-card-box");
+    const dollarBox = document.getElementById("lot-dollar-amount-box");
+
+    if (anchorBox) {
+        if (mode === "anchor_card") anchorBox.classList.remove("hidden");
+        else anchorBox.classList.add("hidden");
+    }
+
+    if (dollarBox) {
+        if (mode === "dollar_amount") dollarBox.classList.remove("hidden");
+        else dollarBox.classList.add("hidden");
+    }
+}
+
+function applyDollarPreset(preset) {
+    const maxPrice = document.getElementById("lot-max-card-price");
+    const targetBundle = document.getElementById("lot-target-bundle-amount");
+    const bundleType = document.getElementById("lot-bundle-amount-type");
+
+    if (!maxPrice || !targetBundle || !bundleType) return;
+
+    if (preset === "free_ship") {
+        targetBundle.value = "5.00";
+        bundleType.value = "min_threshold";
+        showToast("Set $5.00 minimum spend goal (TCGplayer free shipping threshold).", "info");
+    } else if (preset === "budget_2") {
+        maxPrice.value = "2.00";
+        showToast("Filtering watchlist to singles under $2.00.", "info");
+    } else if (preset === "budget_5") {
+        maxPrice.value = "5.00";
+        showToast("Filtering watchlist to staples under $5.00.", "info");
+    } else if (preset === "bundle_25") {
+        targetBundle.value = "25.00";
+        bundleType.value = "max_budget";
+        showToast("Set $25.00 cart budget target.", "info");
+    } else if (preset === "clear") {
+        maxPrice.value = "";
+        targetBundle.value = "";
+        bundleType.value = "max_budget";
+        showToast("Cleared dollar amount presets.", "info");
+    }
+}
+
+async function runTcgplayerLotScan() {
+    const btn = document.getElementById("btn-run-lot-scan");
+    const btnLabel = document.getElementById("lot-scan-btn-label");
+    const spinner = document.getElementById("lot-scan-spinner");
+    const statusText = document.getElementById("lot-status-text");
+
+    const minCards = parseInt(document.getElementById("lot-min-cards")?.value || "5", 10);
+    const priceTolerance = document.getElementById("lot-price-tolerance")?.value || "decent_10";
+    const tagFilter = document.getElementById("lot-tag-filter")?.value || "all";
+    const allowMp = document.getElementById("lot-allow-mp")?.checked || false;
+
+    const anchorSelect = document.getElementById("lot-anchor-card-select");
+    const anchorCardId = anchorSelect?.value ? parseInt(anchorSelect.value, 10) : null;
+    const anchorCardName = anchorSelect?.selectedOptions[0]?.dataset?.name || null;
+
+    if (currentLotFinderMode === "anchor_card" && !anchorCardId) {
+        showToast("Please choose an anchor card from your watchlist.", "warning");
+        if (anchorSelect) anchorSelect.focus();
+        return;
+    }
+
+    const maxCardPrice = document.getElementById("lot-max-card-price")?.value || null;
+    const targetBundleAmount = document.getElementById("lot-target-bundle-amount")?.value || null;
+    const bundleAmountType = document.getElementById("lot-bundle-amount-type")?.value || "max_budget";
+
+    if (btn) btn.disabled = true;
+    if (spinner) spinner.classList.remove("hidden");
+    if (btnLabel) btnLabel.textContent = "SCANNING MARKET...";
+    if (statusText) statusText.textContent = "Querying live TCGplayer seller inventories across watchlist...";
+
+    showToast("Launching TCGplayer seller lot scan...", "info");
+
+    const payload = {
+        mode: currentLotFinderMode,
+        min_cards: minCards,
+        price_tolerance_mode: priceTolerance,
+        tag_filter: tagFilter,
+        allow_mp: allowMp,
+        anchor_card_id: anchorCardId,
+        anchor_card_name: anchorCardName,
+        max_card_price: maxCardPrice,
+        target_bundle_amount: targetBundleAmount,
+        bundle_amount_type: bundleAmountType,
+    };
+
+    try {
+        const resp = await fetch("/api/deals/tcgplayer-lots", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data.error || "Failed to scan TCGplayer seller lots.");
+        }
+
+        currentSellerLots = data.sellers || [];
+        renderSellerLotResults(data);
+
+        if (statusText) {
+            statusText.textContent = `Scan complete: Found ${data.total_sellers_found} qualifying sellers across ${data.scanned_cards_count} monitored cards (${data.duration_seconds}s).`;
+        }
+
+        if (data.total_sellers_found > 0) {
+            showToast(`Found ${data.total_sellers_found} seller lots holding ${minCards}+ watchlist cards!`, "success");
+        } else {
+            showToast(`No sellers found matching ${minCards}+ cards with current filters. Try relaxing price tolerance or min cards.`, "info");
+        }
+    } catch (err) {
+        console.error("Error during TCGplayer lot scan:", err);
+        showToast(err.message || "Failed to complete seller lot scan.", "error");
+        if (statusText) statusText.textContent = `Scan failed: ${err.message}`;
+    } finally {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.classList.add("hidden");
+        if (btnLabel) btnLabel.textContent = "🔍 SCAN TCGPLAYER SELLERS";
+    }
+}
+
+function renderSellerLotResults(data) {
+    const kpiRow = document.getElementById("lot-telemetry-kpis");
+    const container = document.getElementById("lot-results-container");
+    if (!container) return;
+
+    const sellers = data.sellers || [];
+    const minCards = data.min_cards || 5;
+
+    // Update KPI summary cards
+    if (kpiRow) {
+        kpiRow.classList.remove("hidden");
+        const countEl = document.getElementById("kpi-lot-sellers-count");
+        const minLabel = document.getElementById("kpi-lot-min-label");
+        const maxCardsEl = document.getElementById("kpi-lot-max-cards");
+        const maxSavingsEl = document.getElementById("kpi-lot-max-savings");
+        const durationEl = document.getElementById("kpi-lot-duration");
+        const scannedCardsEl = document.getElementById("kpi-lot-scanned-cards");
+
+        if (countEl) countEl.textContent = data.total_sellers_found || 0;
+        if (minLabel) minLabel.textContent = minCards;
+        if (maxCardsEl) {
+            const maxCards = sellers.length > 0 ? Math.max(...sellers.map(s => s.qualifyingCount)) : 0;
+            maxCardsEl.textContent = maxCards;
+        }
+        if (maxSavingsEl) {
+            const maxSav = sellers.length > 0 ? Math.max(...sellers.map(s => s.netSavings)) : 0;
+            maxSavingsEl.textContent = `$${maxSav.toFixed(2)}`;
+        }
+        if (durationEl) durationEl.textContent = `${data.duration_seconds || 0}s`;
+        if (scannedCardsEl) scannedCardsEl.textContent = data.scanned_cards_count || 0;
+    }
+
+    if (sellers.length === 0) {
+        container.innerHTML = `
+            <div class="bg-[#1B2230] border border-[#263245] p-8 sm:p-10 text-center font-mono">
+                <div class="text-xs text-[#F59E0B] uppercase font-bold tracking-widest">// NO SELLERS REACHED THRESHOLD</div>
+                <h4 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">
+                    0 Sellers Matched ${minCards}+ Cards at Selected Tolerance
+                </h4>
+                <p class="text-xs text-[#94A3B8] max-w-lg mx-auto font-sans mt-2 leading-relaxed">
+                    No single TCGplayer store held ${minCards} or more cards at or below your chosen price tolerance.
+                    Try lowering the <strong>Min Cards at Seller</strong> to 3+ or setting <strong>Decent Price Rule</strong> to Flexible (+20%).
+                </p>
+            </div>
+        `;
+        return;
+    }
+
+    let html = `<div class="space-y-4">`;
+
+    sellers.forEach((seller, idx) => {
+        const directBadge = seller.directSeller ? `<span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">TCG Direct</span>` : "";
+        const goldBadge = seller.goldSeller ? `<span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">★ Gold Star</span>` : "";
+        
+        let bundleSection = "";
+        if (seller.bundleInfo) {
+            const b = seller.bundleInfo;
+            const bLabel = b.bundleType === "min_threshold" ? "Free Shipping Goal" : "Target Budget Cap";
+            bundleSection = `
+                <div class="mt-3 p-3 bg-[#10B981]/10 border border-[#10B981]/40 font-mono text-xs">
+                    <div class="flex items-center justify-between text-[#10B981] font-bold">
+                        <span>🎯 OPTIMAL BUNDLE RECOMMENDATION (${bLabel}):</span>
+                        <span>${b.count} Cards &bull; Total: $${b.total.toFixed(2)} (Target: $${b.targetAmount.toFixed(2)})</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        let cardsTableRows = "";
+        (seller.cards || []).forEach(card => {
+            const binderBadge = card.inBinder ? `
+                <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 text-[9px] px-1 py-0.2 uppercase font-bold" title="In Binder (${card.binderCount})">
+                    💼 IN BINDER (${card.binderCount})
+                </span>
+            ` : "";
+
+            const tagBadge = card.tag ? `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/40 text-[9px] px-1 py-0.2 uppercase font-bold">🏷️ ${card.tag}</span>` : "";
+
+            const mPriceText = card.marketPrice ? `$${card.marketPrice.toFixed(2)}` : "--";
+            const deltaBadge = card.deltaPct !== null ? (
+                card.deltaPct <= 0 
+                ? `<span class="text-[#10B981] text-[10px] font-bold">${card.deltaPct}%</span>`
+                : `<span class="text-[#F59E0B] text-[10px] font-bold">+${card.deltaPct}%</span>`
+            ) : "";
+
+            const imgHtml = card.imageUri ? `
+                <img src="${card.imageUri}" alt="${card.name}" loading="lazy" class="w-8 h-11 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0 cursor-pointer"
+                    onclick="openCardImageOverlay(this)" data-card-image="${card.imageUri}" data-card-name="${card.name}">
+            ` : `<div class="w-8 h-11 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[8px] text-[#64748B] flex-shrink-0">NO ART</div>`;
+
+            cardsTableRows += `
+                <tr class="border-b border-[#263245]/60 hover:bg-[#161C28] transition font-mono text-xs">
+                    <td class="p-2 w-10">${imgHtml}</td>
+                    <td class="p-2 min-w-0">
+                        <div class="font-bold text-white truncate" title="${card.name}">${card.name}</div>
+                        <div class="text-[10px] text-[#94A3B8] truncate flex flex-wrap items-center gap-1 mt-0.5">
+                            <span>${card.setName || "Magic: The Gathering"}</span>
+                            <span class="text-[#00CED1]">&bull; ${card.condition}</span>
+                            <span>&bull; ${card.printing}</span>
+                            ${tagBadge}
+                            ${binderBadge}
+                        </div>
+                    </td>
+                    <td class="p-2 text-right whitespace-nowrap">
+                        <div class="font-bold text-[#00CED1] text-sm">$${card.price.toFixed(2)}</div>
+                        <div class="text-[10px] text-[#64748B]">Mkt: ${mPriceText} ${deltaBadge}</div>
+                    </td>
+                    <td class="p-2 text-right w-24">
+                        <a href="${card.tcgplayerUrl}" target="_blank" rel="noopener"
+                            class="btn-crimson inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
+                            Buy &rarr;
+                        </a>
+                    </td>
+                </tr>
+            `;
+        });
+
+        let aboveToleranceHtml = "";
+        if (seller.aboveToleranceCount > 0) {
+            aboveToleranceHtml = `
+                <div class="mt-3 pt-3 border-t border-[#263245]/60 text-xs font-mono">
+                    <details class="cursor-pointer group">
+                        <summary class="text-[#94A3B8] hover:text-white flex items-center justify-between text-[11px] uppercase">
+                            <span>+ ${seller.aboveToleranceCount} Other In-Stock Watchlist Cards (Above Selected Tolerance)</span>
+                            <span class="text-[#64748B] text-[10px] group-open:rotate-180 transition-transform">&darr;</span>
+                        </summary>
+                        <div class="mt-2 space-y-1.5 pl-2 border-l border-[#263245]">
+                            ${(seller.aboveToleranceCards || []).map(c => `
+                                <div class="flex items-center justify-between text-[11px] text-[#94A3B8]">
+                                    <span class="truncate">${c.name} (${c.condition})</span>
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-[#F59E0B] font-bold">$${c.price.toFixed(2)}</span>
+                                        <span class="text-[#64748B] text-[10px]">(Mkt: $${c.marketPrice ? c.marketPrice.toFixed(2) : '--'})</span>
+                                        <a href="${c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline text-[10px]">[Buy]</a>
+                                    </div>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </details>
+                </div>
+            `;
+        }
+
+        html += `
+            <div class="bg-[#1B2230] border-2 border-[#263245] hover:border-[#00CED1] transition p-4 sm:p-5 font-mono space-y-3.5" id="seller-lot-${idx}">
+                <!-- Seller Card Header -->
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">#${idx + 1} TCGPLAYER STORE</span>
+                            ${directBadge}
+                            ${goldBadge}
+                        </div>
+                        <h4 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5">
+                            ${seller.sellerName}
+                        </h4>
+                        <div class="text-xs text-[#94A3B8] mt-0.5 flex items-center space-x-2">
+                            <span>★ ${seller.sellerRating}% Rating</span>
+                            <span>&bull;</span>
+                            <span>${seller.sellerSales} Sales</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <span class="bg-[#00CED1] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            <span>${seller.qualifyingCount} Watchlist Cards</span>
+                        </span>
+                        <button onclick="copySellerLotList(${idx})" class="btn-bridge text-xs px-3 py-1.5 text-[#94A3B8] hover:text-white" title="Copy Card List to Clipboard">
+                            📋 Copy List
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Financial Telemetry Breakdown -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#10141D] p-3 border border-[#263245] text-xs">
+                    <div>
+                        <div class="text-[#94A3B8] text-[10px] uppercase">Cards Subtotal</div>
+                        <div class="text-sm sm:text-base font-bold text-white mt-0.5">$${seller.subtotal.toFixed(2)}</div>
+                    </div>
+                    <div>
+                        <div class="text-[#94A3B8] text-[10px] uppercase">Est. Shipping</div>
+                        <div class="text-sm sm:text-base font-bold ${seller.estShipping === 0 ? 'text-[#10B981]' : 'text-white'} mt-0.5">
+                            ${seller.estShipping === 0 ? 'FREE / DIRECT' : '$' + seller.estShipping.toFixed(2)}
+                        </div>
+                    </div>
+                    <div>
+                        <div class="text-[#94A3B8] text-[10px] uppercase">Landed Total</div>
+                        <div class="text-sm sm:text-base font-bold text-[#00CED1] mt-0.5">$${seller.landedTotal.toFixed(2)}</div>
+                    </div>
+                    <div>
+                        <div class="text-[#94A3B8] text-[10px] uppercase">Net Savings vs Mkt</div>
+                        <div class="text-sm sm:text-base font-bold ${seller.netSavings > 0 ? 'text-[#10B981]' : 'text-[#94A3B8]'} mt-0.5">
+                            ${seller.netSavings > 0 ? '+$' + seller.netSavings.toFixed(2) + ' (' + seller.savingsPct + '%)' : '$0.00'}
+                        </div>
+                    </div>
+                </div>
+
+                ${bundleSection}
+
+                <!-- Cards Table -->
+                <div class="border border-[#263245] bg-[#10141D] overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-[#263245] bg-[#161C28] text-[10px] text-[#94A3B8] uppercase font-bold tracking-wider">
+                                <th class="p-2 w-10">Art</th>
+                                <th class="p-2">Card &amp; Printing</th>
+                                <th class="p-2 text-right">Price</th>
+                                <th class="p-2 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${cardsTableRows}
+                        </tbody>
+                    </table>
+                </div>
+
+                ${aboveToleranceHtml}
+            </div>
+        `;
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
+}
+
+function copySellerLotList(sellerIndex) {
+    const seller = currentSellerLots[sellerIndex];
+    if (!seller) return;
+
+    let text = `TCGplayer Seller Lot: ${seller.sellerName}\n`;
+    text += `Cards In Stock: ${seller.qualifyingCount} | Subtotal: $${seller.subtotal.toFixed(2)} | Est. Shipping: $${seller.estShipping.toFixed(2)}\n`;
+    text += `--------------------------------------------------\n`;
+
+    (seller.cards || []).forEach(c => {
+        text += `1x ${c.name} (${c.condition}, ${c.printing}) - $${c.price.toFixed(2)}\n`;
+    });
+
+    navigator.clipboard.writeText(text).then(() => {
+        showToast(`Copied ${seller.qualifyingCount} cards from ${seller.sellerName} to clipboard!`, "success");
+    }).catch(err => {
+        console.error("Clipboard copy error:", err);
+        showToast("Failed to copy card list.", "error");
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    // Check if URL hash is #lots
+    if (window.location.hash === "#lots") {
+        switchDealsSection("lots");
+    }
+
     const cpInput = document.getElementById("command-palette-input");
     if (cpInput) {
         cpInput.addEventListener("input", (e) => {

@@ -46,7 +46,7 @@ from models import (
 )
 from playtest_engine import PlaytestEngine
 from deal_engine import DealEngine
-from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider, BestBuyProvider, EDHRECProvider
+from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider, BestBuyProvider, EDHRECProvider, TCGplayerLotProvider
 from deck_parser import DeckParser, DeckParseError
 from card_classifier import MTGCardClassifier
 from deck_analyzer import DeckAnalyzer
@@ -734,8 +734,10 @@ def create_app(test_config=None):
     inventory_manager = InventoryManager(scryfall_provider=scryfall_provider)
     upgrade_engine = DualTierUpgradeEngine(scryfall_provider=scryfall_provider)
     edhrec_provider = EDHRECProvider()
+    tcgplayer_lot_provider = TCGplayerLotProvider()
     card_add_evaluator = CardAddEvaluator(scryfall_provider=scryfall_provider, edhrec_provider=edhrec_provider)
     app.edhrec_provider = edhrec_provider
+    app.tcgplayer_lot_provider = tcgplayer_lot_provider
     app.upgrade_engine = upgrade_engine
     app.inventory_manager = inventory_manager
     app.card_add_evaluator = card_add_evaluator
@@ -1661,6 +1663,7 @@ def create_app(test_config=None):
 
         total_savings = sum(item.savings_amount for item in deal_items)
         user_tags = sorted(list({item.tag.strip() for item in all_items if item.tag and item.tag.strip()}))
+        watchlist_dropdown_items = sorted(all_items, key=lambda x: (x.name or "").lower())
         log_activity("PAGE_VIEW", details="Accessed Priority Deals View", user=user)
 
         return render_template(
@@ -1669,8 +1672,110 @@ def create_app(test_config=None):
             deals_count=len(deal_items),
             total_savings=total_savings,
             user_tags=user_tags,
+            all_watchlist_items=watchlist_dropdown_items,
             active_tab="deals",
         )
+
+    @app.route("/api/deals/tcgplayer-lots", methods=["POST"])
+    @login_required
+    def api_tcgplayer_lots():
+        """
+        Scans TCGplayer marketplace for single sellers carrying 5+ cards from the user's
+        watchlist at decent prices, with support for specific anchor cards and dollar budgets.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+
+        mode = str(data.get("mode", "lots")).strip().lower()
+        if mode not in ("lots", "anchor_card", "dollar_amount"):
+            mode = "lots"
+
+        try:
+            min_cards = max(2, min(50, int(data.get("min_cards", 5))))
+        except (ValueError, TypeError):
+            min_cards = 5
+
+        price_tolerance_mode = str(data.get("price_tolerance_mode", "decent_10")).strip().lower()
+        if price_tolerance_mode not in ("decent_10", "market_0", "great_minus_10", "target_only", "flex_20"):
+            price_tolerance_mode = "decent_10"
+
+        anchor_card_id = None
+        if data.get("anchor_card_id"):
+            try:
+                anchor_card_id = int(data.get("anchor_card_id"))
+            except (ValueError, TypeError):
+                anchor_card_id = None
+
+        anchor_card_name = str(data.get("anchor_card_name", "")).strip() or None
+
+        max_card_price = None
+        if data.get("max_card_price") is not None and str(data.get("max_card_price")).strip() != "":
+            try:
+                val = float(data.get("max_card_price"))
+                if val > 0:
+                    max_card_price = val
+            except (ValueError, TypeError):
+                pass
+
+        min_card_price = None
+        if data.get("min_card_price") is not None and str(data.get("min_card_price")).strip() != "":
+            try:
+                val = float(data.get("min_card_price"))
+                if val >= 0:
+                    min_card_price = val
+            except (ValueError, TypeError):
+                pass
+
+        target_bundle_amount = None
+        if data.get("target_bundle_amount") is not None and str(data.get("target_bundle_amount")).strip() != "":
+            try:
+                val = float(data.get("target_bundle_amount"))
+                if val > 0:
+                    target_bundle_amount = val
+            except (ValueError, TypeError):
+                pass
+
+        bundle_amount_type = str(data.get("bundle_amount_type", "max_budget")).strip().lower()
+        if bundle_amount_type not in ("max_budget", "min_threshold"):
+            bundle_amount_type = "max_budget"
+
+        tag_filter = str(data.get("tag_filter", "all")).strip() or "all"
+        allow_mp = bool(data.get("allow_mp", False))
+
+        # Query user watchlist items and enrich with collection ownership status
+        user_items = WatchlistItem.query.filter_by(user_id=user.id).all()
+        enrich_watchlist_items_with_binder_status(user_items, user.id)
+
+        try:
+            results = tcgplayer_lot_provider.find_seller_lots(
+                watchlist_items=user_items,
+                mode=mode,
+                anchor_card_id=anchor_card_id,
+                anchor_card_name=anchor_card_name,
+                min_cards=min_cards,
+                price_tolerance_mode=price_tolerance_mode,
+                max_card_price=max_card_price,
+                min_card_price=min_card_price,
+                target_bundle_amount=target_bundle_amount,
+                bundle_amount_type=bundle_amount_type,
+                tag_filter=tag_filter,
+                allow_mp=allow_mp,
+            )
+
+            log_activity(
+                "TCGPLAYER_LOT_SCAN",
+                details=f"Scanned TCGplayer lots (mode={mode}, min={min_cards}, tolerance={price_tolerance_mode}, found={results.get('total_sellers_found', 0)})",
+                user=user,
+            )
+            return jsonify(results)
+        except Exception as e:
+            logger.error(f"Error during TCGplayer lot scan: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "error": f"Failed to complete TCGplayer lot scan: {str(e)}",
+                "sellers": [],
+                "total_sellers_found": 0,
+            }), 500
 
     @app.route("/buylist")
     @login_required

@@ -10,13 +10,13 @@
         <div>
             <div class="flex items-center space-x-2">
                 <span class="w-2.5 h-2.5 bg-[#DC143C] animate-tactical-pulse inline-block"></span>
-                <span class="text-xs font-mono font-bold text-[#FF3358] uppercase tracking-wider">TACTICAL ALERT // DEALS CONFIRMED</span>
+                <span class="text-xs font-mono font-bold text-[#FF3358] uppercase tracking-wider">TACTICAL ALERT // DEALS &amp; SELLER LOTS</span>
             </div>
             <h2 class="text-lg sm:text-xl font-heading font-black text-white uppercase tracking-wider mt-1">
                 Priority Target Acquisitions
             </h2>
             <p class="text-xs sm:text-sm text-[#94A3B8] mt-1 font-sans">
-                Market singles in stock across monitored vendors at or below configured target acquisition thresholds.
+                Market singles at or below target thresholds, plus multi-card seller lot discovery across TCGplayer.
             </p>
         </div>
         <div class="flex items-center space-x-3 sm:space-x-4 bg-[#10141D] px-3.5 py-2 sm:px-4 sm:py-2.5 border border-[#263245] flex-shrink-0">
@@ -30,6 +30,30 @@
             </div>
         </div>
     </div>
+
+    <!-- Deals Mode Section Switcher (Single Deals vs Seller Lot Finder) -->
+    <div class="flex items-center border border-[#263245] bg-[#1B2230] p-1 gap-1">
+        <button onclick="switchDealsSection('single')" id="btn-deals-sec-single"
+            class="flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#DC143C] text-white">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+            </svg>
+            <span>Priority Deals ({{ deals_count }})</span>
+        </button>
+        <button onclick="switchDealsSection('lots')" id="btn-deals-sec-lots"
+            class="flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
+            <svg class="w-4 h-4 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+            </svg>
+            <span>TCGplayer Seller Lot Finder (5+ Cards)</span>
+            <span class="hidden sm:inline-block bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[9px] px-1.5 py-0.2 tracking-wider">NEW</span>
+        </button>
+    </div>
+
+    <!-- =========================================================================
+         SECTION A: SINGLE-CARD ACTIVE DEALS
+         ========================================================================= -->
+    <div id="deals-single-container" class="space-y-4 sm:space-y-6">
 
     <!-- Clinical Toolbar: Search, Filters & View Mode Switcher -->
     <div class="bg-[#1B2230] border border-[#263245] p-2.5 sm:p-3.5 space-y-2 sm:space-y-2.5">
@@ -582,6 +606,266 @@
         </p>
     </div>
     {% endif %}
+    </div><!-- End of deals-single-container -->
+
+    <!-- =========================================================================
+         SECTION B: TCGPLAYER MULTI-CARD SELLER LOT FINDER
+         ========================================================================= -->
+    <div id="deals-lot-finder-container" class="hidden space-y-4 sm:space-y-6">
+
+        <!-- Briefing & Configuration Card -->
+        <div class="bg-[#1B2230] border border-[#263245] p-3.5 sm:p-5 space-y-4 font-mono">
+            <!-- Header & Subtitle -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2 h-2 bg-[#00CED1] inline-block"></span>
+                        <span class="text-xs font-bold text-[#00CED1] uppercase tracking-wider">TACTICAL CONSOLIDATION // SELLER LOT FINDER</span>
+                    </div>
+                    <h3 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5">
+                        TCGplayer Multi-Card Watchlist Lots
+                    </h3>
+                    <p class="text-xs text-[#94A3B8] font-sans mt-0.5">
+                        Discover single sellers holding 5+ cards from your watchlist at decent prices to consolidate shipping and save in bulk.
+                    </p>
+                </div>
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                    <span class="text-[11px] text-[#64748B] bg-[#10141D] px-2.5 py-1 border border-[#263245]">
+                        Watchlist Scope: <strong class="text-white">{{ all_watchlist_items|length }} Cards</strong>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Mode Selector Tabs -->
+            <div class="space-y-1.5">
+                <label class="text-[10px] uppercase font-bold text-[#94A3B8] tracking-wider block">Scan Mode</label>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button type="button" onclick="setLotFinderMode('lots')" id="btn-mode-lots"
+                        class="lot-mode-btn active p-2.5 sm:p-3 text-left border border-[#00CED1] bg-[#00CED1]/10 text-white transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold uppercase tracking-wide">📦 All Watchlist Lots</span>
+                            <span class="text-[10px] bg-[#00CED1] text-[#10141D] px-1 font-bold">5+ Cards</span>
+                        </div>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-1">
+                            Find any seller stocking 5+ watchlist cards at decent prices.
+                        </div>
+                    </button>
+
+                    <button type="button" onclick="setLotFinderMode('anchor_card')" id="btn-mode-anchor_card"
+                        class="lot-mode-btn p-2.5 sm:p-3 text-left border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold uppercase tracking-wide">🎯 Specific Anchor Card</span>
+                            <span class="text-[10px] text-[#00CED1] font-bold">Targeted</span>
+                        </div>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-1">
+                            Start from one card you want; find sellers who also have 4+ other cards.
+                        </div>
+                    </button>
+
+                    <button type="button" onclick="setLotFinderMode('dollar_amount')" id="btn-mode-dollar_amount"
+                        class="lot-mode-btn p-2.5 sm:p-3 text-left border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-bold uppercase tracking-wide">💵 Dollar Amount &amp; Budget</span>
+                            <span class="text-[10px] text-[#10B981] font-bold">Budget</span>
+                        </div>
+                        <div class="text-[11px] text-[#94A3B8] font-sans mt-1">
+                            Filter by card price (e.g. &lt;$2) or target a bundle budget / $5 free ship.
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Conditional Section 1: Specific Anchor Card Picker (shown in anchor_card mode) -->
+            <div id="lot-anchor-card-box" class="hidden space-y-1.5 p-3 bg-[#10141D] border border-[#263245]">
+                <label class="text-[10px] uppercase font-bold text-[#00CED1] tracking-wider block">
+                    Choose Anchor Card (Must Be In-Stock at Seller)
+                </label>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <select id="lot-anchor-card-select" class="flex-1 bg-[#161C28] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                        <option value="">-- SELECT ANCHOR WATCHLIST CARD --</option>
+                        {% for card in all_watchlist_items %}
+                        <option value="{{ card.id }}" data-name="{{ card.name|e }}">
+                            {{ card.name }} {% if card.set_code %}[{{ card.set_code }}]{% endif %} {% if card.target_price %}(Target: ${{ "%.2f"|format(card.target_price) }}){% elif card.market_price %}(Market: ${{ "%.2f"|format(card.market_price) }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <p class="text-[11px] text-[#64748B] font-sans">
+                    Sellers will be pre-screened to ensure they have this card at a decent price, then checked for other cards on your watchlist.
+                </p>
+            </div>
+
+            <!-- Conditional Section 2: Dollar Amount & Budget Controls (shown in dollar_amount mode or expandable) -->
+            <div id="lot-dollar-amount-box" class="hidden space-y-3 p-3 bg-[#10141D] border border-[#263245]">
+                <div class="flex items-center justify-between">
+                    <span class="text-[10px] uppercase font-bold text-[#10B981] tracking-wider">
+                        Dollar Amount &amp; Budget Optimization
+                    </span>
+                    <span class="text-[10px] text-[#64748B]">Optional price filters and bundle optimization</span>
+                </div>
+
+                <!-- Quick Dollar Preset Pills -->
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="text-[10px] text-[#64748B] uppercase font-bold mr-1">QUICK PRESETS:</span>
+                    <button type="button" onclick="applyDollarPreset('free_ship')" class="btn-bridge text-[10px] px-2 py-1 text-[#00CED1]">
+                        $5 Free Ship Goal
+                    </button>
+                    <button type="button" onclick="applyDollarPreset('budget_2')" class="btn-bridge text-[10px] px-2 py-1 text-[#00CED1]">
+                        Singles Under $2
+                    </button>
+                    <button type="button" onclick="applyDollarPreset('budget_5')" class="btn-bridge text-[10px] px-2 py-1 text-[#00CED1]">
+                        Staples Under $5
+                    </button>
+                    <button type="button" onclick="applyDollarPreset('bundle_25')" class="btn-bridge text-[10px] px-2 py-1 text-[#00CED1]">
+                        $25 Cart Budget
+                    </button>
+                    <button type="button" onclick="applyDollarPreset('clear')" class="btn-bridge text-[10px] px-2 py-1 text-[#64748B] hover:text-white">
+                        Clear
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="text-[10px] uppercase text-[#94A3B8] block mb-1">Max Price Per Card ($)</label>
+                        <input type="number" id="lot-max-card-price" step="0.25" min="0" placeholder="e.g. 2.00 or 5.00"
+                            class="w-full bg-[#161C28] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                        <span class="text-[10px] text-[#64748B] mt-0.5 block">Ignores cards above this price</span>
+                    </div>
+
+                    <div>
+                        <label class="text-[10px] uppercase text-[#94A3B8] block mb-1">Target Bundle Total ($)</label>
+                        <input type="number" id="lot-target-bundle-amount" step="1.00" min="0" placeholder="e.g. 5.00 or 25.00"
+                            class="w-full bg-[#161C28] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                        <span class="text-[10px] text-[#64748B] mt-0.5 block">Subtotal target across bundle</span>
+                    </div>
+
+                    <div>
+                        <label class="text-[10px] uppercase text-[#94A3B8] block mb-1">Bundle Budget Goal</label>
+                        <select id="lot-bundle-amount-type" class="w-full bg-[#161C28] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                            <option value="max_budget">Max Budget Cap (Spend up to $X)</option>
+                            <option value="min_threshold">Min Spend Goal (At least $X / Free Ship)</option>
+                        </select>
+                        <span class="text-[10px] text-[#64748B] mt-0.5 block">How bundle optimizer chooses cards</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Universal Scan Parameters Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                <!-- 1. Min Cards Required -->
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Min Cards at Seller</label>
+                    <div class="flex items-center gap-1">
+                        <select id="lot-min-cards" class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                            <option value="3">3+ Cards</option>
+                            <option value="4">4+ Cards</option>
+                            <option value="5" selected>5+ Cards (Default)</option>
+                            <option value="7">7+ Cards</option>
+                            <option value="10">10+ Cards (Deep Lots)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 2. Decent Price Rule -->
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Decent Price Rule</label>
+                    <select id="lot-price-tolerance" class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                        <option value="decent_10" selected>&le; Target OR &le; Market +10% (Recommended)</option>
+                        <option value="market_0">Strict: &le; 100% Market Price</option>
+                        <option value="great_minus_10">Great Deal: &le; 10% Below Market</option>
+                        <option value="target_only">Strict: &le; Watchlist Target Price</option>
+                        <option value="flex_20">Flexible: &le; Market +20%</option>
+                    </select>
+                </div>
+
+                <!-- 3. Tag Filter -->
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Watchlist Tag Scope</label>
+                    <select id="lot-tag-filter" class="w-full bg-[#10141D] border border-[#263245] text-xs text-[#C084FC] p-2 font-mono focus:border-[#00CED1]">
+                        <option value="all">ALL WATCHLIST CARDS</option>
+                        {% if user_tags %}
+                        {% for tag in user_tags %}
+                        <option value="{{ tag|lower }}">🏷️ {{ tag }}</option>
+                        {% endfor %}
+                        {% endif %}
+                        <option value="__untagged__">[ UNTAGGED ]</option>
+                    </select>
+                </div>
+
+                <!-- 4. Condition Filter -->
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Card Condition</label>
+                    <div class="h-9 flex items-center px-2 bg-[#10141D] border border-[#263245]">
+                        <label class="inline-flex items-center space-x-2 text-xs text-[#94A3B8] cursor-pointer">
+                            <input type="checkbox" id="lot-allow-mp" class="form-checkbox text-[#00CED1] rounded-none bg-[#161C28] border-[#263245]">
+                            <span>Include MP (Moderately Played)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scan Action Button & Status Bar -->
+            <div class="pt-3 border-t border-[#263245] flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-xs text-[#64748B] flex items-center space-x-2 w-full sm:w-auto">
+                    <span class="inline-block w-2 h-2 rounded-full bg-[#10B981]"></span>
+                    <span id="lot-status-text">Ready to scan TCGplayer marketplace listings.</span>
+                </div>
+
+                <button type="button" id="btn-run-lot-scan" onclick="runTcgplayerLotScan()"
+                    class="btn-bridge w-full sm:w-auto px-6 py-2.5 bg-[#00CED1] hover:bg-[#00CED1]/90 text-[#10141D] text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 transition">
+                    <svg id="lot-scan-spinner" class="w-4 h-4 text-[#10141D] hidden animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <span id="lot-scan-btn-label">🔍 SCAN TCGPLAYER SELLERS</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Telemetry KPI Summary Cards (Hidden initially until scan runs) -->
+        <div id="lot-telemetry-kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Qualifying Sellers</div>
+                <div class="text-xl font-bold text-[#00CED1]" id="kpi-lot-sellers-count">0</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5">holding &ge; <span id="kpi-lot-min-label">5</span> cards</div>
+            </div>
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Max Cards at One Seller</div>
+                <div class="text-xl font-bold text-[#10B981]" id="kpi-lot-max-cards">0</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5">highest consolidation</div>
+            </div>
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Max Bundle Savings</div>
+                <div class="text-xl font-bold text-[#FF3358]" id="kpi-lot-max-savings">$0.00</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5">vs TCG Market baseline</div>
+            </div>
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Scan Telemetry</div>
+                <div class="text-xl font-bold text-white" id="kpi-lot-duration">0.0s</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5"><span id="kpi-lot-scanned-cards">0</span> cards cross-checked</div>
+            </div>
+        </div>
+
+        <!-- Results Display Container -->
+        <div id="lot-results-container" class="space-y-4">
+            <!-- Initial Tactical Briefing State -->
+            <div class="bg-[#1B2230] border border-[#263245] p-8 sm:p-10 text-center font-mono">
+                <div class="w-12 h-12 mx-auto mb-3 text-[#00CED1] opacity-70">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                    </svg>
+                </div>
+                <div class="text-xs text-[#00CED1] uppercase font-bold tracking-widest">// LOT SCANNER STANDBY</div>
+                <h4 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">
+                    Ready to Scan for Multi-Card Watchlist Bundles
+                </h4>
+                <p class="text-xs text-[#94A3B8] max-w-lg mx-auto font-sans mt-1.5 leading-relaxed">
+                    Select your preferred mode above and click <strong>Scan TCGplayer Sellers</strong>. The engine will query live marketplace inventories to find stores carrying 5 or more of your watchlist singles at decent prices.
+                </p>
+            </div>
+        </div>
+
+    </div><!-- End of deals-lot-finder-container -->
 
 </div>
 {% endblock %}

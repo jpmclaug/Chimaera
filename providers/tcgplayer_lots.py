@@ -1,0 +1,657 @@
+import logging
+import re
+import time
+import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import requests
+from card_utils import fix_mojibake, normalize_card_name, strip_accents
+
+logger = logging.getLogger(__name__)
+
+TCG_MP_SEARCH_URL = "https://mp-search-api.tcgplayer.com/v1/search/request?q=&isList=false"
+TCG_PRODUCT_LISTINGS_URL = "https://mp-search-api.tcgplayer.com/v1/product/{product_id}/listings"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+)
+
+
+class TCGplayerLotProvider:
+    """
+    Scans TCGplayer marketplace listings to discover single sellers holding
+    lots (5+ cards) of items from a user's surveillance watchlist at decent prices,
+    with support for anchor card bundling and budget/dollar amount constraints.
+    """
+
+    def __init__(self, session: Optional[requests.Session] = None):
+        self.session = session or requests.Session()
+        self.headers = {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Origin": "https://www.tcgplayer.com",
+            "Referer": "https://www.tcgplayer.com/",
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json",
+        }
+
+    def _post_json(self, url: str, payload: dict, timeout: float = 12.0) -> Optional[dict]:
+        """Performs a POST request against TCGplayer internal MP APIs with retry on 429."""
+        for attempt in range(3):
+            try:
+                resp = self.session.post(url, json=payload, headers=self.headers, timeout=timeout)
+                if resp.status_code == 200:
+                    return resp.json()
+                elif resp.status_code == 429:
+                    wait_time = 1.0 * (attempt + 1)
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logger.debug(f"TCGplayer API {url} status {resp.status_code}: {resp.text[:200]}")
+                    return None
+            except Exception as e:
+                logger.debug(f"TCGplayer API request error: {e}")
+                if attempt == 2:
+                    return None
+                time.sleep(0.5)
+        return None
+
+    def evaluate_listing_decent_price(
+        self,
+        listing_price: float,
+        market_price: Optional[float],
+        target_price: Optional[float],
+        tolerance_mode: str = "decent_10",
+    ) -> Tuple[bool, str, Optional[float]]:
+        """
+        Evaluates whether a listing price meets the user's 'decent price' threshold.
+        Returns: (is_qualifying, price_label, delta_vs_market)
+        """
+        if listing_price <= 0:
+            return False, "Invalid Price", None
+
+        # Calculate delta vs market if market exists
+        delta_pct = None
+        if market_price and market_price > 0:
+            delta_pct = round(((listing_price - market_price) / market_price) * 100.0, 1)
+
+        # Target price priority check if set
+        meets_target = bool(target_price and target_price > 0 and listing_price <= target_price)
+
+        if tolerance_mode == "target_only":
+            if meets_target:
+                return True, "At/Below Target Price", delta_pct
+            return False, "Above Target Price", delta_pct
+
+        if tolerance_mode == "great_minus_10":
+            # Strictly at least 10% below market OR <= target
+            if meets_target:
+                return True, "At/Below Target Price", delta_pct
+            if market_price and market_price > 0 and listing_price <= round(market_price * 0.90, 2):
+                return True, "Great Deal (10%+ Below Market)", delta_pct
+            return False, "Above Great Price", delta_pct
+
+        if tolerance_mode == "market_0":
+            # Strictly at or below market price OR <= target
+            if meets_target:
+                return True, "At/Below Target Price", delta_pct
+            if market_price and market_price > 0 and listing_price <= market_price:
+                return True, "Fair Market / Below Market", delta_pct
+            return False, "Above Market", delta_pct
+
+        if tolerance_mode == "flex_20":
+            # Up to +20% above market OR <= target
+            if meets_target:
+                return True, "At/Below Target Price", delta_pct
+            if market_price and market_price > 0 and listing_price <= round(market_price * 1.20, 2):
+                return True, "Within 20% of Market", delta_pct
+            return False, "Exceeds +20% Tolerance", delta_pct
+
+        # Default: "decent_10" (At/below Target OR within +10% of Market)
+        if meets_target:
+            return True, "At/Below Target Price", delta_pct
+        if market_price and market_price > 0 and listing_price <= round(market_price * 1.10, 2):
+            label = "At/Below Market" if listing_price <= market_price else "Within 10% Market Tolerance"
+            return True, label, delta_pct
+
+        # If no market price is listed, fall back to target price if available
+        if meets_target:
+            return True, "At/Below Target Price", delta_pct
+
+        return False, "Above Price Tolerance", delta_pct
+
+    def _discover_sellers_for_anchor(
+        self,
+        anchor_card_name: str,
+        anchor_target_price: Optional[float] = None,
+        anchor_market_price: Optional[float] = None,
+        tolerance_mode: str = "decent_10",
+        allow_mp: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Discovers top active sellers offering the specified anchor card at a decent price.
+        """
+        clean_name = anchor_card_name.split(" // ")[0].strip()
+        payload = {
+            "algorithm": "sales_dismax",
+            "from": 0,
+            "size": 50,
+            "filters": {
+                "term": {
+                    "productLineName": ["magic"],
+                    "productTypeName": ["Cards"],
+                    "productName": [clean_name],
+                },
+                "range": {},
+                "match": {},
+            },
+            "listingSearch": {
+                "context": {"cart": {}},
+                "filters": {
+                    "term": {"sellerStatus": "Live", "channelId": 0},
+                    "range": {"quantity": {"gte": 1}},
+                    "exclude": {"channelExclusion": 0},
+                },
+            },
+            "context": {"cart": {}, "shippingCountry": "US"},
+            "settings": {"useFuzzySearch": False, "didYouMean": {}},
+            "sort": {"field": "price", "order": "asc"},
+        }
+
+        data = self._post_json(TCG_MP_SEARCH_URL, payload)
+        if not data or not data.get("results"):
+            return []
+
+        products = data["results"][0].get("results", [])
+        candidates = []
+        seen_sellers: Set[str] = set()
+
+        for prod in products:
+            m_price = prod.get("marketPrice") or anchor_market_price
+            p_id = prod.get("productId")
+            p_name = prod.get("productName")
+            s_name = prod.get("setName")
+
+            for listing in prod.get("listings", []):
+                s_key = listing.get("sellerKey")
+                if not s_key or s_key in seen_sellers:
+                    continue
+
+                cond = listing.get("condition", "Near Mint")
+                if not allow_mp and cond in ("Moderately Played", "Heavily Played", "Damaged"):
+                    continue
+
+                price = float(listing.get("price", 0.0))
+                qualifies, label, delta_pct = self.evaluate_listing_decent_price(
+                    listing_price=price,
+                    market_price=m_price,
+                    target_price=anchor_target_price,
+                    tolerance_mode=tolerance_mode,
+                )
+
+                if qualifies:
+                    seen_sellers.add(s_key)
+                    candidates.append({
+                        "sellerKey": s_key,
+                        "sellerName": listing.get("sellerName", "TCGplayer Seller"),
+                        "sellerRating": listing.get("sellerRating", 100.0),
+                        "sellerSales": listing.get("sellerSales", "1000+"),
+                        "directSeller": bool(listing.get("directSeller")),
+                        "goldSeller": bool(listing.get("goldSeller")),
+                        "anchorListing": {
+                            "productId": p_id,
+                            "productName": p_name,
+                            "setName": s_name,
+                            "price": price,
+                            "shippingPrice": float(listing.get("shippingPrice", 0.0) or listing.get("sellerShippingPrice", 0.0) or 0.0),
+                            "condition": cond,
+                            "printing": listing.get("printing", "Normal"),
+                            "quantity": int(listing.get("quantity", 1)),
+                            "marketPrice": m_price,
+                            "priceLabel": label,
+                            "deltaPct": delta_pct,
+                        },
+                    })
+
+                if len(candidates) >= 20:
+                    break
+            if len(candidates) >= 20:
+                break
+
+        return candidates
+
+    def _discover_sellers_for_watchlist(
+        self,
+        candidate_card_names: List[str],
+        seed_count: int = 8,
+    ) -> List[Dict[str, Any]]:
+        """
+        Samples candidate cards across the watchlist and finds sellers that frequently
+        stock these cards at competitive prices.
+        """
+        if not candidate_card_names:
+            return []
+
+        # Select diverse seeds from the candidate names list
+        step = max(1, len(candidate_card_names) // seed_count)
+        seed_names = [candidate_card_names[i] for i in range(0, len(candidate_card_names), step)][:seed_count]
+        if not seed_names:
+            seed_names = candidate_card_names[:seed_count]
+
+        clean_seeds = [name.split(" // ")[0].strip() for name in seed_names]
+        payload = {
+            "algorithm": "sales_dismax",
+            "from": 0,
+            "size": 50,
+            "filters": {
+                "term": {
+                    "productLineName": ["magic"],
+                    "productTypeName": ["Cards"],
+                    "productName": clean_seeds,
+                },
+                "range": {},
+                "match": {},
+            },
+            "listingSearch": {
+                "context": {"cart": {}},
+                "filters": {
+                    "term": {"sellerStatus": "Live", "channelId": 0},
+                    "range": {"quantity": {"gte": 1}},
+                    "exclude": {"channelExclusion": 0},
+                },
+            },
+            "context": {"cart": {}, "shippingCountry": "US"},
+            "settings": {"useFuzzySearch": False, "didYouMean": {}},
+            "sort": {"field": "price", "order": "asc"},
+        }
+
+        data = self._post_json(TCG_MP_SEARCH_URL, payload)
+        if not data or not data.get("results"):
+            return []
+
+        products = data["results"][0].get("results", [])
+        seller_frequency: Dict[str, Dict[str, Any]] = {}
+
+        for prod in products:
+            for listing in prod.get("listings", []):
+                s_key = listing.get("sellerKey")
+                if not s_key:
+                    continue
+
+                if s_key not in seller_frequency:
+                    seller_frequency[s_key] = {
+                        "sellerKey": s_key,
+                        "sellerName": listing.get("sellerName", "TCGplayer Seller"),
+                        "sellerRating": listing.get("sellerRating", 100.0),
+                        "sellerSales": listing.get("sellerSales", "1000+"),
+                        "directSeller": bool(listing.get("directSeller")),
+                        "goldSeller": bool(listing.get("goldSeller")),
+                        "count": 0,
+                    }
+                seller_frequency[s_key]["count"] += 1
+
+        # Sort sellers by frequency appearance
+        sorted_sellers = sorted(seller_frequency.values(), key=lambda x: x["count"], reverse=True)
+        return sorted_sellers[:25]
+
+    def _query_seller_watchlist_inventory(
+        self,
+        seller_key: str,
+        all_card_names: List[str],
+    ) -> List[Dict[str, Any]]:
+        """
+        Queries TCGplayer for all cards in all_card_names stocked by this specific sellerKey.
+        Splits into chunks of up to 100 names to safely stay within API URL/payload size limits.
+        """
+        all_products = []
+        chunk_size = 80
+
+        for i in range(0, len(all_card_names), chunk_size):
+            chunk = all_card_names[i : i + chunk_size]
+            clean_chunk = list({name.split(" // ")[0].strip() for name in chunk if name})
+            if not clean_chunk:
+                continue
+
+            payload = {
+                "algorithm": "sales_dismax",
+                "from": 0,
+                "size": 50,
+                "filters": {
+                    "term": {
+                        "productLineName": ["magic"],
+                        "productTypeName": ["Cards"],
+                        "productName": clean_chunk,
+                    },
+                    "range": {},
+                    "match": {},
+                },
+                "listingSearch": {
+                    "context": {"cart": {}},
+                    "filters": {
+                        "term": {"sellerStatus": "Live", "channelId": 0, "sellerKey": [seller_key]},
+                        "range": {"quantity": {"gte": 1}},
+                        "exclude": {"channelExclusion": 0},
+                    },
+                },
+                "context": {"cart": {}, "shippingCountry": "US"},
+                "settings": {"useFuzzySearch": False, "didYouMean": {}},
+                "sort": {"field": "product-sorting-name", "order": "asc"},
+            }
+
+            data = self._post_json(TCG_MP_SEARCH_URL, payload)
+            if data and data.get("results"):
+                res0 = data["results"][0]
+                results = res0.get("results", [])
+                all_products.extend(results)
+
+        return all_products
+
+    def _optimize_dollar_bundle(
+        self,
+        qualifying_cards: List[Dict[str, Any]],
+        target_amount: float,
+        bundle_type: str = "max_budget",
+    ) -> Tuple[List[Dict[str, Any]], float]:
+        """
+        Selects a subset of qualifying cards to hit or stay within target_amount.
+        - 'max_budget': Greedy knapsack to maximize number of unique cards without exceeding target_amount.
+        - 'min_threshold': Selects lowest-cost cards until the sum reaches at least target_amount (e.g. $5 for free shipping).
+        """
+        if not qualifying_cards or target_amount <= 0:
+            return qualifying_cards, sum(c["price"] for c in qualifying_cards)
+
+        sorted_cards = sorted(qualifying_cards, key=lambda c: c["price"])
+
+        if bundle_type == "min_threshold":
+            selected = []
+            running_total = 0.0
+            for card in sorted_cards:
+                selected.append(card)
+                running_total += card["price"]
+                if running_total >= target_amount:
+                    break
+            return selected, round(running_total, 2)
+        else:
+            # max_budget
+            selected = []
+            running_total = 0.0
+            for card in sorted_cards:
+                if running_total + card["price"] <= target_amount:
+                    selected.append(card)
+                    running_total += card["price"]
+            return selected, round(running_total, 2)
+
+    def find_seller_lots(
+        self,
+        watchlist_items: List[Any],
+        mode: str = "lots",  # 'lots' | 'anchor_card' | 'dollar_amount'
+        anchor_card_id: Optional[int] = None,
+        anchor_card_name: Optional[str] = None,
+        min_cards: int = 5,
+        price_tolerance_mode: str = "decent_10",
+        max_card_price: Optional[float] = None,
+        min_card_price: Optional[float] = None,
+        target_bundle_amount: Optional[float] = None,
+        bundle_amount_type: str = "max_budget",  # 'max_budget' | 'min_threshold'
+        tag_filter: Optional[str] = None,
+        allow_mp: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Main entry point for finding single-seller lots across the user's watchlist.
+        """
+        start_time = time.time()
+
+        # Build fast lookup map for WatchlistItems by normalized canonical name
+        item_by_name: Dict[str, Any] = {}
+        for item in watchlist_items:
+            # Tag filter check
+            if tag_filter and tag_filter.lower() != "all":
+                item_tag = (getattr(item, "tag", "") or "").strip().lower()
+                if tag_filter.lower() == "__untagged__":
+                    if item_tag:
+                        continue
+                elif item_tag != tag_filter.lower():
+                    continue
+
+            # Per-card dollar filter check
+            ref_price = getattr(item, "lowest_in_stock_price", None) or getattr(item, "market_price", None)
+            if ref_price is not None:
+                if max_card_price is not None and ref_price > max_card_price:
+                    continue
+                if min_card_price is not None and ref_price < min_card_price:
+                    continue
+
+            name = getattr(item, "name", "")
+            if name:
+                norm = normalize_card_name(name.split(" // ")[0].strip())
+                item_by_name[norm] = item
+
+        if not item_by_name:
+            return {
+                "success": True,
+                "sellers": [],
+                "total_sellers_found": 0,
+                "scanned_cards_count": 0,
+                "message": "No watchlist cards match the selected tag or price filters.",
+                "duration_seconds": round(time.time() - start_time, 2),
+            }
+
+        all_names = [getattr(it, "name", "") for it in item_by_name.values()]
+
+        # Step 1: Discover candidate sellers
+        candidate_sellers: List[Dict[str, Any]] = []
+
+        if mode == "anchor_card" and (anchor_card_id or anchor_card_name):
+            # Resolve anchor item
+            anchor_item = None
+            if anchor_card_id:
+                for it in watchlist_items:
+                    if getattr(it, "id", None) == anchor_card_id:
+                        anchor_item = it
+                        break
+            if not anchor_item and anchor_card_name:
+                norm_a = normalize_card_name(anchor_card_name.split(" // ")[0].strip())
+                anchor_item = item_by_name.get(norm_a)
+
+            if anchor_item:
+                anchor_name = getattr(anchor_item, "name", "")
+                anchor_target = getattr(anchor_item, "target_price", None)
+                anchor_market = getattr(anchor_item, "market_price", None)
+                candidate_sellers = self._discover_sellers_for_anchor(
+                    anchor_card_name=anchor_name,
+                    anchor_target_price=anchor_target,
+                    anchor_market_price=anchor_market,
+                    tolerance_mode=price_tolerance_mode,
+                    allow_mp=allow_mp,
+                )
+        else:
+            # Watchlist lot or dollar amount mode: discover sellers from candidate items
+            candidate_sellers = self._discover_sellers_for_watchlist(
+                candidate_card_names=all_names,
+                seed_count=10,
+            )
+
+        if not candidate_sellers:
+            return {
+                "success": True,
+                "sellers": [],
+                "total_sellers_found": 0,
+                "scanned_cards_count": len(all_names),
+                "message": "No active sellers found stocking candidate watchlist cards at current filters.",
+                "duration_seconds": round(time.time() - start_time, 2),
+            }
+
+        # Step 2: Concurrently query all watchlist cards for candidate sellers
+        qualifying_sellers = []
+
+        def process_seller(seller_info: dict) -> Optional[dict]:
+            s_key = seller_info.get("sellerKey")
+            if not s_key:
+                return None
+
+            products = self._query_seller_watchlist_inventory(s_key, all_names)
+            if not products:
+                return None
+
+            qualifying_cards = []
+            above_tolerance_cards = []
+            seen_card_names: Set[str] = set()
+
+            shipping_estimates = []
+
+            for prod in products:
+                prod_name = prod.get("productName", "")
+                norm_name = normalize_card_name(prod_name.split(" // ")[0].strip())
+                w_item = item_by_name.get(norm_name)
+                if not w_item:
+                    continue
+
+                listings = prod.get("listings", [])
+                if not listings:
+                    continue
+
+                # Find the best in-stock listing for this product
+                for l in listings:
+                    cond = l.get("condition", "Near Mint")
+                    if not allow_mp and cond in ("Moderately Played", "Heavily Played", "Damaged"):
+                        continue
+
+                    price = float(l.get("price", 0.0))
+                    if price <= 0:
+                        continue
+
+                    # Check max/min card price filters if specified in dollar mode
+                    if max_card_price is not None and price > max_card_price:
+                        continue
+                    if min_card_price is not None and price < min_card_price:
+                        continue
+
+                    m_price = prod.get("marketPrice") or getattr(w_item, "market_price", None)
+                    t_price = getattr(w_item, "target_price", None)
+
+                    qualifies, label, delta_pct = self.evaluate_listing_decent_price(
+                        listing_price=price,
+                        market_price=m_price,
+                        target_price=t_price,
+                        tolerance_mode=price_tolerance_mode,
+                    )
+
+                    ship = float(l.get("shippingPrice", 0.0) or l.get("sellerShippingPrice", 0.0) or 0.0)
+                    shipping_estimates.append(ship)
+
+                    card_entry = {
+                        "id": getattr(w_item, "id", None),
+                        "name": getattr(w_item, "name", prod_name),
+                        "setName": prod.get("setName", ""),
+                        "productId": prod.get("productId"),
+                        "price": price,
+                        "marketPrice": m_price,
+                        "targetPrice": t_price,
+                        "condition": cond,
+                        "printing": l.get("printing", "Normal"),
+                        "quantity": int(l.get("quantity", 1)),
+                        "imageUri": getattr(w_item, "image_uri", None),
+                        "inBinder": bool(getattr(w_item, "in_binder", False)),
+                        "binderCount": getattr(w_item, "binder_count", 0),
+                        "tag": getattr(w_item, "tag", None),
+                        "priceLabel": label,
+                        "deltaPct": delta_pct,
+                        "tcgplayerUrl": f"https://www.tcgplayer.com/product/{prod.get('productId')}?seller={s_key}&page=1",
+                    }
+
+                    if qualifies:
+                        if norm_name not in seen_card_names:
+                            seen_card_names.add(norm_name)
+                            qualifying_cards.append(card_entry)
+                    else:
+                        above_tolerance_cards.append(card_entry)
+
+                    break  # Keep lowest valid listing per product
+
+            # If anchor card mode, verify the anchor card is present in qualifying cards
+            if mode == "anchor_card" and anchor_item:
+                anchor_norm = normalize_card_name(getattr(anchor_item, "name", "").split(" // ")[0].strip())
+                if anchor_norm not in seen_card_names:
+                    return None
+
+            # Check min_cards threshold
+            if len(qualifying_cards) < min_cards:
+                return None
+
+            # Sort qualifying cards by price ascending
+            qualifying_cards.sort(key=lambda c: c["price"])
+
+            # Compute financial totals
+            subtotal = sum(c["price"] for c in qualifying_cards)
+            total_market = sum(c["marketPrice"] for c in qualifying_cards if c.get("marketPrice"))
+            net_savings = round(total_market - subtotal, 2) if total_market > 0 else 0.0
+            savings_pct = round((net_savings / total_market) * 100.0, 1) if total_market > 0 and net_savings > 0 else 0.0
+
+            # Estimate shipping (use minimum observed shipping for this seller or 0.0 if direct/free)
+            est_shipping = min(shipping_estimates) if shipping_estimates else 0.0
+            if est_shipping >= 15.0:  # Cap outlier default values
+                est_shipping = 0.0 if seller_info.get("directSeller") else 4.99
+
+            bundle_info = None
+            if target_bundle_amount and target_bundle_amount > 0:
+                b_cards, b_total = self._optimize_dollar_bundle(
+                    qualifying_cards=qualifying_cards,
+                    target_amount=target_bundle_amount,
+                    bundle_type=bundle_amount_type,
+                )
+                bundle_info = {
+                    "cards": b_cards,
+                    "count": len(b_cards),
+                    "total": b_total,
+                    "targetAmount": target_bundle_amount,
+                    "bundleType": bundle_amount_type,
+                }
+
+            return {
+                "sellerKey": s_key,
+                "sellerName": seller_info.get("sellerName", "TCGplayer Seller"),
+                "sellerRating": seller_info.get("sellerRating", 100.0),
+                "sellerSales": seller_info.get("sellerSales", "1000+"),
+                "directSeller": seller_info.get("directSeller", False),
+                "goldSeller": seller_info.get("goldSeller", False),
+                "qualifyingCount": len(qualifying_cards),
+                "subtotal": round(subtotal, 2),
+                "estShipping": round(est_shipping, 2),
+                "landedTotal": round(subtotal + est_shipping, 2),
+                "totalMarket": round(total_market, 2),
+                "netSavings": net_savings,
+                "savingsPct": savings_pct,
+                "cards": qualifying_cards,
+                "aboveToleranceCount": len(above_tolerance_cards),
+                "aboveToleranceCards": above_tolerance_cards[:10],
+                "bundleInfo": bundle_info,
+            }
+
+        # Concurrently evaluate candidate sellers (5 worker threads)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(process_seller, s) for s in candidate_sellers]
+            for f in as_completed(futures):
+                try:
+                    res = f.result()
+                    if res:
+                        qualifying_sellers.append(res)
+                except Exception as err:
+                    logger.debug(f"Error evaluating seller: {err}")
+
+        # Sort sellers: first by qualifying card count descending, then by net savings descending
+        qualifying_sellers.sort(
+            key=lambda x: (x["qualifyingCount"], x["netSavings"]),
+            reverse=True,
+        )
+
+        elapsed = round(time.time() - start_time, 2)
+        return {
+            "success": True,
+            "sellers": qualifying_sellers,
+            "total_sellers_found": len(qualifying_sellers),
+            "scanned_cards_count": len(all_names),
+            "duration_seconds": elapsed,
+            "mode": mode,
+            "min_cards": min_cards,
+            "tolerance_mode": price_tolerance_mode,
+        }
