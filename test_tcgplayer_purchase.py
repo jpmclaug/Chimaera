@@ -554,6 +554,100 @@ class TestTCGPlayerPurchaseReconciliation(unittest.TestCase):
             frog = next(c for c in acquired_cards if c.name == "Frogmite")
             self.assertEqual(frog.quantity, 2)
 
+    def test_multi_order_and_seller_splitting_and_deduplication(self):
+        user_id = self.login_as()
+
+        # 1. Test HTML email with 2 seller breakdown tables + 1 redundant summary table
+        multi_table_html = """
+        <html>
+          <body>
+            <h2>Your TCGplayer Order #261108-A1B2C3-99887</h2>
+            <div>
+              <p>Package from Seller: CardKingdomDirect</p>
+              <table>
+                <tr><th>Qty</th><th>Description</th><th>Price</th></tr>
+                <tr><td>1</td><td>Magic - Aether Revolt - Metallic Rebuke - Near Mint</td><td>$0.49</td></tr>
+                <tr><td>2</td><td>Magic - Mirrodin - Frogmite - Moderately Played</td><td>$0.50</td></tr>
+                <tr><td>1</td><td>Magic - Mirrodin - Silver Myr - Lightly Played</td><td>$0.25</td></tr>
+              </table>
+            </div>
+            <div>
+              <p>Seller: StarCityVault</p>
+              <table>
+                <tr><th>Qty</th><th>Description</th><th>Price</th></tr>
+                <tr><td>1</td><td>Magic - Dominaria - Artificer's Assistant - Lightly Played</td><td>$0.30</td></tr>
+                <tr><td>1</td><td>Magic - Modern Horizons 3 - Evolution Witness - Near Mint</td><td>$0.35</td></tr>
+                <tr><td>1</td><td>Magic - Theros - Fleetfeather Sandals - Near Mint</td><td>$0.20</td></tr>
+              </table>
+            </div>
+            <div>
+              <p>Order Summary (All Items)</p>
+              <table>
+                <tr><th>Qty</th><th>Description</th><th>Price</th></tr>
+                <tr><td>1</td><td>Magic - Aether Revolt - Metallic Rebuke - Near Mint</td><td>$0.49</td></tr>
+                <tr><td>1</td><td>Magic - Dominaria - Artificer's Assistant - Lightly Played</td><td>$0.30</td></tr>
+                <tr><td>2</td><td>Magic - Mirrodin - Frogmite - Moderately Played</td><td>$0.50</td></tr>
+                <tr><td>1</td><td>Magic - Mirrodin - Silver Myr - Lightly Played</td><td>$0.25</td></tr>
+                <tr><td>1</td><td>Magic - Modern Horizons 3 - Evolution Witness - Near Mint</td><td>$0.35</td></tr>
+                <tr><td>1</td><td>Magic - Theros - Fleetfeather Sandals - Near Mint</td><td>$0.20</td></tr>
+              </table>
+            </div>
+          </body>
+        </html>
+        """
+        items, ord_nums, sellers = TCGPlayerPurchaseParser.parse_email_html(multi_table_html)
+        # Summary table (6 items) is 100% accounted for by CardKingdomDirect (3 items) + StarCityVault (3 items)
+        self.assertEqual(len(items), 6)
+        self.assertEqual(sum(i.quantity for i in items), 7)
+        ck_items = [i for i in items if i.seller == "CardKingdomDirect"]
+        sc_items = [i for i in items if i.seller == "StarCityVault"]
+        self.assertEqual(len(ck_items), 3)
+        self.assertEqual(len(sc_items), 3)
+
+        # 2. Test preview + execute splitting into separate TCGPlayerOrder rows per (Order #, Seller)
+        multi_order_manifest = (
+            "Qty\tDescription\n"
+            "=== Order #261108-A1B2C3-11111 | Seller: CardKingdomDirect | Date: Nov 08, 2026 ===\n"
+            "1\tMagic - Aether Revolt - Metallic Rebuke - Near Mint\n"
+            "2\tMagic - Mirrodin - Frogmite - Moderately Played\n"
+            "=== Order #261108-A1B2C3-11111 | Seller: StarCityVault | Date: Nov 08, 2026 ===\n"
+            "1\tMagic - Dominaria - Artificer's Assistant - Lightly Played\n"
+            "=== Order #261109-D4E5F6-22222 | Seller: TCGplayer Direct | Date: Nov 09, 2026 ===\n"
+            "1\tMagic - Modern Horizons 3 - Evolution Witness - Near Mint\n"
+        )
+
+        prev_res = self.client.post(
+            "/api/watchlist/reconcile-purchase/preview",
+            data=json.dumps({"raw_text": multi_order_manifest}),
+            content_type="application/json",
+        )
+        self.assertEqual(prev_res.status_code, 200)
+        prev_data = prev_res.get_json()
+        self.assertEqual(prev_data["packages_count"], 3)
+        self.assertEqual(len(prev_data["order_groups"]), 3)
+        self.assertEqual(prev_data["order_groups"][0]["seller"], "CardKingdomDirect")
+        self.assertEqual(prev_data["order_groups"][1]["seller"], "StarCityVault")
+        self.assertEqual(prev_data["order_groups"][2]["order_number"], "261109-D4E5F6-22222")
+        self.assertEqual(prev_data["order_groups"][2]["seller"], "TCGplayer Direct")
+
+        exec_res = self.client.post(
+            "/api/watchlist/reconcile-purchase/execute",
+            data=json.dumps({
+                "target_ids": [],
+                "add_to_inventory": True,
+                "track_order": True,
+                "inventory_mode": "ordered",
+                "target_binder_name": "Acquired",
+                "purchased_items": prev_data["parsed_items"],
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(exec_res.status_code, 200)
+        exec_data = exec_res.get_json()
+        self.assertEqual(len(exec_data["orders"]), 3)
+        sellers_created = [o["seller_summary"] for o in exec_data["orders"]]
+        self.assertEqual(sellers_created, ["CardKingdomDirect", "StarCityVault", "TCGplayer Direct"])
+
 
 if __name__ == "__main__":
     unittest.main()

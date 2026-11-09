@@ -1028,11 +1028,14 @@
 
                     <!-- Results container (hidden until preview) -->
                     <div id="tcg-results-container" class="hidden space-y-3">
-                        <!-- Results Sub-Tab Switcher: By Card vs By Deck Sorting Guide -->
+                        <!-- Results Sub-Tab Switcher: By Card vs By Order & Seller vs By Deck Sorting Guide -->
                         <div class="flex items-center justify-between bg-[#10141D] border border-[#263245] p-2 font-mono text-xs flex-wrap gap-2">
-                            <div class="flex items-center space-x-1">
+                            <div class="flex items-center space-x-1 flex-wrap gap-y-1">
                                 <button type="button" id="btn-tcg-subview-cards" onclick="switchTcgResultsSubView('cards')" class="px-2.5 py-1 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 font-bold uppercase text-[11px]">
                                     🎯 By Card (Watchlist &amp; Deck Fit)
+                                </button>
+                                <button type="button" id="btn-tcg-subview-orders" onclick="switchTcgResultsSubView('orders')" class="px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]">
+                                    🏪 By Order &amp; Seller
                                 </button>
                                 <button type="button" id="btn-tcg-subview-decks" onclick="switchTcgResultsSubView('decks')" class="px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]">
                                     📦 Deck Sorting Guide (By Deck)
@@ -1073,7 +1076,12 @@
                             </div>
                         </div>
 
-                        <!-- SUBVIEW 2: DECK SORTING GUIDE (Grouped by Commander Deck) -->
+                        <!-- SUBVIEW 2: BY ORDER & SELLER (Split by Order Number & Seller Package) -->
+                        <div id="tcg-subview-orders" class="hidden space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                            <!-- Populated dynamically -->
+                        </div>
+
+                        <!-- SUBVIEW 3: DECK SORTING GUIDE (Grouped by Commander Deck) -->
                         <div id="tcg-subview-decks" class="hidden space-y-2.5 max-h-80 overflow-y-auto pr-1">
                             <!-- Populated dynamically -->
                         </div>

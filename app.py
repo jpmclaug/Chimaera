@@ -3366,9 +3366,17 @@ def create_app(test_config=None):
             logger.error(f"Error fetching TCGplayer emails via IMAP: {e}", exc_info=True)
             return jsonify({"error": f"Failed to fetch TCGplayer emails: {str(e)}"}), 500
 
-        # Cross-reference with already tracked TCGPlayerOrder records for deduplication
+        # Cross-reference with already tracked TCGPlayerOrder records for deduplication (by Order # + Seller)
         existing_orders = TCGPlayerOrder.query.filter_by(user_id=user.id).all()
-        by_order_num = {o.order_number.upper(): o for o in existing_orders if o.order_number}
+        by_ord_and_seller = {
+            ((o.order_number or "").upper(), (o.seller_summary or "").strip().lower()): o
+            for o in existing_orders
+            if o.order_number
+        }
+        by_order_num_counts = defaultdict(list)
+        for o in existing_orders:
+            if o.order_number:
+                by_order_num_counts[o.order_number.upper()].append(o)
         by_msg_id = {o.email_message_id: o for o in existing_orders if o.email_message_id}
 
         orders = fetch_res.get("orders", [])
@@ -3377,8 +3385,13 @@ def create_app(test_config=None):
 
         for ord_obj in orders:
             ord_num = (ord_obj.get("order_number") or "").upper()
+            sel_str = (ord_obj.get("seller_summary") or "").strip().lower()
             msg_id = ord_obj.get("email_message_id") or ""
-            matched_existing = by_order_num.get(ord_num) or (by_msg_id.get(msg_id) if msg_id else None)
+            matched_existing = (
+                by_ord_and_seller.get((ord_num, sel_str))
+                or (by_msg_id.get(msg_id) if msg_id else None)
+                or (by_order_num_counts[ord_num][0] if len(by_order_num_counts.get(ord_num, [])) == 1 and len([x for x in orders if (x.get("order_number") or "").upper() == ord_num]) == 1 else None)
+            )
             if matched_existing:
                 ord_obj["already_tracked"] = True
                 ord_obj["tracked_order_id"] = matched_existing.id
@@ -3413,7 +3426,8 @@ def create_app(test_config=None):
     @login_required
     def reconcile_purchase_preview():
         """
-        Parses TCGplayer purchase text, identifies matching targets currently on user's watchlist,
+        Parses TCGplayer purchase text (splitting into distinct Order & Seller packages and deduplicating
+        consolidated summary tables), identifies matching targets currently on user's watchlist,
         and evaluates every ordered card against the user's Commander fleet for Best Deck Fit & Suggested Cuts.
         """
         user = get_current_user()
@@ -3422,7 +3436,8 @@ def create_app(test_config=None):
         if not raw_text or not str(raw_text).strip():
             return jsonify({"error": "No purchase text provided to reconcile."}), 400
 
-        parsed_items = TCGPlayerPurchaseParser.parse(str(raw_text))
+        package_groups = TCGPlayerPurchaseParser.parse_into_packages(str(raw_text))
+        parsed_items = [it for grp in package_groups for it in grp.get("items", [])]
         if not parsed_items:
             return jsonify({
                 "error": "No valid TCGplayer card purchases could be parsed from the provided input.",
@@ -3433,12 +3448,14 @@ def create_app(test_config=None):
         matched_targets: Dict[int, Dict[str, Any]] = {}
         unmatched_purchases: List[Dict[str, Any]] = []
         watchlist_tag_by_card: Dict[str, str] = {}
+        matched_card_keys: Set[str] = set()
 
         for p in parsed_items:
             p_matched = False
             for target in user_targets:
                 if card_names_match(p.card_name, target.name):
                     p_matched = True
+                    matched_card_keys.add(normalize_card_name(p.card_name).lower())
                     if target.tag:
                         watchlist_tag_by_card[p.card_name] = target.tag
                     if target.id not in matched_targets:
@@ -3458,6 +3475,9 @@ def create_app(test_config=None):
                             "purchased_condition": p.condition,
                             "purchased_finish": p.finish,
                             "order_number": p.order_number,
+                            "seller": p.seller,
+                            "order_date": p.order_date,
+                            "package_index": p.package_index,
                         }
                     else:
                         matched_targets[target.id]["purchased_qty"] += p.quantity
@@ -3503,13 +3523,38 @@ def create_app(test_config=None):
             u["deck_fit"] = _find_fit(u.get("card_name") or u.get("raw_name") or "")
 
         for p_dict in parsed_items_dicts:
-            fit_info = _find_fit(p_dict.get("card_name") or p_dict.get("raw_name") or "")
+            c_name = p_dict.get("card_name") or p_dict.get("raw_name") or ""
+            fit_info = _find_fit(c_name)
             p_dict["deck_fit"] = fit_info
             p_dict["watchlist_tag"] = watchlist_tag_by_card.get(p_dict.get("card_name") or "")
+            p_dict["is_watchlist_match"] = normalize_card_name(c_name).lower() in matched_card_keys
+
+        # Build structured order_groups by (Order #, Seller) package for the frontend 'By Order & Seller' view
+        order_groups: List[Dict[str, Any]] = []
+        items_by_pkg_idx: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        for p_dict in parsed_items_dicts:
+            items_by_pkg_idx[int(p_dict.get("package_index") or 0)].append(p_dict)
+
+        for pkg_idx, grp in enumerate(package_groups):
+            grp_cards = items_by_pkg_idx.get(pkg_idx, [])
+            if not grp_cards:
+                continue
+            order_groups.append({
+                "package_index": pkg_idx,
+                "order_number": grp.get("order_number") or "",
+                "seller": grp.get("seller") or "TCGplayer Marketplace",
+                "order_date": grp.get("order_date") or "",
+                "unique_cards_count": len(grp_cards),
+                "total_quantity": sum(max(1, int(x.get("quantity") or 1)) for x in grp_cards),
+                "matched_watchlist_count": sum(1 for x in grp_cards if x.get("is_watchlist_match")),
+                "cards": grp_cards,
+            })
 
         return jsonify({
             "total_purchased_lines": len(parsed_items),
             "total_purchased_qty": sum(p.quantity for p in parsed_items),
+            "packages_count": len(order_groups),
+            "order_groups": order_groups,
             "matched_targets_count": len(matched_targets),
             "matched_targets": list(matched_targets.values()),
             "unmatched_purchases_count": len(unmatched_purchases),
@@ -3525,7 +3570,7 @@ def create_app(test_config=None):
         """
         De-registers selected target IDs from user's watchlist that were purchased,
         adds purchased items to the Collection Binder (as 'Ordered' in-transit by default, or 'Acquired'),
-        and records a tracked TCGPlayerOrder so the user can mark it complete when delivered.
+        and records tracked TCGPlayerOrder rows split up by Order Number and Seller.
         """
         user = get_current_user()
         data = request.get_json(silent=True) or {}
@@ -3537,7 +3582,7 @@ def create_app(test_config=None):
         purchased_items = data.get("purchased_items", [])
         order_metadata = data.get("order_metadata") or {}
 
-        if (not target_ids or not isinstance(target_ids, list)) and not ( (add_to_inventory or track_order) and purchased_items ):
+        if (not target_ids or not isinstance(target_ids, list)) and not ((add_to_inventory or track_order) and purchased_items):
             return jsonify({"error": "No target card IDs or purchased items provided for reconciliation."}), 400
 
         valid_ids: List[int] = []
@@ -3579,26 +3624,67 @@ def create_app(test_config=None):
                 binder_name=effective_binder,
             )
 
-        # Create or update tracked TCGPlayerOrder record(s) when items are provided
+        # Create or update tracked TCGPlayerOrder record(s) split by (order_number, seller, package_index)
         created_orders: List[Dict[str, Any]] = []
         if (add_to_inventory or track_order) and purchased_items:
-            # Group items by order_number if multiple orders were fetched from Gmail
-            items_by_ord: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-            default_ord_num = (
-                order_metadata.get("order_number")
+            base_ord_num = (
+                (order_metadata.get("order_number") or "").strip()
                 or f"ORD-{utc_now().strftime('%Y%m%d-%H%M%S')}"
             )
-            for p in purchased_items:
-                o_num = (p.get("order_number") or default_ord_num).strip()
-                items_by_ord[o_num].append(p)
+            default_seller = (order_metadata.get("seller_summary") or "").strip() or "TCGplayer Marketplace"
+            default_date_str = (order_metadata.get("order_date_str") or "").strip() or utc_now().strftime("%b %d, %Y")
 
-            for o_num, o_items in items_by_ord.items():
+            # Group purchased_items by (order_number, seller, package_index) preserving order
+            pkg_buckets: List[Dict[str, Any]] = []
+            bucket_index_by_key: Dict[Tuple[str, str, int], int] = {}
+
+            for p in purchased_items:
+                p_ord = (p.get("order_number") or "").strip()
+                p_sel = (p.get("seller") or p.get("seller_summary") or "").strip()
+                p_date = (p.get("order_date") or "").strip()
+                p_pkg_idx = int(p.get("package_index") or 0)
+                key = (p_ord, p_sel, p_pkg_idx)
+                if key not in bucket_index_by_key:
+                    bucket_index_by_key[key] = len(pkg_buckets)
+                    pkg_buckets.append({
+                        "order_number": p_ord,
+                        "seller": p_sel,
+                        "order_date": p_date,
+                        "package_index": p_pkg_idx,
+                        "items": [p],
+                    })
+                else:
+                    pkg_buckets[bucket_index_by_key[key]]["items"].append(p)
+
+            total_buckets = len(pkg_buckets)
+            for b_idx, bucket in enumerate(pkg_buckets, start=1):
+                o_items = bucket["items"]
+                o_num = bucket["order_number"]
+                if not o_num:
+                    o_num = f"{base_ord_num}-P{b_idx}" if total_buckets > 1 else base_ord_num
+
+                s_name = bucket["seller"]
+                if not s_name:
+                    s_name = f"Package {b_idx}" if (total_buckets > 1 and default_seller == "TCGplayer Marketplace") else default_seller
+
+                o_date = bucket["order_date"] or default_date_str
+                total_qty = sum(max(1, int(x.get("quantity") or 1)) for x in o_items)
+
+                # Match existing order by (user_id, order_number, seller_summary)
                 existing_ord = TCGPlayerOrder.query.filter_by(
                     user_id=user.id,
                     order_number=o_num,
+                    seller_summary=s_name,
                 ).first()
-                total_qty = sum(max(1, int(x.get("quantity") or 1)) for x in o_items)
+                if not existing_ord and total_buckets == 1:
+                    existing_ord = TCGPlayerOrder.query.filter_by(
+                        user_id=user.id,
+                        order_number=o_num,
+                    ).first()
+
                 if existing_ord:
+                    existing_ord.seller_summary = s_name
+                    existing_ord.order_date_str = o_date
                     existing_ord.items_json = json.dumps(o_items)
                     existing_ord.total_quantity = total_qty
                     existing_ord.unique_cards_count = len(o_items)
@@ -3607,12 +3693,15 @@ def create_app(test_config=None):
                         existing_ord.completed_at = utc_now()
                     created_orders.append(existing_ord.to_dict())
                 else:
+                    msg_id = order_metadata.get("email_message_id")
+                    if msg_id and total_buckets > 1:
+                        msg_id = f"{msg_id}#pkg{b_idx}"
                     new_ord = TCGPlayerOrder(
                         user_id=user.id,
                         order_number=o_num,
-                        email_message_id=order_metadata.get("email_message_id"),
-                        order_date_str=order_metadata.get("order_date_str") or utc_now().strftime("%b %d, %Y"),
-                        seller_summary=order_metadata.get("seller_summary") or "TCGplayer Marketplace",
+                        email_message_id=msg_id,
+                        order_date_str=o_date,
+                        seller_summary=s_name,
                         source=order_metadata.get("source") or "manual_paste",
                         status=order_status,
                         target_binder_name=target_binder,

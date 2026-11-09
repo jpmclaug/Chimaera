@@ -1327,21 +1327,23 @@ function renderFetchedGmailOrdersList(orders) {
     box.classList.remove("hidden");
     const newCount = orders.filter(o => !o.already_tracked).length;
     if (label) {
-        label.textContent = `${orders.length} Order Email${orders.length === 1 ? '' : 's'} Found (${newCount} New)`;
+        label.textContent = `${orders.length} Order Package${orders.length === 1 ? '' : 's'} Found (${newCount} New)`;
     }
 
     list.innerHTML = orders.map((o, idx) => {
         const isTracked = !!o.already_tracked;
         const checkedAttr = (!isTracked || newCount === 0) ? "checked" : "";
+        const sellerName = o.seller_summary || "TCGplayer Marketplace";
         const statusBadge = isTracked
             ? `<span class="text-[9px] px-1.5 py-0.2 bg-[#64748B]/20 text-[#94A3B8] border border-[#64748B]/40 uppercase">Already Tracked (${escapeHtml(o.tracked_status || 'ordered')})</span>`
-            : `<span class="text-[9px] px-1.5 py-0.2 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 uppercase font-bold">New Order</span>`;
+            : `<span class="text-[9px] px-1.5 py-0.2 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 uppercase font-bold">New</span>`;
 
         return `
             <label class="flex items-center justify-between p-1.5 bg-[#1B2230] border border-[#263245] text-[11px] font-mono cursor-pointer hover:border-[#00CED1]/40">
-                <div class="flex items-center space-x-2 min-w-0">
+                <div class="flex items-center space-x-2 min-w-0 flex-wrap gap-y-0.5">
                     <input type="checkbox" class="tcg-gmail-order-check w-3.5 h-3.5 text-[#00CED1] bg-[#10141D] border-[#263245]" data-order-idx="${idx}" ${checkedAttr} onchange="onToggleGmailOrderSelection()">
                     <span class="text-white font-bold truncate">#${escapeHtml(o.order_number)}</span>
+                    <span class="text-[10px] px-1.5 py-0.2 bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 font-bold truncate">🏪 ${escapeHtml(sellerName)}</span>
                     <span class="text-[#94A3B8] text-[10px]">${escapeHtml(o.order_date_str || '')}</span>
                     ${statusBadge}
                 </div>
@@ -1358,8 +1360,13 @@ function onToggleGmailOrderSelection() {
         const idx = parseInt(cb.getAttribute("data-order-idx"), 10);
         const ord = currentTcgFetchedGmailOrders[idx];
         if (ord && ord.manifest_text) {
-            lines.push(`Order #${ord.order_number}`);
-            lines.push(ord.manifest_text);
+            const mText = ord.manifest_text.trim();
+            if (!mText.startsWith("===")) {
+                const sellerPart = ord.seller_summary ? ` | Seller: ${ord.seller_summary}` : "";
+                const datePart = ord.order_date_str ? ` | Date: ${ord.order_date_str}` : "";
+                lines.push(`=== Order #${ord.order_number}${sellerPart}${datePart} ===`);
+            }
+            lines.push(mText);
         }
     });
     const textarea = document.getElementById("tcg-purchase-input");
@@ -1380,7 +1387,10 @@ function onTcgInputChange() {
         badge.className = "text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]";
         return;
     }
-    const lines = val.split(/\r?\n/).filter(l => l.trim() && !l.toLowerCase().startsWith("qty") && !l.toLowerCase().startsWith("order #"));
+    const lines = val.split(/\r?\n/).filter(l => {
+        const s = l.trim().toLowerCase();
+        return s && !s.startsWith("qty") && !s.startsWith("order #") && !s.startsWith("===");
+    });
     const count = lines.length;
     badge.textContent = `[ ${count} Line${count === 1 ? '' : 's'} ]`;
     badge.className = "text-[11px] font-mono text-[#00CED1] font-bold bg-[#10141D] px-2 py-0.5 border border-[#00CED1]/40";
@@ -1388,21 +1398,22 @@ function onTcgInputChange() {
 
 function switchTcgResultsSubView(view) {
     const cardsView = document.getElementById("tcg-subview-cards");
+    const ordersView = document.getElementById("tcg-subview-orders");
     const decksView = document.getElementById("tcg-subview-decks");
     const btnCards = document.getElementById("btn-tcg-subview-cards");
+    const btnOrders = document.getElementById("btn-tcg-subview-orders");
     const btnDecks = document.getElementById("btn-tcg-subview-decks");
 
-    if (view === "decks") {
-        if (cardsView) cardsView.classList.add("hidden");
-        if (decksView) decksView.classList.remove("hidden");
-        if (btnCards) btnCards.className = "px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]";
-        if (btnDecks) btnDecks.className = "px-2.5 py-1 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 font-bold uppercase text-[11px]";
-    } else {
-        if (cardsView) cardsView.classList.remove("hidden");
-        if (decksView) decksView.classList.add("hidden");
-        if (btnCards) btnCards.className = "px-2.5 py-1 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 font-bold uppercase text-[11px]";
-        if (btnDecks) btnDecks.className = "px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]";
-    }
+    const activeBtnClass = "px-2.5 py-1 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 font-bold uppercase text-[11px]";
+    const inactiveBtnClass = "px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]";
+
+    if (cardsView) cardsView.classList.toggle("hidden", view !== "cards");
+    if (ordersView) ordersView.classList.toggle("hidden", view !== "orders");
+    if (decksView) decksView.classList.toggle("hidden", view !== "decks");
+
+    if (btnCards) btnCards.className = view === "cards" ? activeBtnClass : inactiveBtnClass;
+    if (btnOrders) btnOrders.className = view === "orders" ? activeBtnClass : inactiveBtnClass;
+    if (btnDecks) btnDecks.className = view === "decks" ? activeBtnClass : inactiveBtnClass;
 }
 
 function renderTcgDeckFitBadgeHtml(deckFit) {
@@ -1497,6 +1508,8 @@ function renderTcgPreviewResults(data) {
     const unmatchedSection = document.getElementById("tcg-unmatched-section");
     const unmatchedList = document.getElementById("tcg-unmatched-list");
     const unmatchedCountLabel = document.getElementById("tcg-unmatched-count-label");
+    const ordersContainer = document.getElementById("tcg-subview-orders");
+    const btnOrdersTab = document.getElementById("btn-tcg-subview-orders");
     const sortingDecksContainer = document.getElementById("tcg-subview-decks");
     const fleetSummaryEl = document.getElementById("tcg-fleet-eval-summary");
     const executeBtn = document.getElementById("btn-submit-tcg-execute");
@@ -1506,13 +1519,19 @@ function renderTcgPreviewResults(data) {
     matchedList.innerHTML = "";
     const matched = data.matched_targets || [];
     const unmatched = data.unmatched_purchases || [];
+    const orderGroups = data.order_groups || [];
     const sortingGroups = data.deck_sorting_groups || [];
+
+    if (btnOrdersTab) {
+        btnOrdersTab.textContent = `🏪 By Order & Seller (${orderGroups.length || 1})`;
+    }
 
     if (fleetSummaryEl) {
         const decksCount = data.evaluated_decks_count || 0;
+        const pkgPrefix = orderGroups.length > 1 ? `${orderGroups.length} Order Packages • ` : "";
         fleetSummaryEl.textContent = decksCount > 0
-            ? `Evaluated against ${decksCount} Commander Deck${decksCount === 1 ? '' : 's'}`
-            : `No saved Commander decks found`;
+            ? `${pkgPrefix}Evaluated against ${decksCount} Commander Deck${decksCount === 1 ? '' : 's'}`
+            : `${pkgPrefix}No saved Commander decks found`;
     }
 
     matchedCountLabel.textContent = `${matched.length} Buy Target${matched.length === 1 ? '' : 's'} Matched On Watchlist`;
@@ -1530,6 +1549,8 @@ function renderTcgPreviewResults(data) {
             row.id = `tcg-match-row-${t.id}`;
 
             const tagHtml = t.tag ? `<span class="text-[10px] text-[#C084FC] bg-[#9333EA]/10 border border-[#9333EA]/30 px-1.5 py-0.5 ml-2">🏷️ ${escapeHtml(t.tag)}</span>` : "";
+            const ordBadge = t.order_number ? `<span class="text-[10px] text-[#94A3B8] bg-[#1B2230] border border-[#263245] px-1.5 py-0.2 ml-1.5">#${escapeHtml(t.order_number)}</span>` : "";
+            const sellerBadge = t.seller ? `<span class="text-[10px] text-[#00CED1] bg-[#00CED1]/10 border border-[#00CED1]/30 px-1.5 py-0.2 ml-1.5">🏪 ${escapeHtml(t.seller)}</span>` : "";
             const targetPriceHtml = t.target_price ? `<span class="text-[10px] text-[#94A3B8]">Target: <strong class="text-white">$${t.target_price.toFixed(2)}</strong></span>` : "";
             const purchasedInfo = `Qty: ${t.purchased_qty}${t.purchased_condition ? ' • ' + t.purchased_condition : ''}${t.purchased_set ? ' • ' + t.purchased_set : ''}`;
             const fitHtml = renderTcgDeckFitBadgeHtml(t.deck_fit);
@@ -1539,9 +1560,11 @@ function renderTcgPreviewResults(data) {
                     <div class="flex items-start space-x-2.5 min-w-0 flex-1">
                         <input type="checkbox" id="tcg-target-check-${t.id}" value="${t.id}" class="tcg-target-checkbox mt-0.5 w-4 h-4 text-[#DC143C] rounded-none bg-[#1B2230] border-[#263245] cursor-pointer" checked onchange="updateTcgExecuteButton()">
                         <label for="tcg-target-check-${t.id}" class="cursor-pointer min-w-0 flex-1">
-                            <div>
+                            <div class="flex items-center flex-wrap gap-y-0.5">
                                 <span class="font-bold text-white text-xs">${escapeHtml(t.name)}</span>
                                 ${tagHtml}
+                                ${ordBadge}
+                                ${sellerBadge}
                             </div>
                             <span class="text-[10px] text-[#64748B] block mt-0.5">${escapeHtml(purchasedInfo)}</span>
                         </label>
@@ -1556,21 +1579,95 @@ function renderTcgPreviewResults(data) {
         });
     }
 
-    // Render unmatched list with full Deck Fit badges
+    // Render unmatched list with full Deck Fit + Order/Seller badges
     if (unmatched.length > 0 && unmatchedSection && unmatchedList) {
         unmatchedSection.classList.remove("hidden");
         unmatchedCountLabel.textContent = `${unmatched.length} Ordered Card${unmatched.length === 1 ? '' : 's'} Not on Watchlist (Deck Fit Evaluated)`;
-        unmatchedList.innerHTML = unmatched.map(u => `
-            <div class="p-2 bg-[#10141D] border border-[#263245]/80">
-                <div class="flex items-center justify-between">
-                    <span class="text-white font-bold">${escapeHtml(u.card_name || u.raw_name)}</span>
-                    <span class="text-[#94A3B8] text-[10px]">${u.quantity}x • ${escapeHtml(u.set_name || 'N/A')}${u.condition ? ' • ' + escapeHtml(u.condition) : ''}</span>
+        unmatchedList.innerHTML = unmatched.map(u => {
+            const ordBadge = u.order_number ? `<span class="text-[10px] text-[#94A3B8] bg-[#1B2230] border border-[#263245] px-1.5 py-0.2">#${escapeHtml(u.order_number)}</span>` : "";
+            const sellerBadge = u.seller ? `<span class="text-[10px] text-[#00CED1] bg-[#00CED1]/10 border border-[#00CED1]/30 px-1.5 py-0.2">🏪 ${escapeHtml(u.seller)}</span>` : "";
+            return `
+                <div class="p-2 bg-[#10141D] border border-[#263245]/80">
+                    <div class="flex items-center justify-between flex-wrap gap-1">
+                        <div class="flex items-center space-x-1.5 flex-wrap">
+                            <span class="text-white font-bold">${escapeHtml(u.card_name || u.raw_name)}</span>
+                            ${ordBadge}
+                            ${sellerBadge}
+                        </div>
+                        <span class="text-[#94A3B8] text-[10px]">${u.quantity}x • ${escapeHtml(u.set_name || 'N/A')}${u.condition ? ' • ' + escapeHtml(u.condition) : ''}</span>
+                    </div>
+                    ${renderTcgDeckFitBadgeHtml(u.deck_fit)}
                 </div>
-                ${renderTcgDeckFitBadgeHtml(u.deck_fit)}
-            </div>
-        `).join("");
+            `;
+        }).join("");
     } else if (unmatchedSection) {
         unmatchedSection.classList.add("hidden");
+    }
+
+    // Render SUBVIEW 2: By Order & Seller (order_groups)
+    if (ordersContainer) {
+        if (orderGroups.length === 0) {
+            ordersContainer.innerHTML = `
+                <div class="p-4 text-center text-xs font-mono text-[#94A3B8] bg-[#10141D] border border-[#263245]">
+                    No order packages parsed.
+                </div>
+            `;
+        } else {
+            ordersContainer.innerHTML = orderGroups.map((pkg, idx) => {
+                const ordLabel = pkg.order_number ? `#${escapeHtml(pkg.order_number)}` : `Package #${idx + 1}`;
+                const sellerLabel = pkg.seller || "TCGplayer Marketplace";
+                const dateLabel = pkg.order_date ? `<span class="text-[10px] text-[#94A3B8]">${escapeHtml(pkg.order_date)}</span>` : "";
+                const wlBadge = pkg.matched_watchlist_count > 0
+                    ? `<span class="px-1.5 py-0.5 bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] text-[10px] font-bold">${pkg.matched_watchlist_count} Watchlist Match${pkg.matched_watchlist_count === 1 ? '' : 'es'}</span>`
+                    : "";
+
+                const pkgCardsHtml = (pkg.cards || []).map(c => {
+                    const df = c.deck_fit;
+                    const bestDeck = (df && df.has_fit && df.best_deck_name)
+                        ? `<span class="px-1.5 py-0.2 bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-[10px] font-bold">🏆 ${escapeHtml(df.best_deck_name)} (${df.synergy_rating}%)</span>`
+                        : "";
+                    const cutChip = (df && df.suggested_cut)
+                        ? `<span class="px-1.5 py-0.2 bg-[#DC143C]/15 text-[#FF3358] border border-[#DC143C]/40 text-[10px]">✂️ Cut: <strong>${escapeHtml(df.suggested_cut)}</strong></span>`
+                        : "";
+                    const wlDot = c.is_watchlist_match
+                        ? `<span class="px-1.5 py-0.2 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 text-[9px] uppercase font-bold">Watchlist</span>`
+                        : "";
+                    return `
+                        <div class="p-2 bg-[#1B2230] border border-[#263245] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-mono">
+                            <div class="flex items-center space-x-1.5 flex-wrap">
+                                <span class="text-[#10B981] font-bold">${c.quantity || 1}x</span>
+                                <span class="text-white font-bold">${escapeHtml(c.card_name || c.raw_name)}</span>
+                                <span class="text-[10px] text-[#94A3B8]">${escapeHtml(c.set_name || '')}${c.condition ? ' • ' + escapeHtml(c.condition) : ''}</span>
+                                ${wlDot}
+                            </div>
+                            <div class="flex items-center space-x-1.5 flex-wrap">
+                                ${bestDeck}
+                                ${cutChip}
+                            </div>
+                        </div>
+                    `;
+                }).join("");
+
+                return `
+                    <div class="bg-[#10141D] border border-[#00CED1]/40 p-3 space-y-2">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-[#263245] pb-2 font-mono">
+                            <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                                <span class="text-xs font-bold text-white bg-[#1B2230] border border-[#263245] px-2 py-0.5">${ordLabel}</span>
+                                <span class="text-xs font-bold text-[#00CED1] bg-[#00CED1]/15 border border-[#00CED1]/40 px-2 py-0.5">🏪 ${escapeHtml(sellerLabel)}</span>
+                                ${dateLabel}
+                                ${wlBadge}
+                            </div>
+                            <span class="px-2 py-0.5 bg-[#1B2230] border border-[#263245] text-white text-[11px] font-bold">
+                                ${pkg.total_quantity} Card${pkg.total_quantity === 1 ? '' : 's'} (${pkg.unique_cards_count} unique)
+                            </span>
+                        </div>
+                        <div class="space-y-1 max-h-48 overflow-y-auto pr-1">
+                            ${pkgCardsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
     }
 
     // Render Deck Sorting Guide (By Deck)
@@ -1639,6 +1736,13 @@ function renderTcgPreviewResults(data) {
         updateTcgExecuteButton();
     }
 
+    // Default to 'By Order & Seller' view if multiple packages were detected and 0 watchlist targets matched
+    if (orderGroups.length > 1 && matched.length === 0) {
+        switchTcgResultsSubView("orders");
+    } else {
+        switchTcgResultsSubView("cards");
+    }
+
     resultsContainer.classList.remove("hidden");
 }
 
@@ -1656,15 +1760,17 @@ function updateTcgExecuteButton() {
     const addInventory = document.getElementById("tcg-add-inventory-check")?.checked ?? false;
     const invMode = document.getElementById("tcg-inventory-mode-select")?.value || "ordered";
     const totalItems = currentTcgReconciliationData ? (currentTcgReconciliationData.parsed_items || []).length : 0;
+    const pkgCount = currentTcgReconciliationData ? (currentTcgReconciliationData.order_groups || []).length : 1;
 
     executeBtn.disabled = (targetCount === 0 && (!addInventory || totalItems === 0));
     const binderLabel = invMode === "ordered" ? "Add as 'Ordered'" : "Add to Binder";
+    const pkgSuffix = pkgCount > 1 ? ` across ${pkgCount} Orders/Packages` : "";
     if (targetCount > 0 && addInventory) {
-        executeBtn.innerHTML = `<span>De-Register ${targetCount} Target${targetCount === 1 ? '' : 's'} &amp; ${binderLabel}</span>`;
+        executeBtn.innerHTML = `<span>De-Register ${targetCount} Target${targetCount === 1 ? '' : 's'} &amp; ${binderLabel}${pkgSuffix}</span>`;
     } else if (targetCount > 0) {
         executeBtn.innerHTML = `<span>De-Register ${targetCount} Selected Target${targetCount === 1 ? '' : 's'}</span>`;
     } else {
-        executeBtn.innerHTML = `<span>Log ${totalItems} Ordered Card${totalItems === 1 ? '' : 's'} (${binderLabel})</span>`;
+        executeBtn.innerHTML = `<span>Log ${totalItems} Ordered Card${totalItems === 1 ? '' : 's'} (${binderLabel}${pkgSuffix})</span>`;
     }
 }
 
@@ -1785,6 +1891,7 @@ async function loadTrackedTcgOrders(badgeOnly = false) {
 
         container.innerHTML = orders.map(ord => {
             const isOrdered = ord.status === "ordered";
+            const sellerName = ord.seller_summary || "TCGplayer Marketplace";
             const statusPill = isOrdered
                 ? `<span class="px-2 py-0.5 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[10px] font-bold uppercase">🚚 In Transit ("Ordered" Binder)</span>`
                 : `<span class="px-2 py-0.5 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[10px] font-bold uppercase">✅ Completed (${escapeHtml(ord.target_binder_name || 'Acquired')})</span>`;
@@ -1827,9 +1934,10 @@ async function loadTrackedTcgOrders(badgeOnly = false) {
                 <div class="bg-[#10141D] border ${isOrdered ? 'border-[#F59E0B]/40' : 'border-[#263245]'} p-3 space-y-2">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2">
                         <div class="flex items-center space-x-2 flex-wrap gap-y-1">
-                            <span class="text-xs font-mono font-bold text-white">#${escapeHtml(ord.order_number)}</span>
+                            <span class="text-xs font-mono font-bold text-white bg-[#1B2230] border border-[#263245] px-2 py-0.5">#${escapeHtml(ord.order_number)}</span>
+                            <span class="text-xs font-mono font-bold text-[#00CED1] bg-[#00CED1]/15 border border-[#00CED1]/40 px-2 py-0.5">🏪 ${escapeHtml(sellerName)}</span>
                             <span class="text-[11px] font-mono text-[#94A3B8]">${escapeHtml(ord.order_date_str || '')}</span>
-                            <span class="text-[11px] font-mono text-[#00CED1] font-bold">(${ord.total_quantity} card${ord.total_quantity === 1 ? '' : 's'})</span>
+                            <span class="text-[11px] font-mono text-white font-bold">(${ord.total_quantity} card${ord.total_quantity === 1 ? '' : 's'})</span>
                             ${statusPill}
                         </div>
                         <div class="flex items-center space-x-2">
