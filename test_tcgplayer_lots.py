@@ -51,6 +51,35 @@ def test_evaluate_listing_decent_price_decent_10(lot_provider):
     assert qualifies is False
 
 
+def test_evaluate_listing_fancy_treatment_vs_baseline_cheapest_market(lot_provider):
+    """
+    Verifies that a fancy/special edition (e.g. Masterpiece, Serialized, Showcase)
+    listed at $15.00 on a $20.00 edition does NOT qualify as a deal when the
+    regular baseline version of the card is $1.50.
+    """
+    # Case 1: Fancy version listed at $15 (market of that edition is $20), but base card is $1.50
+    qualifies, label, delta = lot_provider.evaluate_listing_decent_price(
+        listing_price=15.00,
+        market_price=20.00,
+        target_price=2.00,
+        tolerance_mode="decent_10",
+        baseline_cheapest_market=1.50,
+    )
+    assert qualifies is False
+    assert delta == 900.0  # +900% compared to baseline market price of $1.50
+
+    # Case 2: Regular version listed at $1.40 on a $1.50 base card
+    qualifies, label, delta = lot_provider.evaluate_listing_decent_price(
+        listing_price=1.40,
+        market_price=1.50,
+        target_price=2.00,
+        tolerance_mode="decent_10",
+        baseline_cheapest_market=1.50,
+    )
+    assert qualifies is True
+    assert delta == -6.7  # -6.7% below baseline market price
+
+
 def test_evaluate_listing_decent_price_strict_market(lot_provider):
     # Exactly market price
     qualifies, _, _ = lot_provider.evaluate_listing_decent_price(
@@ -122,6 +151,26 @@ def test_find_seller_lots_with_mocked_tcg_api(lot_provider):
     ]
 
     mock_search_products = [
+        # Fancy Sol Ring Masterpiece ($15) AND Regular Sol Ring ($1.70)
+        {
+            "productName": "Sol Ring",
+            "setName": "Masterpiece Series: Kaladesh Inventions",
+            "productId": 999,
+            "marketPrice": 650.00,
+            "listings": [
+                {
+                    "sellerKey": "seller_abc",
+                    "sellerName": "Great Card Shop",
+                    "sellerRating": 99.5,
+                    "sellerSales": "10000+",
+                    "price": 500.00,
+                    "shippingPrice": 1.49,
+                    "condition": "Near Mint",
+                    "printing": "Foil",
+                    "quantity": 1,
+                }
+            ],
+        },
         {
             "productName": "Sol Ring",
             "setName": "Fallout",
@@ -206,9 +255,22 @@ def test_find_seller_lots_with_mocked_tcg_api(lot_provider):
         seller = res["sellers"][0]
         assert seller["sellerName"] == "Great Card Shop"
         assert seller["qualifyingCount"] == 5
+        # Sol Ring chosen must be the regular $1.70 version, NOT the $500 Masterpiece!
         assert seller["subtotal"] == round(1.70 + 0.75 + 1.10 + 1.40 + 0.35, 2)
         assert seller["directSeller"] is True
         assert len(seller["cards"]) == 5
+
+        # Verify Store URL and Multi-Card Search URL
+        assert seller["storeUrl"] == "https://www.tcgplayer.com/search/magic/product?seller=seller_abc&view=grid"
+        assert "seller=seller_abc" in seller["multiCardSearchUrl"]
+        assert "productName=Sol+Ring" in seller["multiCardSearchUrl"]
+        assert "productName=Arcane+Signet" in seller["multiCardSearchUrl"]
+
+        # Verify card entries have storeSearchUrl
+        sol_card = [c for c in seller["cards"] if c["name"] == "Sol Ring"][0]
+        assert sol_card["price"] == 1.70
+        assert "seller=seller_abc" in sol_card["storeSearchUrl"]
+        assert "q=Sol+Ring" in sol_card["storeSearchUrl"]
 
 
 def test_api_tcgplayer_lots_endpoint(lot_provider):

@@ -41,6 +41,7 @@ from secret_lair_advisor import (
     SecretLairFinancialEvaluator,
     SecretLairScraper,
 )
+from tcgplayer_parser import TCGPlayerPurchaseParser
 from timewalked_analyzer import (
     BRACKET_NAMES as TIMEWALKED_BRACKET_NAMES,
     DEFAULT_RATIO_TARGETS as TIMEWALKED_RATIO_TARGETS,
@@ -150,6 +151,28 @@ class CardAddEvaluator:
             # Check if CSV row (e.g. ManaBox CSV: "Name,Quantity,Binder Name...")
             if "," in line_str and not line_str.startswith('"') and ("name" in line_str.lower() or "quantity" in line_str.lower()):
                 continue  # Header row
+
+            # Check if TCGplayer purchase manifest header or row
+            if line_str.lower().startswith("qty\tdescription") or line_str.lower().startswith("quantity\t"):
+                continue
+            if TCGPlayerPurchaseParser.is_likely_tcgplayer_manifest(line_str):
+                tcg_item = TCGPlayerPurchaseParser.parse_line(line_str)
+                if tcg_item and tcg_item.card_name:
+                    canonical = DeckParser._clean_card_name(tcg_item.card_name)
+                    match_key = canonical.lower()
+                    if match_key in seen_names:
+                        for c in cards:
+                            if c["name"].lower() == match_key:
+                                c["quantity"] += tcg_item.quantity
+                                break
+                    else:
+                        seen_names.add(match_key)
+                        cards.append({
+                            "name": canonical,
+                            "quantity": tcg_item.quantity,
+                            "raw_line": line_str,
+                        })
+                    continue
 
             qty = 1
             clean_name = line_str

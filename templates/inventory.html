@@ -100,6 +100,25 @@
         </div>
     </div>
 
+    <!-- Active TCGplayer In-Transit Orders Banner -->
+    <div id="inventoryActiveOrdersBanner" class="hidden bg-[#1B2230] border border-[#F59E0B]/50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center space-x-3">
+            <span class="px-2 py-1 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-xs font-mono font-bold uppercase">🚚 IN TRANSIT</span>
+            <div class="text-xs font-mono">
+                <span id="inventoryActiveOrdersText" class="text-white font-bold">0 TCGplayer orders in transit</span>
+                <span class="text-[#94A3B8] block sm:inline sm:ml-2">Cards are currently held in your "Ordered" binder until marked complete.</span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2 flex-shrink-0">
+            <button type="button" onclick="filterToOrderedBinder()" class="px-3 py-1.5 bg-[#10141D] hover:bg-[#222B3D] text-[#F59E0B] border border-[#F59E0B]/40 text-xs font-mono font-bold uppercase transition">
+                Filter "Ordered"
+            </button>
+            <button type="button" onclick="openTcgPurchaseModal('tracker')" class="px-3 py-1.5 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-xs font-mono font-bold uppercase transition">
+                Track &amp; Mark Complete
+            </button>
+        </div>
+    </div>
+
     <!-- Inventory Filter & Search Toolbar -->
     <div class="bg-[#1B2230] border border-[#263245] p-3 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div class="flex-1 w-full sm:w-auto relative">
@@ -120,6 +139,7 @@
                 <option value="all">All Cards</option>
                 <option value="free">Available in Binder</option>
                 <option value="allocated">Allocated to Decks</option>
+                <option value="ordered">🚚 Ordered (In Transit)</option>
             </select>
 
             <!-- Foil Filter -->
@@ -1002,9 +1022,12 @@ function renderMobileCardRow(card) {
         finishBadge = `<span class="px-1 py-0.2 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] font-bold uppercase">★ ${escapeHtml(card.foil)}</span>`;
     }
 
-    const allocBadge = isAllocated
-        ? `<span class="text-[9px] px-1.5 py-0.2 bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/40 uppercase font-bold">In ${allocatedDecks.length} Deck${allocatedDecks.length > 1 ? 's' : ''}</span>`
-        : `<span class="text-[9px] px-1.5 py-0.2 bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold uppercase">Free</span>`;
+    const isOrderedBinder = (card.binder_name || '').toLowerCase() === 'ordered';
+    const allocBadge = isOrderedBinder
+        ? `<span class="text-[9px] px-1.5 py-0.2 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 uppercase font-bold">🚚 Ordered</span>`
+        : (isAllocated
+            ? `<span class="text-[9px] px-1.5 py-0.2 bg-[#C084FC]/20 text-[#C084FC] border border-[#C084FC]/40 uppercase font-bold">In ${allocatedDecks.length} Deck${allocatedDecks.length > 1 ? 's' : ''}</span>`
+            : `<span class="text-[9px] px-1.5 py-0.2 bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30 font-bold uppercase">Free</span>`);
 
     const previewAttrs = card.image_uri ? `
         onclick="openCardImageOverlay(this)"
@@ -1067,7 +1090,14 @@ function renderCardRow(card) {
     }
 
     let allocHtml = '';
-    if (isAllocated) {
+    const isOrderedBinder = (card.binder_name || '').toLowerCase() === 'ordered';
+    if (isOrderedBinder) {
+        allocHtml = `
+            <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 uppercase font-bold">
+                <span>🚚 Ordered (In Transit)</span>
+            </span>
+        `;
+    } else if (isAllocated) {
         const deckNames = allocatedDecks.map(d => escapeHtml(d.deck_name)).join(', ');
         allocHtml = `
             <div class="space-y-0.5">
@@ -1179,6 +1209,35 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
+function filterToOrderedBinder() {
+    const sel = document.getElementById('filterAllocation');
+    if (sel) {
+        sel.value = 'ordered';
+        onFilterChanged();
+    }
+}
+
+async function loadInventoryActiveOrdersBanner() {
+    const banner = document.getElementById('inventoryActiveOrdersBanner');
+    const textEl = document.getElementById('inventoryActiveOrdersText');
+    if (!banner || !textEl) return;
+    try {
+        const res = await fetch('/api/orders/tcgplayer');
+        if (!res.ok) return;
+        const data = await res.json();
+        const activeCount = data.active_orders_count || 0;
+        const cardsCount = data.in_transit_cards_count || 0;
+        if (activeCount > 0) {
+            textEl.textContent = `${activeCount} Active TCGplayer Order${activeCount === 1 ? '' : 's'} (${cardsCount} card${cardsCount === 1 ? '' : 's'} in transit)`;
+            banner.classList.remove('hidden');
+        } else {
+            banner.classList.add('hidden');
+        }
+    } catch (e) {
+        console.debug('Could not load active TCGplayer orders banner:', e);
+    }
+}
+
 // Initial load on page ready (default to 25 per page on mobile viewports for faster initial render)
 document.addEventListener('DOMContentLoaded', () => {
     if (window.innerWidth < 640) {
@@ -1197,6 +1256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     loadCardsPage(1);
+    loadInventoryActiveOrdersBanner();
 });
 </script>
 {% endblock %}

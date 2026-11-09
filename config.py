@@ -108,3 +108,8 @@ class Config:
     except (ValueError, TypeError):
         BESTBUY_SEARCH_RADIUS = 25
 
+    # Gmail IMAP Auto-Fetch for TCGplayer Order Confirmation Emails
+    GMAIL_IMAP_EMAIL = os.getenv("GMAIL_IMAP_EMAIL", "").strip()
+    GMAIL_IMAP_APP_PASSWORD = os.getenv("GMAIL_IMAP_APP_PASSWORD", "").strip()
+
+

@@ -251,7 +251,7 @@
                     <div>
                         <div class="text-[#94A3B8] text-xs uppercase">Target Threshold</div>
                         <div class="flex items-center space-x-1.5 mt-0.5">
-                            <span class="text-base font-bold text-white" id="card-target-price-{{ item.id }}">${{ "%.2f"|format(item.target_price) }}</span>
+                            <span class="text-base font-bold text-white" id="card-target-price-{{ item.id }}">${{ "%.2f"|format(item.target_price or 0) }}</span>
                             <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.set_code or "")|replace("'", "\\'") }}', '{{ (item.collector_number or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}')"
                                 class="text-[#00CED1] hover:text-white text-xs uppercase font-bold" title="Edit Target Price, Version & Tag">
                                 [Edit]
@@ -415,7 +415,7 @@
                 <div class="text-right">
                     <div class="text-[10px] text-[#94A3B8] uppercase">Target / Deal</div>
                     <div class="text-xs font-bold">
-                        <span class="text-[#94A3B8]" id="compact-target-price-{{ item.id }}">${{ "%.2f"|format(item.target_price) }}</span>
+                        <span class="text-[#94A3B8]" id="compact-target-price-{{ item.id }}">${{ "%.2f"|format(item.target_price or 0) }}</span>
                         <span class="text-[#64748B]"> / </span>
                         <span class="text-[#FF3358]">${{ "%.2f"|format(item.lowest_in_stock_price) }}</span>
                     </div>
@@ -542,7 +542,7 @@
                                 <div>
                                     <div class="text-[#94A3B8] text-[10px] uppercase">Target Threshold</div>
                                     <div class="flex items-center space-x-1.5 mt-0.5">
-                                        <span class="text-base font-bold text-white" id="swipe-target-price-{{ item.id }}">${{ "%.2f"|format(item.target_price) }}</span>
+                                        <span class="text-base font-bold text-white" id="swipe-target-price-{{ item.id }}">${{ "%.2f"|format(item.target_price or 0) }}</span>
                                         <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.set_code or "")|replace("'", "\\'") }}', '{{ (item.collector_number or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}')"
                                             class="text-[#00CED1] hover:text-white text-[11px] uppercase font-bold">
                                             [EDIT]
@@ -626,7 +626,7 @@
                         TCGplayer Multi-Card Watchlist Lots
                     </h3>
                     <p class="text-xs text-[#94A3B8] font-sans mt-0.5">
-                        Discover single sellers holding 5+ cards from your watchlist at decent prices to consolidate shipping and save in bulk.
+                        Discover single sellers holding 5+ cards from your watchlist at decent prices (benchmarked against each card's cheapest regular version) with direct storefront and multi-card search links.
                     </p>
                 </div>
                 <div class="flex items-center space-x-2 flex-shrink-0">

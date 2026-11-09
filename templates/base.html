@@ -914,99 +914,216 @@
         </div>
     </div>
 
-    <!-- TCGplayer Purchase Reconciliation Modal (De-register Purchased Targets) -->
+    <!-- TCGplayer Purchase Reconciliation & Order Tracker Modal -->
     <div id="modal-tcgplayer-purchase" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-2xl w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
-            <div class="flex items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 flex-shrink-0">
+        <div class="bg-[#1B2230] border-2 border-[#263245] max-w-4xl w-full p-4 sm:p-6 relative max-h-[92vh] max-h-[92dvh] flex flex-col my-auto shadow-2xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#263245] pb-3 mb-3 sm:mb-4 gap-2 flex-shrink-0">
                 <div>
                     <div class="flex items-center space-x-2">
                         <span class="text-xs font-mono text-[#DC143C] uppercase tracking-widest block font-bold">PROTOCOL // 0x4C</span>
-                        <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[10px] px-1.5 py-0.2 font-mono font-bold uppercase">PURCHASE RECONCILIATION</span>
+                        <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[10px] px-1.5 py-0.2 font-mono font-bold uppercase">ORDER RECONCILIATION &amp; DECK FIT</span>
                     </div>
-                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-0.5">Reconcile TCGplayer Purchase Order</h3>
+                    <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-0.5">TCGplayer Order History, Deck Fit &amp; Binder Tracker</h3>
                 </div>
-                <button onclick="closeTcgPurchaseModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+                <div class="flex items-center space-x-2 self-end sm:self-auto">
+                    <div class="flex bg-[#10141D] p-0.5 border border-[#263245] font-mono text-[11px]">
+                        <button type="button" id="btn-tcg-mode-reconcile" onclick="switchTcgModalMode('reconcile')" class="px-2.5 py-1 bg-[#00CED1] text-slate-950 font-bold uppercase transition">
+                            📥 Import &amp; Deck Fit
+                        </button>
+                        <button type="button" id="btn-tcg-mode-tracker" onclick="switchTcgModalMode('tracker')" class="px-2.5 py-1 text-[#94A3B8] hover:text-white font-bold uppercase transition flex items-center space-x-1">
+                            <span>🚚 Track Orders</span>
+                            <span id="tcg-active-orders-badge" class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 px-1 text-[9px] font-bold">0</span>
+                        </button>
+                    </div>
+                    <button onclick="closeTcgPurchaseModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono pl-1">&times;</button>
+                </div>
             </div>
 
             <!-- Scrollable Modal Body -->
             <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 modal-scrollable">
-                <!-- Textarea step -->
-                <div>
-                    <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Paste TCGplayer Purchase Manifest</label>
-                        <span id="tcg-counter-badge" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">[ Ready ]</span>
-                    </div>
-                    <textarea id="tcg-purchase-input" rows="5" placeholder="Qty	Description&#10;1	Magic - Aether Revolt - Metallic Rebuke - Near Mint&#10;1	Magic - Commander Legends: Battle for Baldur's Gate - Abdel Adrian, Gorion's Ward (Showcase) - Near Mint&#10;1	Magic - Commander Masters - Palace Jailer - Near Mint..."
-                        class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono leading-relaxed"
-                        oninput="onTcgInputChange()"></textarea>
-                    <div class="flex items-center justify-between mt-1.5">
-                        <p class="text-[11px] text-[#64748B] font-mono">
-                            Paste rows directly from your TCGplayer order history, invoice, or receipt email.
-                        </p>
-                        <button type="button" onclick="previewTcgPurchase()" id="btn-tcg-preview" class="btn-bridge px-3 py-1 text-xs text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/10 flex items-center space-x-1 uppercase font-mono font-bold">
-                            <span>🔍 Match Targets</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Status & Progress Feedback Box -->
-                <div id="tcg-progress-box" class="hidden bg-[#10141D] border border-[#00CED1]/40 p-3 font-mono text-xs space-y-1.5">
-                    <div class="flex items-center space-x-2 text-[#00CED1]">
-                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                        </svg>
-                        <span id="tcg-progress-text" class="font-bold uppercase tracking-wider">Analyzing purchase manifest...</span>
-                    </div>
-                </div>
-
-                <!-- Results container (hidden until preview) -->
-                <div id="tcg-results-container" class="hidden space-y-3">
-                    <!-- Matched targets summary bar -->
-                    <div class="bg-[#10141D] border border-[#263245] p-2.5 flex items-center justify-between font-mono text-xs">
-                        <div class="flex items-center space-x-2">
-                            <span class="w-2 h-2 rounded-full bg-[#00CED1] inline-block"></span>
-                            <span id="tcg-matched-count-label" class="font-bold text-white">0 Targets Identified</span>
+                <!-- ========================================================= -->
+                <!-- MODE 1: IMPORT, RECONCILE & DECK FIT                      -->
+                <!-- ========================================================= -->
+                <div id="tcg-mode-reconcile-view" class="space-y-3 sm:space-y-4">
+                    <!-- Gmail IMAP Auto-Fetch Bar -->
+                    <div class="bg-[#10141D] border border-[#263245] p-3 space-y-2.5">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-sm">📬</span>
+                                <div>
+                                    <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">Auto-Fetch TCGplayer Confirmation Emails</span>
+                                    <span id="tcg-gmail-status-pill" class="ml-2 text-[10px] font-mono px-1.5 py-0.2 bg-[#1B2230] border border-[#263245] text-[#94A3B8]">Checking...</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                                <select id="tcg-gmail-days-select" class="bg-[#1B2230] border border-[#263245] text-[11px] font-mono text-white px-2 py-1 focus:border-[#00CED1]">
+                                    <option value="14">Last 14 Days</option>
+                                    <option value="30" selected>Last 30 Days</option>
+                                    <option value="60">Last 60 Days</option>
+                                    <option value="90">Last 90 Days</option>
+                                </select>
+                                <button type="button" id="btn-tcg-fetch-gmail" onclick="fetchTcgOrdersFromGmail()" class="px-3 py-1 bg-[#00CED1]/15 hover:bg-[#00CED1] text-[#00CED1] hover:text-slate-950 border border-[#00CED1]/50 text-xs font-mono font-bold uppercase transition flex items-center space-x-1">
+                                    <span>⚡ Fetch Gmail Orders</span>
+                                </button>
+                                <button type="button" onclick="toggleTcgGmailSettings()" class="px-2 py-1 bg-[#1B2230] hover:bg-[#263245] text-[#94A3B8] hover:text-white border border-[#263245] text-[11px] font-mono transition" title="Configure Gmail App Password">
+                                    ⚙️ Setup
+                                </button>
+                            </div>
                         </div>
-                        <div class="flex items-center space-x-2">
-                            <button type="button" onclick="toggleAllTcgMatches(true)" class="text-[11px] text-[#00CED1] hover:underline uppercase">All</button>
-                            <span class="text-[#64748B]">|</span>
-                            <button type="button" onclick="toggleAllTcgMatches(false)" class="text-[11px] text-[#94A3B8] hover:underline uppercase">None</button>
+
+                        <!-- Collapsible Gmail Setup Drawer -->
+                        <div id="tcg-gmail-setup-drawer" class="hidden pt-2.5 border-t border-[#263245] space-y-2">
+                            <p class="text-[11px] font-mono text-[#94A3B8]">
+                                Enter your Gmail address and a 16-character <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-[#00CED1] underline">Google App Password</a> to pull TCGplayer order confirmation emails via IMAP.
+                            </p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input type="email" id="tcg-gmail-email-input" placeholder="your.email@gmail.com" class="bg-[#1B2230] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-white focus:border-[#00CED1]">
+                                <input type="password" id="tcg-gmail-password-input" placeholder="16-char Google App Password" class="bg-[#1B2230] border border-[#263245] px-2.5 py-1.5 text-xs font-mono text-white focus:border-[#00CED1]">
+                            </div>
+                            <div class="flex justify-end space-x-2">
+                                <button type="button" onclick="toggleTcgGmailSettings()" class="px-2.5 py-1 text-[11px] font-mono text-[#94A3B8] hover:text-white">Close</button>
+                                <button type="button" onclick="saveTcgGmailSettings()" class="px-3 py-1 bg-[#10B981] hover:bg-[#059669] text-slate-950 text-[11px] font-mono font-bold uppercase">Save Credentials</button>
+                            </div>
+                        </div>
+
+                        <!-- Fetched Orders Summary List -->
+                        <div id="tcg-fetched-orders-box" class="hidden pt-2 border-t border-[#263245] space-y-1.5">
+                            <div class="flex items-center justify-between text-[11px] font-mono">
+                                <span id="tcg-fetched-orders-label" class="text-[#00CED1] font-bold uppercase">Discovered Orders</span>
+                                <span class="text-[#64748B]">Select orders to reconcile &amp; evaluate</span>
+                            </div>
+                            <div id="tcg-fetched-orders-list" class="max-h-32 overflow-y-auto space-y-1 pr-1"></div>
                         </div>
                     </div>
 
-                    <!-- Matched Targets Checklist -->
-                    <div id="tcg-matched-list" class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                        <!-- Populated dynamically -->
+                    <!-- Textarea step -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Or Paste TCGplayer Purchase Manifest / Order History</label>
+                            <span id="tcg-counter-badge" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">[ Ready ]</span>
+                        </div>
+                        <textarea id="tcg-purchase-input" rows="4" placeholder="Qty	Description&#10;1	Magic - Aether Revolt - Metallic Rebuke - Near Mint&#10;1	Magic - Commander Legends: Battle for Baldur's Gate - Abdel Adrian, Gorion's Ward (Showcase) - Near Mint..."
+                            class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono leading-relaxed"
+                            oninput="onTcgInputChange()"></textarea>
+                        <div class="flex items-center justify-between mt-1.5">
+                            <p class="text-[11px] text-[#64748B] font-mono">
+                                Evaluates Watchlist matches, checks Timewalked Commander deck fit &amp; suggested cuts, and logs ordered cards.
+                            </p>
+                            <button type="button" onclick="previewTcgPurchase()" id="btn-tcg-preview" class="btn-bridge px-3 py-1 text-xs text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/10 flex items-center space-x-1 uppercase font-mono font-bold">
+                                <span>🔍 Match Targets &amp; Deck Fit</span>
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Unmatched / non-monitored purchases accordion -->
-                    <div id="tcg-unmatched-section" class="hidden border border-[#263245] bg-[#10141D]/50 p-2.5">
-                        <div class="flex items-center justify-between cursor-pointer" onclick="toggleTcgUnmatchedDetails()">
-                            <span id="tcg-unmatched-count-label" class="text-[11px] font-mono text-[#94A3B8] font-bold uppercase">0 Purchases Not on Watchlist</span>
-                            <span id="tcg-unmatched-arrow" class="text-xs text-[#94A3B8] font-mono">▼</span>
+                    <!-- Status & Progress Feedback Box -->
+                    <div id="tcg-progress-box" class="hidden bg-[#10141D] border border-[#00CED1]/40 p-3 font-mono text-xs space-y-1.5">
+                        <div class="flex items-center space-x-2 text-[#00CED1]">
+                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                            </svg>
+                            <span id="tcg-progress-text" class="font-bold uppercase tracking-wider">Analyzing purchase manifest &amp; Commander deck fit...</span>
                         </div>
-                        <div id="tcg-unmatched-list" class="hidden mt-2 pt-2 border-t border-[#263245] space-y-1 max-h-36 overflow-y-auto text-[11px] font-mono text-[#64748B]">
+                    </div>
+
+                    <!-- Results container (hidden until preview) -->
+                    <div id="tcg-results-container" class="hidden space-y-3">
+                        <!-- Results Sub-Tab Switcher: By Card vs By Deck Sorting Guide -->
+                        <div class="flex items-center justify-between bg-[#10141D] border border-[#263245] p-2 font-mono text-xs flex-wrap gap-2">
+                            <div class="flex items-center space-x-1">
+                                <button type="button" id="btn-tcg-subview-cards" onclick="switchTcgResultsSubView('cards')" class="px-2.5 py-1 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 font-bold uppercase text-[11px]">
+                                    🎯 By Card (Watchlist &amp; Deck Fit)
+                                </button>
+                                <button type="button" id="btn-tcg-subview-decks" onclick="switchTcgResultsSubView('decks')" class="px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]">
+                                    📦 Deck Sorting Guide (By Deck)
+                                </button>
+                            </div>
+                            <span id="tcg-fleet-eval-summary" class="text-[11px] text-[#10B981] font-mono"></span>
+                        </div>
+
+                        <!-- SUBVIEW 1: BY CARD (Watchlist Matched + Unmatched with Deck Fit) -->
+                        <div id="tcg-subview-cards" class="space-y-3">
+                            <!-- Matched targets summary bar -->
+                            <div class="bg-[#10141D] border border-[#263245] p-2.5 flex items-center justify-between font-mono text-xs">
+                                <div class="flex items-center space-x-2">
+                                    <span class="w-2 h-2 rounded-full bg-[#00CED1] inline-block"></span>
+                                    <span id="tcg-matched-count-label" class="font-bold text-white">0 Targets Identified</span>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <button type="button" onclick="toggleAllTcgMatches(true)" class="text-[11px] text-[#00CED1] hover:underline uppercase">All</button>
+                                    <span class="text-[#64748B]">|</span>
+                                    <button type="button" onclick="toggleAllTcgMatches(false)" class="text-[11px] text-[#94A3B8] hover:underline uppercase">None</button>
+                                </div>
+                            </div>
+
+                            <!-- Matched Targets Checklist -->
+                            <div id="tcg-matched-list" class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                                <!-- Populated dynamically -->
+                            </div>
+
+                            <!-- Unmatched / non-monitored purchases accordion (with Deck Fit!) -->
+                            <div id="tcg-unmatched-section" class="hidden border border-[#263245] bg-[#10141D]/50 p-2.5">
+                                <div class="flex items-center justify-between cursor-pointer" onclick="toggleTcgUnmatchedDetails()">
+                                    <span id="tcg-unmatched-count-label" class="text-[11px] font-mono text-[#94A3B8] font-bold uppercase">0 Purchases Not on Watchlist</span>
+                                    <span id="tcg-unmatched-arrow" class="text-xs text-[#94A3B8] font-mono">▼</span>
+                                </div>
+                                <div id="tcg-unmatched-list" class="mt-2 pt-2 border-t border-[#263245] space-y-1.5 max-h-52 overflow-y-auto text-[11px] font-mono text-[#64748B]">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SUBVIEW 2: DECK SORTING GUIDE (Grouped by Commander Deck) -->
+                        <div id="tcg-subview-decks" class="hidden space-y-2.5 max-h-80 overflow-y-auto pr-1">
                             <!-- Populated dynamically -->
                         </div>
-                    </div>
 
-                    <!-- Optional Inventory Checkbox -->
-                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
-                        <input type="checkbox" id="tcg-add-inventory-check" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer">
-                        <label for="tcg-add-inventory-check" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
-                            Also add purchased cards to your Collection / Inventory
-                        </label>
+                        <!-- Binder & Order Tracking Configuration Bar -->
+                        <div class="bg-[#10141D] p-3 border border-[#263245] space-y-2">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div class="flex items-center space-x-2.5">
+                                    <input type="checkbox" id="tcg-add-inventory-check" checked onchange="updateTcgExecuteButton()" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer">
+                                    <label for="tcg-add-inventory-check" class="text-xs font-mono text-[#F1F5F9] font-bold cursor-pointer">
+                                        Add cards to Collection Binder &amp; Track Order
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2 text-xs font-mono">
+                                    <select id="tcg-inventory-mode-select" onchange="updateTcgExecuteButton()" class="bg-[#1B2230] border border-[#263245] text-white px-2 py-1 text-[11px] focus:border-[#00CED1]">
+                                        <option value="ordered" selected>🚚 Status: "Ordered" (In Transit — Auto-move when complete)</option>
+                                        <option value="completed">✅ Status: "Completed" (Already Delivered — Add directly to Binder)</option>
+                                    </select>
+                                    <input type="text" id="tcg-target-binder-input" value="Acquired" placeholder="Target Binder (e.g. Acquired)" title="Destination binder when order is marked complete" class="bg-[#1B2230] border border-[#263245] text-white px-2 py-1 text-[11px] w-32 focus:border-[#00CED1]">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ========================================================= -->
+                <!-- MODE 2: ACTIVE ORDERS TRACKER                             -->
+                <!-- ========================================================= -->
+                <div id="tcg-mode-tracker-view" class="hidden space-y-3">
+                    <div class="flex items-center justify-between bg-[#10141D] border border-[#263245] p-2.5 font-mono text-xs">
+                        <div>
+                            <span class="text-white font-bold uppercase">Tracked TCGplayer Orders</span>
+                            <span class="text-[#64748B] text-[11px] ml-2">Mark in-transit orders complete when delivered to auto-move cards from "Ordered" into your binder.</span>
+                        </div>
+                        <button type="button" onclick="loadTrackedTcgOrders()" class="px-2.5 py-1 bg-[#1B2230] hover:bg-[#263245] border border-[#263245] text-[#00CED1] text-[11px]">
+                            ↻ Refresh
+                        </button>
+                    </div>
+                    <div id="tcg-tracked-orders-container" class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+                        <!-- Populated dynamically -->
                     </div>
                 </div>
             </div>
 
             <!-- Sticky Pinned Action Footer -->
             <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#263245] flex-shrink-0 mt-3 sm:mt-4">
-                <button type="button" onclick="closeTcgPurchaseModal()" class="btn-bridge px-3.5 sm:px-4 py-2 text-xs font-mono">Cancel</button>
+                <button type="button" onclick="closeTcgPurchaseModal()" class="btn-bridge px-3.5 sm:px-4 py-2 text-xs font-mono">Close</button>
                 <div class="flex items-center space-x-2">
                     <button type="button" id="btn-submit-tcg-execute" onclick="executeTcgPurchaseReconciliation()" class="btn-crimson px-3.5 sm:px-4 py-2 text-xs flex items-center space-x-1.5 hidden">
-                        <span>De-Register Selected Targets</span>
+                        <span>Reconcile &amp; Log Order</span>
                     </button>
                 </div>
             </div>

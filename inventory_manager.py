@@ -33,10 +33,11 @@ class InventoryManager:
         user_id: int,
         parsed_cards: List[Dict[str, Any]],
         mode: str = "replace",
+        purge_ordered: bool = False,
     ) -> Dict[str, Any]:
         """
         Persists parsed cards to user's collection using high-performance bulk batching.
-        mode="replace": Purges user's existing inventory first.
+        mode="replace": Purges user's existing inventory first (preserving in-transit 'Ordered' cards unless purge_ordered=True).
         mode="merge": Accumulates quantity for matching (name, set_code, collector_number, foil).
         """
         if not user_id:
@@ -127,7 +128,15 @@ class InventoryManager:
                     logger.debug(f"Advisory lock skipped: {lock_err}")
 
             if mode == "replace":
-                db.session.execute(db.delete(UserInventoryCard).where(UserInventoryCard.user_id == user_id))
+                if purge_ordered:
+                    db.session.execute(db.delete(UserInventoryCard).where(UserInventoryCard.user_id == user_id))
+                else:
+                    db.session.execute(
+                        db.delete(UserInventoryCard).where(
+                            UserInventoryCard.user_id == user_id,
+                            func.lower(func.coalesce(UserInventoryCard.binder_name, "")) != "ordered",
+                        )
+                    )
                 db.session.flush()
 
                 records_to_insert = []
@@ -506,6 +515,9 @@ class InventoryManager:
             logger.warning(f"Cannot start background enrichment for user {user_id}: no Flask app context.")
             return {"error": "No Flask app context available", "is_running": False}
 
+        if app.config.get("TESTING") and not force:
+            return {"is_running": False, "skipped_in_testing": True}
+
         with _enrichment_lock:
             current = _enrichment_status.get(user_id)
             if current and current.get("is_running"):
@@ -829,8 +841,10 @@ class InventoryManager:
         elif foil in ("foil", "etched"):
             query = query.filter(UserInventoryCard.foil.in_(["foil", "etched"]))
 
-        # 3. Allocation Filter
-        if allocation in ("allocated", "free"):
+        # 3. Allocation / Status Filter
+        if allocation == "ordered":
+            query = query.filter(func.lower(func.coalesce(UserInventoryCard.binder_name, "")) == "ordered")
+        elif allocation in ("allocated", "free"):
             decks = DeckAnalysis.query.filter_by(user_id=user_id).options(
             db.load_only(DeckAnalysis.id, DeckAnalysis.deck_name, DeckAnalysis.cards_data)
         ).all()
@@ -1010,3 +1024,192 @@ class InventoryManager:
             "foil_count": foil_count,
             "cards": card_list,
         }
+
+    def add_ordered_cards_to_binder(
+        self,
+        user_id: int,
+        purchased_items: List[Dict[str, Any]],
+        binder_name: str = "Ordered",
+    ) -> int:
+        """
+        Adds or merges purchased order items into UserInventoryCard under binder_name (default 'Ordered').
+        Populates available metadata and kicks off background Scryfall enrichment.
+        """
+        if not user_id or not purchased_items:
+            return 0
+
+        existing_in_binder = UserInventoryCard.query.filter(
+            UserInventoryCard.user_id == user_id,
+            func.lower(func.coalesce(UserInventoryCard.binder_name, "")) == binder_name.lower(),
+        ).all()
+        existing_map = {
+            self._build_card_key(c.name, c.set_code, c.collector_number, c.foil): c
+            for c in existing_in_binder
+        }
+
+        added_or_updated = 0
+        names_to_enrich: List[str] = []
+
+        for p in purchased_items:
+            c_name = (p.get("card_name") or p.get("name") or "").strip()
+            if not c_name:
+                continue
+            set_code = (p.get("set_code") or "").strip().upper()
+            col_num = str(p.get("collector_number") or "").strip()
+            finish_raw = (p.get("finish") or p.get("foil") or "normal").strip().lower()
+            foil_val = "foil" if "foil" in finish_raw and "non" not in finish_raw else ("etched" if "etched" in finish_raw else "normal")
+            qty = max(1, int(p.get("quantity") or 1))
+            key = self._build_card_key(c_name, set_code, col_num, foil_val)
+
+            if key in existing_map:
+                existing_card = existing_map[key]
+                existing_card.quantity += qty
+                existing_card.updated_at = utc_now()
+            else:
+                cid_raw = p.get("color_identity")
+                cid_str = ",".join(cid_raw) if isinstance(cid_raw, list) else (str(cid_raw) if cid_raw is not None else None)
+                inv_card = UserInventoryCard(
+                    user_id=user_id,
+                    name=c_name,
+                    raw_name=p.get("raw_name") or c_name,
+                    set_code=set_code,
+                    set_name=p.get("set_name") or "",
+                    collector_number=col_num,
+                    scryfall_id=p.get("scryfall_id"),
+                    quantity=qty,
+                    foil=foil_val,
+                    condition=p.get("condition") or "Near Mint",
+                    language="en",
+                    purchase_price=p.get("price"),
+                    binder_name=binder_name,
+                    mana_cost=p.get("mana_cost"),
+                    cmc=float(p["cmc"]) if p.get("cmc") is not None else None,
+                    type_line=p.get("type_line"),
+                    color_identity=cid_str,
+                    image_uri=p.get("image_uri"),
+                    price_usd=p.get("price_usd"),
+                    price_usd_foil=p.get("price_usd_foil"),
+                )
+                db.session.add(inv_card)
+                existing_map[key] = inv_card
+                if not inv_card.image_uri or inv_card.color_identity is None:
+                    names_to_enrich.append(c_name)
+            added_or_updated += 1
+
+        db.session.commit()
+        self.bump_inventory_version(user_id)
+        if names_to_enrich:
+            self.start_background_enrichment(user_id, card_names=names_to_enrich)
+        return added_or_updated
+
+    def complete_order_cards_in_binder(
+        self,
+        user_id: int,
+        order_items: List[Dict[str, Any]],
+        destination_binder: str = "Acquired",
+    ) -> Dict[str, int]:
+        """
+        Transitions cards belonging to a completed TCGPlayerOrder from binder_name='Ordered'
+        into destination_binder (default 'Acquired'), merging quantities if already present.
+        """
+        destination_binder = (destination_binder or "Acquired").strip() or "Acquired"
+        if destination_binder.lower() == "ordered":
+            destination_binder = "Acquired"
+
+        ordered_rows = UserInventoryCard.query.filter(
+            UserInventoryCard.user_id == user_id,
+            func.lower(func.coalesce(UserInventoryCard.binder_name, "")) == "ordered",
+        ).all()
+
+        dest_rows = UserInventoryCard.query.filter(
+            UserInventoryCard.user_id == user_id,
+            func.lower(func.coalesce(UserInventoryCard.binder_name, "")) == destination_binder.lower(),
+        ).all()
+        dest_map = {
+            self._build_card_key(c.name, c.set_code, c.collector_number, c.foil): c
+            for c in dest_rows
+        }
+
+        promoted_cards = 0
+        total_qty_moved = 0
+        names_to_enrich: List[str] = []
+
+        for item in order_items:
+            c_name = (item.get("card_name") or item.get("name") or "").strip()
+            if not c_name:
+                continue
+            qty_needed = max(1, int(item.get("quantity") or 1))
+            set_code = (item.get("set_code") or "").strip().upper()
+            col_num = str(item.get("collector_number") or "").strip()
+            finish_raw = (item.get("finish") or item.get("foil") or "normal").strip().lower()
+            foil_val = "foil" if "foil" in finish_raw and "non" not in finish_raw else ("etched" if "etched" in finish_raw else "normal")
+
+            match_keys = get_card_match_keys(c_name)
+            matched_ordered_row = None
+            for r in ordered_rows:
+                if r.quantity <= 0:
+                    continue
+                if bool(get_card_match_keys(r.name) & match_keys):
+                    matched_ordered_row = r
+                    break
+
+            source_meta = matched_ordered_row
+            if matched_ordered_row is not None:
+                if matched_ordered_row.quantity > qty_needed:
+                    matched_ordered_row.quantity -= qty_needed
+                else:
+                    matched_ordered_row.quantity = 0
+                    db.session.delete(matched_ordered_row)
+
+            eff_set_code = set_code or (source_meta.set_code if source_meta else "") or ""
+            eff_col_num = col_num or (source_meta.collector_number if source_meta else "") or ""
+            eff_foil = (source_meta.foil if source_meta else None) or foil_val
+            dest_key = self._build_card_key(c_name, eff_set_code, eff_col_num, eff_foil)
+
+            if dest_key in dest_map:
+                dest_card = dest_map[dest_key]
+                dest_card.quantity += qty_needed
+                dest_card.updated_at = utc_now()
+            else:
+                new_card = UserInventoryCard(
+                    user_id=user_id,
+                    name=source_meta.name if source_meta else c_name,
+                    raw_name=(source_meta.raw_name if source_meta else None) or item.get("raw_name") or c_name,
+                    set_code=eff_set_code,
+                    set_name=(source_meta.set_name if source_meta else None) or item.get("set_name") or "",
+                    collector_number=eff_col_num,
+                    scryfall_id=(source_meta.scryfall_id if source_meta else None) or item.get("scryfall_id"),
+                    quantity=qty_needed,
+                    foil=eff_foil,
+                    condition=(source_meta.condition if source_meta else None) or item.get("condition") or "Near Mint",
+                    language="en",
+                    purchase_price=(source_meta.purchase_price if source_meta else None) or item.get("price"),
+                    binder_name=destination_binder,
+                    rarity=source_meta.rarity if source_meta else None,
+                    mana_cost=(source_meta.mana_cost if source_meta else None) or item.get("mana_cost"),
+                    cmc=(source_meta.cmc if source_meta else None) or item.get("cmc"),
+                    type_line=(source_meta.type_line if source_meta else None) or item.get("type_line"),
+                    oracle_text=source_meta.oracle_text if source_meta else None,
+                    color_identity=source_meta.color_identity if source_meta else None,
+                    image_uri=(source_meta.image_uri if source_meta else None) or item.get("image_uri"),
+                    price_usd=(source_meta.price_usd if source_meta else None) or item.get("price_usd"),
+                    price_usd_foil=(source_meta.price_usd_foil if source_meta else None) or item.get("price_usd_foil"),
+                )
+                db.session.add(new_card)
+                dest_map[dest_key] = new_card
+                if not new_card.image_uri or new_card.color_identity is None:
+                    names_to_enrich.append(c_name)
+
+            promoted_cards += 1
+            total_qty_moved += qty_needed
+
+        db.session.commit()
+        self.bump_inventory_version(user_id)
+        if names_to_enrich:
+            self.start_background_enrichment(user_id, card_names=names_to_enrich)
+
+        return {
+            "promoted_cards": promoted_cards,
+            "total_quantity_moved": total_qty_moved,
+        }
+

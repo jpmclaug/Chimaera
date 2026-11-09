@@ -637,6 +637,44 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    {
+        "name": "manage_tcgplayer_orders",
+        "description": (
+            "Lists tracked TCGplayer orders (both in-transit 'ordered' and 'completed'), "
+            "fetches recent TCGplayer order confirmation emails via Gmail IMAP, or marks an order complete "
+            "to automatically move its cards from the 'Ordered' binder into the permanent collection binder."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "complete", "fetch_gmail"],
+                    "description": "Action to perform: 'list' (default), 'complete' (mark order delivered), or 'fetch_gmail'.",
+                    "default": "list",
+                },
+                "order_id": {
+                    "type": "integer",
+                    "description": "Order ID to mark complete when action='complete'.",
+                },
+                "order_number": {
+                    "type": "string",
+                    "description": "Order number to mark complete when action='complete'.",
+                },
+                "binder_name": {
+                    "type": "string",
+                    "description": "Destination binder name when marking an order complete (default 'Acquired').",
+                    "default": "Acquired",
+                },
+                "days_back": {
+                    "type": "integer",
+                    "description": "Number of days back to search Gmail when action='fetch_gmail' (default 30).",
+                    "default": 30,
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -2661,6 +2699,63 @@ def _execute_reconcile_watchlist(user: User, args: dict[str, Any]) -> dict[str, 
     }
 
 
+def _execute_manage_tcgplayer_orders(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """Lists tracked TCGplayer orders, fetches Gmail order emails, or marks an order complete."""
+    from models import TCGPlayerOrder, SystemSetting, utc_now
+    from inventory_manager import InventoryManager
+
+    action = (args.get("action") or "list").strip().lower()
+    if action == "complete":
+        order_id = args.get("order_id")
+        order_number = (args.get("order_number") or "").strip()
+        dest_binder = (args.get("binder_name") or "Acquired").strip() or "Acquired"
+
+        order = None
+        if order_id is not None:
+            order = db.session.get(TCGPlayerOrder, int(order_id))
+            if order and order.user_id != user.id:
+                order = None
+        elif order_number:
+            order = TCGPlayerOrder.query.filter_by(user_id=user.id, order_number=order_number).first()
+
+        if not order:
+            return {"error": "Tracked TCGplayer order not found."}
+
+        if order.status == "completed":
+            return {"success": True, "message": f"Order {order.order_number} is already complete.", "order": order.to_dict()}
+
+        inv_mgr = InventoryManager()
+        move_stats = inv_mgr.complete_order_cards_in_binder(
+            user_id=user.id,
+            order_items=order.get_items(),
+            destination_binder=dest_binder,
+        )
+        order.status = "completed"
+        order.target_binder_name = dest_binder
+        order.completed_at = utc_now()
+        db.session.commit()
+        return {
+            "success": True,
+            "message": f"Completed order {order.order_number} and moved {move_stats['total_quantity_moved']} card(s) from 'Ordered' to '{dest_binder}'.",
+            "order": order.to_dict(),
+            **move_stats,
+        }
+
+    orders = (
+        TCGPlayerOrder.query.filter_by(user_id=user.id)
+        .order_by(TCGPlayerOrder.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    serialized = [o.to_dict() for o in orders]
+    return {
+        "success": True,
+        "orders": serialized,
+        "active_orders_count": sum(1 for o in serialized if o["status"] == "ordered"),
+        "completed_orders_count": sum(1 for o in serialized if o["status"] == "completed"),
+    }
+
+
 TOOL_HANDLERS = {
     "get_inventory_summary": _execute_get_inventory_summary,
     "check_inventory_cards": _execute_check_inventory_cards,
@@ -2690,6 +2785,9 @@ TOOL_HANDLERS = {
     "remove_from_watchlist": _execute_reconcile_watchlist,
     "bulk_remove_watchlist": _execute_reconcile_watchlist,
     "reconcile_purchases": _execute_reconcile_watchlist,
+    "manage_tcgplayer_orders": _execute_manage_tcgplayer_orders,
+    "get_tcgplayer_orders": _execute_manage_tcgplayer_orders,
+    "complete_tcgplayer_order": _execute_manage_tcgplayer_orders,
 }
 
 

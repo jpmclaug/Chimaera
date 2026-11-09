@@ -72,6 +72,13 @@ class User(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+    tcgplayer_orders = db.relationship(
+        "TCGPlayerOrder",
+        backref=db.backref("user", lazy=True),
+        cascade="all, delete-orphan",
+        lazy=True,
+        passive_deletes=True,
+    )
 
 
     DISCORD_WEBHOOK_REGEX = re.compile(
@@ -1563,6 +1570,7 @@ class UserInventoryCard(db.Model):
             "language": self.language or "en",
             "purchase_price": self.purchase_price,
             "binder_name": self.binder_name or "",
+            "is_ordered": (self.binder_name or "").strip().lower() == "ordered",
             "rarity": self.rarity or "",
             "mana_cost": self.mana_cost or "",
             "cmc": self.cmc or 0.0,
@@ -1830,3 +1838,60 @@ class CommanderPlaytestSession(db.Model):
             data["state"] = self.get_state()
             data["checkpoints"] = self.get_checkpoints()
         return data
+
+
+class TCGPlayerOrder(db.Model):
+    """Tracks a TCGplayer purchase order from 'ordered' (in transit) to 'completed' (in binder)."""
+
+    __tablename__ = "tcgplayer_order"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    order_number = db.Column(db.String(120), nullable=False, index=True)
+    email_message_id = db.Column(db.String(255), nullable=True, index=True)
+    order_date_str = db.Column(db.String(100), nullable=True)
+    seller_summary = db.Column(db.String(255), nullable=True)
+    source = db.Column(db.String(50), default="manual_paste")  # 'gmail_imap' | 'manual_paste'
+    status = db.Column(db.String(30), default="ordered", nullable=False, index=True)  # 'ordered' | 'completed'
+    target_binder_name = db.Column(db.String(255), default="Acquired")
+    total_quantity = db.Column(db.Integer, default=0, nullable=False)
+    unique_cards_count = db.Column(db.Integer, default=0, nullable=False)
+    items_json = db.Column(db.Text, nullable=True)  # JSON list of ordered card items + deck_fit telemetry
+    created_at = db.Column(db.DateTime, default=utc_now, index=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    def get_items(self) -> list[dict]:
+        """Returns deserialized items list."""
+        if not self.items_json:
+            return []
+        try:
+            data = json.loads(self.items_json)
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []
+
+    def to_dict(self) -> dict:
+        """Serializes TCGPlayerOrder record into dict."""
+        items = self.get_items()
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "order_number": self.order_number,
+            "email_message_id": self.email_message_id,
+            "order_date_str": self.order_date_str or (self.created_at.strftime("%b %d, %Y") if self.created_at else ""),
+            "seller_summary": self.seller_summary or "TCGplayer Seller",
+            "source": self.source or "manual_paste",
+            "status": self.status or "ordered",
+            "target_binder_name": self.target_binder_name or "Acquired",
+            "total_quantity": self.total_quantity or sum(int(i.get("quantity") or 1) for i in items),
+            "unique_cards_count": self.unique_cards_count or len(items),
+            "items": items,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+

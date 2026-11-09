@@ -62,18 +62,33 @@ class TCGplayerLotProvider:
         market_price: Optional[float],
         target_price: Optional[float],
         tolerance_mode: str = "decent_10",
+        baseline_cheapest_market: Optional[float] = None,
     ) -> Tuple[bool, str, Optional[float]]:
         """
         Evaluates whether a listing price meets the user's 'decent price' threshold.
-        Returns: (is_qualifying, price_label, delta_vs_market)
+        When baseline_cheapest_market is provided, benchmark against the cheapest
+        available version of the card so fancy treatments (e.g. Masterpieces, showcase)
+        do not falsely qualify as deals simply because they are discounted relative
+        to an inflated special printing market price.
+        Returns: (is_qualifying, price_label, delta_vs_baseline_market)
         """
         if listing_price <= 0:
             return False, "Invalid Price", None
 
-        # Calculate delta vs market if market exists
+        # Determine effective baseline market price:
+        # If baseline_cheapest_market is known and lower than the printing's market_price,
+        # use the baseline to prevent fancy treatments from appearing as good deals for the card.
+        effective_market = market_price
+        if baseline_cheapest_market and baseline_cheapest_market > 0:
+            if effective_market and effective_market > 0:
+                effective_market = min(effective_market, baseline_cheapest_market)
+            else:
+                effective_market = baseline_cheapest_market
+
+        # Calculate delta vs effective baseline market
         delta_pct = None
-        if market_price and market_price > 0:
-            delta_pct = round(((listing_price - market_price) / market_price) * 100.0, 1)
+        if effective_market and effective_market > 0:
+            delta_pct = round(((listing_price - effective_market) / effective_market) * 100.0, 1)
 
         # Target price priority check if set
         meets_target = bool(target_price and target_price > 0 and listing_price <= target_price)
@@ -87,7 +102,7 @@ class TCGplayerLotProvider:
             # Strictly at least 10% below market OR <= target
             if meets_target:
                 return True, "At/Below Target Price", delta_pct
-            if market_price and market_price > 0 and listing_price <= round(market_price * 0.90, 2):
+            if effective_market and effective_market > 0 and listing_price <= round(effective_market * 0.90, 2):
                 return True, "Great Deal (10%+ Below Market)", delta_pct
             return False, "Above Great Price", delta_pct
 
@@ -95,7 +110,7 @@ class TCGplayerLotProvider:
             # Strictly at or below market price OR <= target
             if meets_target:
                 return True, "At/Below Target Price", delta_pct
-            if market_price and market_price > 0 and listing_price <= market_price:
+            if effective_market and effective_market > 0 and listing_price <= effective_market:
                 return True, "Fair Market / Below Market", delta_pct
             return False, "Above Market", delta_pct
 
@@ -103,15 +118,15 @@ class TCGplayerLotProvider:
             # Up to +20% above market OR <= target
             if meets_target:
                 return True, "At/Below Target Price", delta_pct
-            if market_price and market_price > 0 and listing_price <= round(market_price * 1.20, 2):
+            if effective_market and effective_market > 0 and listing_price <= round(effective_market * 1.20, 2):
                 return True, "Within 20% of Market", delta_pct
             return False, "Exceeds +20% Tolerance", delta_pct
 
         # Default: "decent_10" (At/below Target OR within +10% of Market)
         if meets_target:
             return True, "At/Below Target Price", delta_pct
-        if market_price and market_price > 0 and listing_price <= round(market_price * 1.10, 2):
-            label = "At/Below Market" if listing_price <= market_price else "Within 10% Market Tolerance"
+        if effective_market and effective_market > 0 and listing_price <= round(effective_market * 1.10, 2):
+            label = "At/Below Market" if listing_price <= effective_market else "Within 10% Market Tolerance"
             return True, label, delta_pct
 
         # If no market price is listed, fall back to target price if available
@@ -167,7 +182,7 @@ class TCGplayerLotProvider:
         seen_sellers: Set[str] = set()
 
         for prod in products:
-            m_price = prod.get("marketPrice") or anchor_market_price
+            prod_m_price = prod.get("marketPrice")
             p_id = prod.get("productId")
             p_name = prod.get("productName")
             s_name = prod.get("setName")
@@ -184,9 +199,10 @@ class TCGplayerLotProvider:
                 price = float(listing.get("price", 0.0))
                 qualifies, label, delta_pct = self.evaluate_listing_decent_price(
                     listing_price=price,
-                    market_price=m_price,
+                    market_price=prod_m_price,
                     target_price=anchor_target_price,
                     tolerance_mode=tolerance_mode,
+                    baseline_cheapest_market=anchor_market_price,
                 )
 
                 if qualifies:
@@ -207,7 +223,8 @@ class TCGplayerLotProvider:
                             "condition": cond,
                             "printing": listing.get("printing", "Normal"),
                             "quantity": int(listing.get("quantity", 1)),
-                            "marketPrice": m_price,
+                            "marketPrice": prod_m_price,
+                            "baseMarketPrice": anchor_market_price or prod_m_price,
                             "priceLabel": label,
                             "deltaPct": delta_pct,
                         },
@@ -493,85 +510,108 @@ class TCGplayerLotProvider:
             if not products:
                 return None
 
-            qualifying_cards = []
-            above_tolerance_cards = []
-            seen_card_names: Set[str] = set()
-
-            shipping_estimates = []
-
+            # Group products by canonical normalized card name
+            products_by_card: Dict[str, List[dict]] = {}
             for prod in products:
                 prod_name = prod.get("productName", "")
                 norm_name = normalize_card_name(prod_name.split(" // ")[0].strip())
-                w_item = item_by_name.get(norm_name)
-                if not w_item:
-                    continue
+                if norm_name in item_by_name:
+                    products_by_card.setdefault(norm_name, []).append(prod)
 
-                listings = prod.get("listings", [])
-                if not listings:
-                    continue
+            qualifying_cards = []
+            above_tolerance_cards = []
+            shipping_estimates = []
 
-                # Find the best in-stock listing for this product
-                for l in listings:
-                    cond = l.get("condition", "Near Mint")
-                    if not allow_mp and cond in ("Moderately Played", "Heavily Played", "Damaged"):
-                        continue
+            for norm_name, prod_list in products_by_card.items():
+                w_item = item_by_name[norm_name]
+                t_price = getattr(w_item, "target_price", None)
 
-                    price = float(l.get("price", 0.0))
-                    if price <= 0:
-                        continue
+                # Determine the true baseline market price for ANY regular version of this card
+                baseline_market = getattr(w_item, "lowest_in_stock_price", None) or getattr(w_item, "market_price", None)
+                if not getattr(w_item, "is_any_version", True):
+                    baseline_market = getattr(w_item, "market_price", None) or baseline_market
 
-                    # Check max/min card price filters if specified in dollar mode
-                    if max_card_price is not None and price > max_card_price:
-                        continue
-                    if min_card_price is not None and price < min_card_price:
-                        continue
+                candidate_qualifying = []
+                candidate_above_tolerance = []
 
-                    m_price = prod.get("marketPrice") or getattr(w_item, "market_price", None)
-                    t_price = getattr(w_item, "target_price", None)
+                for prod in prod_list:
+                    prod_name = prod.get("productName", "")
+                    clean_name = prod_name.split(" // ")[0].strip()
+                    prod_m_price = prod.get("marketPrice")
+                    p_id = prod.get("productId")
+                    s_name = prod.get("setName", "")
 
-                    qualifies, label, delta_pct = self.evaluate_listing_decent_price(
-                        listing_price=price,
-                        market_price=m_price,
-                        target_price=t_price,
-                        tolerance_mode=price_tolerance_mode,
-                    )
+                    for l in prod.get("listings", []):
+                        cond = l.get("condition", "Near Mint")
+                        if not allow_mp and cond in ("Moderately Played", "Heavily Played", "Damaged"):
+                            continue
 
-                    ship = float(l.get("shippingPrice", 0.0) or l.get("sellerShippingPrice", 0.0) or 0.0)
-                    shipping_estimates.append(ship)
+                        price = float(l.get("price", 0.0))
+                        if price <= 0:
+                            continue
 
-                    card_entry = {
-                        "id": getattr(w_item, "id", None),
-                        "name": getattr(w_item, "name", prod_name),
-                        "setName": prod.get("setName", ""),
-                        "productId": prod.get("productId"),
-                        "price": price,
-                        "marketPrice": m_price,
-                        "targetPrice": t_price,
-                        "condition": cond,
-                        "printing": l.get("printing", "Normal"),
-                        "quantity": int(l.get("quantity", 1)),
-                        "imageUri": getattr(w_item, "image_uri", None),
-                        "inBinder": bool(getattr(w_item, "in_binder", False)),
-                        "binderCount": getattr(w_item, "binder_count", 0),
-                        "tag": getattr(w_item, "tag", None),
-                        "priceLabel": label,
-                        "deltaPct": delta_pct,
-                        "tcgplayerUrl": f"https://www.tcgplayer.com/product/{prod.get('productId')}?seller={s_key}&page=1",
-                    }
+                        # Check max/min card price filters if specified in dollar mode
+                        if max_card_price is not None and price > max_card_price:
+                            continue
+                        if min_card_price is not None and price < min_card_price:
+                            continue
 
-                    if qualifies:
-                        if norm_name not in seen_card_names:
-                            seen_card_names.add(norm_name)
-                            qualifying_cards.append(card_entry)
-                    else:
-                        above_tolerance_cards.append(card_entry)
+                        ship = float(l.get("shippingPrice", 0.0) or l.get("sellerShippingPrice", 0.0) or 0.0)
+                        shipping_estimates.append(ship)
 
-                    break  # Keep lowest valid listing per product
+                        # Evaluate against baseline cheapest version of the card
+                        qualifies, label, delta_pct = self.evaluate_listing_decent_price(
+                            listing_price=price,
+                            market_price=prod_m_price,
+                            target_price=t_price,
+                            tolerance_mode=price_tolerance_mode,
+                            baseline_cheapest_market=baseline_market,
+                        )
+
+                        # Identify if this specific printing is an expensive special treatment
+                        is_fancy = bool(prod_m_price and baseline_market and prod_m_price > baseline_market * 1.5)
+
+                        card_entry = {
+                            "id": getattr(w_item, "id", None),
+                            "name": getattr(w_item, "name", prod_name),
+                            "cleanName": clean_name,
+                            "setName": s_name,
+                            "productId": p_id,
+                            "price": price,
+                            "marketPrice": prod_m_price,
+                            "baseMarketPrice": baseline_market or prod_m_price,
+                            "isFancyTreatment": is_fancy,
+                            "targetPrice": t_price,
+                            "condition": cond,
+                            "printing": l.get("printing", "Normal"),
+                            "quantity": int(l.get("quantity", 1)),
+                            "imageUri": getattr(w_item, "image_uri", None),
+                            "inBinder": bool(getattr(w_item, "in_binder", False)),
+                            "binderCount": getattr(w_item, "binder_count", 0),
+                            "tag": getattr(w_item, "tag", None),
+                            "priceLabel": label,
+                            "deltaPct": delta_pct,
+                            "tcgplayerUrl": f"https://www.tcgplayer.com/product/{p_id}?seller={s_key}&page=1",
+                            "storeSearchUrl": f"https://www.tcgplayer.com/search/magic/product?seller={s_key}&q={urllib.parse.quote_plus(clean_name)}&view=grid",
+                        }
+
+                        if qualifies:
+                            candidate_qualifying.append(card_entry)
+                        else:
+                            candidate_above_tolerance.append(card_entry)
+
+                if candidate_qualifying:
+                    # Select the lowest-priced qualifying printing (best value for user's money)
+                    best_card = min(candidate_qualifying, key=lambda c: c["price"])
+                    qualifying_cards.append(best_card)
+                elif candidate_above_tolerance:
+                    above_tolerance_cards.append(min(candidate_above_tolerance, key=lambda c: c["price"]))
 
             # If anchor card mode, verify the anchor card is present in qualifying cards
             if mode == "anchor_card" and anchor_item:
                 anchor_norm = normalize_card_name(getattr(anchor_item, "name", "").split(" // ")[0].strip())
-                if anchor_norm not in seen_card_names:
+                qualifying_names = {normalize_card_name(c["name"].split(" // ")[0].strip()) for c in qualifying_cards}
+                if anchor_norm not in qualifying_names:
                     return None
 
             # Check min_cards threshold
@@ -581,9 +621,9 @@ class TCGplayerLotProvider:
             # Sort qualifying cards by price ascending
             qualifying_cards.sort(key=lambda c: c["price"])
 
-            # Compute financial totals
+            # Compute financial totals against baseline market price
             subtotal = sum(c["price"] for c in qualifying_cards)
-            total_market = sum(c["marketPrice"] for c in qualifying_cards if c.get("marketPrice"))
+            total_market = sum(c["baseMarketPrice"] for c in qualifying_cards if c.get("baseMarketPrice"))
             net_savings = round(total_market - subtotal, 2) if total_market > 0 else 0.0
             savings_pct = round((net_savings / total_market) * 100.0, 1) if total_market > 0 and net_savings > 0 else 0.0
 
@@ -607,6 +647,14 @@ class TCGplayerLotProvider:
                     "bundleType": bundle_amount_type,
                 }
 
+            # Generate direct TCGplayer store URL and multi-card lot search URL
+            store_url = f"https://www.tcgplayer.com/search/magic/product?seller={s_key}&view=grid"
+            search_params = [("seller", s_key), ("view", "grid")]
+            for c in qualifying_cards:
+                clean_cname = c.get("cleanName") or c["name"].split(" // ")[0].strip()
+                search_params.append(("productName", clean_cname))
+            multi_card_search_url = "https://www.tcgplayer.com/search/magic/product?" + urllib.parse.urlencode(search_params)
+
             return {
                 "sellerKey": s_key,
                 "sellerName": seller_info.get("sellerName", "TCGplayer Seller"),
@@ -614,6 +662,8 @@ class TCGplayerLotProvider:
                 "sellerSales": seller_info.get("sellerSales", "1000+"),
                 "directSeller": seller_info.get("directSeller", False),
                 "goldSeller": seller_info.get("goldSeller", False),
+                "storeUrl": store_url,
+                "multiCardSearchUrl": multi_card_search_url,
                 "qualifyingCount": len(qualifying_cards),
                 "subtotal": round(subtotal, 2),
                 "estShipping": round(est_shipping, 2),

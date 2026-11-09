@@ -1137,13 +1137,19 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
-function openTcgPurchaseModal() {
+let currentTcgFetchedGmailOrders = [];
+let currentTcgModalMode = "reconcile";
+
+function openTcgPurchaseModal(initialMode = "reconcile") {
     const modal = document.getElementById("modal-tcgplayer-purchase");
     if (modal) {
         modal.classList.remove("hidden");
         lockBody();
+        switchTcgModalMode(initialMode);
+        loadTcgGmailSettingsStatus();
+        loadTrackedTcgOrders(true);
         const textarea = document.getElementById("tcg-purchase-input");
-        if (textarea) {
+        if (textarea && initialMode === "reconcile") {
             textarea.focus();
             onTcgInputChange();
         }
@@ -1165,6 +1171,204 @@ function closeTcgPurchaseModal() {
     }
 }
 
+function switchTcgModalMode(mode) {
+    currentTcgModalMode = mode === "tracker" ? "tracker" : "reconcile";
+    const recView = document.getElementById("tcg-mode-reconcile-view");
+    const trkView = document.getElementById("tcg-mode-tracker-view");
+    const btnRec = document.getElementById("btn-tcg-mode-reconcile");
+    const btnTrk = document.getElementById("btn-tcg-mode-tracker");
+    const executeBtn = document.getElementById("btn-submit-tcg-execute");
+
+    if (currentTcgModalMode === "tracker") {
+        if (recView) recView.classList.add("hidden");
+        if (trkView) trkView.classList.remove("hidden");
+        if (btnRec) btnRec.className = "px-2.5 py-1 text-[#94A3B8] hover:text-white font-bold uppercase transition";
+        if (btnTrk) btnTrk.className = "px-2.5 py-1 bg-[#00CED1] text-slate-950 font-bold uppercase transition flex items-center space-x-1";
+        if (executeBtn) executeBtn.classList.add("hidden");
+        loadTrackedTcgOrders(false);
+    } else {
+        if (recView) recView.classList.remove("hidden");
+        if (trkView) trkView.classList.add("hidden");
+        if (btnRec) btnRec.className = "px-2.5 py-1 bg-[#00CED1] text-slate-950 font-bold uppercase transition";
+        if (btnTrk) btnTrk.className = "px-2.5 py-1 text-[#94A3B8] hover:text-white font-bold uppercase transition flex items-center space-x-1";
+        if (currentTcgReconciliationData && executeBtn) {
+            executeBtn.classList.remove("hidden");
+            updateTcgExecuteButton();
+        }
+    }
+}
+
+async function loadTcgGmailSettingsStatus() {
+    const pill = document.getElementById("tcg-gmail-status-pill");
+    const emailInput = document.getElementById("tcg-gmail-email-input");
+    try {
+        const res = await fetch("/api/watchlist/tcgplayer-email/settings");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (emailInput && data.email && !emailInput.value) {
+            emailInput.value = data.email;
+        }
+        if (pill) {
+            if (data.configured) {
+                pill.textContent = `Connected (${data.email})`;
+                pill.className = "ml-2 text-[10px] font-mono px-1.5 py-0.2 bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981]";
+            } else {
+                pill.textContent = "Setup Required";
+                pill.className = "ml-2 text-[10px] font-mono px-1.5 py-0.2 bg-[#F59E0B]/15 border border-[#F59E0B]/40 text-[#F59E0B]";
+            }
+        }
+    } catch (e) {
+        console.debug("Could not check Gmail settings:", e);
+    }
+}
+
+function toggleTcgGmailSettings() {
+    const drawer = document.getElementById("tcg-gmail-setup-drawer");
+    if (drawer) {
+        drawer.classList.toggle("hidden");
+    }
+}
+
+async function saveTcgGmailSettings() {
+    const emailInput = document.getElementById("tcg-gmail-email-input");
+    const pwInput = document.getElementById("tcg-gmail-password-input");
+    const email = emailInput ? emailInput.value.trim() : "";
+    const appPassword = pwInput ? pwInput.value.trim() : "";
+
+    if (!email || !appPassword) {
+        showToast("Enter both your Gmail address and 16-character Google App Password.", "error");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/watchlist/tcgplayer-email/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, app_password: appPassword }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data.error || "Failed to save Gmail settings.", "error");
+            return;
+        }
+        showToast("Gmail IMAP credentials saved!", "success");
+        if (pwInput) pwInput.value = "";
+        toggleTcgGmailSettings();
+        loadTcgGmailSettingsStatus();
+    } catch (err) {
+        showToast("Network error saving Gmail settings.", "error");
+    }
+}
+
+async function fetchTcgOrdersFromGmail() {
+    const btn = document.getElementById("btn-tcg-fetch-gmail");
+    const daysSelect = document.getElementById("tcg-gmail-days-select");
+    const progressBox = document.getElementById("tcg-progress-box");
+    const progressText = document.getElementById("tcg-progress-text");
+    const daysBack = daysSelect ? parseInt(daysSelect.value, 10) || 30 : 30;
+
+    if (btn) btn.disabled = true;
+    if (progressBox) progressBox.classList.remove("hidden");
+    if (progressText) progressText.textContent = `Connecting to Gmail IMAP & scanning TCGplayer orders (last ${daysBack} days)...`;
+
+    try {
+        const res = await fetch("/api/watchlist/tcgplayer-email/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ days_back: daysBack }),
+        });
+        const data = await res.json();
+        if (btn) btn.disabled = false;
+
+        if (!res.ok) {
+            if (progressBox) progressBox.classList.add("hidden");
+            if (data.needs_setup) {
+                const drawer = document.getElementById("tcg-gmail-setup-drawer");
+                if (drawer) drawer.classList.remove("hidden");
+            }
+            showToast(data.error || "Failed to fetch TCGplayer emails.", "error");
+            return;
+        }
+
+        currentTcgFetchedGmailOrders = data.orders || [];
+        renderFetchedGmailOrdersList(currentTcgFetchedGmailOrders);
+
+        if (currentTcgFetchedGmailOrders.length === 0) {
+            if (progressBox) progressBox.classList.add("hidden");
+            showToast(`No TCGplayer order confirmation emails found in the last ${daysBack} days.`, "info");
+            return;
+        }
+
+        const textarea = document.getElementById("tcg-purchase-input");
+        if (textarea && data.manifest_text) {
+            textarea.value = data.manifest_text;
+            onTcgInputChange();
+        }
+        showToast(`Fetched ${data.orders_found} TCGplayer order email(s) (${data.total_cards_quantity} cards). Analyzing deck fit...`, "success");
+        await previewTcgPurchase();
+    } catch (err) {
+        if (btn) btn.disabled = false;
+        if (progressBox) progressBox.classList.add("hidden");
+        showToast("Communication error while fetching Gmail orders.", "error");
+    }
+}
+
+function renderFetchedGmailOrdersList(orders) {
+    const box = document.getElementById("tcg-fetched-orders-box");
+    const list = document.getElementById("tcg-fetched-orders-list");
+    const label = document.getElementById("tcg-fetched-orders-label");
+    if (!box || !list) return;
+
+    if (!orders || orders.length === 0) {
+        box.classList.add("hidden");
+        return;
+    }
+
+    box.classList.remove("hidden");
+    const newCount = orders.filter(o => !o.already_tracked).length;
+    if (label) {
+        label.textContent = `${orders.length} Order Email${orders.length === 1 ? '' : 's'} Found (${newCount} New)`;
+    }
+
+    list.innerHTML = orders.map((o, idx) => {
+        const isTracked = !!o.already_tracked;
+        const checkedAttr = (!isTracked || newCount === 0) ? "checked" : "";
+        const statusBadge = isTracked
+            ? `<span class="text-[9px] px-1.5 py-0.2 bg-[#64748B]/20 text-[#94A3B8] border border-[#64748B]/40 uppercase">Already Tracked (${escapeHtml(o.tracked_status || 'ordered')})</span>`
+            : `<span class="text-[9px] px-1.5 py-0.2 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 uppercase font-bold">New Order</span>`;
+
+        return `
+            <label class="flex items-center justify-between p-1.5 bg-[#1B2230] border border-[#263245] text-[11px] font-mono cursor-pointer hover:border-[#00CED1]/40">
+                <div class="flex items-center space-x-2 min-w-0">
+                    <input type="checkbox" class="tcg-gmail-order-check w-3.5 h-3.5 text-[#00CED1] bg-[#10141D] border-[#263245]" data-order-idx="${idx}" ${checkedAttr} onchange="onToggleGmailOrderSelection()">
+                    <span class="text-white font-bold truncate">#${escapeHtml(o.order_number)}</span>
+                    <span class="text-[#94A3B8] text-[10px]">${escapeHtml(o.order_date_str || '')}</span>
+                    ${statusBadge}
+                </div>
+                <span class="text-[#00CED1] font-bold flex-shrink-0 ml-2">${o.total_quantity} card${o.total_quantity === 1 ? '' : 's'}</span>
+            </label>
+        `;
+    }).join("");
+}
+
+function onToggleGmailOrderSelection() {
+    const checks = document.querySelectorAll(".tcg-gmail-order-check:checked");
+    const lines = ["Qty\tDescription"];
+    checks.forEach(cb => {
+        const idx = parseInt(cb.getAttribute("data-order-idx"), 10);
+        const ord = currentTcgFetchedGmailOrders[idx];
+        if (ord && ord.manifest_text) {
+            lines.push(`Order #${ord.order_number}`);
+            lines.push(ord.manifest_text);
+        }
+    });
+    const textarea = document.getElementById("tcg-purchase-input");
+    if (textarea) {
+        textarea.value = lines.length > 1 ? lines.join("\n") : "";
+        onTcgInputChange();
+    }
+}
+
 function onTcgInputChange() {
     const textarea = document.getElementById("tcg-purchase-input");
     const badge = document.getElementById("tcg-counter-badge");
@@ -1176,27 +1380,87 @@ function onTcgInputChange() {
         badge.className = "text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]";
         return;
     }
-    const lines = val.split(/\r?\n/).filter(l => l.trim() && !l.toLowerCase().startsWith("qty"));
+    const lines = val.split(/\r?\n/).filter(l => l.trim() && !l.toLowerCase().startsWith("qty") && !l.toLowerCase().startsWith("order #"));
     const count = lines.length;
     badge.textContent = `[ ${count} Line${count === 1 ? '' : 's'} ]`;
     badge.className = "text-[11px] font-mono text-[#00CED1] font-bold bg-[#10141D] px-2 py-0.5 border border-[#00CED1]/40";
+}
+
+function switchTcgResultsSubView(view) {
+    const cardsView = document.getElementById("tcg-subview-cards");
+    const decksView = document.getElementById("tcg-subview-decks");
+    const btnCards = document.getElementById("btn-tcg-subview-cards");
+    const btnDecks = document.getElementById("btn-tcg-subview-decks");
+
+    if (view === "decks") {
+        if (cardsView) cardsView.classList.add("hidden");
+        if (decksView) decksView.classList.remove("hidden");
+        if (btnCards) btnCards.className = "px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]";
+        if (btnDecks) btnDecks.className = "px-2.5 py-1 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 font-bold uppercase text-[11px]";
+    } else {
+        if (cardsView) cardsView.classList.remove("hidden");
+        if (decksView) decksView.classList.add("hidden");
+        if (btnCards) btnCards.className = "px-2.5 py-1 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 font-bold uppercase text-[11px]";
+        if (btnDecks) btnDecks.className = "px-2.5 py-1 text-[#94A3B8] hover:text-white border border-transparent font-bold uppercase text-[11px]";
+    }
+}
+
+function renderTcgDeckFitBadgeHtml(deckFit) {
+    if (!deckFit) return "";
+    if (!deckFit.has_fit) {
+        if (deckFit.already_in_decks && deckFit.already_in_decks.length > 0) {
+            return `<div class="mt-1 text-[10px] font-mono text-[#94A3B8]">📦 Already in: <span class="text-white">${escapeHtml(deckFit.already_in_decks.join(", "))}</span></div>`;
+        }
+        return `<div class="mt-1 text-[10px] font-mono text-[#64748B]">No compatible Commander deck in Vault</div>`;
+    }
+
+    const verdict = deckFit.fit_verdict || "Compatible";
+    let verdictBadgeClass = "bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/40";
+    if (verdict === "Essential Upgrade") {
+        verdictBadgeClass = "bg-[#10B981]/20 text-[#10B981] border-[#10B981]/50";
+    } else if (verdict === "High Synergy") {
+        verdictBadgeClass = "bg-[#00CED1]/20 text-[#00CED1] border-[#00CED1]/50";
+    } else if (verdict === "Role Filler") {
+        verdictBadgeClass = "bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/40";
+    }
+
+    const cutHtml = deckFit.suggested_cut
+        ? `<span class="text-[10px] px-1.5 py-0.2 bg-[#DC143C]/15 text-[#FF3358] border border-[#DC143C]/40" title="${escapeHtml(deckFit.cut_reason || '')}">✂️ Cut: <strong>${escapeHtml(deckFit.suggested_cut)}</strong></span>`
+        : "";
+
+    const runnerUpHtml = (deckFit.runner_up_decks && deckFit.runner_up_decks.length > 0)
+        ? `<span class="text-[10px] text-[#64748B]" title="Runner-up compatible decks">Also fits: ${deckFit.runner_up_decks.map(r => escapeHtml(r.deck_name)).join(", ")}</span>`
+        : "";
+
+    return `
+        <div class="mt-1.5 pt-1.5 border-t border-[#263245]/60 flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+            <span class="px-1.5 py-0.2 border font-bold uppercase ${verdictBadgeClass}">
+                🏆 Best Deck: ${escapeHtml(deckFit.best_deck_name)} (${deckFit.synergy_rating}%)
+            </span>
+            <span class="text-[#94A3B8]">${escapeHtml(verdict)}${deckFit.role ? ' • ' + escapeHtml(deckFit.role) : ''}</span>
+            ${cutHtml}
+            ${runnerUpHtml}
+        </div>
+    `;
 }
 
 async function previewTcgPurchase() {
     const textarea = document.getElementById("tcg-purchase-input");
     const text = textarea ? textarea.value.trim() : "";
     if (!text) {
-        showToast("Paste a TCGplayer purchase manifest first.", "error");
+        showToast("Paste a TCGplayer purchase manifest or fetch from Gmail first.", "error");
         return;
     }
 
     const previewBtn = document.getElementById("btn-tcg-preview");
     const progressBox = document.getElementById("tcg-progress-box");
+    const progressText = document.getElementById("tcg-progress-text");
     const resultsContainer = document.getElementById("tcg-results-container");
     const executeBtn = document.getElementById("btn-submit-tcg-execute");
 
     if (previewBtn) previewBtn.disabled = true;
     if (progressBox) progressBox.classList.remove("hidden");
+    if (progressText) progressText.textContent = "Analyzing purchase manifest & evaluating Commander deck fit...";
     if (resultsContainer) resultsContainer.classList.add("hidden");
     if (executeBtn) executeBtn.classList.add("hidden");
 
@@ -1204,7 +1468,7 @@ async function previewTcgPurchase() {
         const res = await fetch("/api/watchlist/reconcile-purchase/preview", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ raw_text: text }),
+            body: JSON.stringify({ raw_text: text, include_deck_fit: true }),
         });
         const data = await res.json();
 
@@ -1233,67 +1497,146 @@ function renderTcgPreviewResults(data) {
     const unmatchedSection = document.getElementById("tcg-unmatched-section");
     const unmatchedList = document.getElementById("tcg-unmatched-list");
     const unmatchedCountLabel = document.getElementById("tcg-unmatched-count-label");
+    const sortingDecksContainer = document.getElementById("tcg-subview-decks");
+    const fleetSummaryEl = document.getElementById("tcg-fleet-eval-summary");
     const executeBtn = document.getElementById("btn-submit-tcg-execute");
 
     if (!resultsContainer || !matchedList) return;
 
     matchedList.innerHTML = "";
     const matched = data.matched_targets || [];
+    const unmatched = data.unmatched_purchases || [];
+    const sortingGroups = data.deck_sorting_groups || [];
+
+    if (fleetSummaryEl) {
+        const decksCount = data.evaluated_decks_count || 0;
+        fleetSummaryEl.textContent = decksCount > 0
+            ? `Evaluated against ${decksCount} Commander Deck${decksCount === 1 ? '' : 's'}`
+            : `No saved Commander decks found`;
+    }
 
     matchedCountLabel.textContent = `${matched.length} Buy Target${matched.length === 1 ? '' : 's'} Matched On Watchlist`;
 
     if (matched.length === 0) {
         matchedList.innerHTML = `
             <div class="p-3 text-center text-xs font-mono text-[#94A3B8] bg-[#10141D] border border-[#263245]">
-                No cards from this purchase matched any active buy targets in your registry.
+                No cards from this order matched active Watchlist targets (see below for Deck Fit &amp; Binder logging).
             </div>
         `;
-        if (executeBtn) executeBtn.classList.add("hidden");
     } else {
         matched.forEach(t => {
             const row = document.createElement("div");
-            row.className = "flex items-center justify-between p-2 bg-[#10141D] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono transition";
+            row.className = "p-2.5 bg-[#10141D] border border-[#263245] hover:border-[#00CED1]/50 text-xs font-mono transition";
             row.id = `tcg-match-row-${t.id}`;
 
             const tagHtml = t.tag ? `<span class="text-[10px] text-[#C084FC] bg-[#9333EA]/10 border border-[#9333EA]/30 px-1.5 py-0.5 ml-2">🏷️ ${escapeHtml(t.tag)}</span>` : "";
             const targetPriceHtml = t.target_price ? `<span class="text-[10px] text-[#94A3B8]">Target: <strong class="text-white">$${t.target_price.toFixed(2)}</strong></span>` : "";
             const purchasedInfo = `Qty: ${t.purchased_qty}${t.purchased_condition ? ' • ' + t.purchased_condition : ''}${t.purchased_set ? ' • ' + t.purchased_set : ''}`;
+            const fitHtml = renderTcgDeckFitBadgeHtml(t.deck_fit);
 
             row.innerHTML = `
-                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
-                    <input type="checkbox" id="tcg-target-check-${t.id}" value="${t.id}" class="tcg-target-checkbox w-4 h-4 text-[#DC143C] rounded-none bg-[#1B2230] border-[#263245] cursor-pointer" checked onchange="updateTcgExecuteButton()">
-                    <label for="tcg-target-check-${t.id}" class="cursor-pointer truncate">
-                        <span class="font-bold text-white text-xs">${escapeHtml(t.name)}</span>
-                        ${tagHtml}
-                        <span class="text-[10px] text-[#64748B] block mt-0.5">${escapeHtml(purchasedInfo)}</span>
-                    </label>
+                <div class="flex items-start justify-between">
+                    <div class="flex items-start space-x-2.5 min-w-0 flex-1">
+                        <input type="checkbox" id="tcg-target-check-${t.id}" value="${t.id}" class="tcg-target-checkbox mt-0.5 w-4 h-4 text-[#DC143C] rounded-none bg-[#1B2230] border-[#263245] cursor-pointer" checked onchange="updateTcgExecuteButton()">
+                        <label for="tcg-target-check-${t.id}" class="cursor-pointer min-w-0 flex-1">
+                            <div>
+                                <span class="font-bold text-white text-xs">${escapeHtml(t.name)}</span>
+                                ${tagHtml}
+                            </div>
+                            <span class="text-[10px] text-[#64748B] block mt-0.5">${escapeHtml(purchasedInfo)}</span>
+                        </label>
+                    </div>
+                    <div class="text-right flex-shrink-0 ml-2">
+                        ${targetPriceHtml}
+                    </div>
                 </div>
-                <div class="text-right flex-shrink-0 ml-2">
-                    ${targetPriceHtml}
-                </div>
+                ${fitHtml}
             `;
             matchedList.appendChild(row);
         });
-
-        if (executeBtn) {
-            executeBtn.classList.remove("hidden");
-            updateTcgExecuteButton();
-        }
     }
 
-    // Render unmatched list
-    const unmatched = data.unmatched_purchases || [];
+    // Render unmatched list with full Deck Fit badges
     if (unmatched.length > 0 && unmatchedSection && unmatchedList) {
         unmatchedSection.classList.remove("hidden");
-        unmatchedCountLabel.textContent = `${unmatched.length} Purchased Item${unmatched.length === 1 ? '' : 's'} Not on Watchlist`;
+        unmatchedCountLabel.textContent = `${unmatched.length} Ordered Card${unmatched.length === 1 ? '' : 's'} Not on Watchlist (Deck Fit Evaluated)`;
         unmatchedList.innerHTML = unmatched.map(u => `
-            <div class="flex items-center justify-between py-0.5">
-                <span class="text-white">${escapeHtml(u.card_name || u.raw_name)}</span>
-                <span class="text-[#64748B] text-[10px]">${u.quantity}x • ${escapeHtml(u.set_name || 'N/A')}</span>
+            <div class="p-2 bg-[#10141D] border border-[#263245]/80">
+                <div class="flex items-center justify-between">
+                    <span class="text-white font-bold">${escapeHtml(u.card_name || u.raw_name)}</span>
+                    <span class="text-[#94A3B8] text-[10px]">${u.quantity}x • ${escapeHtml(u.set_name || 'N/A')}${u.condition ? ' • ' + escapeHtml(u.condition) : ''}</span>
+                </div>
+                ${renderTcgDeckFitBadgeHtml(u.deck_fit)}
             </div>
         `).join("");
     } else if (unmatchedSection) {
         unmatchedSection.classList.add("hidden");
+    }
+
+    // Render Deck Sorting Guide (By Deck)
+    if (sortingDecksContainer) {
+        if (sortingGroups.length === 0) {
+            sortingDecksContainer.innerHTML = `
+                <div class="p-4 text-center text-xs font-mono text-[#94A3B8] bg-[#10141D] border border-[#263245]">
+                    Import Commander decks in the Deck Analyzer to unlock per-deck sorting recommendations.
+                </div>
+            `;
+        } else {
+            sortingDecksContainer.innerHTML = sortingGroups.map(group => {
+                const isAssigned = group.deck_id !== null && group.deck_id !== undefined;
+                const borderClass = isAssigned ? "border-[#00CED1]/40" : "border-[#263245]";
+                const cardsHtml = (group.cards || []).map(c => {
+                    const cutChip = c.suggested_cut
+                        ? `<span class="text-[10px] px-1.5 py-0.2 bg-[#DC143C]/15 text-[#FF3358] border border-[#DC143C]/40">✂️ Cut: <strong>${escapeHtml(c.suggested_cut)}</strong></span>`
+                        : "";
+                    const tagChip = c.watchlist_tag
+                        ? `<span class="text-[10px] px-1.5 py-0.2 bg-[#9333EA]/15 text-[#C084FC] border border-[#9333EA]/40">🏷️ ${escapeHtml(c.watchlist_tag)}</span>`
+                        : "";
+                    return `
+                        <div class="p-2 bg-[#1B2230] border border-[#263245] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-mono">
+                            <div>
+                                <span class="text-[#10B981] font-bold">${c.quantity}x</span>
+                                <span class="text-white font-bold ml-1">${escapeHtml(c.card_name)}</span>
+                                <span class="text-[10px] text-[#00CED1] ml-1.5">${escapeHtml(c.fit_verdict || '')}${c.synergy_rating ? ` (${c.synergy_rating}%)` : ''}</span>
+                                ${tagChip}
+                                ${c.rationale ? `<div class="text-[10px] text-[#94A3B8] mt-0.5">${escapeHtml(c.rationale)}</div>` : ''}
+                            </div>
+                            <div class="flex-shrink-0">
+                                ${cutChip}
+                            </div>
+                        </div>
+                    `;
+                }).join("");
+
+                return `
+                    <div class="bg-[#10141D] border ${borderClass} p-3 space-y-2">
+                        <div class="flex items-center justify-between border-b border-[#263245] pb-2">
+                            <div class="flex items-center space-x-2.5">
+                                ${group.commander_art
+                                    ? `<img src="${escapeHtml(group.commander_art)}" class="w-8 h-8 object-cover border border-[#00CED1]/50">`
+                                    : `<div class="w-8 h-8 bg-[#1B2230] border border-[#263245] flex items-center justify-center text-[10px] font-mono text-[#00CED1] font-bold">EDH</div>`
+                                }
+                                <div>
+                                    <div class="text-xs font-bold text-white font-mono">${escapeHtml(group.deck_name)}</div>
+                                    <div class="text-[10px] text-[#94A3B8] font-mono">${escapeHtml(group.commander_name || '')}</div>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 bg-[#00CED1]/15 border border-[#00CED1]/40 text-[#00CED1] font-mono text-[11px] font-bold">
+                                ${(group.cards || []).length} Card${(group.cards || []).length === 1 ? '' : 's'}
+                            </span>
+                        </div>
+                        <div class="space-y-1.5">
+                            ${cardsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+        }
+    }
+
+    if (executeBtn) {
+        executeBtn.classList.remove("hidden");
+        updateTcgExecuteButton();
     }
 
     resultsContainer.classList.remove("hidden");
@@ -1309,9 +1652,20 @@ function updateTcgExecuteButton() {
     const executeBtn = document.getElementById("btn-submit-tcg-execute");
     if (!executeBtn) return;
     const checkboxes = document.querySelectorAll(".tcg-target-checkbox:checked");
-    const count = checkboxes.length;
-    executeBtn.disabled = count === 0;
-    executeBtn.innerHTML = `<span>De-Register ${count} Selected Target${count === 1 ? '' : 's'}</span>`;
+    const targetCount = checkboxes.length;
+    const addInventory = document.getElementById("tcg-add-inventory-check")?.checked ?? false;
+    const invMode = document.getElementById("tcg-inventory-mode-select")?.value || "ordered";
+    const totalItems = currentTcgReconciliationData ? (currentTcgReconciliationData.parsed_items || []).length : 0;
+
+    executeBtn.disabled = (targetCount === 0 && (!addInventory || totalItems === 0));
+    const binderLabel = invMode === "ordered" ? "Add as 'Ordered'" : "Add to Binder";
+    if (targetCount > 0 && addInventory) {
+        executeBtn.innerHTML = `<span>De-Register ${targetCount} Target${targetCount === 1 ? '' : 's'} &amp; ${binderLabel}</span>`;
+    } else if (targetCount > 0) {
+        executeBtn.innerHTML = `<span>De-Register ${targetCount} Selected Target${targetCount === 1 ? '' : 's'}</span>`;
+    } else {
+        executeBtn.innerHTML = `<span>Log ${totalItems} Ordered Card${totalItems === 1 ? '' : 's'} (${binderLabel})</span>`;
+    }
 }
 
 function toggleTcgUnmatchedDetails() {
@@ -1331,33 +1685,33 @@ function toggleTcgUnmatchedDetails() {
 async function executeTcgPurchaseReconciliation() {
     const checkboxes = document.querySelectorAll(".tcg-target-checkbox:checked");
     const targetIds = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
-
-    if (targetIds.length === 0) {
-        showToast("Select at least one target to de-register.", "error");
-        return;
-    }
-
-    const count = targetIds.length;
     const addInventory = document.getElementById("tcg-add-inventory-check")?.checked ?? false;
+    const invMode = document.getElementById("tcg-inventory-mode-select")?.value || "ordered";
+    const targetBinder = document.getElementById("tcg-target-binder-input")?.value?.trim() || "Acquired";
+    const parsedItems = currentTcgReconciliationData ? (currentTcgReconciliationData.parsed_items || []) : [];
 
-    const confirmMsg = `CONFIRM PURCHASE RECONCILIATION:\nPermanently de-register ${count} target(s) from your buy list?` +
-        (addInventory ? `\n\n(Also adding purchased cards to collection/inventory)` : "");
-
-    if (!confirm(confirmMsg)) {
+    if (targetIds.length === 0 && (!addInventory || parsedItems.length === 0)) {
+        showToast("Select at least one watchlist target or enable adding ordered cards to your binder.", "error");
         return;
     }
 
     const executeBtn = document.getElementById("btn-submit-tcg-execute");
     if (executeBtn) {
         executeBtn.disabled = true;
-        executeBtn.innerHTML = `<span>Processing De-registration...</span>`;
+        executeBtn.innerHTML = `<span>Processing Order...</span>`;
     }
 
     try {
         const payload = {
             target_ids: targetIds,
             add_to_inventory: addInventory,
-            purchased_items: currentTcgReconciliationData ? currentTcgReconciliationData.parsed_items : [],
+            track_order: addInventory,
+            inventory_mode: invMode,
+            target_binder_name: targetBinder,
+            purchased_items: parsedItems,
+            order_metadata: {
+                source: currentTcgFetchedGmailOrders.length > 0 ? "gmail_imap" : "manual_paste",
+            },
         };
 
         const res = await fetch("/api/watchlist/reconcile-purchase/execute", {
@@ -1368,8 +1722,7 @@ async function executeTcgPurchaseReconciliation() {
 
         const data = await res.json();
         if (res.ok) {
-            showToast(data.message || `Successfully de-registered ${count} targets.`, "success");
-            closeTcgPurchaseModal();
+            showToast(data.message || "Order reconciled and logged.", "success");
 
             // Fade out cards in registry if on the watchlist page
             targetIds.forEach(id => {
@@ -1384,8 +1737,13 @@ async function executeTcgPurchaseReconciliation() {
                 });
             });
 
-            // Reload page smoothly to refresh all KPIs, tags, and lists
-            setTimeout(() => window.location.reload(), 400);
+            await loadTrackedTcgOrders(true);
+            if (addInventory && invMode === "ordered") {
+                switchTcgModalMode("tracker");
+            } else {
+                closeTcgPurchaseModal();
+                setTimeout(() => window.location.reload(), 400);
+            }
         } else {
             showToast(data.error || "Failed to reconcile purchase.", "error");
             if (executeBtn) {
@@ -1400,6 +1758,143 @@ async function executeTcgPurchaseReconciliation() {
             executeBtn.disabled = false;
             updateTcgExecuteButton();
         }
+    }
+}
+
+async function loadTrackedTcgOrders(badgeOnly = false) {
+    const badge = document.getElementById("tcg-active-orders-badge");
+    const container = document.getElementById("tcg-tracked-orders-container");
+    try {
+        const res = await fetch("/api/orders/tcgplayer");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (badge) {
+            badge.textContent = data.active_orders_count || 0;
+        }
+        if (badgeOnly || !container) return;
+
+        const orders = data.orders || [];
+        if (orders.length === 0) {
+            container.innerHTML = `
+                <div class="p-6 text-center text-xs font-mono text-[#94A3B8] bg-[#10141D] border border-[#263245]">
+                    No tracked TCGplayer orders yet. Import an order in the <strong>📥 Import &amp; Deck Fit</strong> tab to track in-transit cards as "Ordered" in your binder.
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = orders.map(ord => {
+            const isOrdered = ord.status === "ordered";
+            const statusPill = isOrdered
+                ? `<span class="px-2 py-0.5 bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[10px] font-bold uppercase">🚚 In Transit ("Ordered" Binder)</span>`
+                : `<span class="px-2 py-0.5 bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[10px] font-bold uppercase">✅ Completed (${escapeHtml(ord.target_binder_name || 'Acquired')})</span>`;
+
+            const itemsHtml = (ord.items || []).map(it => {
+                const df = it.deck_fit;
+                const bestDeck = df && df.best_deck_name
+                    ? `<span class="text-[#00CED1] font-bold">→ ${escapeHtml(df.best_deck_name)}</span>`
+                    : (it.watchlist_tag ? `<span class="text-[#C084FC]">🏷️ ${escapeHtml(it.watchlist_tag)}</span>` : "");
+                const cutInfo = df && df.suggested_cut
+                    ? `<span class="text-[#FF3358] ml-1.5">(✂️ Cut: ${escapeHtml(df.suggested_cut)})</span>`
+                    : "";
+                return `
+                    <div class="flex items-center justify-between py-1 border-b border-[#263245]/40 last:border-0 text-[11px] font-mono">
+                        <div>
+                            <span class="text-[#10B981] font-bold">${it.quantity || 1}x</span>
+                            <span class="text-white font-bold ml-1">${escapeHtml(it.card_name || it.raw_name)}</span>
+                            <span class="text-[#64748B] text-[10px] ml-1">${escapeHtml(it.set_name || '')}</span>
+                        </div>
+                        <div class="text-right text-[10px]">
+                            ${bestDeck}
+                            ${cutInfo}
+                        </div>
+                    </div>
+                `;
+            }).join("");
+
+            const actionHtml = isOrdered
+                ? `
+                    <div class="flex items-center space-x-2">
+                        <input type="text" id="tcg-complete-binder-${ord.id}" value="${escapeHtml(ord.target_binder_name || 'Acquired')}" placeholder="Target Binder" class="bg-[#1B2230] border border-[#263245] text-white px-2 py-1 text-[11px] font-mono w-28 focus:border-[#10B981]" title="Binder to move cards into">
+                        <button type="button" onclick="completeTrackedTcgOrder(${ord.id})" class="px-3 py-1 bg-[#10B981] hover:bg-[#059669] text-slate-950 font-mono text-[11px] font-bold uppercase transition">
+                            ✓ Mark Complete &amp; Add to Binder
+                        </button>
+                    </div>
+                `
+                : `<span class="text-[10px] font-mono text-[#64748B]">Delivered ${ord.completed_at ? new Date(ord.completed_at).toLocaleDateString() : ''}</span>`;
+
+            return `
+                <div class="bg-[#10141D] border ${isOrdered ? 'border-[#F59E0B]/40' : 'border-[#263245]'} p-3 space-y-2">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2">
+                        <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                            <span class="text-xs font-mono font-bold text-white">#${escapeHtml(ord.order_number)}</span>
+                            <span class="text-[11px] font-mono text-[#94A3B8]">${escapeHtml(ord.order_date_str || '')}</span>
+                            <span class="text-[11px] font-mono text-[#00CED1] font-bold">(${ord.total_quantity} card${ord.total_quantity === 1 ? '' : 's'})</span>
+                            ${statusPill}
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            ${actionHtml}
+                            <button type="button" onclick="deleteTrackedTcgOrder(${ord.id})" class="text-[#64748B] hover:text-[#FF3358] text-xs font-mono px-1" title="Delete order record">&times;</button>
+                        </div>
+                    </div>
+                    <div class="max-h-40 overflow-y-auto pr-1">
+                        ${itemsHtml}
+                    </div>
+                </div>
+            `;
+        }).join("");
+    } catch (e) {
+        console.error("Failed to load tracked TCGplayer orders:", e);
+    }
+}
+
+async function completeTrackedTcgOrder(orderId) {
+    const binderInput = document.getElementById(`tcg-complete-binder-${orderId}`);
+    const binderName = binderInput ? binderInput.value.trim() || "Acquired" : "Acquired";
+
+    try {
+        const res = await fetch(`/api/orders/tcgplayer/${orderId}/complete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ binder_name: binderName }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data.error || "Failed to complete order.", "error");
+            return;
+        }
+        showToast(data.message || "Order marked complete and moved to binder!", "success");
+        await loadTrackedTcgOrders(false);
+        if (typeof loadCardsPage === "function") {
+            loadCardsPage(1);
+        }
+        if (typeof loadInventoryActiveOrdersBanner === "function") {
+            loadInventoryActiveOrdersBanner();
+        }
+    } catch (err) {
+        showToast("Network error completing order.", "error");
+    }
+}
+
+async function deleteTrackedTcgOrder(orderId) {
+    if (!confirm("Remove this tracked order record? (If still 'Ordered', its in-transit placeholder cards will also be removed from your binder.)")) {
+        return;
+    }
+    try {
+        const res = await fetch(`/api/orders/tcgplayer/${orderId}`, { method: "DELETE" });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || "Order removed.", "success");
+            await loadTrackedTcgOrders(false);
+            if (typeof loadCardsPage === "function") {
+                loadCardsPage(1);
+            }
+            if (typeof loadInventoryActiveOrdersBanner === "function") {
+                loadInventoryActiveOrdersBanner();
+            }
+        }
+    } catch (err) {
+        showToast("Error deleting order.", "error");
     }
 }
 
@@ -5273,12 +5768,18 @@ function renderSellerLotResults(data) {
 
             const tagBadge = card.tag ? `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/40 text-[9px] px-1 py-0.2 uppercase font-bold">🏷️ ${card.tag}</span>` : "";
 
-            const mPriceText = card.marketPrice ? `$${card.marketPrice.toFixed(2)}` : "--";
+            const baseMktText = card.baseMarketPrice ? `$${card.baseMarketPrice.toFixed(2)}` : "--";
             const deltaBadge = card.deltaPct !== null ? (
                 card.deltaPct <= 0 
                 ? `<span class="text-[#10B981] text-[10px] font-bold">${card.deltaPct}%</span>`
                 : `<span class="text-[#F59E0B] text-[10px] font-bold">+${card.deltaPct}%</span>`
             ) : "";
+
+            const fancyNotice = card.isFancyTreatment && card.marketPrice ? `
+                <span class="text-[9px] text-[#F59E0B] block" title="Special treatment (Edition Market: $${card.marketPrice.toFixed(2)})">
+                    ★ Premium Edition (Base: ${baseMktText})
+                </span>
+            ` : "";
 
             const imgHtml = card.imageUri ? `
                 <img src="${card.imageUri}" alt="${card.name}" loading="lazy" class="w-8 h-11 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0 cursor-pointer"
@@ -5297,16 +5798,26 @@ function renderSellerLotResults(data) {
                             ${tagBadge}
                             ${binderBadge}
                         </div>
+                        ${fancyNotice}
                     </td>
                     <td class="p-2 text-right whitespace-nowrap">
                         <div class="font-bold text-[#00CED1] text-sm">$${card.price.toFixed(2)}</div>
-                        <div class="text-[10px] text-[#64748B]">Mkt: ${mPriceText} ${deltaBadge}</div>
+                        <div class="text-[10px] text-[#64748B]" title="Compared to cheapest baseline regular version across printings">
+                            Base Mkt: ${baseMktText} ${deltaBadge}
+                        </div>
                     </td>
-                    <td class="p-2 text-right w-24">
-                        <a href="${card.tcgplayerUrl}" target="_blank" rel="noopener"
-                            class="btn-crimson inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">
-                            Buy &rarr;
-                        </a>
+                    <td class="p-2 text-right whitespace-nowrap">
+                        <div class="flex items-center justify-end space-x-1.5">
+                            <a href="${card.storeSearchUrl || card.tcgplayerUrl}" target="_blank" rel="noopener"
+                                class="btn-bridge inline-block px-2 py-1 text-[10px] text-[#00CED1] hover:text-white uppercase font-bold"
+                                title="Search for this card in ${seller.sellerName}'s store">
+                                🔍 In Store
+                            </a>
+                            <a href="${card.tcgplayerUrl}" target="_blank" rel="noopener"
+                                class="btn-crimson inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                                Buy &rarr;
+                            </a>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -5327,8 +5838,9 @@ function renderSellerLotResults(data) {
                                     <span class="truncate">${c.name} (${c.condition})</span>
                                     <div class="flex items-center space-x-2">
                                         <span class="text-[#F59E0B] font-bold">$${c.price.toFixed(2)}</span>
-                                        <span class="text-[#64748B] text-[10px]">(Mkt: $${c.marketPrice ? c.marketPrice.toFixed(2) : '--'})</span>
-                                        <a href="${c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline text-[10px]">[Buy]</a>
+                                        <span class="text-[#64748B] text-[10px]">(Base Mkt: $${c.baseMarketPrice ? c.baseMarketPrice.toFixed(2) : '--'})</span>
+                                        <a href="${c.storeSearchUrl || c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline text-[10px]">[In Store]</a>
+                                        <a href="${c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#FF3358] hover:underline text-[10px]">[Buy]</a>
                                     </div>
                                 </div>
                             `).join("")}
@@ -5341,7 +5853,7 @@ function renderSellerLotResults(data) {
         html += `
             <div class="bg-[#1B2230] border-2 border-[#263245] hover:border-[#00CED1] transition p-4 sm:p-5 font-mono space-y-3.5" id="seller-lot-${idx}">
                 <!-- Seller Card Header -->
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#263245] pb-3">
                     <div>
                         <div class="flex items-center space-x-2">
                             <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">#${idx + 1} TCGPLAYER STORE</span>
@@ -5351,21 +5863,34 @@ function renderSellerLotResults(data) {
                         <h4 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5">
                             ${seller.sellerName}
                         </h4>
-                        <div class="text-xs text-[#94A3B8] mt-0.5 flex items-center space-x-2">
+                        <div class="text-xs text-[#94A3B8] mt-0.5 flex flex-wrap items-center gap-2">
                             <span>★ ${seller.sellerRating}% Rating</span>
                             <span>&bull;</span>
                             <span>${seller.sellerSales} Sales</span>
+                            <span>&bull;</span>
+                            <a href="${seller.storeUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline flex items-center space-x-1 font-bold">
+                                <span>🏪 Open Storefront &rarr;</span>
+                            </a>
                         </div>
                     </div>
 
-                    <div class="flex items-center space-x-2">
-                        <span class="bg-[#00CED1] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5">
+                    <div class="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                        <span class="bg-[#00CED1] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 flex-shrink-0">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>${seller.qualifyingCount} Watchlist Cards</span>
                         </span>
-                        <button onclick="copySellerLotList(${idx})" class="btn-bridge text-xs px-3 py-1.5 text-[#94A3B8] hover:text-white" title="Copy Card List to Clipboard">
+                        <a href="${seller.multiCardSearchUrl}" target="_blank" rel="noopener"
+                            class="btn-bridge text-xs px-2.5 py-1.5 text-[#00CED1] hover:text-white flex items-center space-x-1 font-bold"
+                            title="Open a TCGplayer search filtered to this seller with all ${seller.qualifyingCount} lot cards">
+                            <span>🔍 Search Lot</span>
+                        </a>
+                        <button onclick="openTcgMassEntry(${idx})" class="btn-bridge text-xs px-2.5 py-1.5 text-[#10B981] hover:text-white flex items-center space-x-1 font-bold"
+                            title="Copy card list and open TCGplayer Mass Entry tool">
+                            <span>🛒 Mass Entry</span>
+                        </button>
+                        <button onclick="copySellerLotList(${idx})" class="btn-bridge text-xs px-2.5 py-1.5 text-[#94A3B8] hover:text-white" title="Copy Card List to Clipboard">
                             📋 Copy List
                         </button>
                     </div>
@@ -5388,7 +5913,7 @@ function renderSellerLotResults(data) {
                         <div class="text-sm sm:text-base font-bold text-[#00CED1] mt-0.5">$${seller.landedTotal.toFixed(2)}</div>
                     </div>
                     <div>
-                        <div class="text-[#94A3B8] text-[10px] uppercase">Net Savings vs Mkt</div>
+                        <div class="text-[#94A3B8] text-[10px] uppercase" title="Savings compared to cheapest baseline regular version market price">Net Savings vs Base</div>
                         <div class="text-sm sm:text-base font-bold ${seller.netSavings > 0 ? 'text-[#10B981]' : 'text-[#94A3B8]'} mt-0.5">
                             ${seller.netSavings > 0 ? '+$' + seller.netSavings.toFixed(2) + ' (' + seller.savingsPct + '%)' : '$0.00'}
                         </div>
@@ -5405,7 +5930,7 @@ function renderSellerLotResults(data) {
                                 <th class="p-2 w-10">Art</th>
                                 <th class="p-2">Card &amp; Printing</th>
                                 <th class="p-2 text-right">Price</th>
-                                <th class="p-2 text-right">Action</th>
+                                <th class="p-2 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -5440,6 +5965,26 @@ function copySellerLotList(sellerIndex) {
     }).catch(err => {
         console.error("Clipboard copy error:", err);
         showToast("Failed to copy card list.", "error");
+    });
+}
+
+function openTcgMassEntry(sellerIndex) {
+    const seller = currentSellerLots[sellerIndex];
+    if (!seller) return;
+
+    let lines = [];
+    (seller.cards || []).forEach(c => {
+        const cname = c.cleanName || c.name.split(" // ")[0].trim();
+        lines.push(`1 ${cname}`);
+    });
+    const text = lines.join("\n");
+
+    navigator.clipboard.writeText(text).then(() => {
+        showToast(`Copied ${seller.qualifyingCount} cards in Mass Entry format! Opening TCGplayer Mass Entry...`, "success");
+        window.open("https://www.tcgplayer.com/massentry", "_blank", "noopener,noreferrer");
+    }).catch(err => {
+        console.error("Clipboard error:", err);
+        window.open("https://www.tcgplayer.com/massentry", "_blank", "noopener,noreferrer");
     });
 }
 

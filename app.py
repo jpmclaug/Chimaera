@@ -42,6 +42,7 @@ from models import (
     SecretLairAnalysis,
     CardAddAnalysis,
     CommanderPlaytestSession,
+    TCGPlayerOrder,
     utc_now,
 )
 from playtest_engine import PlaytestEngine
@@ -68,7 +69,7 @@ from secret_lair_advisor import (
     SecretLairGeminiAdvisor,
 )
 from card_add_evaluator import CardAddEvaluator
-from tcgplayer_parser import TCGPlayerPurchaseParser
+from tcgplayer_parser import TCGPlayerPurchaseParser, TCGPlayerEmailFetcher
 from timewalked_analyzer import (
     ArchidektClient as TimewalkedArchidektClient,
     BRACKET_NAMES as TIMEWALKED_BRACKET_NAMES,
@@ -392,6 +393,28 @@ def _migrate_db_schema(app):
                         )
                     """))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_card_add_user_id ON card_add_analysis (user_id)"))
+                    conn.execute(db.text("""
+                        CREATE TABLE IF NOT EXISTS tcgplayer_order (
+                            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL,
+                            order_number VARCHAR(120) NOT NULL,
+                            email_message_id VARCHAR(255),
+                            order_date_str VARCHAR(100),
+                            seller_summary VARCHAR(255),
+                            source VARCHAR(50) DEFAULT 'manual_paste',
+                            status VARCHAR(30) NOT NULL DEFAULT 'ordered',
+                            target_binder_name VARCHAR(255) DEFAULT 'Acquired',
+                            total_quantity INTEGER NOT NULL DEFAULT 0,
+                            unique_cards_count INTEGER NOT NULL DEFAULT 0,
+                            items_json TEXT,
+                            created_at DATETIME,
+                            completed_at DATETIME,
+                            FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+                        )
+                    """))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_user_id ON tcgplayer_order (user_id)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_status ON tcgplayer_order (status)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_number ON tcgplayer_order (order_number)"))
                     conn.commit()
 
             elif dialect in ("postgresql", "postgres"):
@@ -598,6 +621,27 @@ def _migrate_db_schema(app):
                             )
                         """))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_card_add_user_id ON card_add_analysis (user_id)"))
+                        conn.execute(db.text("""
+                            CREATE TABLE IF NOT EXISTS tcgplayer_order (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                                order_number VARCHAR(120) NOT NULL,
+                                email_message_id VARCHAR(255),
+                                order_date_str VARCHAR(100),
+                                seller_summary VARCHAR(255),
+                                source VARCHAR(50) DEFAULT 'manual_paste',
+                                status VARCHAR(30) NOT NULL DEFAULT 'ordered',
+                                target_binder_name VARCHAR(255) DEFAULT 'Acquired',
+                                total_quantity INTEGER NOT NULL DEFAULT 0,
+                                unique_cards_count INTEGER NOT NULL DEFAULT 0,
+                                items_json TEXT,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                completed_at TIMESTAMP
+                            )
+                        """))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_user_id ON tcgplayer_order (user_id)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_status ON tcgplayer_order (status)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_number ON tcgplayer_order (order_number)"))
                         conn.commit()
                         logger.info("PostgreSQL migration check completed.")
                 except Exception as pg_err:
@@ -3044,12 +3088,333 @@ def create_app(test_config=None):
             "count": len(items),
         })
 
+    def _get_user_gmail_imap_credentials(user: User) -> Tuple[str, str, str]:
+        """Returns (email_address, app_password, source) for Gmail IMAP order fetching."""
+        user_email_key = f"gmail_imap_email_{user.id}" if user else "gmail_imap_email"
+        user_pw_key = f"gmail_imap_app_password_{user.id}" if user else "gmail_imap_app_password"
+
+        db_email = (SystemSetting.get_val(user_email_key) or SystemSetting.get_val("gmail_imap_email") or "").strip()
+        db_pw = (SystemSetting.get_val(user_pw_key) or SystemSetting.get_val("gmail_imap_app_password") or "").strip()
+        if db_pw:
+            return (db_email or (user.email if user else ""), db_pw, "db")
+
+        env_email = (app.config.get("GMAIL_IMAP_EMAIL") or os.getenv("GMAIL_IMAP_EMAIL") or "").strip()
+        env_pw = (app.config.get("GMAIL_IMAP_APP_PASSWORD") or os.getenv("GMAIL_IMAP_APP_PASSWORD") or "").strip()
+        if env_pw:
+            return (env_email or (user.email if user else ""), env_pw, "env")
+
+        return ((user.email if user else ""), "", "none")
+
+    def _evaluate_order_items_deck_fit(
+        user: User,
+        parsed_items_dicts: List[Dict[str, Any]],
+        watchlist_tag_by_card: Dict[str, str],
+        offline: bool = False,
+    ) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]], int]:
+        """
+        Evaluates ordered cards against the user's saved Commander decks using CardAddEvaluator.
+        Returns: (deck_fit_by_card_key, deck_sorting_groups, evaluated_decks_count)
+        """
+        query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(
+            db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None)
+        )
+        user_decks = query.order_by(DeckAnalysis.updated_at.desc()).all()
+        if not user_decks or not parsed_items_dicts:
+            return {}, [], 0
+
+        deck_payloads = []
+        deck_by_id = {}
+        for d in user_decks:
+            dp = {
+                "id": d.id,
+                "deck_name": d.deck_name,
+                "commander_name": d.commander_name,
+                "commander_art": d.commander_art,
+                "color_identity": d.color_identity,
+                "archetype": d.archetype or "Commander Synergy",
+                "cards": d.get_parsed_cards(),
+                "stats": d.get_stats(),
+                "analysis": d.get_analysis(),
+                "is_pauper": d.is_pauper_commander,
+                "deck_format": d.deck_format,
+            }
+            deck_payloads.append(dp)
+            deck_by_id[d.id] = dp
+
+        # Deduplicate card inputs for batch evaluation
+        unique_card_inputs: Dict[str, Dict[str, Any]] = {}
+        for item in parsed_items_dicts:
+            c_name = (item.get("card_name") or item.get("name") or "").strip()
+            if not c_name:
+                continue
+            k = normalize_card_name(c_name).lower()
+            if k not in unique_card_inputs:
+                unique_card_inputs[k] = {
+                    "name": c_name,
+                    "quantity": int(item.get("quantity") or 1),
+                    "raw_line": item.get("raw_line") or c_name,
+                }
+            else:
+                unique_card_inputs[k]["quantity"] += int(item.get("quantity") or 1)
+
+        is_test_offline = offline or bool(app.config.get("TESTING"))
+        candidate_list = list(unique_card_inputs.values())
+
+        if is_test_offline:
+            # Fast local enrichment using any cached DB cards or deck cards without external HTTP calls if offline
+            enriched_cards = []
+            for c in candidate_list:
+                c_name = c["name"]
+                inv_match = UserInventoryCard.query.filter(
+                    db.func.lower(UserInventoryCard.name) == c_name.lower()
+                ).first()
+                ci_list = inv_match.get_color_identity_list() if inv_match else []
+                enriched_cards.append({
+                    **c,
+                    "canonical_name": c_name,
+                    "color_identity": ci_list,
+                    "type_line": (inv_match.type_line if inv_match and inv_match.type_line else "Spell"),
+                    "mana_cost": (inv_match.mana_cost if inv_match and inv_match.mana_cost else ""),
+                    "cmc": (inv_match.cmc if inv_match and inv_match.cmc is not None else 2.0),
+                    "oracle_text": (inv_match.oracle_text if inv_match and inv_match.oracle_text else ""),
+                    "image_uri": (inv_match.image_uri if inv_match and inv_match.image_uri else ""),
+                    "price_usd": (inv_match.price_usd if inv_match else None),
+                    "legalities": {"commander": "legal", "paupercommander": "legal"},
+                })
+        else:
+            enriched_cards = card_add_evaluator.enrich_cards(candidate_list)
+
+        suite_res = card_add_evaluator.evaluate_cards_suite(
+            cards=enriched_cards,
+            decks=deck_payloads,
+            use_gemini=False,
+            offline=is_test_offline,
+        )
+
+        deck_fit_by_key: Dict[str, Dict[str, Any]] = {}
+        sorting_buckets: Dict[Any, Dict[str, Any]] = {}
+
+        for cm in suite_res.get("card_matrix", []):
+            c_name = cm.get("card_name") or ""
+            c_key = normalize_card_name(c_name).lower()
+            recs = cm.get("deck_recommendations") or []
+            incompat = cm.get("incompatible_decks") or []
+            already_in = [inc["deck_name"] for inc in incompat if inc.get("reason") == "Already in Deck"]
+
+            # Check if watchlist tag matches one of the user's decks
+            w_tag = ""
+            for tk, tv in watchlist_tag_by_card.items():
+                if card_names_match(tk, c_name) and tv:
+                    w_tag = tv
+                    break
+
+            tagged_deck_rec = None
+            if w_tag:
+                w_tag_low = w_tag.lower().strip()
+                for r in recs:
+                    d_name_low = (r.get("deck_name") or "").lower()
+                    cmdr_low = (r.get("commander_name") or "").lower()
+                    if w_tag_low in d_name_low or d_name_low in w_tag_low or (cmdr_low and (w_tag_low in cmdr_low or cmdr_low in w_tag_low)):
+                        tagged_deck_rec = r
+                        break
+
+            best_rec = recs[0] if recs else None
+            primary_rec = tagged_deck_rec or best_rec
+
+            fit_summary = {
+                "has_fit": primary_rec is not None,
+                "best_deck_id": primary_rec["deck_id"] if primary_rec else None,
+                "best_deck_name": primary_rec["deck_name"] if primary_rec else None,
+                "best_commander_name": primary_rec.get("commander_name") if primary_rec else None,
+                "fit_verdict": primary_rec.get("fit_verdict") if primary_rec else ("Already in Deck" if already_in else "No Legal Fit"),
+                "synergy_rating": primary_rec.get("synergy_rating", 0) if primary_rec else 0,
+                "role": primary_rec.get("role", "") if primary_rec else "",
+                "suggested_cut": primary_rec.get("suggested_cut") if primary_rec else None,
+                "suggested_cut_cmc": primary_rec.get("suggested_cut_cmc") if primary_rec else None,
+                "cut_reason": primary_rec.get("cut_reason", "") if primary_rec else "",
+                "rationale": primary_rec.get("rationale", "") if primary_rec else "",
+                "edhrec_inclusion_percent": primary_rec.get("edhrec_inclusion_percent") if primary_rec else None,
+                "completes_combos": primary_rec.get("completes_combos", []) if primary_rec else [],
+                "matched_watchlist_tag": w_tag or None,
+                "watchlist_tag_matched_deck": bool(tagged_deck_rec is not None),
+                "algorithmic_top_deck": best_rec["deck_name"] if best_rec else None,
+                "runner_up_decks": [
+                    {
+                        "deck_id": r["deck_id"],
+                        "deck_name": r["deck_name"],
+                        "commander_name": r.get("commander_name"),
+                        "fit_verdict": r.get("fit_verdict"),
+                        "synergy_rating": r.get("synergy_rating"),
+                        "suggested_cut": r.get("suggested_cut"),
+                    }
+                    for r in recs[:3]
+                    if not primary_rec or r["deck_id"] != primary_rec["deck_id"]
+                ][:2],
+                "already_in_decks": already_in,
+                "image_uri": cm.get("image_uri") or "",
+                "mana_cost": cm.get("mana_cost") or "",
+                "type_line": cm.get("type_line") or "",
+                "price_usd": cm.get("price_usd"),
+            }
+            deck_fit_by_key[c_key] = fit_summary
+
+            # Assign to sorting bucket
+            bucket_key = primary_rec["deck_id"] if primary_rec else "unassigned"
+            if bucket_key not in sorting_buckets:
+                if primary_rec and primary_rec["deck_id"] in deck_by_id:
+                    dp_meta = deck_by_id[primary_rec["deck_id"]]
+                    sorting_buckets[bucket_key] = {
+                        "deck_id": dp_meta["id"],
+                        "deck_name": dp_meta["deck_name"],
+                        "commander_name": dp_meta.get("commander_name") or "Commander",
+                        "commander_art": dp_meta.get("commander_art") or "",
+                        "color_identity": dp_meta.get("color_identity") or "",
+                        "cards": [],
+                    }
+                else:
+                    sorting_buckets[bucket_key] = {
+                        "deck_id": None,
+                        "deck_name": "Binder / Unassigned Reserve",
+                        "commander_name": "Already in Deck or Outside Fleet Colors",
+                        "commander_art": "",
+                        "color_identity": "",
+                        "cards": [],
+                    }
+
+            qty_ordered = unique_card_inputs.get(c_key, {}).get("quantity", 1)
+            sorting_buckets[bucket_key]["cards"].append({
+                "card_name": c_name,
+                "quantity": qty_ordered,
+                "image_uri": cm.get("image_uri") or "",
+                "fit_verdict": fit_summary["fit_verdict"],
+                "synergy_rating": fit_summary["synergy_rating"],
+                "role": fit_summary["role"],
+                "suggested_cut": fit_summary["suggested_cut"],
+                "cut_reason": fit_summary["cut_reason"],
+                "rationale": fit_summary["rationale"],
+                "watchlist_tag": w_tag or None,
+                "already_in_decks": already_in,
+            })
+
+        # Sort groups: assigned decks with highest card count first, unassigned last
+        deck_sorting_groups = sorted(
+            sorting_buckets.values(),
+            key=lambda g: (1 if g["deck_id"] is None else 0, -len(g["cards"])),
+        )
+        return deck_fit_by_key, deck_sorting_groups, len(deck_payloads)
+
+    @app.route("/api/watchlist/tcgplayer-email/settings", methods=["GET", "POST"])
+    @login_required
+    def tcgplayer_email_settings():
+        """Retrieves or updates Gmail IMAP credentials for TCGplayer order confirmation auto-fetching."""
+        user = get_current_user()
+        if request.method == "GET":
+            email_addr, app_pw, source = _get_user_gmail_imap_credentials(user)
+            return jsonify({
+                "configured": bool(email_addr and app_pw),
+                "email": email_addr,
+                "source": source,
+                "has_app_password": bool(app_pw),
+            })
+
+        data = request.get_json(silent=True) or {}
+        email_addr = (data.get("email") or user.email or "").strip()
+        app_pw = re.sub(r"\s+", "", (data.get("app_password") or "").strip())
+
+        if not email_addr or not app_pw:
+            return jsonify({"error": "Both Gmail address and 16-character Google App Password are required."}), 400
+
+        SystemSetting.set_val(f"gmail_imap_email_{user.id}", email_addr)
+        SystemSetting.set_val(f"gmail_imap_app_password_{user.id}", app_pw)
+        log_activity("SETTINGS_UPDATE", details=f"Configured Gmail IMAP for TCGplayer order sync ({email_addr})", user=user)
+        return jsonify({
+            "success": True,
+            "configured": True,
+            "email": email_addr,
+            "source": "db",
+            "message": "Gmail IMAP credentials saved.",
+        })
+
+    @app.route("/api/watchlist/tcgplayer-email/fetch", methods=["POST"])
+    @login_required
+    def tcgplayer_email_fetch():
+        """Connects to Gmail IMAP and fetches recent TCGplayer Order Confirmation emails."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        days_back = int(data.get("days_back") or 30)
+        max_emails = int(data.get("max_emails") or 20)
+        include_tracked = bool(data.get("include_tracked", False))
+
+        email_addr, app_pw, _ = _get_user_gmail_imap_credentials(user)
+        if data.get("email"):
+            email_addr = str(data["email"]).strip()
+        if data.get("app_password"):
+            app_pw = re.sub(r"\s+", "", str(data["app_password"]).strip())
+
+        if not email_addr or not app_pw:
+            return jsonify({
+                "error": "Gmail IMAP is not configured yet. Click '⚙️ Gmail Setup' to enter your 16-character Google App Password.",
+                "needs_setup": True,
+            }), 400
+
+        try:
+            fetcher = TCGPlayerEmailFetcher(email_address=email_addr, app_password=app_pw)
+            fetch_res = fetcher.fetch_recent_orders(days_back=days_back, max_emails=max_emails)
+        except ValueError as ve:
+            return jsonify({"error": str(ve)}), 400
+        except Exception as e:
+            logger.error(f"Error fetching TCGplayer emails via IMAP: {e}", exc_info=True)
+            return jsonify({"error": f"Failed to fetch TCGplayer emails: {str(e)}"}), 500
+
+        # Cross-reference with already tracked TCGPlayerOrder records for deduplication
+        existing_orders = TCGPlayerOrder.query.filter_by(user_id=user.id).all()
+        by_order_num = {o.order_number.upper(): o for o in existing_orders if o.order_number}
+        by_msg_id = {o.email_message_id: o for o in existing_orders if o.email_message_id}
+
+        orders = fetch_res.get("orders", [])
+        untracked_manifest_lines = ["Qty\tDescription"]
+        new_orders_count = 0
+
+        for ord_obj in orders:
+            ord_num = (ord_obj.get("order_number") or "").upper()
+            msg_id = ord_obj.get("email_message_id") or ""
+            matched_existing = by_order_num.get(ord_num) or (by_msg_id.get(msg_id) if msg_id else None)
+            if matched_existing:
+                ord_obj["already_tracked"] = True
+                ord_obj["tracked_order_id"] = matched_existing.id
+                ord_obj["tracked_status"] = matched_existing.status
+                if include_tracked and ord_obj.get("manifest_text"):
+                    untracked_manifest_lines.append(ord_obj["manifest_text"])
+            else:
+                ord_obj["already_tracked"] = False
+                ord_obj["tracked_order_id"] = None
+                ord_obj["tracked_status"] = None
+                new_orders_count += 1
+                if ord_obj.get("manifest_text"):
+                    untracked_manifest_lines.append(ord_obj["manifest_text"])
+
+        # If all discovered orders were already tracked, still provide combined manifest so user can inspect deck fit
+        effective_manifest = (
+            "\n".join(untracked_manifest_lines)
+            if len(untracked_manifest_lines) > 1
+            else fetch_res.get("manifest_text", "")
+        )
+
+        return jsonify({
+            "success": True,
+            "orders_found": len(orders),
+            "new_orders_count": new_orders_count,
+            "total_cards_quantity": fetch_res.get("total_cards_quantity", 0),
+            "orders": orders,
+            "manifest_text": effective_manifest,
+        })
+
     @app.route("/api/watchlist/reconcile-purchase/preview", methods=["POST"])
     @login_required
     def reconcile_purchase_preview():
         """
-        Parses TCGplayer purchase text and identifies matching targets currently on user's watchlist.
-        Returns matched targets and unmatched purchased cards.
+        Parses TCGplayer purchase text, identifies matching targets currently on user's watchlist,
+        and evaluates every ordered card against the user's Commander fleet for Best Deck Fit & Suggested Cuts.
         """
         user = get_current_user()
         data = request.get_json(silent=True) or {}
@@ -3065,14 +3430,17 @@ def create_app(test_config=None):
             }), 400
 
         user_targets = WatchlistItem.query.filter_by(user_id=user.id).all()
-        matched_targets = {}
-        unmatched_purchases = []
+        matched_targets: Dict[int, Dict[str, Any]] = {}
+        unmatched_purchases: List[Dict[str, Any]] = []
+        watchlist_tag_by_card: Dict[str, str] = {}
 
         for p in parsed_items:
             p_matched = False
             for target in user_targets:
                 if card_names_match(p.card_name, target.name):
                     p_matched = True
+                    if target.tag:
+                        watchlist_tag_by_card[p.card_name] = target.tag
                     if target.id not in matched_targets:
                         matched_targets[target.id] = {
                             "id": target.id,
@@ -3089,12 +3457,55 @@ def create_app(test_config=None):
                             "purchased_set": p.set_name,
                             "purchased_condition": p.condition,
                             "purchased_finish": p.finish,
+                            "order_number": p.order_number,
                         }
                     else:
                         matched_targets[target.id]["purchased_qty"] += p.quantity
 
             if not p_matched:
                 unmatched_purchases.append(p.to_dict())
+
+        parsed_items_dicts = [p.to_dict() for p in parsed_items]
+        include_deck_fit = bool(data.get("include_deck_fit", True))
+        offline_eval = bool(data.get("offline", False))
+
+        deck_fit_by_key: Dict[str, Dict[str, Any]] = {}
+        deck_sorting_groups: List[Dict[str, Any]] = []
+        evaluated_decks_count = 0
+
+        if include_deck_fit:
+            try:
+                deck_fit_by_key, deck_sorting_groups, evaluated_decks_count = _evaluate_order_items_deck_fit(
+                    user=user,
+                    parsed_items_dicts=parsed_items_dicts,
+                    watchlist_tag_by_card=watchlist_tag_by_card,
+                    offline=offline_eval,
+                )
+            except Exception as eval_err:
+                logger.warning(f"Deck-fit evaluation during purchase preview skipped: {eval_err}")
+
+        # Attach deck_fit telemetry to matched_targets, unmatched_purchases, and parsed_items
+        def _find_fit(c_name: str) -> Optional[Dict[str, Any]]:
+            if not c_name or not deck_fit_by_key:
+                return None
+            k = normalize_card_name(c_name).lower()
+            if k in deck_fit_by_key:
+                return deck_fit_by_key[k]
+            for df_key, df_val in deck_fit_by_key.items():
+                if card_names_match(df_key, c_name):
+                    return df_val
+            return None
+
+        for m in matched_targets.values():
+            m["deck_fit"] = _find_fit(m["name"])
+
+        for u in unmatched_purchases:
+            u["deck_fit"] = _find_fit(u.get("card_name") or u.get("raw_name") or "")
+
+        for p_dict in parsed_items_dicts:
+            fit_info = _find_fit(p_dict.get("card_name") or p_dict.get("raw_name") or "")
+            p_dict["deck_fit"] = fit_info
+            p_dict["watchlist_tag"] = watchlist_tag_by_card.get(p_dict.get("card_name") or "")
 
         return jsonify({
             "total_purchased_lines": len(parsed_items),
@@ -3103,68 +3514,116 @@ def create_app(test_config=None):
             "matched_targets": list(matched_targets.values()),
             "unmatched_purchases_count": len(unmatched_purchases),
             "unmatched_purchases": unmatched_purchases,
-            "parsed_items": [p.to_dict() for p in parsed_items],
+            "parsed_items": parsed_items_dicts,
+            "deck_sorting_groups": deck_sorting_groups,
+            "evaluated_decks_count": evaluated_decks_count,
         })
 
     @app.route("/api/watchlist/reconcile-purchase/execute", methods=["POST"])
     @login_required
     def reconcile_purchase_execute():
         """
-        De-registers selected target IDs from user's watchlist that were purchased.
-        Optionally logs purchased items to user's collection/inventory.
+        De-registers selected target IDs from user's watchlist that were purchased,
+        adds purchased items to the Collection Binder (as 'Ordered' in-transit by default, or 'Acquired'),
+        and records a tracked TCGPlayerOrder so the user can mark it complete when delivered.
         """
         user = get_current_user()
         data = request.get_json(silent=True) or {}
         target_ids = data.get("target_ids", [])
         add_to_inventory = bool(data.get("add_to_inventory", False))
+        track_order = bool(data.get("track_order", False))
+        inventory_mode = (data.get("inventory_mode") or "ordered").strip().lower()
+        target_binder = (data.get("target_binder_name") or "Acquired").strip() or "Acquired"
         purchased_items = data.get("purchased_items", [])
+        order_metadata = data.get("order_metadata") or {}
 
-        if not target_ids or not isinstance(target_ids, list):
-            return jsonify({"error": "No target card IDs provided for de-registration."}), 400
+        if (not target_ids or not isinstance(target_ids, list)) and not ( (add_to_inventory or track_order) and purchased_items ):
+            return jsonify({"error": "No target card IDs or purchased items provided for reconciliation."}), 400
 
-        try:
-            valid_ids = [int(tid) for tid in target_ids]
-        except (ValueError, TypeError):
-            return jsonify({"error": "Invalid target ID format."}), 400
+        valid_ids: List[int] = []
+        if target_ids:
+            if not isinstance(target_ids, list):
+                return jsonify({"error": "Invalid target ID format."}), 400
+            try:
+                valid_ids = [int(tid) for tid in target_ids]
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid target ID format."}), 400
 
-        items = WatchlistItem.query.filter(
-            WatchlistItem.id.in_(valid_ids),
-            WatchlistItem.user_id == user.id,
-        ).all()
+        deleted_ids: List[int] = []
+        deleted_names: List[str] = []
 
-        if not items:
-            return jsonify({"error": "No matching targets found in your registry."}), 404
+        if valid_ids:
+            items = WatchlistItem.query.filter(
+                WatchlistItem.id.in_(valid_ids),
+                WatchlistItem.user_id == user.id,
+            ).all()
 
-        deleted_ids = []
-        deleted_names = []
-        for item in items:
-            deleted_ids.append(item.id)
-            deleted_names.append(item.name)
+            if not items and not ((add_to_inventory or track_order) and purchased_items):
+                return jsonify({"error": "No matching targets found in your registry."}), 404
 
-        # Delete targets (cascade automatically deletes associated vendor_price records)
-        for item in items:
-            db.session.delete(item)
+            for item in items:
+                deleted_ids.append(item.id)
+                deleted_names.append(item.name)
+                db.session.delete(item)
 
-        # Optionally add purchased items into UserInventoryCard
+        # Determine binder name for UserInventoryCard insertion
+        # By default, ordered cards are placed in binder_name="Ordered" until the order is marked complete
+        effective_binder = "Ordered" if inventory_mode == "ordered" else target_binder
+        order_status = "ordered" if inventory_mode == "ordered" else "completed"
+
         inventory_added = 0
-        if add_to_inventory and purchased_items:
+        if (add_to_inventory or track_order) and purchased_items:
+            inventory_added = inventory_manager.add_ordered_cards_to_binder(
+                user_id=user.id,
+                purchased_items=purchased_items,
+                binder_name=effective_binder,
+            )
+
+        # Create or update tracked TCGPlayerOrder record(s) when items are provided
+        created_orders: List[Dict[str, Any]] = []
+        if (add_to_inventory or track_order) and purchased_items:
+            # Group items by order_number if multiple orders were fetched from Gmail
+            items_by_ord: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+            default_ord_num = (
+                order_metadata.get("order_number")
+                or f"ORD-{utc_now().strftime('%Y%m%d-%H%M%S')}"
+            )
             for p in purchased_items:
-                c_name = (p.get("card_name") or p.get("name") or "").strip()
-                if not c_name:
-                    continue
-                inv_card = UserInventoryCard(
+                o_num = (p.get("order_number") or default_ord_num).strip()
+                items_by_ord[o_num].append(p)
+
+            for o_num, o_items in items_by_ord.items():
+                existing_ord = TCGPlayerOrder.query.filter_by(
                     user_id=user.id,
-                    name=c_name,
-                    raw_name=p.get("raw_name") or c_name,
-                    set_name=p.get("set_name") or "",
-                    collector_number=p.get("collector_number") or "",
-                    quantity=max(1, int(p.get("quantity") or 1)),
-                    foil=p.get("finish") or "normal",
-                    condition=p.get("condition") or "Near Mint",
-                    language="en",
-                )
-                db.session.add(inv_card)
-                inventory_added += 1
+                    order_number=o_num,
+                ).first()
+                total_qty = sum(max(1, int(x.get("quantity") or 1)) for x in o_items)
+                if existing_ord:
+                    existing_ord.items_json = json.dumps(o_items)
+                    existing_ord.total_quantity = total_qty
+                    existing_ord.unique_cards_count = len(o_items)
+                    existing_ord.status = order_status
+                    if order_status == "completed":
+                        existing_ord.completed_at = utc_now()
+                    created_orders.append(existing_ord.to_dict())
+                else:
+                    new_ord = TCGPlayerOrder(
+                        user_id=user.id,
+                        order_number=o_num,
+                        email_message_id=order_metadata.get("email_message_id"),
+                        order_date_str=order_metadata.get("order_date_str") or utc_now().strftime("%b %d, %Y"),
+                        seller_summary=order_metadata.get("seller_summary") or "TCGplayer Marketplace",
+                        source=order_metadata.get("source") or "manual_paste",
+                        status=order_status,
+                        target_binder_name=target_binder,
+                        total_quantity=total_qty,
+                        unique_cards_count=len(o_items),
+                        items_json=json.dumps(o_items),
+                        completed_at=utc_now() if order_status == "completed" else None,
+                    )
+                    db.session.add(new_ord)
+                    db.session.flush()
+                    created_orders.append(new_ord.to_dict())
 
         db.session.commit()
 
@@ -3172,9 +3631,11 @@ def create_app(test_config=None):
         if len(deleted_names) > 5:
             names_summary += f" and {len(deleted_names) - 5} more"
 
-        details_msg = f"Reconciled TCGplayer purchase: removed {len(deleted_ids)} target(s) [{names_summary}]"
-        if add_to_inventory:
-            details_msg += f" and added {inventory_added} item(s) to collection"
+        details_msg = f"Reconciled TCGplayer purchase: removed {len(deleted_ids)} target(s)"
+        if names_summary:
+            details_msg += f" [{names_summary}]"
+        if inventory_added > 0:
+            details_msg += f" and added {inventory_added} item(s) to '{effective_binder}' binder"
 
         log_activity(
             "PURCHASE_RECONCILIATION",
@@ -3182,12 +3643,141 @@ def create_app(test_config=None):
             user=user,
         )
 
+        msg_parts = []
+        if deleted_ids:
+            msg_parts.append(f"de-registered {len(deleted_ids)} watchlist target(s)")
+        if inventory_added:
+            msg_parts.append(f"logged {inventory_added} card(s) to '{effective_binder}' binder")
+        final_msg = "Successfully " + " and ".join(msg_parts) + "." if msg_parts else "Order reconciliation complete."
+
         return jsonify({
-            "message": f"Successfully de-registered {len(deleted_ids)} target(s) from your surveillance buy list.",
+            "message": final_msg,
             "deleted_ids": deleted_ids,
             "deleted_names": deleted_names,
             "deleted_count": len(deleted_ids),
             "inventory_added_count": inventory_added,
+            "binder_name": effective_binder,
+            "order_status": order_status,
+            "orders": created_orders,
+        })
+
+    @app.route("/api/orders/tcgplayer", methods=["GET"])
+    @login_required
+    def list_tcgplayer_orders():
+        """Lists the user's tracked TCGplayer orders (both in-transit 'ordered' and 'completed')."""
+        user = get_current_user()
+        orders = (
+            TCGPlayerOrder.query.filter_by(user_id=user.id)
+            .order_by(
+                db.case((TCGPlayerOrder.status == "ordered", 0), else_=1),
+                TCGPlayerOrder.created_at.desc(),
+            )
+            .limit(50)
+            .all()
+        )
+        serialized = [o.to_dict() for o in orders]
+        active_orders = [o for o in serialized if o["status"] == "ordered"]
+        completed_orders = [o for o in serialized if o["status"] == "completed"]
+        in_transit_qty = sum(o["total_quantity"] for o in active_orders)
+
+        return jsonify({
+            "success": True,
+            "orders": serialized,
+            "active_orders_count": len(active_orders),
+            "completed_orders_count": len(completed_orders),
+            "in_transit_cards_count": in_transit_qty,
+        })
+
+    @app.route("/api/orders/tcgplayer/<int:order_id>/complete", methods=["POST"])
+    @login_required
+    def complete_tcgplayer_order(order_id: int):
+        """
+        Marks a tracked TCGplayer order as completed/delivered and automatically moves its cards
+        from binder_name='Ordered' into the user's permanent collection binder.
+        """
+        user = get_current_user()
+        order = db.session.get(TCGPlayerOrder, order_id)
+        if not order or order.user_id != user.id:
+            return jsonify({"error": "Order not found."}), 404
+
+        data = request.get_json(silent=True) or {}
+        destination_binder = (
+            data.get("binder_name")
+            or order.target_binder_name
+            or "Acquired"
+        ).strip() or "Acquired"
+
+        if order.status == "completed":
+            return jsonify({
+                "success": True,
+                "message": f"Order {order.order_number} is already marked complete.",
+                "order": order.to_dict(),
+                "promoted_cards": 0,
+            })
+
+        move_stats = inventory_manager.complete_order_cards_in_binder(
+            user_id=user.id,
+            order_items=order.get_items(),
+            destination_binder=destination_binder,
+        )
+
+        order.status = "completed"
+        order.target_binder_name = destination_binder
+        order.completed_at = utc_now()
+        db.session.commit()
+
+        log_activity(
+            "ORDER_COMPLETED",
+            details=f"Completed TCGplayer order {order.order_number}: moved {move_stats['total_quantity_moved']} card(s) from 'Ordered' to '{destination_binder}' binder",
+            user=user,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f"Order {order.order_number} marked complete! Moved {move_stats['total_quantity_moved']} card(s) into your '{destination_binder}' binder.",
+            "order": order.to_dict(),
+            "promoted_cards": move_stats["promoted_cards"],
+            "total_quantity_moved": move_stats["total_quantity_moved"],
+            "binder_name": destination_binder,
+        })
+
+    @app.route("/api/orders/tcgplayer/<int:order_id>", methods=["DELETE"])
+    @login_required
+    def delete_tcgplayer_order(order_id: int):
+        """Deletes a tracked TCGplayer order record and optionally removes its in-transit 'Ordered' cards."""
+        user = get_current_user()
+        order = db.session.get(TCGPlayerOrder, order_id)
+        if not order or order.user_id != user.id:
+            return jsonify({"error": "Order not found."}), 404
+
+        remove_ordered_cards = request.args.get("remove_ordered_cards", "true").lower() in ("true", "1", "yes")
+        if order.status == "ordered" and remove_ordered_cards:
+            ordered_rows = UserInventoryCard.query.filter(
+                UserInventoryCard.user_id == user.id,
+                db.func.lower(db.func.coalesce(UserInventoryCard.binder_name, "")) == "ordered",
+            ).all()
+            for item in order.get_items():
+                c_name = (item.get("card_name") or item.get("name") or "").strip()
+                qty_to_remove = max(1, int(item.get("quantity") or 1))
+                m_keys = get_card_match_keys(c_name)
+                for r in ordered_rows:
+                    if r.quantity > 0 and bool(get_card_match_keys(r.name) & m_keys):
+                        if r.quantity > qty_to_remove:
+                            r.quantity -= qty_to_remove
+                        else:
+                            r.quantity = 0
+                            db.session.delete(r)
+                        break
+
+        ord_num = order.order_number
+        db.session.delete(order)
+        db.session.commit()
+        inventory_manager.bump_inventory_version(user.id)
+
+        return jsonify({
+            "success": True,
+            "message": f"Removed order {ord_num}.",
+            "deleted_order_id": order_id,
         })
 
     @app.route("/api/card/price-intel")
