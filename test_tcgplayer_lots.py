@@ -273,6 +273,88 @@ def test_find_seller_lots_with_mocked_tcg_api(lot_provider):
         assert "q=Sol+Ring" in sol_card["storeSearchUrl"]
 
 
+def test_find_seller_lots_with_target_bundle_amount(lot_provider):
+    """
+    Verifies that when target_bundle_amount is set (e.g. $15):
+    1. A seller with 6 cards where 5 cards sum to $14.00 and 1 card is $50.00
+       returns subtotal $14.00 (NOT $64.00!), 5 cards in primary list,
+       and the remaining card in otherInStockCards.
+    2. A seller where only 2 cards fit under $15 is rejected when min_cards=5.
+    """
+    watchlist = [
+        DummyWatchlistItem(1, "Card 1", target_price=5.00, market_price=2.00),
+        DummyWatchlistItem(2, "Card 2", target_price=5.00, market_price=2.50),
+        DummyWatchlistItem(3, "Card 3", target_price=5.00, market_price=3.00),
+        DummyWatchlistItem(4, "Card 4", target_price=5.00, market_price=3.00),
+        DummyWatchlistItem(5, "Card 5", target_price=5.00, market_price=3.50),
+        DummyWatchlistItem(6, "Card 6", target_price=60.00, market_price=50.00),
+    ]
+
+    # Qualifying seller A: has 5 cheap cards ($14 total) + 1 expensive card ($50) = $64 total
+    inventory_seller_a = [
+        {"productName": "Card 1", "productId": 1, "marketPrice": 2.00, "listings": [{"sellerKey": "seller_a", "price": 2.00, "condition": "Near Mint"}]},
+        {"productName": "Card 2", "productId": 2, "marketPrice": 2.50, "listings": [{"sellerKey": "seller_a", "price": 2.50, "condition": "Near Mint"}]},
+        {"productName": "Card 3", "productId": 3, "marketPrice": 3.00, "listings": [{"sellerKey": "seller_a", "price": 3.00, "condition": "Near Mint"}]},
+        {"productName": "Card 4", "productId": 4, "marketPrice": 3.00, "listings": [{"sellerKey": "seller_a", "price": 3.00, "condition": "Near Mint"}]},
+        {"productName": "Card 5", "productId": 5, "marketPrice": 3.50, "listings": [{"sellerKey": "seller_a", "price": 3.50, "condition": "Near Mint"}]},
+        {"productName": "Card 6", "productId": 6, "marketPrice": 50.00, "listings": [{"sellerKey": "seller_a", "price": 50.00, "condition": "Near Mint"}]},
+    ]
+
+    # Failing seller B: has 6 cards but only 2 cards fit under $15
+    inventory_seller_b = [
+        {"productName": "Card 1", "productId": 1, "marketPrice": 6.00, "listings": [{"sellerKey": "seller_b", "price": 6.00, "condition": "Near Mint"}]},
+        {"productName": "Card 2", "productId": 2, "marketPrice": 8.00, "listings": [{"sellerKey": "seller_b", "price": 8.00, "condition": "Near Mint"}]},
+        {"productName": "Card 3", "productId": 3, "marketPrice": 10.00, "listings": [{"sellerKey": "seller_b", "price": 10.00, "condition": "Near Mint"}]},
+        {"productName": "Card 4", "productId": 4, "marketPrice": 10.00, "listings": [{"sellerKey": "seller_b", "price": 10.00, "condition": "Near Mint"}]},
+        {"productName": "Card 5", "productId": 5, "marketPrice": 12.00, "listings": [{"sellerKey": "seller_b", "price": 12.00, "condition": "Near Mint"}]},
+        {"productName": "Card 6", "productId": 6, "marketPrice": 15.00, "listings": [{"sellerKey": "seller_b", "price": 15.00, "condition": "Near Mint"}]},
+    ]
+
+    with patch.object(lot_provider, "_discover_sellers_for_watchlist") as mock_disc, \
+         patch.object(lot_provider, "_query_seller_watchlist_inventory") as mock_inv:
+
+        # Test Case A: Seller A qualifies with a $14 bundle
+        mock_disc.return_value = [{"sellerKey": "seller_a", "sellerName": "Shop A"}]
+        mock_inv.return_value = inventory_seller_a
+
+        res_a = lot_provider.find_seller_lots(
+            watchlist_items=watchlist,
+            mode="dollar_amount",
+            min_cards=5,
+            target_bundle_amount=15.0,
+            bundle_amount_type="max_budget",
+        )
+
+        assert res_a["success"] is True
+        assert res_a["total_sellers_found"] == 1
+        seller_a = res_a["sellers"][0]
+        # Crucial: subtotal must be the bundle total $14.00, NOT $64.00!
+        assert seller_a["subtotal"] == 14.00
+        assert seller_a["qualifyingCount"] == 5
+        assert len(seller_a["cards"]) == 5
+        assert seller_a["otherInStockCount"] == 1
+        assert seller_a["otherInStockCards"][0]["name"] == "Card 6"
+        assert seller_a["allStockedCount"] == 6
+        assert seller_a["allStockedSubtotal"] == 64.00
+        # Multi-card search URL must search for the 5 bundle cards, not Card 6
+        assert "productName=Card+6" not in seller_a["multiCardSearchUrl"]
+        assert "productName=Card+1" in seller_a["multiCardSearchUrl"]
+
+        # Test Case B: Seller B cannot provide 5 cards under $15
+        mock_disc.return_value = [{"sellerKey": "seller_b", "sellerName": "Shop B"}]
+        mock_inv.return_value = inventory_seller_b
+
+        res_b = lot_provider.find_seller_lots(
+            watchlist_items=watchlist,
+            mode="dollar_amount",
+            min_cards=5,
+            target_bundle_amount=15.0,
+            bundle_amount_type="max_budget",
+        )
+        assert res_b["success"] is True
+        assert res_b["total_sellers_found"] == 0
+
+
 def test_api_tcgplayer_lots_endpoint(lot_provider):
     from app import app
     from models import db, User

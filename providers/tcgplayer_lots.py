@@ -368,30 +368,51 @@ class TCGplayerLotProvider:
         qualifying_cards: List[Dict[str, Any]],
         target_amount: float,
         bundle_type: str = "max_budget",
+        required_card_id: Optional[int] = None,
     ) -> Tuple[List[Dict[str, Any]], float]:
         """
         Selects a subset of qualifying cards to hit or stay within target_amount.
         - 'max_budget': Greedy knapsack to maximize number of unique cards without exceeding target_amount.
         - 'min_threshold': Selects lowest-cost cards until the sum reaches at least target_amount (e.g. $5 for free shipping).
+        If required_card_id is provided, guarantees that card is included first if within budget.
         """
         if not qualifying_cards or target_amount <= 0:
-            return qualifying_cards, sum(c["price"] for c in qualifying_cards)
+            return qualifying_cards, round(sum(c["price"] for c in qualifying_cards), 2)
 
-        sorted_cards = sorted(qualifying_cards, key=lambda c: c["price"])
+        required_card = None
+        remaining_cards = []
+        if required_card_id is not None:
+            for c in qualifying_cards:
+                if (c.get("id") == required_card_id or c.get("productId") == required_card_id) and required_card is None:
+                    required_card = c
+                else:
+                    remaining_cards.append(c)
+        else:
+            remaining_cards = list(qualifying_cards)
+
+        sorted_cards = sorted(remaining_cards, key=lambda c: c["price"])
 
         if bundle_type == "min_threshold":
             selected = []
             running_total = 0.0
+            if required_card:
+                selected.append(required_card)
+                running_total += required_card["price"]
             for card in sorted_cards:
-                selected.append(card)
-                running_total += card["price"]
                 if running_total >= target_amount:
                     break
+                selected.append(card)
+                running_total += card["price"]
             return selected, round(running_total, 2)
         else:
             # max_budget
             selected = []
             running_total = 0.0
+            if required_card:
+                if required_card["price"] > target_amount:
+                    return [], 0.0
+                selected.append(required_card)
+                running_total += required_card["price"]
             for card in sorted_cards:
                 if running_total + card["price"] <= target_amount:
                     selected.append(card)
@@ -621,24 +642,31 @@ class TCGplayerLotProvider:
             # Sort qualifying cards by price ascending
             qualifying_cards.sort(key=lambda c: c["price"])
 
-            # Compute financial totals against baseline market price
-            subtotal = sum(c["price"] for c in qualifying_cards)
-            total_market = sum(c["baseMarketPrice"] for c in qualifying_cards if c.get("baseMarketPrice"))
-            net_savings = round(total_market - subtotal, 2) if total_market > 0 else 0.0
-            savings_pct = round((net_savings / total_market) * 100.0, 1) if total_market > 0 and net_savings > 0 else 0.0
-
-            # Estimate shipping (use minimum observed shipping for this seller or 0.0 if direct/free)
-            est_shipping = min(shipping_estimates) if shipping_estimates else 0.0
-            if est_shipping >= 15.0:  # Cap outlier default values
-                est_shipping = 0.0 if seller_info.get("directSeller") else 4.99
-
             bundle_info = None
+            display_cards = qualifying_cards
+            other_in_stock_cards = []
+
+            # If target bundle amount is configured, optimize and enforce constraints on the bundle
             if target_bundle_amount and target_bundle_amount > 0:
+                required_id = getattr(anchor_item, "id", None) if (mode == "anchor_card" and anchor_item) else None
                 b_cards, b_total = self._optimize_dollar_bundle(
                     qualifying_cards=qualifying_cards,
                     target_amount=target_bundle_amount,
                     bundle_type=bundle_amount_type,
+                    required_card_id=required_id,
                 )
+
+                # Validation: Does the optimized bundle satisfy the user's constraints?
+                if len(b_cards) < min_cards:
+                    # Seller cannot supply the requested min_cards within the target budget/threshold
+                    return None
+
+                if bundle_amount_type == "max_budget" and b_total > target_bundle_amount:
+                    return None
+
+                if bundle_amount_type == "min_threshold" and b_total < target_bundle_amount:
+                    return None
+
                 bundle_info = {
                     "cards": b_cards,
                     "count": len(b_cards),
@@ -647,13 +675,37 @@ class TCGplayerLotProvider:
                     "bundleType": bundle_amount_type,
                 }
 
+                # Primary presentation and purchase target becomes the optimized bundle
+                display_cards = b_cards
+                b_pids = {c.get("productId") for c in b_cards}
+                other_in_stock_cards = [c for c in qualifying_cards if c.get("productId") not in b_pids]
+
+            # Compute financial totals against baseline market price for the displayed bundle/lot
+            subtotal = sum(c["price"] for c in display_cards)
+            total_market = sum(c["baseMarketPrice"] for c in display_cards if c.get("baseMarketPrice"))
+            net_savings = round(total_market - subtotal, 2) if total_market > 0 else 0.0
+            savings_pct = round((net_savings / total_market) * 100.0, 1) if total_market > 0 and net_savings > 0 else 0.0
+
+            # Estimate shipping (use minimum observed shipping for this seller or 0.0 if direct/free)
+            est_shipping = min(shipping_estimates) if shipping_estimates else 0.0
+            if est_shipping >= 15.0:  # Cap outlier default values
+                est_shipping = 0.0 if seller_info.get("directSeller") else 4.99
+
             # Generate direct TCGplayer store URL and multi-card lot search URL
             store_url = f"https://www.tcgplayer.com/search/magic/product?seller={s_key}&view=grid"
             search_params = [("seller", s_key), ("view", "grid")]
-            for c in qualifying_cards:
+            for c in display_cards:
                 clean_cname = c.get("cleanName") or c["name"].split(" // ")[0].strip()
                 search_params.append(("productName", clean_cname))
             multi_card_search_url = "https://www.tcgplayer.com/search/magic/product?" + urllib.parse.urlencode(search_params)
+
+            all_search_url = None
+            if other_in_stock_cards:
+                all_params = [("seller", s_key), ("view", "grid")]
+                for c in qualifying_cards:
+                    clean_cname = c.get("cleanName") or c["name"].split(" // ")[0].strip()
+                    all_params.append(("productName", clean_cname))
+                all_search_url = "https://www.tcgplayer.com/search/magic/product?" + urllib.parse.urlencode(all_params)
 
             return {
                 "sellerKey": s_key,
@@ -664,14 +716,19 @@ class TCGplayerLotProvider:
                 "goldSeller": seller_info.get("goldSeller", False),
                 "storeUrl": store_url,
                 "multiCardSearchUrl": multi_card_search_url,
-                "qualifyingCount": len(qualifying_cards),
+                "allCardsSearchUrl": all_search_url,
+                "qualifyingCount": len(display_cards),
                 "subtotal": round(subtotal, 2),
                 "estShipping": round(est_shipping, 2),
                 "landedTotal": round(subtotal + est_shipping, 2),
                 "totalMarket": round(total_market, 2),
                 "netSavings": net_savings,
                 "savingsPct": savings_pct,
-                "cards": qualifying_cards,
+                "cards": display_cards,
+                "otherInStockCount": len(other_in_stock_cards),
+                "otherInStockCards": other_in_stock_cards,
+                "allStockedCount": len(qualifying_cards),
+                "allStockedSubtotal": round(sum(c["price"] for c in qualifying_cards), 2),
                 "aboveToleranceCount": len(above_tolerance_cards),
                 "aboveToleranceCards": above_tolerance_cards[:10],
                 "bundleInfo": bundle_info,

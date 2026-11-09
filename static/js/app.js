@@ -5858,13 +5858,26 @@ function renderSellerLotResults(data) {
             const bLabel = b.bundleType === "min_threshold" ? "Free Shipping Goal" : "Target Budget Cap";
             bundleSection = `
                 <div class="mt-3 p-3 bg-[#10B981]/10 border border-[#10B981]/40 font-mono text-xs">
-                    <div class="flex items-center justify-between text-[#10B981] font-bold">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[#10B981] font-bold">
                         <span>🎯 OPTIMAL BUNDLE RECOMMENDATION (${bLabel}):</span>
-                        <span>${b.count} Cards &bull; Total: $${b.total.toFixed(2)} (Target: $${b.targetAmount.toFixed(2)})</span>
+                        <span>${b.count} Cards &bull; Bundle Total: $${seller.subtotal.toFixed(2)} (Cap: $${b.targetAmount.toFixed(2)})</span>
                     </div>
                 </div>
             `;
         }
+
+        const countBadge = seller.bundleInfo ? `
+            <span class="bg-[#10B981] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 flex-shrink-0" title="Target Bundle: ${seller.qualifyingCount} cards totaling $${seller.subtotal.toFixed(2)}">
+                <span>🎯 ${seller.qualifyingCount} Bundle Cards ($${seller.subtotal.toFixed(2)})</span>
+            </span>
+        ` : `
+            <span class="bg-[#00CED1] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 flex-shrink-0">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span>${seller.qualifyingCount} Watchlist Cards</span>
+            </span>
+        `;
 
         let cardsTableRows = "";
         (seller.cards || []).forEach(card => {
@@ -5931,6 +5944,40 @@ function renderSellerLotResults(data) {
             `;
         });
 
+        let otherInStockHtml = "";
+        if (seller.otherInStockCount > 0) {
+            otherInStockHtml = `
+                <div class="mt-3 pt-3 border-t border-[#263245]/60 text-xs font-mono">
+                    <details class="cursor-pointer group">
+                        <summary class="text-[#00CED1] hover:text-white flex items-center justify-between text-[11px] font-bold uppercase">
+                            <span>+ ${seller.otherInStockCount} More In-Stock Watchlist Cards from this Store (Total Stocked: ${seller.allStockedCount} cards, $${seller.allStockedSubtotal ? seller.allStockedSubtotal.toFixed(2) : '--'})</span>
+                            <span class="text-[#64748B] text-[10px] group-open:rotate-180 transition-transform">&darr;</span>
+                        </summary>
+                        <div class="mt-2 space-y-1.5 pl-2 border-l border-[#00CED1]/40">
+                            ${(seller.otherInStockCards || []).map(c => `
+                                <div class="flex items-center justify-between text-[11px] text-[#94A3B8]">
+                                    <span class="truncate">${c.name} (${c.condition}, ${c.printing})</span>
+                                    <div class="flex items-center space-x-2 whitespace-nowrap">
+                                        <span class="text-white font-bold">$${c.price.toFixed(2)}</span>
+                                        <span class="text-[#64748B] text-[10px]">(Base Mkt: $${c.baseMarketPrice ? c.baseMarketPrice.toFixed(2) : '--'})</span>
+                                        <a href="${c.storeSearchUrl || c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline text-[10px]">[In Store]</a>
+                                        <a href="${c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#FF3358] hover:underline text-[10px]">[Buy]</a>
+                                    </div>
+                                </div>
+                            `).join("")}
+                            ${seller.allCardsSearchUrl ? `
+                                <div class="pt-2">
+                                    <a href="${seller.allCardsSearchUrl}" target="_blank" rel="noopener" class="text-xs text-[#00CED1] hover:underline font-bold">
+                                        🔍 Search All ${seller.allStockedCount} In-Stock Cards in ${seller.sellerName}'s Store &rarr;
+                                    </a>
+                                </div>
+                            ` : ""}
+                        </div>
+                    </details>
+                </div>
+            `;
+        }
+
         let aboveToleranceHtml = "";
         if (seller.aboveToleranceCount > 0) {
             aboveToleranceHtml = `
@@ -5983,12 +6030,7 @@ function renderSellerLotResults(data) {
                     </div>
 
                     <div class="flex flex-wrap items-center gap-1.5 sm:justify-end">
-                        <span class="bg-[#00CED1] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 flex-shrink-0">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                            </svg>
-                            <span>${seller.qualifyingCount} Watchlist Cards</span>
-                        </span>
+                        ${countBadge}
                         <a href="${seller.multiCardSearchUrl}" target="_blank" rel="noopener"
                             class="btn-bridge text-xs px-2.5 py-1.5 text-[#00CED1] hover:text-white flex items-center space-x-1 font-bold"
                             title="Open a TCGplayer search filtered to this seller with all ${seller.qualifyingCount} lot cards">
@@ -6007,7 +6049,7 @@ function renderSellerLotResults(data) {
                 <!-- Financial Telemetry Breakdown -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#10141D] p-3 border border-[#263245] text-xs">
                     <div>
-                        <div class="text-[#94A3B8] text-[10px] uppercase">Cards Subtotal</div>
+                        <div class="text-[#94A3B8] text-[10px] uppercase">${seller.bundleInfo ? 'Bundle Subtotal' : 'Cards Subtotal'}</div>
                         <div class="text-sm sm:text-base font-bold text-white mt-0.5">$${seller.subtotal.toFixed(2)}</div>
                     </div>
                     <div>
@@ -6017,7 +6059,7 @@ function renderSellerLotResults(data) {
                         </div>
                     </div>
                     <div>
-                        <div class="text-[#94A3B8] text-[10px] uppercase">Landed Total</div>
+                        <div class="text-[#94A3B8] text-[10px] uppercase">${seller.bundleInfo ? 'Bundle Landed Total' : 'Landed Total'}</div>
                         <div class="text-sm sm:text-base font-bold text-[#00CED1] mt-0.5">$${seller.landedTotal.toFixed(2)}</div>
                     </div>
                     <div>
@@ -6047,6 +6089,7 @@ function renderSellerLotResults(data) {
                     </table>
                 </div>
 
+                ${otherInStockHtml}
                 ${aboveToleranceHtml}
             </div>
         `;
