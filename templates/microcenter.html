@@ -9,6 +9,7 @@
 
 {% block content %}
 <div class="space-y-4 sm:space-y-6">
+    {% with domain='market' %}{% include 'partials/nav_tabs.html' %}{% endwith %}
 
     <!-- MicroCenter Charlotte Telemetry Header Banner -->
     <div class="bg-[#1B2230] border-2 border-[#F59E0B] p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative overflow-hidden">

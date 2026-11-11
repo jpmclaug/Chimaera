@@ -5,6 +5,7 @@
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js" defer></script>
 <div class="max-w-7xl mx-auto space-y-6 pb-20">
+    {% with domain='commander' %}{% include 'partials/nav_tabs.html' %}{% endwith %}
 
     <!-- Top Tactical Header HUD -->
     <div class="bg-[#10141D]/90 border border-[#263245] rounded-none p-4 sm:p-5 md:p-6 backdrop-blur-md shadow-2xl relative overflow-hidden">

@@ -100,14 +100,6 @@ class Config:
     CHIMERA_API_KEY = os.getenv("CHIMERA_API_KEY", "").strip()
     MCP_ENABLED = os.getenv("MCP_ENABLED", "true").strip().lower() in ("true", "1", "yes")
 
-    # Best Buy Local Store Stock & Price Surveillance Configuration
-    BESTBUY_API_KEY = os.getenv("BESTBUY_API_KEY", "").strip()
-    BESTBUY_POSTAL_CODE = os.getenv("BESTBUY_POSTAL_CODE", "28202").strip()
-    try:
-        BESTBUY_SEARCH_RADIUS = int(os.getenv("BESTBUY_SEARCH_RADIUS", 25))
-    except (ValueError, TypeError):
-        BESTBUY_SEARCH_RADIUS = 25
-
     # Gmail IMAP Auto-Fetch for TCGplayer Order Confirmation Emails
     GMAIL_IMAP_EMAIL = os.getenv("GMAIL_IMAP_EMAIL", "").strip()
     GMAIL_IMAP_APP_PASSWORD = os.getenv("GMAIL_IMAP_APP_PASSWORD", "").strip()

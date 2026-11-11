@@ -81,98 +81,145 @@
                                 {% endif %}
                             </div>
 
-                            <!-- Section: Sector Navigation -->
-                            <div class="space-y-1">
-                                <div class="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">// SECTOR NAVIGATION</div>
-                                <a href="/system-overview" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'system_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#00CED1]/90 hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">00 // Tactical Field Manual</span>
-                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">GUIDE</span>
+                            <!-- Sector Navigation (Organized by Domain) -->
+                            <div class="space-y-2">
+                                <!-- 01 // Market Watch -->
+                                <div>
+                                    <div class="text-[9px] text-[#00CED1] font-bold tracking-wider uppercase mb-1">// 01: MARKET WATCH</div>
+                                    <div class="space-y-0.5 pl-1.5 border-l border-[#263245]">
+                                        <a href="/" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <span class="font-bold">Watchlist Registry</span>
+                                            <span class="text-[#00CED1]">&rarr;</span>
+                                        </a>
+                                        <a href="/deals" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'deals' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Priority Deals</span>
+                                                {% if deals_count is defined and deals_count > 0 %}
+                                                <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
+                                                {% endif %}
+                                            </div>
+                                            <span class="text-[#FF3358]">&rarr;</span>
+                                        </a>
+                                        <a href="/buylist" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'buylist' %}border-[#2DD4BF] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Buylist Scanner</span>
+                                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">LIVE</span>
+                                            </div>
+                                            <span class="text-[#2DD4BF]">&rarr;</span>
+                                        </a>
+                                        <a href="/microcenter" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'microcenter' %}border-[#F59E0B] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">MicroCenter Charlotte</span>
+                                                <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">STORE 175</span>
+                                            </div>
+                                            <span class="text-[#F59E0B]">&rarr;</span>
+                                        </a>
                                     </div>
-                                    <span class="text-[#00CED1]">&rarr;</span>
-                                </a>
-                                <a href="/" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <span class="font-bold">01 // Registry Dashboard</span>
-                                    <span class="text-[#00CED1]">&rarr;</span>
-                                </a>
-                                <a href="/deals" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deals' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">02 // Priority Deals</span>
-                                        {% if deals_count is defined and deals_count > 0 %}
-                                        <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
+                                </div>
+
+                                <!-- 02 // Collection -->
+                                <div>
+                                    <div class="text-[9px] text-[#10B981] font-bold tracking-wider uppercase mb-1">// 02: COLLECTION</div>
+                                    <div class="space-y-0.5 pl-1.5 border-l border-[#263245]">
+                                        <a href="/inventory" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'inventory' %}border-[#10B981] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Inventory Binder</span>
+                                                <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">VAULT</span>
+                                            </div>
+                                            <span class="text-[#10B981]">&rarr;</span>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <!-- 03 // Commander Decks -->
+                                <div>
+                                    <div class="text-[9px] text-[#00CED1] font-bold tracking-wider uppercase mb-1">// 03: COMMANDER DECKS</div>
+                                    <div class="space-y-0.5 pl-1.5 border-l border-[#263245]">
+                                        <a href="/commander" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Deck Hub & Analyzer</span>
+                                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">HUB</span>
+                                            </div>
+                                            <span class="text-[#00CED1]">&rarr;</span>
+                                        </a>
+                                        <a href="/timewalked" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'timewalked' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Timewalked Brackets</span>
+                                                <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">1-5</span>
+                                            </div>
+                                            <span class="text-[#C084FC]">&rarr;</span>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <!-- 04 // Playtest Arena (Standalone) -->
+                                <div>
+                                    <div class="text-[9px] text-[#FF3358] font-bold tracking-wider uppercase mb-1">// 04: PLAYTEST ARENA</div>
+                                    <div class="space-y-0.5 pl-1.5 border-l border-[#263245]">
+                                        <a href="/commander/playtest" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'playtest' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Interactive Pod Arena</span>
+                                                <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">SOLO</span>
+                                            </div>
+                                            <span class="text-[#FF3358]">&rarr;</span>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <!-- 05 // Evaluate -->
+                                <div>
+                                    <div class="text-[9px] text-[#00CED1] font-bold tracking-wider uppercase mb-1">// 05: EVALUATE</div>
+                                    <div class="space-y-0.5 pl-1.5 border-l border-[#263245]">
+                                        <a href="/add-evaluator" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'add_evaluator' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Card Add Evaluator</span>
+                                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">SUITE</span>
+                                            </div>
+                                            <span class="text-[#00CED1]">&rarr;</span>
+                                        </a>
+                                        <a href="/secret-lair" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'secret_lair' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Secret Lair Advisor</span>
+                                                <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">DROPS</span>
+                                            </div>
+                                            <span class="text-[#C084FC]">&rarr;</span>
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <!-- 06 // System & Operations -->
+                                <div>
+                                    <div class="text-[9px] text-[#64748B] font-bold tracking-wider uppercase mb-1">// 06: SYSTEM & OPERATIONS</div>
+                                    <div class="space-y-0.5 pl-1.5 border-l border-[#263245]">
+                                        <a href="/settings" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'settings' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Settings Hub</span>
+                                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">CFG</span>
+                                            </div>
+                                            <span class="text-[#00CED1]">&rarr;</span>
+                                        </a>
+                                        <a href="/system-overview" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'system_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Field Manual & Health</span>
+                                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">DOCS</span>
+                                            </div>
+                                            <span class="text-[#00CED1]">&rarr;</span>
+                                        </a>
+                                        <a href="/gemini-hub" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'gemini_hub' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                                            <div class="flex items-center space-x-2">
+                                                <span class="font-bold">Gemini Mobile MCP</span>
+                                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">API</span>
+                                            </div>
+                                            <span class="text-[#00CED1]">&rarr;</span>
+                                        </a>
+                                        {% if current_user.is_admin %}
+                                        <a href="/admin" class="flex items-center justify-between p-1.5 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
+                                            <span class="font-bold">Admin Console</span>
+                                            <span class="text-[#00CED1]">&rarr;</span>
+                                        </a>
                                         {% endif %}
                                     </div>
-                                    <span class="text-[#FF3358]">&rarr;</span>
-                                </a>
-                                <a href="/buylist" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'buylist' %}border-[#2DD4BF] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">03 // Buylist Scanner</span>
-                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">LIVE</span>
-                                    </div>
-                                    <span class="text-[#2DD4BF]">&rarr;</span>
-                                </a>
-                                <a href="/microcenter" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'microcenter' %}border-[#F59E0B] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">04 // MicroCenter Charlotte</span>
-                                        <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">STORE 175</span>
-                                    </div>
-                                    <span class="text-[#F59E0B]">&rarr;</span>
-                                </a>
-                                <a href="/commander" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">05 // Commander</span>
-                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">HUB</span>
-                                    </div>
-                                    <span class="text-[#00CED1]">&rarr;</span>
-                                </a>
-                                <a href="/inventory" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'inventory' %}border-[#10B981] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">06 // Collection Inventory</span>
-                                        <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">BINDER</span>
-                                    </div>
-                                    <span class="text-[#10B981]">&rarr;</span>
-                                </a>
-                                <a href="/commander/playtest" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'playtest' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">07 // Playtest Arena</span>
-                                        <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">POD</span>
-                                    </div>
-                                    <span class="text-[#00CED1]">&rarr;</span>
-                                </a>
-                                <a href="/add-evaluator" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab in ['add_evaluator', 'secret_lair'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">08 // Add Evaluator</span>
-                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">SUITE</span>
-                                    </div>
-                                    <span class="text-[#00CED1]">&rarr;</span>
-                                </a>
-                                <a href="/bestbuy" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'bestbuy' %}border-[#3B82F6] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">09 // Best Buy Local Stock</span>
-                                        <span class="bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">NEARBY</span>
-                                    </div>
-                                    <span class="text-[#3B82F6]">&rarr;</span>
-                                </a>
-                                <a href="/gemini-hub" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'gemini_hub' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">10 // Gemini Mobile MCP</span>
-                                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">CLOUD</span>
-                                    </div>
-                                    <span class="text-[#00CED1]">&rarr;</span>
-                                </a>
-                                <a href="/timewalked" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'timewalked' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="font-bold">11 // Timewalked</span>
-                                        <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-mono font-bold uppercase">BRACKET</span>
-                                    </div>
-                                    <span class="text-[#C084FC]">&rarr;</span>
-                                </a>
-                                {% if current_user.is_admin %}
-                                <a href="/admin" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
-                                    <span class="font-bold">07 // Admin Console</span>
-                                    <span class="text-[#00CED1]">&rarr;</span>
-                                </a>
-                                {% endif %}
+                                </div>
                             </div>
 
                         <!-- Section: Tactical Operations -->
@@ -230,7 +277,7 @@
                         {% elif active_tab == 'inventory' %}text-[#10B981]
                         {% elif active_tab == 'buylist' %}text-[#2DD4BF]
                         {% elif active_tab == 'microcenter' %}text-[#F59E0B]
-                        {% elif active_tab == 'bestbuy' %}text-[#3B82F6]
+                        {% elif active_tab == 'playtest' %}text-[#FF3358]
                         {% elif active_tab in ['add_evaluator', 'secret_lair'] %}text-[#00CED1]
                         {% elif active_tab == 'timewalked' %}text-[#C084FC]
                         {% elif active_tab == 'system_overview' %}text-[#00CED1]
@@ -243,7 +290,7 @@
                             {% elif active_tab == 'inventory' %}bg-[#10B981]
                             {% elif active_tab == 'buylist' %}bg-[#2DD4BF]
                             {% elif active_tab == 'microcenter' %}bg-[#F59E0B]
-                            {% elif active_tab == 'bestbuy' %}bg-[#3B82F6]
+                            {% elif active_tab == 'playtest' %}bg-[#FF3358]
                             {% elif active_tab == 'timewalked' %}bg-[#A855F7]
                             {% else %}bg-[#00CED1]{% endif %}"></span>
                         <span class="truncate max-w-[80px] sm:max-w-[120px]">
@@ -253,7 +300,7 @@
                             {% elif active_tab == 'inventory' %}Binder
                             {% elif active_tab == 'buylist' %}Buylist
                             {% elif active_tab == 'microcenter' %}MicroCenter
-                            {% elif active_tab == 'bestbuy' %}BestBuy
+                            {% elif active_tab == 'playtest' %}Playtest
                             {% elif active_tab in ['add_evaluator', 'secret_lair'] %}Evaluator
                             {% elif active_tab == 'timewalked' %}Timewalked
                             {% elif active_tab == 'system_overview' %}Manual
@@ -359,91 +406,132 @@
                 {% endif %}
             </div>
 
-            <!-- Full Sector Directory -->
-            <div class="space-y-1">
-                <div class="text-[10px] text-[#64748B] uppercase font-bold tracking-wider">// SECTOR DIRECTORY</div>
-                <a href="/system-overview" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'system_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#00CED1]/90 hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">00 // Field Manual</span>
-                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">GUIDE</span>
+            <!-- Full Sector Directory (Organized by Domain) -->
+            <div class="space-y-3">
+                <!-- 01 // Market Watch -->
+                <div>
+                    <div class="text-[9px] text-[#00CED1] font-bold tracking-wider uppercase mb-1">// 01: MARKET WATCH</div>
+                    <div class="space-y-1 pl-1.5 border-l border-[#263245]">
+                        <a href="/" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <span class="font-bold">Watchlist Registry</span>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
+                        <a href="/deals" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'deals' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Priority Deals</span>
+                                {% if deals_count is defined and deals_count > 0 %}
+                                <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
+                                {% endif %}
+                            </div>
+                            <span class="text-[#FF3358]">&rarr;</span>
+                        </a>
+                        <a href="/buylist" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'buylist' %}border-[#2DD4BF] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Buylist Scanner</span>
+                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">LIVE</span>
+                            </div>
+                            <span class="text-[#2DD4BF]">&rarr;</span>
+                        </a>
+                        <a href="/microcenter" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'microcenter' %}border-[#F59E0B] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">MicroCenter Charlotte</span>
+                                <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[9px] px-1 py-0.2 font-bold uppercase">STORE 175</span>
+                            </div>
+                            <span class="text-[#F59E0B]">&rarr;</span>
+                        </a>
                     </div>
-                    <span class="text-[#00CED1]">&rarr;</span>
-                </a>
-                <a href="/" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'wishlist' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <span class="font-bold">01 // Registry Dashboard</span>
-                    <span class="text-[#00CED1]">&rarr;</span>
-                </a>
-                <a href="/deals" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'deals' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">02 // Priority Deals</span>
-                        {% if deals_count is defined and deals_count > 0 %}
-                        <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
+                </div>
+
+                <!-- 02 // Collection -->
+                <div>
+                    <div class="text-[9px] text-[#10B981] font-bold tracking-wider uppercase mb-1">// 02: COLLECTION</div>
+                    <div class="space-y-1 pl-1.5 border-l border-[#263245]">
+                        <a href="/inventory" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'inventory' %}border-[#10B981] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Collection Inventory</span>
+                                <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[9px] px-1 py-0.2 font-bold uppercase">BINDER</span>
+                            </div>
+                            <span class="text-[#10B981]">&rarr;</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 03 // Commander Decks -->
+                <div>
+                    <div class="text-[9px] text-[#00CED1] font-bold tracking-wider uppercase mb-1">// 03: COMMANDER DECKS</div>
+                    <div class="space-y-1 pl-1.5 border-l border-[#263245]">
+                        <a href="/commander" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Commander Hub & Analyzer</span>
+                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">HUB</span>
+                            </div>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
+                        <a href="/timewalked" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'timewalked' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Timewalked Brackets</span>
+                                <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-bold uppercase">BRACKET</span>
+                            </div>
+                            <span class="text-[#C084FC]">&rarr;</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 04 // Playtest Arena (Standalone) -->
+                <div>
+                    <div class="text-[9px] text-[#FF3358] font-bold tracking-wider uppercase mb-1">// 04: PLAYTEST ARENA</div>
+                    <div class="space-y-1 pl-1.5 border-l border-[#263245]">
+                        <a href="/commander/playtest" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'playtest' %}border-[#DC143C] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Playtest Pod Arena</span>
+                                <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[9px] px-1 py-0.2 font-bold uppercase">SOLO</span>
+                            </div>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 05 // Evaluate -->
+                <div>
+                    <div class="text-[9px] text-[#00CED1] font-bold tracking-wider uppercase mb-1">// 05: EVALUATE</div>
+                    <div class="space-y-1 pl-1.5 border-l border-[#263245]">
+                        <a href="/add-evaluator" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab in ['add_evaluator', 'secret_lair'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Add Evaluator</span>
+                                <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">SUITE</span>
+                            </div>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
+                        <a href="/secret-lair" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'secret_lair' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold">Secret Lair Advisor</span>
+                                <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-bold uppercase">DROPS</span>
+                            </div>
+                            <span class="text-[#C084FC]">&rarr;</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 06 // System & Operations -->
+                <div>
+                    <div class="text-[9px] text-[#64748B] font-bold tracking-wider uppercase mb-1">// 06: SYSTEM & OPERATIONS</div>
+                    <div class="space-y-1 pl-1.5 border-l border-[#263245]">
+                        <a href="/system-overview" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'system_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <span class="font-bold">Field Manual & Health</span>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
+                        <a href="/gemini-hub" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'gemini_hub' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <span class="font-bold">Gemini Mobile MCP</span>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
+                        {% if current_user.is_admin %}
+                        <a href="/admin" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
+                            <span class="font-bold">Admin Console</span>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
                         {% endif %}
                     </div>
-                    <span class="text-[#FF3358]">&rarr;</span>
-                </a>
-                <a href="/buylist" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'buylist' %}border-[#2DD4BF] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">03 // Buylist Scanner</span>
-                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">LIVE</span>
-                    </div>
-                    <span class="text-[#2DD4BF]">&rarr;</span>
-                </a>
-                <a href="/microcenter" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'microcenter' %}border-[#F59E0B] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">04 // MicroCenter Charlotte</span>
-                        <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-[9px] px-1 py-0.2 font-bold uppercase">STORE 175</span>
-                    </div>
-                    <span class="text-[#F59E0B]">&rarr;</span>
-                </a>
-                <a href="/deck-analyzer" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab in ['deck_analyzer', 'deck_overview', 'commander'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">05 // Commander Hub</span>
-                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">HUB</span>
-                    </div>
-                    <span class="text-[#00CED1]">&rarr;</span>
-                </a>
-                <a href="/inventory" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'inventory' %}border-[#10B981] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">06 // Collection Inventory</span>
-                        <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/50 text-[9px] px-1 py-0.2 font-bold uppercase">BINDER</span>
-                    </div>
-                    <span class="text-[#10B981]">&rarr;</span>
-                </a>
-                <a href="/commander/playtest" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'playtest' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">07 // Playtest Arena</span>
-                        <span class="bg-[#DC143C]/20 text-[#FF3358] border border-[#DC143C]/50 text-[9px] px-1 py-0.2 font-bold uppercase">POD</span>
-                    </div>
-                    <span class="text-[#00CED1]">&rarr;</span>
-                </a>
-                <a href="/add-evaluator" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab in ['add_evaluator', 'secret_lair'] %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">08 // Add Evaluator</span>
-                        <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 font-bold uppercase">SUITE</span>
-                    </div>
-                    <span class="text-[#00CED1]">&rarr;</span>
-                </a>
-                <a href="/bestbuy" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'bestbuy' %}border-[#3B82F6] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">09 // Best Buy Local Stock</span>
-                        <span class="bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/50 text-[9px] px-1 py-0.2 font-bold uppercase">NEARBY</span>
-                    </div>
-                    <span class="text-[#3B82F6]">&rarr;</span>
-                </a>
-                <a href="/timewalked" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'timewalked' %}border-[#A855F7] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
-                    <div class="flex items-center space-x-2">
-                        <span class="font-bold">11 // Timewalked</span>
-                        <span class="bg-[#A855F7]/20 text-[#C084FC] border border-[#A855F7]/50 text-[9px] px-1 py-0.2 font-bold uppercase">BRACKET</span>
-                    </div>
-                    <span class="text-[#C084FC]">&rarr;</span>
-                </a>
-                {% if current_user.is_admin %}
-                <a href="/admin" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2.5 hover:bg-[#10141D] border {% if active_tab == 'admin' %}border-[#00CED1] text-[#00CED1] bg-[#10141D]{% else %}border-transparent text-[#00CED1]/70 hover:text-[#00CED1]{% endif %} transition">
-                    <span class="font-bold">07 // Admin Console</span>
-                    <span class="text-[#00CED1]">&rarr;</span>
-                </a>
-                {% endif %}
+                </div>
             </div>
 
             <!-- Tactical Operations -->
@@ -542,16 +630,16 @@
                 <span>06 // Binder</span>
                 <span class="text-[9px] text-[#10B981] font-bold">OWNED</span>
             </a>
+            <a href="/commander/playtest" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'playtest' %}bg-[#10141D] text-[#FF3358] border-[#DC143C] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
+                <span>04 // Playtest</span>
+                <span class="text-[9px] text-[#FF3358] font-bold">SOLO</span>
+            </a>
             <a href="/add-evaluator" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab in ['add_evaluator', 'secret_lair'] %}bg-[#10141D] text-[#00CED1] border-[#00CED1] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
-                <span>08 // Add Evaluator</span>
+                <span>05 // Evaluator</span>
                 <span class="text-[9px] text-[#00CED1] font-bold">SUITE</span>
             </a>
-            <a href="/bestbuy" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'bestbuy' %}bg-[#10141D] text-[#60A5FA] border-[#3B82F6] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
-                <span>09 // Best Buy</span>
-                <span class="text-[9px] text-[#60A5FA] font-bold">NEARBY</span>
-            </a>
             <a href="/timewalked" class="flex-1 text-center py-1.5 px-2 text-[11px] font-mono uppercase tracking-wider border flex items-center justify-center space-x-1 {% if active_tab == 'timewalked' %}bg-[#10141D] text-[#C084FC] border-[#A855F7] font-bold{% else %}text-[#94A3B8] border-transparent{% endif %} whitespace-nowrap">
-                <span>11 // Timewalked</span>
+                <span>06 // Timewalked</span>
                 <span class="text-[9px] text-[#C084FC] font-bold">BRACKET</span>
             </a>
             {% if current_user.is_admin %}

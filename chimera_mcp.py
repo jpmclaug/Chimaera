@@ -20,7 +20,6 @@ from card_utils import (
     strip_accents,
 )
 from models import (
-    BestBuyItem,
     CardAddAnalysis,
     DeckAnalysis,
     MicrocenterItem,
@@ -226,7 +225,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "category": {
                     "type": "string",
-                    "description": "Optional source filter: 'all', 'singles', 'microcenter', or 'bestbuy'.",
+                    "description": "Optional source filter: 'all', 'singles', or 'microcenter'.",
                     "default": "all",
                 }
             },
@@ -1277,11 +1276,7 @@ def _execute_get_active_deals(user: User, args: dict[str, Any]) -> dict[str, Any
         result["microcenter_deals"] = mc_deals
         result["microcenter_in_stock_count"] = len(mc_items)
 
-    if category in ("all", "bestbuy"):
-        bb_items = BestBuyItem.query.filter_by(is_active=True, in_stock=True).all()
-        bb_deals = [item.to_dict(include_history=False) for item in bb_items if item.is_deal]
-        result["bestbuy_deals"] = bb_deals
-        result["bestbuy_in_stock_count"] = len(bb_items)
+
 
     result["last_registry_poll"] = SystemSetting.get_val("last_poll_time")
     return result
