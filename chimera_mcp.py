@@ -9,6 +9,7 @@ skills can query and interact with the Chimera PostgreSQL / SQLite database on G
 import json
 import logging
 import re
+import statistics
 import sys
 from datetime import datetime, timezone
 from typing import Any
@@ -166,9 +167,10 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "name": "get_watchlist",
         "description": (
             "Retrieves the user's monitored MTG watchlist cards, including target acquisition prices, "
-            "current lowest in-stock vendor prices across TCGplayer, Mighty Meeple, and eBay, "
-            "price ratings, and whether the card is currently an active deal. Supports filtering by "
-            "a single card or a batch of card names, tags, or decklist text."
+            "baseline market price, statistical vendor median price, live vendor prices (TCGplayer, "
+            "Mighty Meeple, eBay), deal statuses, inventory ownership, and portfolio summary statistics. "
+            "Supports flexible filtering by card name(s), decklist text, tags, card types, colors, "
+            "finish, inventory binder presence, stock status, and price bounds, as well as customizable sorting and grouping."
         ),
         "inputSchema": {
             "type": "object",
@@ -187,6 +189,10 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "items": {"type": "string"},
                     "description": "Alias for 'cards' - list of card names to filter.",
                 },
+                "card_name": {
+                    "type": "string",
+                    "description": "Single card name to filter on the watchlist.",
+                },
                 "text": {
                     "type": "string",
                     "description": "Optional decklist or multi-line text to filter watchlist items.",
@@ -200,15 +206,85 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "items": {"type": "string"},
                     "description": "Optional list of tags to filter (returns cards matching any specified tag).",
                 },
+                "untagged_only": {
+                    "type": "boolean",
+                    "description": "If true, only returns cards without a tag.",
+                    "default": False,
+                },
                 "deals_only": {
                     "type": "boolean",
                     "description": "If true, only returns watchlist cards currently at or below their target price.",
                     "default": False,
                 },
+                "in_stock_only": {
+                    "type": "boolean",
+                    "description": "If true, only returns cards with at least one vendor currently in stock.",
+                    "default": False,
+                },
+                "mm_in_stock_only": {
+                    "type": "boolean",
+                    "description": "If true, only returns cards currently in stock at Mighty Meeple.",
+                    "default": False,
+                },
+                "in_binder": {
+                    "type": "boolean",
+                    "description": "Optional filter for inventory presence: true = only cards user already owns in inventory; false = only unowned watchlist cards.",
+                },
+                "color": {
+                    "type": "string",
+                    "description": "Optional color identity or binder color bucket filter: 'W', 'U', 'B', 'R', 'G', 'Multicolor', 'Colorless', or 'Land'.",
+                },
+                "card_type": {
+                    "type": "string",
+                    "description": "Optional primary card type filter: 'Creature', 'Instant', 'Sorcery', 'Artifact', 'Enchantment', 'Planeswalker', 'Land', etc.",
+                },
+                "finish": {
+                    "type": "string",
+                    "description": "Optional card finish filter: 'nonfoil', 'foil', or 'etched'.",
+                },
+                "min_price": {
+                    "type": "number",
+                    "description": "Optional minimum card price threshold (evaluates median_price or lowest_price).",
+                },
+                "max_price": {
+                    "type": "number",
+                    "description": "Optional maximum card price threshold (evaluates median_price or lowest_price).",
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": [
+                        "name_asc",
+                        "name_desc",
+                        "median_price_desc",
+                        "median_price_asc",
+                        "market_price_desc",
+                        "market_price_asc",
+                        "lowest_price_asc",
+                        "lowest_price_desc",
+                        "target_price_desc",
+                        "target_price_asc",
+                        "savings_pct_desc",
+                        "cmc_asc",
+                        "cmc_desc"
+                    ],
+                    "description": "Order of returned watchlist items. Defaults to 'name_asc'.",
+                    "default": "name_asc",
+                },
+                "group_by": {
+                    "type": "string",
+                    "enum": ["none", "tag", "color", "type", "price_rating", "finish"],
+                    "description": "Optional field to group items by in the response ('tag', 'color', 'type', 'price_rating', 'finish'). Defaults to 'none'.",
+                    "default": "none",
+                },
+                "include_vendor_details": {
+                    "type": "boolean",
+                    "description": "Whether to include full itemized vendor price history objects in each card record. Defaults to true.",
+                    "default": True,
+                },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of watchlist items to return (default 50, max 200).",
-                    "default": 50,
+                    "description": "Maximum number of watchlist items to return (default 500, max 1000).",
+                    "default": 500,
                 },
             },
             "required": [],
@@ -1220,10 +1296,70 @@ def _execute_search_inventory(user: User, args: dict[str, Any]) -> dict[str, Any
     }
 
 
+def _batch_enrich_watchlist_binder_status(user_id: int, items: list[WatchlistItem]) -> None:
+    """Precomputes and caches binder status on watchlist items in a single inventory pass to avoid N+1 queries."""
+    if not items or not user_id:
+        return
+    try:
+        inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
+        if not inv_cards:
+            for item in items:
+                item.in_binder = False
+                item.binder_count = 0
+                item.binder_names = []
+            return
+
+        owned_map: dict[str, int] = {}
+        binder_names_map: dict[str, set[str]] = {}
+
+        for ic in inv_cards:
+            qty = max(1, int(ic.quantity or 1))
+            b_name = (ic.binder_name or "").strip()
+            for k in get_card_match_keys(ic.name):
+                owned_map[k] = owned_map.get(k, 0) + qty
+                if b_name:
+                    binder_names_map.setdefault(k, set()).add(b_name)
+
+        for item in items:
+            item_keys = get_card_match_keys(item.name)
+            count = max([owned_map.get(k, 0) for k in item_keys] or [0])
+            binders = set()
+            for k in item_keys:
+                if k in binder_names_map:
+                    binders.update(binder_names_map[k])
+
+            item.in_binder = (count > 0)
+            item.binder_count = count
+            item.binder_names = sorted(list(binders))
+    except Exception as e:
+        logger.debug(f"Failed to batch enrich watchlist binder status: {e}")
+
+
 def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    limit = min(max(int(args.get("limit", 50) or 50), 1), 200)
+    limit = min(max(int(args.get("limit", 500) or 500), 1), 1000)
     deals_only = bool(args.get("deals_only", False))
-    query_str = (args.get("query") or "").strip()
+    in_stock_only = bool(args.get("in_stock_only", False))
+    mm_in_stock_only = bool(args.get("mm_in_stock_only", False))
+    untagged_only = bool(args.get("untagged_only", False))
+    include_vendor_details = bool(args.get("include_vendor_details", True))
+    in_binder_filter = args.get("in_binder")
+    if in_binder_filter is not None and not isinstance(in_binder_filter, bool):
+        if str(in_binder_filter).strip().lower() in ("true", "1", "yes"):
+            in_binder_filter = True
+        elif str(in_binder_filter).strip().lower() in ("false", "0", "no"):
+            in_binder_filter = False
+        else:
+            in_binder_filter = None
+
+    color_filter = (args.get("color") or "").strip().lower()
+    card_type_filter = (args.get("card_type") or "").strip().lower()
+    finish_filter = (args.get("finish") or "").strip().lower()
+    min_price_filter = args.get("min_price")
+    max_price_filter = args.get("max_price")
+    sort_by = (args.get("sort_by") or "name_asc").strip().lower()
+    group_by = (args.get("group_by") or "none").strip().lower()
+
+    query_str = (args.get("query") or args.get("card_name") or "").strip()
     tag_str = (args.get("tag") or "").strip()
     tags_list = [t.strip() for t in args.get("tags", []) if isinstance(t, str) and t.strip()]
 
@@ -1232,31 +1368,185 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
     filter_names_lower = {c["clean_name"].lower() for c in filter_cards} if filter_cards else set()
 
     q = WatchlistItem.query.filter_by(user_id=user.id)
-    if query_str:
+    if query_str and len(filter_names_lower) <= 1:
         q = q.filter(WatchlistItem.name.ilike(f"%{query_str}%"))
-    if tag_str:
+    if untagged_only:
+        q = q.filter(db.or_(WatchlistItem.tag.is_(None), WatchlistItem.tag == ""))
+    elif tag_str:
         q = q.filter(WatchlistItem.tag.ilike(f"%{tag_str}%"))
-    if tags_list:
+    elif tags_list:
         tag_filters = [WatchlistItem.tag.ilike(f"%{tg}%") for tg in tags_list]
         q = q.filter(db.or_(*tag_filters))
 
+    all_user_items_count = WatchlistItem.query.filter_by(user_id=user.id).count()
     items = q.order_by(WatchlistItem.name.asc()).all()
-    serialized = []
+
+    # Batch enrich binder status in a single pass to eliminate N+1 queries
+    _batch_enrich_watchlist_binder_status(user.id, items)
+
+    filtered_items: list[WatchlistItem] = []
     for item in items:
         if deals_only and not item.is_deal:
             continue
+        if in_stock_only and (item.lowest_in_stock_price is None or item.lowest_in_stock_price <= 0):
+            continue
+        if mm_in_stock_only and not item.mm_in_stock:
+            continue
+        if in_binder_filter is not None and bool(item.in_binder) != in_binder_filter:
+            continue
+        if finish_filter and (item.finish or "nonfoil").lower() != finish_filter:
+            continue
+        if color_filter:
+            item_bucket = (item.color_bucket or "").lower()
+            item_cid = (item.color_identity or "").lower()
+            if color_filter not in (item_bucket, item_cid) and color_filter not in item_cid.split(","):
+                continue
+        if card_type_filter:
+            item_type = (item.primary_card_type or "").lower()
+            item_tl = (item.type_line or "").lower()
+            if card_type_filter not in item_type and card_type_filter not in item_tl:
+                continue
+
+        # Effective price for price bounds filtering
+        eff_price = item.median_price if item.median_price is not None else item.lowest_in_stock_price
+        if min_price_filter is not None:
+            try:
+                if eff_price is None or eff_price < float(min_price_filter):
+                    continue
+            except (ValueError, TypeError):
+                pass
+        if max_price_filter is not None:
+            try:
+                if eff_price is None or eff_price > float(max_price_filter):
+                    continue
+            except (ValueError, TypeError):
+                pass
+
         if filter_names_lower:
             i_name = (item.name or "").lower()
             if not any(card_names_match(i_name, target) for target in filter_names_lower):
                 continue
-        serialized.append(item.to_dict())
 
-    return {
+        filtered_items.append(item)
+
+    # Sorting
+    def _sort_key(item: WatchlistItem):
+        name_val = (item.name or "").lower()
+        med_val = item.median_price if item.median_price is not None else -1.0
+        mkt_val = item.market_price if item.market_price is not None else -1.0
+        low_val = item.lowest_in_stock_price if item.lowest_in_stock_price is not None else 999999.0
+        tgt_val = item.target_price if item.target_price is not None else -1.0
+        sav_val = item.savings_percent if item.savings_percent is not None else -1.0
+        cmc_val = item.cmc if item.cmc is not None else -1.0
+
+        if sort_by == "name_desc":
+            return -ord(name_val[0]) if name_val else 0
+        elif sort_by == "median_price_desc":
+            return -med_val
+        elif sort_by == "median_price_asc":
+            return med_val if med_val >= 0 else 999999.0
+        elif sort_by == "market_price_desc":
+            return -mkt_val
+        elif sort_by == "market_price_asc":
+            return mkt_val if mkt_val >= 0 else 999999.0
+        elif sort_by == "lowest_price_asc":
+            return low_val
+        elif sort_by == "lowest_price_desc":
+            return -(item.lowest_in_stock_price or -1.0)
+        elif sort_by == "target_price_desc":
+            return -tgt_val
+        elif sort_by == "target_price_asc":
+            return tgt_val if tgt_val >= 0 else 999999.0
+        elif sort_by == "savings_pct_desc":
+            return -sav_val
+        elif sort_by == "cmc_asc":
+            return cmc_val if cmc_val >= 0 else 999999.0
+        elif sort_by == "cmc_desc":
+            return -cmc_val
+        return name_val
+
+    if sort_by != "name_asc":
+        filtered_items.sort(key=_sort_key)
+
+    serialized = [item.to_dict(include_vendor_details=include_vendor_details) for item in filtered_items]
+
+    # Calculate portfolio summary statistics
+    target_prices = [i["target_price"] for i in serialized if i.get("target_price") is not None]
+    lowest_prices = [i["lowest_price"] for i in serialized if i.get("lowest_price") is not None]
+    market_prices = [i["market_price"] for i in serialized if i.get("market_price") is not None]
+    median_prices = [i["median_price"] for i in serialized if i.get("median_price") is not None]
+    vendor_median_prices = [i["vendor_median_price"] for i in serialized if i.get("vendor_median_price") is not None]
+
+    total_target = round(sum(target_prices), 2)
+    total_lowest = round(sum(lowest_prices), 2)
+    total_market = round(sum(market_prices), 2)
+    total_median = round(sum(median_prices), 2)
+    total_vendor_median = round(sum(vendor_median_prices), 2)
+
+    stat_median_card_price = round(float(statistics.median(median_prices)), 2) if median_prices else None
+    stat_avg_card_price = round(float(statistics.mean(median_prices)), 2) if median_prices else None
+
+    tags_breakdown: dict[str, int] = {}
+    colors_breakdown: dict[str, int] = {}
+    types_breakdown: dict[str, int] = {}
+
+    for i in serialized:
+        tag_key = i.get("tag") or "[Untagged]"
+        tags_breakdown[tag_key] = tags_breakdown.get(tag_key, 0) + 1
+
+        color_key = i.get("color_bucket") or "Unknown"
+        colors_breakdown[color_key] = colors_breakdown.get(color_key, 0) + 1
+
+        type_key = i.get("primary_card_type") or "Other"
+        types_breakdown[type_key] = types_breakdown.get(type_key, 0) + 1
+
+    # Optional grouping
+    grouped_result: dict[str, list[dict[str, Any]]] | None = None
+    if group_by in ("tag", "color", "type", "price_rating", "finish"):
+        grouped_result = {}
+        for c in serialized[:limit]:
+            if group_by == "tag":
+                grp_key = c.get("tag") or "Untagged"
+            elif group_by == "color":
+                grp_key = c.get("color_bucket") or "Colorless"
+            elif group_by == "type":
+                grp_key = c.get("primary_card_type") or "Other"
+            elif group_by == "price_rating":
+                grp_key = c.get("price_rating") or "Unknown"
+            else:
+                grp_key = (c.get("finish") or "nonfoil").capitalize()
+            grouped_result.setdefault(grp_key, []).append(c)
+
+    summary = {
+        "total_watchlist_count": all_user_items_count,
         "total_matching": len(serialized),
+        "returned_count": min(len(serialized), limit),
         "deals_count": sum(1 for i in serialized if i.get("is_deal")),
+        "mm_in_stock_count": sum(1 for i in serialized if i.get("mm_in_stock")),
+        "in_binder_count": sum(1 for i in serialized if i.get("in_binder")),
+        "total_target_value_usd": total_target,
+        "total_lowest_price_usd": total_lowest,
+        "total_market_price_usd": total_market,
+        "total_median_price_usd": total_median,
+        "total_vendor_median_price_usd": total_vendor_median,
+        "median_card_price_usd": stat_median_card_price,
+        "average_card_price_usd": stat_avg_card_price,
+        "tags_breakdown": tags_breakdown,
+        "color_breakdown": colors_breakdown,
+        "type_breakdown": types_breakdown,
+    }
+
+    resp = {
+        "summary": summary,
+        "total_matching": len(serialized),
+        "deals_count": summary["deals_count"],
         "returned_count": min(len(serialized), limit),
         "watchlist": serialized[:limit],
     }
+    if grouped_result is not None:
+        resp["grouped_watchlist"] = grouped_result
+
+    return resp
 
 
 def _execute_get_active_deals(user: User, args: dict[str, Any]) -> dict[str, Any]:
@@ -2758,6 +3048,10 @@ TOOL_HANDLERS = {
     "batch_check_inventory": _execute_check_inventory_cards,
     "search_inventory": _execute_search_inventory,
     "get_watchlist": _execute_get_watchlist,
+    "search_watchlist": _execute_get_watchlist,
+    "query_watchlist": _execute_get_watchlist,
+    "list_watchlist": _execute_get_watchlist,
+    "get_watchlist_summary": _execute_get_watchlist,
     "get_active_deals": _execute_get_active_deals,
     "get_deck_analyses": _execute_get_deck_analyses,
     "get_deck_cards": _execute_get_deck_cards,

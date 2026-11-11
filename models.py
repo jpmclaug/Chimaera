@@ -1,6 +1,7 @@
 import json
 import re
 import secrets
+import statistics
 from datetime import datetime, timezone, timedelta
 from flask_sqlalchemy import SQLAlchemy
 
@@ -343,6 +344,51 @@ class WatchlistItem(db.Model):
         return None
 
     @property
+    def vendor_median_price(self) -> float | None:
+        """Returns statistical median price across in-stock vendors (or all positive vendor prices as fallback)."""
+        in_stock_vals = [vp.price for vp in self.vendor_prices if vp.in_stock and vp.price and vp.price > 0]
+        if in_stock_vals:
+            return round(float(statistics.median(in_stock_vals)), 2)
+        all_positive = [vp.price for vp in self.vendor_prices if vp.price and vp.price > 0]
+        if all_positive:
+            return round(float(statistics.median(all_positive)), 2)
+        return None
+
+    @property
+    def median_price(self) -> float | None:
+        """Returns baseline market/median price (TCGplayer market baseline, falling back to vendor median or lowest price)."""
+        if self.market_price is not None and self.market_price > 0:
+            return round(float(self.market_price), 2)
+        v_med = self.vendor_median_price
+        if v_med is not None:
+            return v_med
+        return self.lowest_in_stock_price
+
+    @property
+    def tcgplayer_price(self) -> float | None:
+        """Returns latest TCGplayer price or None."""
+        vp = self.get_vendor_price("TCGplayer")
+        return round(float(vp.price), 2) if (vp and vp.price > 0) else None
+
+    @property
+    def mighty_meeple_price(self) -> float | None:
+        """Returns latest Mighty Meeple price or None."""
+        vp = self.get_vendor_price("Mighty Meeple")
+        return round(float(vp.price), 2) if (vp and vp.price > 0) else None
+
+    @property
+    def ebay_price(self) -> float | None:
+        """Returns latest eBay price or None."""
+        vp = self.get_vendor_price("eBay")
+        return round(float(vp.price), 2) if (vp and vp.price > 0) else None
+
+    @property
+    def best_vendor_name(self) -> str | None:
+        """Returns the name of the vendor with the lowest in-stock price."""
+        bv = self.best_vendor
+        return bv.vendor_name if bv else None
+
+    @property
     def suggested_good_price(self):
         """Returns target price representing a solid 10% discount from market."""
         mp = self.market_price
@@ -501,9 +547,9 @@ class WatchlistItem(db.Model):
                 return single
             return "Colorless"
 
-    def to_dict(self):
+    def to_dict(self, include_vendor_details: bool = True):
         """Serializes watchlist item and its vendor prices into a dict."""
-        return {
+        data = {
             "id": self.id,
             "user_id": self.user_id,
             "name": self.name,
@@ -530,15 +576,23 @@ class WatchlistItem(db.Model):
             "binder_count": self.binder_count,
             "binder_names": self.binder_names,
             "lowest_price": self.lowest_in_stock_price,
+            "median_price": self.median_price,
+            "vendor_median_price": self.vendor_median_price,
+            "market_price": self.market_price,
+            "tcgplayer_price": self.tcgplayer_price,
+            "mighty_meeple_price": self.mighty_meeple_price,
+            "ebay_price": self.ebay_price,
+            "best_vendor": self.best_vendor_name,
             "savings_amount": self.savings_amount,
             "savings_percent": self.savings_percent,
-            "market_price": self.market_price,
             "suggested_good_price": self.suggested_good_price,
             "suggested_great_price": self.suggested_great_price,
             "price_rating": self.price_rating,
             "mm_in_stock": self.mm_in_stock,
-            "vendor_prices": [vp.to_dict() for vp in self.vendor_prices],
         }
+        if include_vendor_details:
+            data["vendor_prices"] = [vp.to_dict() for vp in self.vendor_prices]
+        return data
 
 
 class VendorPrice(db.Model):

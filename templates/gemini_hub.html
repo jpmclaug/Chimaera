@@ -150,7 +150,7 @@ Whenever I ask about my cards, collection, prices, deals, or Commander decks, al
 4. `get_deck_cards` / `get_deck_analyses`: Retrieve full card lists or inspect saved Commander decks, power levels, mana curves, weaknesses, and upgrade recommendations for single or multiple decks.
 5. `upload_decks`: Bulk import or save Commander decks into my Vault using ManaBox/Moxfield/Archidekt/Scryfall URLs, text decklists, or CSV exports.
 6. `check_card_deck_fit`: Evaluate whether one or multiple candidate cards fit my Commander decks, if they are already present, or if they appear in saved AI upgrades.
-7. `get_watchlist` / `get_active_deals`: Check my tracked target prices and active deals across TCGplayer, Mighty Meeple, eBay, MicroCenter Charlotte, and Best Buy.
+7. `get_watchlist` / `get_active_deals`: Retrieve monitored watchlist cards with baseline market and statistical vendor median prices, individual vendor quotes (TCGplayer, Mighty Meeple, eBay), deal statuses, inventory ownership, portfolio summary metrics, or sort/filter/group by price, tag, color, or type.
 8. `search_card_prices`: Look up live Scryfall pricing for a single card or bulk card list alongside my owned inventory and watchlist status.
 9. `add_to_watchlist`: Bulk add or update target cards and price thresholds on my surveillance registry from card lists, decklists, or CSV.
 10. `reconcile_watchlist`: Bulk remove acquired cards from my watchlist using TCGplayer order text, card lists, or IDs, and optionally add them to my collection inventory.
@@ -226,7 +226,7 @@ const SAMPLE_TOOL_ARGS = {
     "check_inventory_cards": '{"cards": ["Rhystic Study", "Sol Ring", "Cyclonic Rift"]}',
     "search_inventory": '{"query": "Sol Ring", "limit": 10}',
     "upload_inventory": '{"cards": [{"name": "Mana Drain", "quantity": 1, "foil": "foil", "binder_name": "Blue Staples"}], "mode": "merge"}',
-    "get_watchlist": '{"deals_only": false, "limit": 20}',
+    "get_watchlist": '{"sort_by": "median_price_desc", "limit": 500}',
     "get_active_deals": '{"category": "all"}',
     "get_deck_analyses": '{"query": ""}',
     "get_deck_cards": '{"query": "", "group_by_type": true}',

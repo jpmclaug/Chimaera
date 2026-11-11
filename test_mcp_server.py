@@ -389,6 +389,98 @@ class TestChimeraMcpServer(unittest.TestCase):
         self.assertEqual(wl["deals_count"], 1)
         self.assertEqual(wl["watchlist"][0]["name"], "The One Ring")
         self.assertEqual(wl["watchlist"][0]["lowest_price"], 52.50)
+        self.assertEqual(wl["watchlist"][0]["median_price"], 52.50)
+        self.assertEqual(wl["watchlist"][0]["vendor_median_price"], 52.50)
+        self.assertEqual(wl["watchlist"][0]["tcgplayer_price"], 52.50)
+        self.assertIn("summary", wl)
+        self.assertEqual(wl["summary"]["deals_count"], 1)
+        self.assertEqual(wl["summary"]["total_target_value_usd"], 60.0)
+        self.assertEqual(wl["summary"]["total_median_price_usd"], 52.50)
+
+        # Seed additional cards with multiple vendor prices to test statistical median and sorting
+        with self.app.app_context():
+            user = User.query.get(self.user_id)
+            w2 = WatchlistItem(
+                user_id=user.id,
+                name="Mana Drain",
+                set_code="2X2",
+                finish="nonfoil",
+                type_line="Instant",
+                color_identity="U",
+                cmc=2.0,
+                target_price=35.0,
+                tag="Priority Staples",
+            )
+            w3 = WatchlistItem(
+                user_id=user.id,
+                name="Demonic Tutor",
+                set_code="DMR",
+                finish="nonfoil",
+                type_line="Sorcery",
+                color_identity="B",
+                cmc=2.0,
+                target_price=25.0,
+                tag="Tutors",
+            )
+            db.session.add_all([w2, w3])
+            db.session.flush()
+
+            # Mana Drain: TCG=40, MM=36, eBay=44 -> Statistical Median = 40.0
+            vp2_1 = VendorPrice(watchlist_id=w2.id, vendor_name="TCGplayer", price=40.0, in_stock=True)
+            vp2_2 = VendorPrice(watchlist_id=w2.id, vendor_name="Mighty Meeple", price=36.0, in_stock=True)
+            vp2_3 = VendorPrice(watchlist_id=w2.id, vendor_name="eBay", price=44.0, in_stock=True)
+
+            # Demonic Tutor: TCG=30, MM=28, eBay=32 -> Statistical Median = 30.0
+            vp3_1 = VendorPrice(watchlist_id=w3.id, vendor_name="TCGplayer", price=30.0, in_stock=True)
+            vp3_2 = VendorPrice(watchlist_id=w3.id, vendor_name="Mighty Meeple", price=28.0, in_stock=True)
+            vp3_3 = VendorPrice(watchlist_id=w3.id, vendor_name="eBay", price=32.0, in_stock=True)
+            db.session.add_all([vp2_1, vp2_2, vp2_3, vp3_1, vp3_2, vp3_3])
+            db.session.commit()
+
+        # Test querying full watchlist with median prices and sort_by
+        wl_all = self._call_tool("get_watchlist", {"sort_by": "median_price_desc"})
+        self.assertEqual(wl_all["total_matching"], 3)
+        # Order should be The One Ring (52.50) -> Mana Drain (40.0) -> Demonic Tutor (30.0)
+        self.assertEqual(wl_all["watchlist"][0]["name"], "The One Ring")
+        self.assertEqual(wl_all["watchlist"][1]["name"], "Mana Drain")
+        self.assertEqual(wl_all["watchlist"][1]["vendor_median_price"], 40.0)
+        self.assertEqual(wl_all["watchlist"][1]["tcgplayer_price"], 40.0)
+        self.assertEqual(wl_all["watchlist"][1]["mighty_meeple_price"], 36.0)
+        self.assertEqual(wl_all["watchlist"][1]["ebay_price"], 44.0)
+        self.assertEqual(wl_all["watchlist"][1]["best_vendor"], "Mighty Meeple")
+        self.assertEqual(wl_all["watchlist"][2]["name"], "Demonic Tutor")
+        self.assertEqual(wl_all["watchlist"][2]["vendor_median_price"], 30.0)
+
+        # Test sort_by median_price_asc
+        wl_asc = self._call_tool("get_watchlist", {"sort_by": "median_price_asc"})
+        self.assertEqual(wl_asc["watchlist"][0]["name"], "Demonic Tutor")
+        self.assertEqual(wl_asc["watchlist"][2]["name"], "The One Ring")
+
+        # Test filtering by color and card_type
+        wl_blue = self._call_tool("get_watchlist", {"color": "u"})
+        self.assertEqual(wl_blue["total_matching"], 1)
+        self.assertEqual(wl_blue["watchlist"][0]["name"], "Mana Drain")
+
+        wl_sorcery = self._call_tool("get_watchlist", {"card_type": "Sorcery"})
+        self.assertEqual(wl_sorcery["total_matching"], 1)
+        self.assertEqual(wl_sorcery["watchlist"][0]["name"], "Demonic Tutor")
+
+        # Test price bounds filter
+        wl_budget = self._call_tool("get_watchlist", {"max_price": 35.0})
+        self.assertEqual(wl_budget["total_matching"], 1)
+        self.assertEqual(wl_budget["watchlist"][0]["name"], "Demonic Tutor")
+
+        # Test grouping
+        wl_grouped = self._call_tool("get_watchlist", {"group_by": "tag"})
+        self.assertIn("grouped_watchlist", wl_grouped)
+        self.assertIn("Priority Staples", wl_grouped["grouped_watchlist"])
+        self.assertIn("Tutors", wl_grouped["grouped_watchlist"])
+        self.assertEqual(len(wl_grouped["grouped_watchlist"]["Priority Staples"]), 2)
+
+        # Test tool alias search_watchlist
+        wl_alias = self._call_tool("search_watchlist", {"query": "Mana Drain"})
+        self.assertEqual(wl_alias["total_matching"], 1)
+        self.assertEqual(wl_alias["watchlist"][0]["name"], "Mana Drain")
 
         deals = self._call_tool("get_active_deals", {"category": "all"})
         self.assertEqual(deals["singles_deals_count"], 1)
