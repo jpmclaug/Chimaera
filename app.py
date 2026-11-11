@@ -1785,6 +1785,7 @@ def create_app(test_config=None):
 
         tag_filter = str(data.get("tag_filter", "all")).strip() or "all"
         allow_mp = bool(data.get("allow_mp", False))
+        english_only = bool(data.get("english_only", True))
 
         # Query user watchlist items and enrich with collection ownership status
         user_items = WatchlistItem.query.filter_by(user_id=user.id).all()
@@ -1804,6 +1805,7 @@ def create_app(test_config=None):
                 bundle_amount_type=bundle_amount_type,
                 tag_filter=tag_filter,
                 allow_mp=allow_mp,
+                english_only=english_only,
             )
 
             log_activity(

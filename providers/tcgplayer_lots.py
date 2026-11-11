@@ -142,11 +142,16 @@ class TCGplayerLotProvider:
         anchor_market_price: Optional[float] = None,
         tolerance_mode: str = "decent_10",
         allow_mp: bool = False,
+        english_only: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Discovers top active sellers offering the specified anchor card at a decent price.
         """
         clean_name = anchor_card_name.split(" // ")[0].strip()
+        term_filter = {"sellerStatus": "Live", "channelId": 0}
+        if english_only:
+            term_filter["language"] = ["English"]
+
         payload = {
             "algorithm": "sales_dismax",
             "from": 0,
@@ -163,7 +168,7 @@ class TCGplayerLotProvider:
             "listingSearch": {
                 "context": {"cart": {}},
                 "filters": {
-                    "term": {"sellerStatus": "Live", "channelId": 0},
+                    "term": term_filter,
                     "range": {"quantity": {"gte": 1}},
                     "exclude": {"channelExclusion": 0},
                 },
@@ -191,6 +196,12 @@ class TCGplayerLotProvider:
                 s_key = listing.get("sellerKey")
                 if not s_key or s_key in seen_sellers:
                     continue
+
+                if english_only:
+                    lang = listing.get("language", "English") or "English"
+                    lang_abbr = (listing.get("languageAbbreviation") or "EN").upper()
+                    if str(lang).strip().lower() != "english" or lang_abbr != "EN":
+                        continue
 
                 cond = listing.get("condition", "Near Mint")
                 if not allow_mp and cond in ("Moderately Played", "Heavily Played", "Damaged"):
@@ -241,6 +252,7 @@ class TCGplayerLotProvider:
         self,
         candidate_card_names: List[str],
         seed_count: int = 8,
+        english_only: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Samples candidate cards across the watchlist and finds sellers that frequently
@@ -256,6 +268,10 @@ class TCGplayerLotProvider:
             seed_names = candidate_card_names[:seed_count]
 
         clean_seeds = [name.split(" // ")[0].strip() for name in seed_names]
+        term_filter = {"sellerStatus": "Live", "channelId": 0}
+        if english_only:
+            term_filter["language"] = ["English"]
+
         payload = {
             "algorithm": "sales_dismax",
             "from": 0,
@@ -272,7 +288,7 @@ class TCGplayerLotProvider:
             "listingSearch": {
                 "context": {"cart": {}},
                 "filters": {
-                    "term": {"sellerStatus": "Live", "channelId": 0},
+                    "term": term_filter,
                     "range": {"quantity": {"gte": 1}},
                     "exclude": {"channelExclusion": 0},
                 },
@@ -295,6 +311,12 @@ class TCGplayerLotProvider:
                 if not s_key:
                     continue
 
+                if english_only:
+                    lang = listing.get("language", "English") or "English"
+                    lang_abbr = (listing.get("languageAbbreviation") or "EN").upper()
+                    if str(lang).strip().lower() != "english" or lang_abbr != "EN":
+                        continue
+
                 if s_key not in seller_frequency:
                     seller_frequency[s_key] = {
                         "sellerKey": s_key,
@@ -315,6 +337,7 @@ class TCGplayerLotProvider:
         self,
         seller_key: str,
         all_card_names: List[str],
+        english_only: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Queries TCGplayer for all cards in all_card_names stocked by this specific sellerKey.
@@ -322,6 +345,10 @@ class TCGplayerLotProvider:
         """
         all_products = []
         chunk_size = 80
+
+        term_filter = {"sellerStatus": "Live", "channelId": 0, "sellerKey": [seller_key]}
+        if english_only:
+            term_filter["language"] = ["English"]
 
         for i in range(0, len(all_card_names), chunk_size):
             chunk = all_card_names[i : i + chunk_size]
@@ -345,7 +372,7 @@ class TCGplayerLotProvider:
                 "listingSearch": {
                     "context": {"cart": {}},
                     "filters": {
-                        "term": {"sellerStatus": "Live", "channelId": 0, "sellerKey": [seller_key]},
+                        "term": term_filter,
                         "range": {"quantity": {"gte": 1}},
                         "exclude": {"channelExclusion": 0},
                     },
@@ -433,6 +460,7 @@ class TCGplayerLotProvider:
         bundle_amount_type: str = "max_budget",  # 'max_budget' | 'min_threshold'
         tag_filter: Optional[str] = None,
         allow_mp: bool = False,
+        english_only: bool = True,
     ) -> Dict[str, Any]:
         """
         Main entry point for finding single-seller lots across the user's watchlist.
@@ -501,12 +529,14 @@ class TCGplayerLotProvider:
                     anchor_market_price=anchor_market,
                     tolerance_mode=price_tolerance_mode,
                     allow_mp=allow_mp,
+                    english_only=english_only,
                 )
         else:
             # Watchlist lot or dollar amount mode: discover sellers from candidate items
             candidate_sellers = self._discover_sellers_for_watchlist(
                 candidate_card_names=all_names,
                 seed_count=10,
+                english_only=english_only,
             )
 
         if not candidate_sellers:
@@ -527,7 +557,7 @@ class TCGplayerLotProvider:
             if not s_key:
                 return None
 
-            products = self._query_seller_watchlist_inventory(s_key, all_names)
+            products = self._query_seller_watchlist_inventory(s_key, all_names, english_only=english_only)
             if not products:
                 return None
 
@@ -563,6 +593,11 @@ class TCGplayerLotProvider:
                     s_name = prod.get("setName", "")
 
                     for l in prod.get("listings", []):
+                        lang = l.get("language", "English") or "English"
+                        lang_abbr = (l.get("languageAbbreviation") or "EN").upper()
+                        if english_only and (str(lang).strip().lower() != "english" or lang_abbr != "EN"):
+                            continue
+
                         cond = l.get("condition", "Near Mint")
                         if not allow_mp and cond in ("Moderately Played", "Heavily Played", "Damaged"):
                             continue
@@ -604,6 +639,8 @@ class TCGplayerLotProvider:
                             "isFancyTreatment": is_fancy,
                             "targetPrice": t_price,
                             "condition": cond,
+                            "language": lang,
+                            "languageAbbreviation": lang_abbr,
                             "printing": l.get("printing", "Normal"),
                             "quantity": int(l.get("quantity", 1)),
                             "imageUri": getattr(w_item, "image_uri", None),
@@ -761,4 +798,5 @@ class TCGplayerLotProvider:
             "mode": mode,
             "min_cards": min_cards,
             "tolerance_mode": price_tolerance_mode,
+            "english_only": english_only,
         }

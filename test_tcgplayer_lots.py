@@ -355,6 +355,123 @@ def test_find_seller_lots_with_target_bundle_amount(lot_provider):
         assert res_b["total_sellers_found"] == 0
 
 
+def test_find_seller_lots_english_only_filtering(lot_provider):
+    """
+    Verifies that when english_only=True (default):
+    1. A cheap Chinese copy ($0.50) of a card is ignored in favor of the English copy ($1.00).
+    2. A foreign-only (e.g. Russian) listing is completely ignored.
+    3. Every card in the resulting lot has language='English' and languageAbbreviation='EN'.
+    """
+    watchlist = [
+        DummyWatchlistItem(1, "Lightning Bolt", target_price=2.00, market_price=1.20),
+        DummyWatchlistItem(2, "Counterspell", target_price=2.00, market_price=1.50),
+        DummyWatchlistItem(3, "Dark Ritual", target_price=2.00, market_price=1.50),
+        DummyWatchlistItem(4, "Giant Growth", target_price=2.00, market_price=1.50),
+        DummyWatchlistItem(5, "Healing Salve", target_price=2.00, market_price=1.50),
+        DummyWatchlistItem(6, "Russian Only Card", target_price=2.00, market_price=1.50),
+    ]
+
+    mock_inventory = [
+        # Lightning Bolt has cheap Chinese copy ($0.50) and English copy ($1.00)
+        {
+            "productName": "Lightning Bolt",
+            "productId": 1001,
+            "marketPrice": 1.20,
+            "listings": [
+                {
+                    "sellerKey": "seller_eng",
+                    "price": 0.50,
+                    "language": "Chinese (Simplified)",
+                    "languageAbbreviation": "CS",
+                    "condition": "Near Mint",
+                },
+                {
+                    "sellerKey": "seller_eng",
+                    "price": 1.00,
+                    "language": "English",
+                    "languageAbbreviation": "EN",
+                    "condition": "Near Mint",
+                },
+            ],
+        },
+        # Cards 2-5 are English only ($1.00 each)
+        {
+            "productName": "Counterspell",
+            "productId": 1002,
+            "marketPrice": 1.50,
+            "listings": [
+                {"sellerKey": "seller_eng", "price": 1.00, "language": "English", "languageAbbreviation": "EN", "condition": "Near Mint"}
+            ],
+        },
+        {
+            "productName": "Dark Ritual",
+            "productId": 1003,
+            "marketPrice": 1.50,
+            "listings": [
+                {"sellerKey": "seller_eng", "price": 1.00, "language": "English", "languageAbbreviation": "EN", "condition": "Near Mint"}
+            ],
+        },
+        {
+            "productName": "Giant Growth",
+            "productId": 1004,
+            "marketPrice": 1.50,
+            "listings": [
+                {"sellerKey": "seller_eng", "price": 1.00, "language": "English", "languageAbbreviation": "EN", "condition": "Near Mint"}
+            ],
+        },
+        {
+            "productName": "Healing Salve",
+            "productId": 1005,
+            "marketPrice": 1.50,
+            "listings": [
+                {"sellerKey": "seller_eng", "price": 1.00, "language": "English", "languageAbbreviation": "EN", "condition": "Near Mint"}
+            ],
+        },
+        # Card 6 has ONLY a Russian listing
+        {
+            "productName": "Russian Only Card",
+            "productId": 1006,
+            "marketPrice": 1.50,
+            "listings": [
+                {"sellerKey": "seller_eng", "price": 0.40, "language": "Russian", "languageAbbreviation": "RU", "condition": "Near Mint"}
+            ],
+        },
+    ]
+
+    with patch.object(lot_provider, "_discover_sellers_for_watchlist") as mock_disc, \
+         patch.object(lot_provider, "_query_seller_watchlist_inventory") as mock_inv:
+
+        mock_disc.return_value = [{"sellerKey": "seller_eng", "sellerName": "English Only Store"}]
+        mock_inv.return_value = mock_inventory
+
+        res = lot_provider.find_seller_lots(
+            watchlist_items=watchlist,
+            mode="lots",
+            min_cards=5,
+            english_only=True,
+        )
+
+        assert res["success"] is True
+        assert res["total_sellers_found"] == 1
+        seller = res["sellers"][0]
+        assert seller["qualifyingCount"] == 5
+
+        # Lightning Bolt must be the $1.00 English copy, NOT the $0.50 Chinese copy!
+        bolt = [c for c in seller["cards"] if c["name"] == "Lightning Bolt"][0]
+        assert bolt["price"] == 1.00
+        assert bolt["language"] == "English"
+        assert bolt["languageAbbreviation"] == "EN"
+
+        # Russian card must be completely excluded
+        russian_card = [c for c in seller["cards"] if c["name"] == "Russian Only Card"]
+        assert len(russian_card) == 0
+
+        # Every card in the lot must be English
+        for card in seller["cards"]:
+            assert card["language"] == "English"
+            assert card["languageAbbreviation"] == "EN"
+
+
 def test_api_tcgplayer_lots_endpoint(lot_provider):
     from app import app
     from models import db, User

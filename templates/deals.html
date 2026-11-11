@@ -792,13 +792,17 @@
                     </select>
                 </div>
 
-                <!-- 4. Condition Filter -->
+                <!-- 4. Language & Condition Filter -->
                 <div>
-                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Card Condition</label>
-                    <div class="h-9 flex items-center px-2 bg-[#10141D] border border-[#263245]">
-                        <label class="inline-flex items-center space-x-2 text-xs text-[#94A3B8] cursor-pointer">
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Language &amp; Condition</label>
+                    <div class="h-9 flex items-center px-2 bg-[#10141D] border border-[#263245] space-x-3">
+                        <label class="inline-flex items-center space-x-1.5 text-xs text-[#00CED1] font-bold cursor-pointer" title="Only include English printings (excludes Chinese, Japanese, Russian, etc.)">
+                            <input type="checkbox" id="lot-english-only" checked class="form-checkbox text-[#00CED1] rounded-none bg-[#161C28] border-[#263245]">
+                            <span>English Only</span>
+                        </label>
+                        <label class="inline-flex items-center space-x-1.5 text-xs text-[#94A3B8] cursor-pointer" title="Include Moderately Played condition">
                             <input type="checkbox" id="lot-allow-mp" class="form-checkbox text-[#00CED1] rounded-none bg-[#161C28] border-[#263245]">
-                            <span>Include MP (Moderately Played)</span>
+                            <span>Allow MP</span>
                         </label>
                     </div>
                 </div>

@@ -5742,6 +5742,7 @@ async function runTcgplayerLotScan() {
     const maxCardPrice = document.getElementById("lot-max-card-price")?.value || null;
     const targetBundleAmount = document.getElementById("lot-target-bundle-amount")?.value || null;
     const bundleAmountType = document.getElementById("lot-bundle-amount-type")?.value || "max_budget";
+    const englishOnly = document.getElementById("lot-english-only") ? document.getElementById("lot-english-only").checked : true;
 
     if (btn) btn.disabled = true;
     if (spinner) spinner.classList.remove("hidden");
@@ -5756,6 +5757,7 @@ async function runTcgplayerLotScan() {
         price_tolerance_mode: priceTolerance,
         tag_filter: tagFilter,
         allow_mp: allowMp,
+        english_only: englishOnly,
         anchor_card_id: anchorCardId,
         anchor_card_name: anchorCardName,
         max_card_price: maxCardPrice,
@@ -5916,6 +5918,9 @@ function renderSellerLotResults(data) {
                             <span>${card.setName || "Magic: The Gathering"}</span>
                             <span class="text-[#00CED1]">&bull; ${card.condition}</span>
                             <span>&bull; ${card.printing}</span>
+                            <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/30 text-[9px] px-1 py-0.2 uppercase font-bold" title="${card.language || 'English'}">
+                                ${card.languageAbbreviation || "EN"}
+                            </span>
                             ${tagBadge}
                             ${binderBadge}
                         </div>
@@ -6031,15 +6036,15 @@ function renderSellerLotResults(data) {
 
                     <div class="flex flex-wrap items-center gap-1.5 sm:justify-end">
                         ${countBadge}
-                        <a href="${seller.multiCardSearchUrl}" target="_blank" rel="noopener"
-                            class="btn-bridge text-xs px-2.5 py-1.5 text-[#00CED1] hover:text-white flex items-center space-x-1 font-bold"
-                            title="Open a TCGplayer search filtered to this seller with all ${seller.qualifyingCount} lot cards">
-                            <span>🔍 Search Lot</span>
-                        </a>
-                        <button onclick="openTcgMassEntry(${idx})" class="btn-bridge text-xs px-2.5 py-1.5 text-[#10B981] hover:text-white flex items-center space-x-1 font-bold"
-                            title="Copy card list and open TCGplayer Mass Entry tool">
-                            <span>🛒 Mass Entry</span>
+                        <button onclick="openTcgMassEntry(${idx})" class="btn-bridge text-xs px-3 py-1.5 bg-[#10B981]/20 text-[#10B981] hover:bg-[#10B981] hover:text-[#10141D] flex items-center space-x-1.5 font-bold uppercase tracking-wider transition border border-[#10B981]/40"
+                            title="Copy all ${seller.qualifyingCount} cards to clipboard and open TCGplayer Mass Entry tool to cart them together">
+                            <span>🛒 Cart Lot (Mass Entry)</span>
                         </button>
+                        <a href="${seller.storeUrl}" target="_blank" rel="noopener"
+                            class="btn-bridge text-xs px-2.5 py-1.5 text-[#00CED1] hover:text-white flex items-center space-x-1 font-bold"
+                            title="Browse ${seller.sellerName}'s live catalog on TCGplayer">
+                            <span>🏪 Storefront</span>
+                        </a>
                         <button onclick="copySellerLotList(${idx})" class="btn-bridge text-xs px-2.5 py-1.5 text-[#94A3B8] hover:text-white" title="Copy Card List to Clipboard">
                             📋 Copy List
                         </button>
@@ -6067,6 +6072,13 @@ function renderSellerLotResults(data) {
                         <div class="text-sm sm:text-base font-bold ${seller.netSavings > 0 ? 'text-[#10B981]' : 'text-[#94A3B8]'} mt-0.5">
                             ${seller.netSavings > 0 ? '+$' + seller.netSavings.toFixed(2) + ' (' + seller.savingsPct + '%)' : '$0.00'}
                         </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] bg-[#10141D] px-3 py-1.5 border border-[#263245] text-[#94A3B8] font-mono">
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-[#00CED1] font-bold">💡 How to Buy:</span>
+                        <span>Use <strong class="text-[#10B981]">🛒 Cart Lot (Mass Entry)</strong> to paste all cards into your cart at once, or use <strong class="text-[#00CED1]">🔍 In Store</strong> next to any card below to view listings in this shop.</span>
                     </div>
                 </div>
 
