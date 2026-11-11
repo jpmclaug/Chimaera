@@ -17,6 +17,45 @@ DEFAULT_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 )
 
+# Universes Within (SLX) <-> Universes Beyond Secret Lair (SLD) canonical cross-identity mapping
+UNIVERSES_WITHIN_ALIASES: Dict[str, str] = {
+    # D&D: Honor Among Thieves (SLD) <-> Universes Within (SLX)
+    "casal, lurkwood pathfinder": "doric, nature's warden",
+    "doric, nature's warden": "casal, lurkwood pathfinder",
+    # Stranger Things (SLD) <-> Universes Within (SLX)
+    "elmar, wyrm enforcer": "max, the daredevil",
+    "max, the daredevil": "elmar, wyrm enforcer",
+    "bjorna, nightfall alchemist": "lucas, the sharpshooter",
+    "lucas, the sharpshooter": "bjorna, nightfall alchemist",
+    "cecily, haunted mage": "eleven, the mage",
+    "eleven, the mage": "cecily, haunted mage",
+    "hargilde, kindly runechanter": "dustin, the gadgeteer",
+    "dustin, the gadgeteer": "hargilde, kindly runechanter",
+    "othelm, sigardian outcast": "mike, the dungeon master",
+    "mike, the dungeon master": "othelm, sigardian outcast",
+    "wernog, rider's chaplain": "will, the wise",
+    "will, the wise": "wernog, rider's chaplain",
+    "arvinox, the mind flail": "mind flayer, the shadow",
+    "mind flayer, the shadow": "arvinox, the mind flail",
+    "sophina, spearhead specialist": "chief jim hopper",
+    "chief jim hopper": "sophina, spearhead specialist",
+    # The Walking Dead (SLD) <-> Universes Within (SLX)
+    "greymond, avacyn's stalwart": "rick, steadfast leader",
+    "rick, steadfast leader": "greymond, avacyn's stalwart",
+    # Street Fighter (SLD) <-> Universes Within (SLX)
+    "chun-li, countless kicks": "zethi, arcane blademaster",
+    "zethi, arcane blademaster": "chun-li, countless kicks",
+    "dhalsim, pliable pacifist": "tadeas, juniper ascendant",
+    "tadeas, juniper ascendant": "dhalsim, pliable pacifist",
+    "guile, sonic soldier": "immard, the stormcleaver",
+    "immard, the stormcleaver": "guile, sonic soldier",
+    "ken, burning brawler": "aisha of sparks and smoke",
+    "aisha of sparks and smoke": "ken, burning brawler",
+    "ryu, world warrior": "vikya, scorching stalwart",
+    "vikya, scorching stalwart": "ryu, world warrior",
+}
+
+
 
 class TCGplayerLotProvider:
     """
@@ -81,7 +120,8 @@ class TCGplayerLotProvider:
         effective_market = market_price
         if baseline_cheapest_market and baseline_cheapest_market > 0:
             if effective_market and effective_market > 0:
-                effective_market = min(effective_market, baseline_cheapest_market)
+                if effective_market > baseline_cheapest_market * 1.5:
+                    effective_market = baseline_cheapest_market
             else:
                 effective_market = baseline_cheapest_market
 
@@ -148,6 +188,11 @@ class TCGplayerLotProvider:
         Discovers top active sellers offering the specified anchor card at a decent price.
         """
         clean_name = anchor_card_name.split(" // ")[0].strip()
+        search_names = [clean_name]
+        alias_name = UNIVERSES_WITHIN_ALIASES.get(clean_name.lower())
+        if alias_name:
+            search_names.append(alias_name.title())
+
         term_filter = {"sellerStatus": "Live", "channelId": 0}
         if english_only:
             term_filter["language"] = ["English"]
@@ -160,7 +205,7 @@ class TCGplayerLotProvider:
                 "term": {
                     "productLineName": ["magic"],
                     "productTypeName": ["Cards"],
-                    "productName": [clean_name],
+                    "productName": search_names,
                 },
                 "range": {},
                 "match": {},
@@ -192,7 +237,33 @@ class TCGplayerLotProvider:
             p_name = prod.get("productName")
             s_name = prod.get("setName")
 
-            for listing in prod.get("listings", []):
+            # Fetch active listings from dedicated product endpoint (up to 50 sellers)
+            # Falling back to the search payload's embedded preview listings if needed
+            listings = []
+            if p_id is not None:
+                try:
+                    p_id_int = int(p_id)
+                    l_payload = {
+                        "filters": {
+                            "term": term_filter,
+                            "range": {"quantity": {"gte": 1}},
+                            "exclude": {"channelExclusion": 0},
+                        },
+                        "context": {"cart": {}, "shippingCountry": "US"},
+                        "sort": {"field": "price", "order": "asc"},
+                        "size": 50,
+                        "from": 0,
+                    }
+                    p_data = self._post_json(f"https://mp-search-api.tcgplayer.com/v1/product/{p_id_int}/listings", l_payload)
+                    if p_data and p_data.get("results"):
+                        listings = p_data["results"][0].get("results", [])
+                except Exception as e:
+                    logger.debug(f"Failed to fetch product listings for {p_id}: {e}")
+
+            if not listings:
+                listings = prod.get("listings", [])
+
+            for listing in listings:
                 s_key = listing.get("sellerKey")
                 if not s_key or s_key in seen_sellers:
                     continue
@@ -267,7 +338,14 @@ class TCGplayerLotProvider:
         if not seed_names:
             seed_names = candidate_card_names[:seed_count]
 
-        clean_seeds = [name.split(" // ")[0].strip() for name in seed_names]
+        clean_seeds = []
+        for name in seed_names:
+            c = name.split(" // ")[0].strip()
+            clean_seeds.append(c)
+            alias = UNIVERSES_WITHIN_ALIASES.get(c.lower())
+            if alias:
+                clean_seeds.append(alias.title())
+        clean_seeds = list(set(clean_seeds))
         term_filter = {"sellerStatus": "Live", "channelId": 0}
         if english_only:
             term_filter["language"] = ["English"]
@@ -352,7 +430,16 @@ class TCGplayerLotProvider:
 
         for i in range(0, len(all_card_names), chunk_size):
             chunk = all_card_names[i : i + chunk_size]
-            clean_chunk = list({name.split(" // ")[0].strip() for name in chunk if name})
+            clean_chunk_set = set()
+            for name in chunk:
+                if not name:
+                    continue
+                c = name.split(" // ")[0].strip()
+                clean_chunk_set.add(c)
+                alias = UNIVERSES_WITHIN_ALIASES.get(c.lower())
+                if alias:
+                    clean_chunk_set.add(alias.title())
+            clean_chunk = list(clean_chunk_set)
             if not clean_chunk:
                 continue
 
@@ -561,13 +648,17 @@ class TCGplayerLotProvider:
             if not products:
                 return None
 
-            # Group products by canonical normalized card name
+            # Group products by canonical normalized card name (including Universes Within cross-aliases)
             products_by_card: Dict[str, List[dict]] = {}
             for prod in products:
                 prod_name = prod.get("productName", "")
                 norm_name = normalize_card_name(prod_name.split(" // ")[0].strip())
                 if norm_name in item_by_name:
                     products_by_card.setdefault(norm_name, []).append(prod)
+                else:
+                    alias = UNIVERSES_WITHIN_ALIASES.get(norm_name)
+                    if alias and alias in item_by_name:
+                        products_by_card.setdefault(alias, []).append(prod)
 
             qualifying_cards = []
             above_tolerance_cards = []

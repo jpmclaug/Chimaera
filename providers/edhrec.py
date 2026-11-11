@@ -378,7 +378,7 @@ class EDHRECProvider:
                             front_lower = c_lower.split(" // ")[0].strip()
                             card_synergies[front_lower] = card_entry
 
-                    if "high synergy" in header.lower():
+                    if "high synergy" in header.lower() or "high lift" in header.lower():
                         high_synergy_cards.append(card_entry)
                     elif "top cards" in header.lower():
                         top_cards.append(card_entry)
