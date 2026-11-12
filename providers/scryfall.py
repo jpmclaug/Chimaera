@@ -110,9 +110,15 @@ class ScryfallProvider:
         q_to_try = []
         if clean_q and len(clean_q) >= 2:
             q_to_try.append(clean_q)
+            t_clean = clean_q.title()
+            if t_clean != clean_q and t_clean not in q_to_try:
+                q_to_try.append(t_clean)
         raw_trimmed = query.strip()
         if raw_trimmed not in q_to_try and len(raw_trimmed) >= 2:
             q_to_try.append(raw_trimmed)
+            t_raw = raw_trimmed.title()
+            if t_raw not in q_to_try:
+                q_to_try.append(t_raw)
 
         for q in q_to_try:
             try:
@@ -126,19 +132,32 @@ class ScryfallProvider:
             except Exception as e:
                 logger.debug(f"Error querying Scryfall autocomplete for '{q}': {e}")
 
-        # Fuzzy named fallback if autocomplete yielded nothing and query has 3+ chars
+        # Exact and Fuzzy named fallback if autocomplete yielded nothing and query has 3+ chars
         target = clean_q or query.strip()
         if len(target) >= 3:
-            try:
-                url = f"{SCRYFALL_BASE_URL}/cards/named"
-                response = self._request("get", url, params={"fuzzy": target}, timeout=6)
-                if response.status_code == 200:
-                    card = response.json()
-                    c_name = card.get("name")
-                    if c_name:
-                        return [c_name]
-            except Exception as e:
-                logger.debug(f"Error querying Scryfall fuzzy named for '{target}': {e}")
+            named_targets = [target]
+            t_target = target.title()
+            if t_target != target:
+                named_targets.append(t_target)
+            for t in named_targets:
+                try:
+                    url = f"{SCRYFALL_BASE_URL}/cards/named"
+                    # Try exact named first (higher CDN cache hit rate)
+                    response = self._request("get", url, params={"exact": t}, timeout=6)
+                    if response.status_code == 200:
+                        card = response.json()
+                        c_name = card.get("name")
+                        if c_name:
+                            return [c_name]
+                    # Try fuzzy named second
+                    response = self._request("get", url, params={"fuzzy": t}, timeout=6)
+                    if response.status_code == 200:
+                        card = response.json()
+                        c_name = card.get("name")
+                        if c_name:
+                            return [c_name]
+                except Exception as e:
+                    logger.debug(f"Error querying Scryfall named for '{t}': {e}")
 
         return []
 
@@ -248,69 +267,73 @@ class ScryfallProvider:
             ScryfallProvider._card_cache[k] = formatted
 
     def get_card_named(self, card_name: str) -> dict | None:
-        """Fetches canonical card object from Scryfall by card name with accent, DFC, and fuzzy fallbacks."""
+        """Fetches canonical card object from Scryfall by card name with accent, DFC, Title Case, and fuzzy fallbacks."""
         if not card_name:
             return None
+
+        # Check in-memory card cache first
+        raw_key = card_name.lower().strip()
+        if raw_key in ScryfallProvider._card_cache:
+            return ScryfallProvider._card_cache[raw_key]
 
         clean_name = fix_mojibake(str(card_name)).strip()
         if not clean_name:
             return None
 
+        clean_key = clean_name.lower()
+        if clean_key in ScryfallProvider._card_cache:
+            return ScryfallProvider._card_cache[clean_key]
+
         url = f"{SCRYFALL_BASE_URL}/cards/named"
 
-        # 1. Try exact match with clean name
-        try:
-            response = self._request("get", url, params={"exact": clean_name}, timeout=8)
-            if response.status_code == 200:
-                return self._format_card_object(response.json())
-        except Exception as e:
-            logger.debug(f"Scryfall exact named lookup error for '{clean_name}': {e}")
+        # 1. Build exact match candidates (clean name, Title Case, unaccented, DFC front face)
+        exact_candidates = []
+        for n in [clean_name, clean_name.title()]:
+            if n and n not in exact_candidates:
+                exact_candidates.append(n)
 
-        # 2. Try unaccented name if accents were present (e.g. 'Glóin the Mighty' -> 'Gloin the Mighty')
         ascii_name = strip_accents(clean_name)
-        if ascii_name != clean_name:
-            try:
-                response = self._request("get", url, params={"exact": ascii_name}, timeout=8)
-                if response.status_code == 200:
-                    return self._format_card_object(response.json())
-            except Exception as e:
-                logger.debug(f"Scryfall ascii named lookup error for '{ascii_name}': {e}")
+        for n in [ascii_name, ascii_name.title()]:
+            if n and n not in exact_candidates:
+                exact_candidates.append(n)
 
-        # 3. Try front face for split / DFC / adventure cards (e.g. 'Glóin the Mighty // Easy Pickings' -> 'Glóin the Mighty')
         if " // " in clean_name:
             front = clean_name.split(" // ")[0].strip()
-            try:
-                response = self._request("get", url, params={"exact": front}, timeout=8)
-                if response.status_code == 200:
-                    return self._format_card_object(response.json())
-            except Exception as e:
-                logger.debug(f"Scryfall front-face exact lookup error for '{front}': {e}")
-
             front_ascii = strip_accents(front)
-            if front_ascii != front:
-                try:
-                    response = self._request("get", url, params={"exact": front_ascii}, timeout=8)
-                    if response.status_code == 200:
-                        return self._format_card_object(response.json())
-                except Exception as e:
-                    logger.debug(f"Scryfall front-face ascii lookup error for '{front_ascii}': {e}")
+            for n in [front, front.title(), front_ascii, front_ascii.title()]:
+                if n and n not in exact_candidates:
+                    exact_candidates.append(n)
 
-        # 4. Try fuzzy match as fallback
-        try:
-            response = self._request("get", url, params={"fuzzy": clean_name}, timeout=8)
-            if response.status_code == 200:
-                return self._format_card_object(response.json())
-        except Exception as e:
-            logger.debug(f"Scryfall fuzzy named lookup error for '{clean_name}': {e}")
+        for cand in exact_candidates:
+            try:
+                response = self._request("get", url, params={"exact": cand}, timeout=8)
+                if response.status_code == 200:
+                    formatted = self._format_card_object(response.json())
+                    self._index_card_in_map(ScryfallProvider._card_cache, formatted, extra_names=[card_name, clean_name])
+                    return formatted
+            except Exception as e:
+                logger.debug(f"Scryfall exact named lookup error for '{cand}': {e}")
 
+        # 2. Try fuzzy match as fallback
+        fuzzy_candidates = []
+        for n in [clean_name, clean_name.title()]:
+            if n and n not in fuzzy_candidates:
+                fuzzy_candidates.append(n)
         if " // " in clean_name:
             front = clean_name.split(" // ")[0].strip()
+            for n in [front, front.title()]:
+                if n and n not in fuzzy_candidates:
+                    fuzzy_candidates.append(n)
+
+        for cand in fuzzy_candidates:
             try:
-                response = self._request("get", url, params={"fuzzy": front}, timeout=8)
+                response = self._request("get", url, params={"fuzzy": cand}, timeout=8)
                 if response.status_code == 200:
-                    return self._format_card_object(response.json())
+                    formatted = self._format_card_object(response.json())
+                    self._index_card_in_map(ScryfallProvider._card_cache, formatted, extra_names=[card_name, clean_name])
+                    return formatted
             except Exception as e:
-                logger.debug(f"Scryfall front-face fuzzy lookup error for '{front}': {e}")
+                logger.debug(f"Scryfall fuzzy named lookup error for '{cand}': {e}")
 
         logger.warning(f"Scryfall named lookup failed for '{card_name}'")
         return None
@@ -442,19 +465,31 @@ class ScryfallProvider:
         primary_name = clean_name.split(" // ")[0].strip()
 
         candidates = [clean_name]
+        if clean_name.title() not in candidates:
+            candidates.append(clean_name.title())
+
         if primary_name != clean_name:
             candidates.append(primary_name)
+            if primary_name.title() not in candidates:
+                candidates.append(primary_name.title())
         
         # Add unaccented candidates if diacritics are present
         ascii_clean = strip_accents(clean_name)
         if ascii_clean not in candidates:
             candidates.append(ascii_clean)
+        if ascii_clean.title() not in candidates:
+            candidates.append(ascii_clean.title())
+
         ascii_primary = strip_accents(primary_name)
         if ascii_primary not in candidates:
             candidates.append(ascii_primary)
+        if ascii_primary.title() not in candidates:
+            candidates.append(ascii_primary.title())
 
         if card_name.strip() not in candidates:
             candidates.append(card_name.strip())
+        if card_name.strip().title() not in candidates:
+            candidates.append(card_name.strip().title())
 
         try:
             cards = []
@@ -478,13 +513,41 @@ class ScryfallProvider:
                     if cards:
                         break
 
-            # 2. If exact matches failed, attempt fuzzy named lookup
+            # 2. If exact search matches failed, attempt named lookup (exact first, then fuzzy)
             if not cards:
-                named_url = f"{SCRYFALL_BASE_URL}/cards/named"
-                fuzzy_target = clean_name.replace('"', '').strip() or card_name.strip()
-                named_resp = self._request("get", named_url, params={"fuzzy": fuzzy_target}, timeout=10)
-                if named_resp.status_code == 200:
-                    named_data = named_resp.json()
+                named_candidates = []
+                for n in [clean_name, clean_name.title(), card_name.strip(), card_name.strip().title()]:
+                    if n and n not in named_candidates:
+                        named_candidates.append(n)
+                if primary_name != clean_name:
+                    for n in [primary_name, primary_name.title()]:
+                        if n and n not in named_candidates:
+                            named_candidates.append(n)
+
+                named_data = None
+                for n_cand in named_candidates:
+                    named_url = f"{SCRYFALL_BASE_URL}/cards/named"
+                    try:
+                        named_resp = self._request("get", named_url, params={"exact": n_cand}, timeout=8)
+                        if named_resp.status_code == 200:
+                            named_data = named_resp.json()
+                            break
+                    except Exception as e:
+                        logger.debug(f"Named exact lookup error for '{n_cand}': {e}")
+
+                    try:
+                        named_resp = self._request("get", named_url, params={"fuzzy": n_cand}, timeout=8)
+                        if named_resp.status_code == 200:
+                            named_data = named_resp.json()
+                            break
+                    except Exception as e:
+                        logger.debug(f"Named fuzzy lookup error for '{n_cand}': {e}")
+
+                if named_data:
+                    # Cache the canonical card
+                    formatted_canonical = self._format_card_object(named_data)
+                    self._index_card_in_map(ScryfallProvider._card_cache, formatted_canonical, extra_names=[card_name, clean_name])
+
                     # 2a. Use prints_search_uri provided directly by Scryfall (searches by oracleid)
                     prints_url = named_data.get("prints_search_uri")
                     if prints_url:
