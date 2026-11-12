@@ -276,6 +276,8 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN upgrades_json TEXT"))
                     if "tactics_json" not in da_cols:
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN tactics_json TEXT"))
+                    if "tactics_fingerprints" not in da_cols:
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN tactics_fingerprints TEXT"))
                     conn.execute(db.text("""
                         CREATE TABLE IF NOT EXISTS user_inventory_card (
                             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -477,6 +479,7 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS deck_format VARCHAR(50) DEFAULT 'commander' NOT NULL"))
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS upgrades_json TEXT"))
                         conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS tactics_json TEXT"))
+                        conn.execute(db.text("ALTER TABLE deck_analysis ADD COLUMN IF NOT EXISTS tactics_fingerprints TEXT"))
                         conn.execute(db.text("""
                             CREATE TABLE IF NOT EXISTS user_inventory_card (
                                 id SERIAL PRIMARY KEY,
@@ -564,6 +567,29 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_user_id ON tcgplayer_order (user_id)"))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_status ON tcgplayer_order (status)"))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_number ON tcgplayer_order (order_number)"))
+
+                        # One-time backfill of tactics_fingerprints for existing decks with tactics
+                        try:
+                            rows = conn.execute(db.text(
+                                "SELECT id, tactics_json FROM deck_analysis "
+                                "WHERE tactics_json IS NOT NULL AND tactics_fingerprints IS NULL"
+                            )).fetchall()
+                            for r_id, t_json in rows:
+                                if t_json:
+                                    try:
+                                        t_data = json.loads(t_json) if isinstance(t_json, str) else t_json
+                                        secs = t_data.get("sections", {}) if isinstance(t_data, dict) else {}
+                                        if secs:
+                                            fps = {sec: (s_val or {}).get("deck_fingerprint") for sec, s_val in secs.items()}
+                                            conn.execute(
+                                                db.text("UPDATE deck_analysis SET tactics_fingerprints = :fps WHERE id = :id"),
+                                                {"fps": json.dumps(fps), "id": r_id}
+                                            )
+                                    except Exception:
+                                        pass
+                        except Exception as bf_err:
+                            logger.debug(f"tactics_fingerprints backfill skipped: {bf_err}")
+
                         conn.commit()
                         logger.info("PostgreSQL migration check completed.")
                 except Exception as pg_err:
@@ -1483,8 +1509,8 @@ def create_app(test_config=None):
             return watchlist_items
 
         try:
-            inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
-            if not inv_cards:
+            inv_rows = inventory_manager.get_owned_rows(user_id)
+            if not inv_rows:
                 for item in watchlist_items:
                     item.in_binder = False
                     item.binder_count = 0
@@ -1493,10 +1519,10 @@ def create_app(test_config=None):
                 owned_map: Dict[str, int] = defaultdict(int)
                 binder_names_map: Dict[str, set] = defaultdict(set)
 
-                for ic in inv_cards:
-                    qty = max(1, int(ic.quantity or 1))
-                    b_name = ic.binder_name.strip() if ic.binder_name else ""
-                    for k in get_card_match_keys(ic.name):
+                for c_name, c_qty, c_binder in inv_rows:
+                    qty = max(1, int(c_qty or 1))
+                    b_name = c_binder.strip() if c_binder else ""
+                    for k in get_card_match_keys(c_name):
                         owned_map[k] += qty
                         if b_name:
                             binder_names_map[k].add(b_name)
@@ -3685,13 +3711,13 @@ def create_app(test_config=None):
         return models
 
     def _query_user_recent_decks(user):
-        """Queries user's Commander decks while deferring heavy raw_decklist column."""
+        """Queries user's Commander decks (large JSON blobs deferred by model configuration)."""
         if not user:
             return []
         query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(
             db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None)
         )
-        return query.options(db.defer(DeckAnalysis.raw_decklist)).order_by(DeckAnalysis.created_at.desc()).all()
+        return query.order_by(DeckAnalysis.created_at.desc()).all()
 
     BASIC_LAND_NAMES = {
         "plains", "island", "swamp", "mountain", "forest", "wastes",
@@ -3710,12 +3736,12 @@ def create_app(test_config=None):
             return deck_dict
 
         try:
-            # 1. Fetch user inventory cards
-            inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
+            # 1. Fetch user inventory cards (lightweight rows)
+            inv_rows = inventory_manager.get_owned_rows(user_id)
             owned_map: Dict[str, int] = defaultdict(int)
-            for ic in inv_cards:
-                qty = max(1, int(ic.quantity or 1))
-                for k in get_card_match_keys(ic.name):
+            for c_name, c_qty, _ in inv_rows:
+                qty = max(1, int(c_qty or 1))
+                for k in get_card_match_keys(c_name):
                     owned_map[k] += qty
 
             # 2. Fetch user watchlist items
@@ -3823,10 +3849,10 @@ def create_app(test_config=None):
         owned_map: Dict[str, int] = defaultdict(int)
         if user_id:
             try:
-                inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
-                for ic in inv_cards:
-                    qty = max(1, int(ic.quantity or 1))
-                    for k in get_card_match_keys(ic.name):
+                inv_rows = inventory_manager.get_owned_rows(user_id)
+                for c_name, c_qty, _ in inv_rows:
+                    qty = max(1, int(c_qty or 1))
+                    for k in get_card_match_keys(c_name):
                         owned_map[k] += qty
             except Exception as e:
                 logger.error(f"Error loading inventory for fleet stats: {e}")
@@ -4786,7 +4812,7 @@ def create_app(test_config=None):
     def api_deck_get_history(analysis_id):
         """Returns full saved deck details, cards, stats, and AI analysis by ID."""
         user = get_current_user()
-        entry = db.session.get(DeckAnalysis, analysis_id)
+        entry = DeckAnalysis.query.options(db.undefer_group("ai_blobs")).filter_by(id=analysis_id).first()
         if not entry:
             return jsonify({"error": "Saved deck not found."}), 404
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
@@ -5487,21 +5513,28 @@ def create_app(test_config=None):
         if not user_id:
             return owned_index
 
-        inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
-        for ic in inv_cards:
-            qty = max(1, int(ic.quantity or 1))
-            b_name = (ic.binder_name or "").strip()
+        # Load lightweight columns: name, quantity, binder_name, price_usd
+        inv_rows = db.session.query(
+            UserInventoryCard.name,
+            UserInventoryCard.quantity,
+            UserInventoryCard.binder_name,
+            UserInventoryCard.price_usd
+        ).filter(UserInventoryCard.user_id == user_id).all()
+
+        for c_name, c_qty, c_binder, c_price in inv_rows:
+            qty = max(1, int(c_qty or 1))
+            b_name = (c_binder or "").strip()
             # Generate clean keys matching Timewalked clean_card_key
-            raw_key = re.sub(r"['’,\-\s]+", "", ic.name.strip().lower())
-            front_key = re.sub(r"['’,\-\s]+", "", ic.name.split(" // ")[0].strip().lower()) if " // " in ic.name else raw_key
+            raw_key = re.sub(r"['’,\-\s]+", "", c_name.strip().lower())
+            front_key = re.sub(r"['’,\-\s]+", "", c_name.split(" // ")[0].strip().lower()) if " // " in c_name else raw_key
 
             for k in {raw_key, front_key}:
                 if k not in owned_index:
                     owned_index[k] = {
-                        "name": ic.name,
+                        "name": c_name,
                         "qty": 0,
                         "binders": set(),
-                        "price_usd": ic.price_usd,
+                        "price_usd": c_price,
                     }
                 owned_index[k]["qty"] += qty
                 if b_name:
@@ -6229,7 +6262,7 @@ def create_app(test_config=None):
     def api_deck_upgrades(deck_id: int):
         """Generates dual-tier upgrade recommendations: Owned Swaps ('In Your Binder') & Shopping List ('To Buy') with EDHREC synergy."""
         user = get_current_user()
-        entry = db.session.get(DeckAnalysis, deck_id)
+        entry = DeckAnalysis.query.options(db.undefer_group("ai_blobs")).filter_by(id=deck_id).first()
         if not entry:
             return jsonify({"error": "Deck not found."}), 404
 
@@ -6393,7 +6426,7 @@ def create_app(test_config=None):
     def api_deck_tactics(deck_id: int):
         """Fetches stored Commander Tactics sections and current staleness telemetry."""
         user = get_current_user()
-        entry = db.session.get(DeckAnalysis, deck_id)
+        entry = DeckAnalysis.query.options(db.undefer_group("ai_blobs")).filter_by(id=deck_id).first()
         if not entry:
             return jsonify({"error": "Saved deck not found."}), 404
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
@@ -6414,7 +6447,7 @@ def create_app(test_config=None):
     def api_deck_generate_tactics_section(deck_id: int, section: str):
         """Generates or regenerates a specific Commander Tactics section using Gemini AI."""
         user = get_current_user()
-        entry = db.session.get(DeckAnalysis, deck_id)
+        entry = DeckAnalysis.query.options(db.undefer_group("ai_blobs")).filter_by(id=deck_id).first()
         if not entry:
             return jsonify({"error": "Saved deck not found."}), 404
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
@@ -6534,7 +6567,7 @@ def create_app(test_config=None):
     def api_deck_clear_tactics(deck_id: int):
         """Clears all stored Commander Tactics for a deck."""
         user = get_current_user()
-        entry = db.session.get(DeckAnalysis, deck_id)
+        entry = DeckAnalysis.query.options(db.undefer_group("ai_blobs")).filter_by(id=deck_id).first()
         if not entry:
             return jsonify({"error": "Saved deck not found."}), 404
         if not user.is_admin and entry.user_id and entry.user_id != user.id:
@@ -6978,7 +7011,9 @@ def create_app(test_config=None):
         user = get_current_user()
         active_session = None
         if session_id:
-            active_session = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+            active_session = CommanderPlaytestSession.query.options(
+                db.undefer_group("pt_state")
+            ).filter_by(id=session_id, user_id=user.id).first()
             if not active_session:
                 flash("Requested playtest session was not found.", "warning")
                 return redirect(url_for("commander_playtest_page"))
@@ -7059,7 +7094,9 @@ def create_app(test_config=None):
     def api_playtest_get(session_id: int):
         """Fetches full state for a playtest session."""
         user = get_current_user()
-        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        entry = CommanderPlaytestSession.query.options(
+            db.undefer_group("pt_state")
+        ).filter_by(id=session_id, user_id=user.id).first()
         if not entry:
             return jsonify({"error": "Playtest session not found."}), 404
 
@@ -7116,7 +7153,9 @@ def create_app(test_config=None):
     def api_playtest_save_checkpoint(session_id: int):
         """Saves a named checkpoint snapshot (max 10)."""
         user = get_current_user()
-        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        entry = CommanderPlaytestSession.query.options(
+            db.undefer_group("pt_state")
+        ).filter_by(id=session_id, user_id=user.id).first()
         if not entry:
             return jsonify({"error": "Playtest session not found."}), 404
 
@@ -7148,7 +7187,9 @@ def create_app(test_config=None):
     def api_playtest_restart(session_id: int):
         """Restarts the session with the same decks (Run It Back)."""
         user = get_current_user()
-        entry = CommanderPlaytestSession.query.filter_by(id=session_id, user_id=user.id).first()
+        entry = CommanderPlaytestSession.query.options(
+            db.undefer_group("pt_state")
+        ).filter_by(id=session_id, user_id=user.id).first()
         if not entry:
             return jsonify({"error": "Playtest session not found."}), 404
 

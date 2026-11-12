@@ -1301,8 +1301,9 @@ def _batch_enrich_watchlist_binder_status(user_id: int, items: list[WatchlistIte
     if not items or not user_id:
         return
     try:
-        inv_cards = UserInventoryCard.query.filter_by(user_id=user_id).all()
-        if not inv_cards:
+        from inventory_manager import InventoryManager
+        inv_rows = InventoryManager.get_owned_rows(user_id)
+        if not inv_rows:
             for item in items:
                 item.in_binder = False
                 item.binder_count = 0
@@ -1312,10 +1313,10 @@ def _batch_enrich_watchlist_binder_status(user_id: int, items: list[WatchlistIte
         owned_map: dict[str, int] = {}
         binder_names_map: dict[str, set[str]] = {}
 
-        for ic in inv_cards:
-            qty = max(1, int(ic.quantity or 1))
-            b_name = (ic.binder_name or "").strip()
-            for k in get_card_match_keys(ic.name):
+        for c_name, c_qty, c_binder in inv_rows:
+            qty = max(1, int(c_qty or 1))
+            b_name = (c_binder or "").strip()
+            for k in get_card_match_keys(c_name):
                 owned_map[k] = owned_map.get(k, 0) + qty
                 if b_name:
                     binder_names_map.setdefault(k, set()).add(b_name)
@@ -1583,7 +1584,7 @@ def _execute_get_deck_analyses(user: User, args: dict[str, Any]) -> dict[str, An
 
     # 1. Single deck by ID
     if deck_id is not None and not deck_ids:
-        deck = q.filter_by(id=int(deck_id)).first()
+        deck = q.options(db.undefer_group("ai_blobs")).filter_by(id=int(deck_id)).first()
         if not deck:
             return {"error": f"No Commander deck found with ID {deck_id}."}
         full_data = deck.to_dict(include_full=True)
@@ -1596,7 +1597,7 @@ def _execute_get_deck_analyses(user: User, args: dict[str, Any]) -> dict[str, An
     if deck_ids and isinstance(deck_ids, list):
         try:
             int_ids = [int(i) for i in deck_ids]
-            decks = q.filter(DeckAnalysis.id.in_(int_ids)).order_by(DeckAnalysis.updated_at.desc()).all()
+            decks = q.options(db.undefer_group("ai_blobs")).filter(DeckAnalysis.id.in_(int_ids)).order_by(DeckAnalysis.updated_at.desc()).all()
             full_decks = []
             for d in decks:
                 fdata = d.to_dict(include_full=True)

@@ -4,6 +4,8 @@ import secrets
 import statistics
 from datetime import datetime, timezone, timedelta
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import func
+from sqlalchemy.orm import deferred, column_property, validates
 
 db = SQLAlchemy()
 
@@ -113,13 +115,16 @@ class User(db.Model):
     @property
     def card_count(self):
         """Returns total count of cards monitored by this user."""
-        return len(self.watchlist_items)
+        try:
+            return db.session.query(func.count(WatchlistItem.id)).filter(WatchlistItem.user_id == self.id).scalar() or 0
+        except Exception:
+            return len(self.watchlist_items)
 
     @property
     def total_inventory_cards(self) -> int:
         """Returns total quantity count of cards in user's inventory."""
         try:
-            return sum(c.quantity for c in self.inventory_cards)
+            return int(db.session.query(func.coalesce(func.sum(UserInventoryCard.quantity), 0)).filter(UserInventoryCard.user_id == self.id).scalar() or 0)
         except Exception:
             return 0
 
@@ -127,7 +132,7 @@ class User(db.Model):
     def unique_inventory_cards(self) -> int:
         """Returns count of distinct card items in user's inventory."""
         try:
-            return len(self.inventory_cards)
+            return db.session.query(func.count(UserInventoryCard.id)).filter(UserInventoryCard.user_id == self.id).scalar() or 0
         except Exception:
             return 0
 
@@ -135,14 +140,32 @@ class User(db.Model):
     def total_inventory_value(self) -> float:
         """Returns sum total market value ($ USD) of user's inventory."""
         try:
+            # SQL calculation handling foil vs normal pricing
+            val = db.session.query(
+                func.sum(
+                    UserInventoryCard.quantity * func.coalesce(
+                        db.case(
+                            (
+                                db.and_(
+                                    func.lower(UserInventoryCard.foil).in_(["foil", "etched"]),
+                                    UserInventoryCard.price_usd_foil.isnot(None),
+                                ),
+                                UserInventoryCard.price_usd_foil,
+                            ),
+                            else_=UserInventoryCard.price_usd,
+                        ),
+                        0.0,
+                    )
+                )
+            ).filter(UserInventoryCard.user_id == self.id).scalar()
+            return round(float(val or 0.0), 2)
+        except Exception:
             total = 0.0
             for c in self.inventory_cards:
                 price = c.price_usd_foil if (c.foil and c.foil.lower() in ("foil", "etched") and c.price_usd_foil is not None) else c.price_usd
                 if price:
                     total += price * c.quantity
             return round(total, 2)
-        except Exception:
-            return 0.0
 
     def get_usage_past_week(self, days: int = 7) -> int:
         """Returns count of tool activity events for this user in the past N days."""
@@ -471,16 +494,21 @@ class WatchlistItem(db.Model):
         try:
             from card_utils import get_card_match_keys
             match_keys = get_card_match_keys(self.name)
-            inv_cards = UserInventoryCard.query.filter_by(user_id=self.user_id).all()
+            # Efficient partial column fetch: only name, quantity, binder_name
+            inv_rows = db.session.query(
+                UserInventoryCard.name,
+                UserInventoryCard.quantity,
+                UserInventoryCard.binder_name
+            ).filter(UserInventoryCard.user_id == self.user_id).all()
             total_qty = 0
             binders = []
-            for c in inv_cards:
-                c_keys = get_card_match_keys(c.name)
+            for c_name, c_qty, c_binder in inv_rows:
+                c_keys = get_card_match_keys(c_name)
                 if match_keys & c_keys:
-                    qty = max(1, int(c.quantity or 1))
+                    qty = max(1, int(c_qty or 1))
                     total_qty += qty
-                    if c.binder_name and c.binder_name.strip() and c.binder_name.strip() not in binders:
-                        binders.append(c.binder_name.strip())
+                    if c_binder and c_binder.strip() and c_binder.strip() not in binders:
+                        binders.append(c_binder.strip())
             self._in_binder = total_qty > 0
             self._binder_count = total_qty
             self._binder_names = sorted(binders)
@@ -637,6 +665,15 @@ class SystemSetting(db.Model):
     key = db.Column(db.String(50), primary_key=True)
     value = db.Column(db.Text, nullable=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+    @classmethod
+    def get_many(cls, keys: list[str]) -> dict[str, str]:
+        """Retrieves a dict of setting key-value pairs for the requested keys in a single query."""
+        try:
+            rows = cls.query.filter(cls.key.in_(keys)).all()
+            return {r.key: (r.value or "") for r in rows}
+        except Exception:
+            return {}
 
     @classmethod
     def get_val(cls, key: str, default: str | None = None) -> str | None:
@@ -1101,13 +1138,19 @@ class DeckAnalysis(db.Model):
     commander_art = db.Column(db.Text, nullable=True)
     source_url = db.Column(db.Text, nullable=True)
     source_type = db.Column(db.String(50), default="text")
-    raw_decklist = db.Column(db.Text, nullable=True)
+    raw_decklist = deferred(db.Column(db.Text, nullable=True))
     cards_data = db.Column(db.Text, nullable=True)  # JSON string of parsed cards + scryfall metadata
     stats_json = db.Column(db.Text, nullable=True)  # JSON string of pre-computed stats (curve, types, value)
-    analysis_json = db.Column(db.Text, nullable=True)  # JSON string of Gemini analysis (nullable if pre-AI)
-    upgrades_json = db.Column(db.Text, nullable=True)  # JSON string of dual-tier upgrade recommendations & cuts
-    tactics_json = db.Column(db.Text, nullable=True)  # JSON string of per-section Gemini Commander Tactics & fingerprints
+    analysis_json = deferred(db.Column(db.Text, nullable=True), group="ai_blobs")  # JSON string of Gemini analysis (nullable if pre-AI)
+    upgrades_json = deferred(db.Column(db.Text, nullable=True), group="ai_blobs")  # JSON string of dual-tier upgrade recommendations & cuts
+    tactics_json = deferred(db.Column(db.Text, nullable=True), group="ai_blobs")  # JSON string of per-section Gemini Commander Tactics & fingerprints
+    tactics_fingerprints = db.Column(db.Text, nullable=True)  # JSON mapping {"section_name": "decklist_fingerprint"}
     model_used = db.Column(db.String(100), default="gemini-3.8-flash")
+
+    # Lightweight length properties loaded with the row to avoid fetching blobs for flags
+    _analysis_len = column_property(func.coalesce(func.length(analysis_json.expression), 0))
+    _upgrades_len = column_property(func.coalesce(func.length(upgrades_json.expression), 0))
+    _tactics_len = column_property(func.coalesce(func.length(tactics_json.expression), 0))
     power_level = db.Column(db.Float, nullable=True)
     power_bracket = db.Column(db.String(50), nullable=True)
     archetype = db.Column(db.String(100), nullable=True)
@@ -1120,6 +1163,28 @@ class DeckAnalysis(db.Model):
     created_at = db.Column(db.DateTime, default=utc_now, index=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
+    def _blob_loaded(self, attr: str) -> bool:
+        """Returns True if the deferred attribute is already populated in-memory."""
+        return attr in self.__dict__
+
+    @validates("tactics_json")
+    def _sync_tactics_fingerprints(self, key, value):
+        """Automatically populates tactics_fingerprints whenever tactics_json is set."""
+        try:
+            if not value:
+                self.tactics_fingerprints = None
+            else:
+                data = json.loads(value) if isinstance(value, str) else value
+                sections = data.get("sections", {}) if isinstance(data, dict) else {}
+                if sections:
+                    fps = {sec: (s_val or {}).get("deck_fingerprint") for sec, s_val in sections.items()}
+                    self.tactics_fingerprints = json.dumps(fps)
+                else:
+                    self.tactics_fingerprints = None
+        except Exception:
+            self.tactics_fingerprints = None
+        return value
+
     @property
     def is_pauper_commander(self) -> bool:
         """Returns True if this deck is designated as Pauper Commander."""
@@ -1128,24 +1193,35 @@ class DeckAnalysis(db.Model):
     @property
     def has_ai_analysis(self) -> bool:
         """Returns True if Gemini analysis has been generated for this deck."""
-        return bool(self.analysis_json and self.analysis_json.strip() and self.analysis_json.strip() != "{}")
+        if self._blob_loaded("analysis_json"):
+            return bool(self.analysis_json and self.analysis_json.strip() and self.analysis_json.strip() != "{}")
+        return (getattr(self, "_analysis_len", 0) or 0) > 2
 
     @property
     def has_upgrades(self) -> bool:
         """Returns True if tactical upgrades evaluation has been stored for this deck."""
-        return bool(self.upgrades_json and self.upgrades_json.strip() and self.upgrades_json.strip() != "{}")
+        if self._blob_loaded("upgrades_json"):
+            return bool(self.upgrades_json and self.upgrades_json.strip() and self.upgrades_json.strip() != "{}")
+        return (getattr(self, "_upgrades_len", 0) or 0) > 2
 
     @property
     def has_tactics(self) -> bool:
         """Returns True if tactical guidance sections are stored for this deck."""
-        if not self.tactics_json or not self.tactics_json.strip():
-            return False
-        try:
-            import json
-            data = json.loads(self.tactics_json)
-            return bool(data.get("sections"))
-        except Exception:
-            return False
+        if self._blob_loaded("tactics_json"):
+            if not self.tactics_json or not self.tactics_json.strip():
+                return False
+            try:
+                data = json.loads(self.tactics_json)
+                return bool(data.get("sections"))
+            except Exception:
+                return False
+        if self.tactics_fingerprints and self.tactics_fingerprints.strip():
+            try:
+                fps = json.loads(self.tactics_fingerprints)
+                return bool(fps)
+            except Exception:
+                pass
+        return (getattr(self, "_tactics_len", 0) or 0) > 2
 
     def compute_decklist_fingerprint(self) -> str:
         """SHA-256 of sorted (card_name, quantity) pairs and commander(s). Ignores prices/metadata."""
@@ -1172,9 +1248,49 @@ class DeckAnalysis(db.Model):
 
     def get_tactics_status(self) -> dict:
         """Returns status of stored tactics including staleness against current decklist fingerprint."""
+        current_fp = self.compute_decklist_fingerprint()
+
+        # Fast path: check precomputed fingerprints without loading tactics_json blob
+        fps = None
+        if not self._blob_loaded("tactics_json"):
+            if (getattr(self, "_tactics_len", 0) or 0) <= 2:
+                return {
+                    "has_tactics": False,
+                    "stale": False,
+                    "stale_sections": [],
+                    "current_fingerprint": current_fp,
+                    "total_sections": 0,
+                }
+            if self.tactics_fingerprints and self.tactics_fingerprints.strip():
+                try:
+                    fps = json.loads(self.tactics_fingerprints)
+                except Exception:
+                    fps = None
+
+        if fps is not None:
+            if not fps:
+                return {
+                    "has_tactics": False,
+                    "stale": False,
+                    "stale_sections": [],
+                    "current_fingerprint": current_fp,
+                    "total_sections": 0,
+                }
+            stale_sections = [
+                sec_name for sec_name, sec_fp in fps.items()
+                if sec_fp != current_fp
+            ]
+            return {
+                "has_tactics": True,
+                "stale": bool(stale_sections),
+                "stale_sections": stale_sections,
+                "current_fingerprint": current_fp,
+                "total_sections": len(fps),
+            }
+
+        # Fallback: load full tactics if blob is in memory or fingerprints not yet populated
         tactics = self.get_tactics()
         sections = tactics.get("sections", {})
-        current_fp = self.compute_decklist_fingerprint()
         if not sections:
             return {
                 "has_tactics": False,
@@ -1663,9 +1779,9 @@ class CommanderPlaytestSession(db.Model):
     status = db.Column(
         db.String(20), nullable=False, default="active", index=True
     )  # active | finished | archived
-    state_json = db.Column(db.Text, nullable=False)  # Full JSON game state
+    state_json = deferred(db.Column(db.Text, nullable=False), group="pt_state")  # Full JSON game state
     state_version = db.Column(db.Integer, nullable=False, default=1)
-    checkpoints_json = db.Column(db.Text, nullable=True)  # Named snapshots (JSON list)
+    checkpoints_json = deferred(db.Column(db.Text, nullable=True), group="pt_state")  # Named snapshots (JSON list)
     turn_number = db.Column(db.Integer, default=1, index=True)  # Denormalized for listing
     created_at = db.Column(db.DateTime, default=utc_now, index=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, index=True)

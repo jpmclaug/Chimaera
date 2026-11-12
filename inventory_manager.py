@@ -7,7 +7,8 @@ import json
 import logging
 import time
 import threading
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+from flask import g, has_request_context
 from sqlalchemy import func, case, or_, and_, distinct
 from models import db, UserInventoryCard, DeckAnalysis, utc_now
 from providers.scryfall import ScryfallProvider
@@ -324,25 +325,50 @@ class InventoryManager:
         return f"{c_name}::{c_set}::{c_col}::{c_foil}"
 
     @staticmethod
+    def get_owned_rows(user_id: int) -> List[Tuple[str, int, Optional[str]]]:
+        """
+        Retrieves lightweight (name, quantity, binder_name) tuples for a user's collection,
+        avoiding heavy columns like oracle_text and image_uri, cached per request context.
+        """
+        if not user_id:
+            return []
+        if has_request_context():
+            cache = getattr(g, "_owned_rows_cache", None)
+            if cache is None:
+                cache = {}
+                g._owned_rows_cache = cache
+            if user_id in cache:
+                return cache[user_id]
+
+        rows = db.session.query(
+            UserInventoryCard.name,
+            UserInventoryCard.quantity,
+            UserInventoryCard.binder_name
+        ).filter(UserInventoryCard.user_id == user_id).all()
+
+        if has_request_context():
+            g._owned_rows_cache[user_id] = rows
+        return rows
+
+    @staticmethod
     def get_user_card_allocations(user_id: int, current_deck_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
         """
         Scans all saved decks for the user to determine physical card allocations.
-        Returns a mapping from lowercase card name (and match keys) to allocation info:
-        {
-            "card_name_lower": {
-                "total_allocated": int,
-                "other_allocated": int,  # copies allocated in decks other than current_deck_id
-                "decks": [
-                    {
-                        "deck_id": int,
-                        "deck_name": str,
-                        "quantity": int,
-                        "is_current": bool
-                    }, ...
-                ]
-            }
-        }
+        Returns a mapping from lowercase card name (and match keys) to allocation info,
+        cached per-request context when available.
         """
+        if not user_id:
+            return {}
+
+        cache_key = (user_id, current_deck_id)
+        if has_request_context():
+            alloc_cache = getattr(g, "_user_allocations_cache", None)
+            if alloc_cache is None:
+                alloc_cache = {}
+                g._user_allocations_cache = alloc_cache
+            if cache_key in alloc_cache:
+                return alloc_cache[cache_key]
+
         allocations: Dict[str, Dict[str, Any]] = {}
         if not user_id:
             return allocations
@@ -380,6 +406,11 @@ class InventoryManager:
                         allocations[k]["other_allocated"] += qty
 
                     allocations[k]["decks"].append(deck_entry)
+
+        if has_request_context():
+            alloc_cache = getattr(g, "_user_allocations_cache", None)
+            if alloc_cache is not None:
+                alloc_cache[cache_key] = allocations
 
         return allocations
 

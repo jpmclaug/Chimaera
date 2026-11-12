@@ -157,30 +157,39 @@ def main():
         SystemSetting.set_val("worker_status", "online")
 
         last_run_timestamp = 0.0
+        last_heartbeat_timestamp = 0.0
 
         while running:
             with app.app_context():
-                # Check dynamic database settings
-                auto_enabled = SystemSetting.get_bool("auto_poll_enabled", default=True)
-                
+                current_time = time.time()
+
+                # Batch query all required system settings in a single query every cycle
+                settings = SystemSetting.get_many([
+                    "auto_poll_enabled",
+                    "poll_interval_hours",
+                    "manual_poll_requested",
+                ])
+
+                auto_raw = settings.get("auto_poll_enabled")
+                auto_enabled = True if auto_raw is None else (auto_raw.strip().lower() in ("true", "1", "yes", "on"))
+
                 # Determine interval (CLI override > DB setting > Config fallback)
                 if args.interval is not None and args.interval > 0:
                     interval_hours = args.interval
                 else:
-                    interval_hours = SystemSetting.get_float(
-                        "poll_interval_hours",
-                        default=Config.POLL_INTERVAL_HOURS,
-                    )
-                
+                    try:
+                        interval_hours = float(settings.get("poll_interval_hours", Config.POLL_INTERVAL_HOURS))
+                    except (ValueError, TypeError):
+                        interval_hours = Config.POLL_INTERVAL_HOURS
+
                 # Ensure minimum sanity interval (0.01 hours = ~36 seconds)
                 interval_hours = max(0.01, interval_hours)
                 interval_seconds = interval_hours * 3600.0
 
-                current_time = time.time()
                 time_since_last_run = current_time - last_run_timestamp
 
                 # Check if manual poll requested via DB flag
-                manual_requested = SystemSetting.get_val("manual_poll_requested") == "true"
+                manual_requested = settings.get("manual_poll_requested", "").strip().lower() == "true"
 
                 should_run = False
                 if manual_requested:
@@ -193,13 +202,15 @@ def main():
                 if should_run:
                     run_worker_cycle(deal_engine, notify=notify)
                     last_run_timestamp = time.time()
+                    last_heartbeat_timestamp = time.time()
+                elif (current_time - last_heartbeat_timestamp) >= 60.0:
+                    # Throttle worker heartbeat to at most once every 60 seconds to save egress/writes
+                    SystemSetting.set_val("worker_heartbeat", datetime.now(timezone.utc).isoformat())
+                    last_heartbeat_timestamp = current_time
 
-                # Update worker heartbeat
-                SystemSetting.set_val("worker_heartbeat", datetime.now(timezone.utc).isoformat())
-
-            # Sleep in responsive slices (5 seconds) to allow graceful shutdown
-            # and rapid detection of UI cadence/manual trigger changes
-            sleep_slice = 5
+            # Sleep in responsive 1-second ticks up to 30 seconds to allow graceful shutdown
+            # and reduce database polling query frequency from every 5s to every 30s
+            sleep_slice = 30
             for _ in range(int(sleep_slice)):
                 if not running:
                     break
