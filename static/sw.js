@@ -3,7 +3,7 @@
  * Accelerates mobile load times via Cache-First static asset & Scryfall card thumbnail caching,
  * while keeping HTML navigations and live pricing API requests strictly Network-First.
  */
-const STATIC_CACHE = "chimaera-static-v2";
+const STATIC_CACHE = "chimaera-static-v3";
 const ART_CACHE = "chimaera-art-v2";
 const MAX_ART_ENTRIES = 250;
 

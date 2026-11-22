@@ -924,7 +924,7 @@ function renderCardMatrix(cardMatrix) {
                         </div>
                     </div>
                     <div class="flex items-center space-x-2">
-                        <button onclick="quickAddToWatchlist('${cardName.replace(/'/g, "\\'")}')" class="btn-bridge px-3 py-1.5 text-xs font-mono text-[#00CED1] flex items-center space-x-1" title="Track price on Watchlist">
+                        <button data-card-name="${cardName.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}" onclick="quickAddToWatchlist(this.getAttribute('data-card-name'))" class="btn-bridge px-3 py-1.5 text-xs font-mono text-[#00CED1] flex items-center space-x-1" title="Track price on Watchlist">
                             <span>+ Watchlist</span>
                         </button>
                     </div>
@@ -1301,20 +1301,34 @@ async function directAddCardToDeck(deckId, cardName) {
 }
 
 async function quickAddToWatchlist(cardName) {
+    const notify = (msg, type = 'info') => {
+        if (typeof showToast === 'function') showToast(msg, type);
+        else alert(msg);
+    };
     try {
         const resp = await fetch('/api/watchlist/add', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({name: cardName})
         });
-        const res = await resp.json();
-        if (res.success) {
-            alert(`✓ '${cardName}' added to your surveillance Watchlist.`);
+        const text = await resp.text();
+        let res = {};
+        if (text) {
+            try {
+                res = JSON.parse(text);
+            } catch (_) {
+                res = {error: `Unexpected server response (HTTP ${resp.status})`};
+            }
+        }
+        if (resp.ok || res.success) {
+            notify(res.message || `✓ '${cardName}' added to your surveillance Watchlist.`, 'success');
+        } else if (resp.status === 409) {
+            notify(res.error || `'${cardName}' is already on your watchlist.`, 'info');
         } else {
-            alert(res.error || 'Failed to add to watchlist.');
+            notify(res.error || 'Failed to add to watchlist.', 'error');
         }
     } catch (e) {
-        alert(`Error: ${e.message}`);
+        notify(`Error: ${e.message}`, 'error');
     }
 }
 

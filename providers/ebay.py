@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import threading
 import urllib.parse
 import requests
 from bs4 import BeautifulSoup
@@ -66,11 +67,26 @@ class EbayProvider:
 
     def __init__(self, app_id: str | None = None, session: requests.Session | None = None):
         self.app_id = app_id or os.getenv("EBAY_APP_ID", "").strip()
-        self.session = session or requests.Session()
-        self.session.headers.update({
-            "User-Agent": DEFAULT_USER_AGENT,
-            "Accept-Language": "en-US,en;q=0.9",
-        })
+        self._custom_session = session
+        self._thread_local = threading.local()
+
+    @property
+    def session(self):
+        if self._custom_session is not None:
+            return self._custom_session
+        sess = getattr(self._thread_local, "session", None)
+        if sess is None:
+            sess = requests.Session()
+            sess.headers.update({
+                "User-Agent": DEFAULT_USER_AGENT,
+                "Accept-Language": "en-US,en;q=0.9",
+            })
+            self._thread_local.session = sess
+        return sess
+
+    @session.setter
+    def session(self, value):
+        self._custom_session = value
 
     def _get_negative_exclusions(self, card_name: str, set_name: str | None = None) -> str:
         """
@@ -157,6 +173,7 @@ class EbayProvider:
         set_code: str | None = None,
         finish: str = "nonfoil",
         reference_price: float | None = None,
+        timeout: float = 8.0,
     ) -> dict:
         """
         Searches eBay for active MTG singles listings.
@@ -170,13 +187,15 @@ class EbayProvider:
         # 1. Try eBay Finding API if app_id is available
         if self.app_id:
             api_result = self._search_finding_api(
-                card_name, set_name, set_code, finish, search_url, reference_price
+                card_name, set_name, set_code, finish, search_url, reference_price, timeout=timeout
             )
             if api_result:
                 return api_result
 
         # 2. Try HTML scraping fallback
-        scraped_result = self._scrape_ebay_search(card_name, search_url, finish, reference_price)
+        scraped_result = self._scrape_ebay_search(
+            card_name, search_url, finish, reference_price, timeout=timeout
+        )
         if scraped_result:
             return scraped_result
 
@@ -201,6 +220,7 @@ class EbayProvider:
         finish: str,
         fallback_url: str,
         reference_price: float | None = None,
+        timeout: float = 10.0,
     ) -> dict | None:
         """Queries official eBay Finding API with proxy filtering and price validation."""
         try:
@@ -221,7 +241,7 @@ class EbayProvider:
                 "paginationInput.entriesPerPage": "10",
             }
 
-            resp = self.session.get(EBAY_FINDING_API_URL, params=params, timeout=10)
+            resp = self.session.get(EBAY_FINDING_API_URL, params=params, timeout=max(1.0, float(timeout)))
             if resp.status_code == 200:
                 data = resp.json()
                 search_res = data.get("findItemsByKeywordsResponse", [{}])[0]
@@ -278,6 +298,7 @@ class EbayProvider:
         search_url: str,
         finish: str,
         reference_price: float | None = None,
+        timeout: float = 8.0,
     ) -> dict | None:
         """Parses eBay search results page using BeautifulSoup with proxy filtering and shipping inclusion."""
         try:
@@ -290,7 +311,7 @@ class EbayProvider:
                 "Accept-Language": "en-US,en;q=0.9",
                 "Referer": "https://www.google.com/",
             }
-            resp = self.session.get(search_url, headers=headers, timeout=8)
+            resp = self.session.get(search_url, headers=headers, timeout=max(1.0, float(timeout)))
             if resp.status_code != 200:
                 return None
 

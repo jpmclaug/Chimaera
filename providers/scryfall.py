@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 import time
 import urllib.parse
 import requests
@@ -15,14 +16,33 @@ class ScryfallProvider:
     """Scryfall API client for MTG card metadata, autocomplete, prints, and TCGplayer pricing."""
 
     def __init__(self, session=None):
-        self.session = session or requests.Session()
-        self.session.headers.update({
-            "User-Agent": DEFAULT_USER_AGENT,
-            "Accept": "application/json;q=0.9,*/*;q=0.8",
-        })
+        self._custom_session = session
+        self._thread_local = threading.local()
+
+    @property
+    def session(self):
+        if self._custom_session is not None:
+            return self._custom_session
+        sess = getattr(self._thread_local, "session", None)
+        if sess is None:
+            sess = requests.Session()
+            sess.headers.update({
+                "User-Agent": DEFAULT_USER_AGENT,
+                "Accept": "application/json;q=0.9,*/*;q=0.8",
+            })
+            self._thread_local.session = sess
+        return sess
+
+    @session.setter
+    def session(self, value):
+        self._custom_session = value
 
     _last_request_time: float = 0.0
     _card_cache: dict[str, dict] = {}
+    _prints_cache: dict[str, tuple[float, list[dict]]] = {}
+    _PRINTS_CACHE_TTL: float = 600.0
+    _PRINTS_CACHE_MAX: int = 256
+    _cache_lock = threading.Lock()
 
     def _request(self, method: str, url: str, **kwargs):
         """Dispatches HTTP requests to Scryfall with 100ms pacing and automatic 429 backoff."""
@@ -464,6 +484,21 @@ class ScryfallProvider:
         # Handle split / double-faced cards (e.g. Fire // Ice)
         primary_name = clean_name.split(" // ")[0].strip()
 
+        # Check short-lived prints cache first (avoids duplicate roundtrips between modal & add)
+        cache_keys = []
+        for k in (clean_name.lower(), card_name.strip().lower()):
+            if k and k not in cache_keys:
+                cache_keys.append(k)
+        now_mono = time.monotonic()
+        with ScryfallProvider._cache_lock:
+            for k in cache_keys:
+                cached_entry = ScryfallProvider._prints_cache.get(k)
+                if cached_entry is not None:
+                    ts, cached_prints = cached_entry
+                    if now_mono - ts < ScryfallProvider._PRINTS_CACHE_TTL:
+                        return [dict(p) for p in cached_prints]
+                    ScryfallProvider._prints_cache.pop(k, None)
+
         candidates = [clean_name]
         if clean_name.title() not in candidates:
             candidates.append(clean_name.title())
@@ -574,6 +609,17 @@ class ScryfallProvider:
                         cards = [named_data]
 
             if cards:
+                # Populate canonical card cache from the newest print so subsequent lookups hit cache
+                try:
+                    formatted_first = self._format_card_object(cards[0])
+                    self._index_card_in_map(
+                        ScryfallProvider._card_cache,
+                        formatted_first,
+                        extra_names=[card_name, clean_name],
+                    )
+                except Exception:
+                    pass
+
                 formatted_prints = []
                 for card in cards:
                     # Resolve image
@@ -608,7 +654,17 @@ class ScryfallProvider:
                         },
                         "tcgplayer_url": card.get("purchase_uris", {}).get("tcgplayer"),
                     })
-                return formatted_prints
+
+                store_ts = time.monotonic()
+                with ScryfallProvider._cache_lock:
+                    if len(ScryfallProvider._prints_cache) >= ScryfallProvider._PRINTS_CACHE_MAX:
+                        evict_count = max(1, len(ScryfallProvider._prints_cache) - ScryfallProvider._PRINTS_CACHE_MAX + len(cache_keys))
+                        for old_k in list(ScryfallProvider._prints_cache.keys())[:evict_count]:
+                            ScryfallProvider._prints_cache.pop(old_k, None)
+                    for k in cache_keys:
+                        ScryfallProvider._prints_cache[k] = (store_ts, formatted_prints)
+
+                return [dict(p) for p in formatted_prints]
 
             logger.warning(f"Scryfall search prints found no matches for '{card_name}'")
         except Exception as e:

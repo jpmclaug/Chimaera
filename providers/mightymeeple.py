@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 import time
 import unicodedata
 import urllib.parse
@@ -64,26 +65,43 @@ class MightyMeepleProvider:
     """Live stock and price scanner targeting Mighty Meeple (BinderPOS/Shopify backend)."""
 
     def __init__(self, session=None):
-        self.is_cffi = False
-        if session:
-            self.session = session
-        else:
-            try:
-                from curl_cffi import requests as cffi_requests
-                self.session = cffi_requests.Session(impersonate="chrome120")
-                self.is_cffi = True
-                logger.debug("MightyMeepleProvider initialized with curl_cffi Chrome TLS impersonation.")
-            except ImportError:
-                self.session = requests.Session()
-                self.is_cffi = False
-                logger.debug("MightyMeepleProvider initialized with standard requests.Session.")
+        self._custom_session = session
+        self._thread_local = threading.local()
+        try:
+            from curl_cffi import requests as cffi_requests  # noqa: F401
+            self.is_cffi = session is None
+        except ImportError:
+            self.is_cffi = False
 
-        if not self.is_cffi:
-            self.session.headers.update({
+    def _create_session(self):
+        try:
+            from curl_cffi import requests as cffi_requests
+            sess = cffi_requests.Session(impersonate="chrome120")
+            logger.debug("MightyMeepleProvider initialized thread-local curl_cffi session.")
+            return sess
+        except ImportError:
+            sess = requests.Session()
+            sess.headers.update({
                 "User-Agent": DEFAULT_USER_AGENT,
                 "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Accept-Language": "en-US,en;q=0.9",
             })
+            logger.debug("MightyMeepleProvider initialized thread-local requests.Session.")
+            return sess
+
+    @property
+    def session(self):
+        if self._custom_session is not None:
+            return self._custom_session
+        sess = getattr(self._thread_local, "session", None)
+        if sess is None:
+            sess = self._create_session()
+            self._thread_local.session = sess
+        return sess
+
+    @session.setter
+    def session(self, value):
+        self._custom_session = value
 
     def search_card(
         self,
@@ -92,6 +110,8 @@ class MightyMeepleProvider:
         set_code: str | None = None,
         collector_number: str | None = None,
         finish: str = "nonfoil",
+        fast_mode: bool = False,
+        max_seconds: float | None = None,
     ) -> dict:
         """
         Searches Mighty Meeple inventory for card, checks condition variants and stock.
@@ -100,6 +120,13 @@ class MightyMeepleProvider:
         """
         if not card_name:
             return self._empty_result(card_name)
+
+        deadline = (
+            time.monotonic() + max_seconds
+            if max_seconds is not None
+            else (time.monotonic() + 5.0 if fast_mode else None)
+        )
+        cf_state = {"blocked_count": 0, "suggest_blocked": False}
 
         # Normalize card name and extract primary face for DFC/split cards
         clean_name = unicodedata.normalize("NFKD", card_name).encode("ASCII", "ignore").decode("utf-8").strip()
@@ -119,8 +146,27 @@ class MightyMeepleProvider:
                 f"?q={urllib.parse.quote_plus(primary_name)}&resources[type]=product&resources[limit]=25"
             )
 
-            raw_prods_quoted = self._fetch_suggest_products(suggest_url_quoted)
-            raw_prods_unquoted = self._fetch_suggest_products(suggest_url_unquoted)
+            suggest_timeout = 4.0 if fast_mode else 8.0
+            if deadline is not None:
+                suggest_timeout = min(suggest_timeout, max(1.0, deadline - time.monotonic()))
+            raw_prods_quoted = self._fetch_suggest_products(
+                suggest_url_quoted,
+                timeout=suggest_timeout,
+                cf_state=cf_state,
+            )
+
+            raw_prods_unquoted = []
+            if not cf_state["suggest_blocked"] and (
+                deadline is None or time.monotonic() < deadline - 0.5
+            ):
+                unquoted_timeout = 4.0 if fast_mode else 8.0
+                if deadline is not None:
+                    unquoted_timeout = min(unquoted_timeout, max(1.0, deadline - time.monotonic()))
+                raw_prods_unquoted = self._fetch_suggest_products(
+                    suggest_url_unquoted,
+                    timeout=unquoted_timeout,
+                    cf_state=cf_state,
+                )
 
             # Deduplicate products by handle while preserving discovery order
             seen_handles = set()
@@ -141,15 +187,29 @@ class MightyMeepleProvider:
                 set_name=set_name,
                 set_code=set_code,
                 collector_number=collector_number,
+                fast_mode=fast_mode,
+                deadline=deadline,
+                cf_state=cf_state,
             )
             # If collector_number is provided and multiple candidate products exist, narrow down by SKU
             if collector_number and len(candidate_products) > 1:
                 target_cn = str(collector_number).strip().lower()
                 base_cn = target_cn.rstrip("ps")
+                cf_limit = 1 if fast_mode else 2
+                sku_probe_cap = 8 if fast_mode else 15
 
                 def product_matches_target_sku(prod_item: dict) -> bool:
+                    if deadline is not None and time.monotonic() >= deadline - 0.3:
+                        return False
+                    if cf_state.get("blocked_count", 0) >= cf_limit:
+                        return False
                     p_handle = prod_item.get("handle", "")
-                    v_list = self._get_product_variants(p_handle)
+                    v_list = self._get_product_variants(
+                        p_handle,
+                        fast_mode=fast_mode,
+                        deadline=deadline,
+                        cf_state=cf_state,
+                    )
                     for v in v_list:
                         sku = (v.get("sku") or "").lower()
                         if target_cn.endswith("p") and (f"-{base_cn}-promo" in sku or f"-{target_cn}-" in sku):
@@ -160,7 +220,10 @@ class MightyMeepleProvider:
                             return True
                     return False
 
-                sku_candidates = [p for p in candidate_products if product_matches_target_sku(p)]
+                sku_candidates = [
+                    p for p in candidate_products[:sku_probe_cap]
+                    if product_matches_target_sku(p)
+                ]
                 if sku_candidates:
                     candidate_products = sku_candidates
 
@@ -175,7 +238,20 @@ class MightyMeepleProvider:
             else:
                 is_foil_target = finish_clean in ("foil", "etched")
 
+            checked_count = 0
+            empty_fetches = 0
+            max_candidates = 5 if fast_mode else 10
+            max_empty_fetches = 2 if fast_mode else 3
+            cf_limit = 1 if fast_mode else 2
+
             for idx, prod in enumerate(candidate_products):
+                if checked_count >= max_candidates or empty_fetches >= max_empty_fetches:
+                    break
+                if cf_state.get("blocked_count", 0) >= cf_limit:
+                    break
+                if deadline is not None and time.monotonic() >= deadline - 0.3:
+                    break
+
                 is_prod_avail = bool(prod.get("available", False))
                 # Stop checking if we already found valid in-stock match(es) and reached out-of-stock candidates
                 if in_stock_matches and not is_prod_avail:
@@ -185,15 +261,22 @@ class MightyMeepleProvider:
                     break
 
                 handle = prod.get("handle")
-                if idx > 0 and handle and handle not in MightyMeepleProvider._variant_cache:
+                if not fast_mode and idx > 0 and handle and handle not in MightyMeepleProvider._variant_cache:
                     time.sleep(0.25)
                 prod_url = prod.get("url") or f"/products/{handle}"
                 if not prod_url.startswith("http"):
                     prod_url = f"{MIGHTY_MEEPLE_BASE}{prod_url}"
 
                 # Query product detail json for exact variants
-                variants = self._get_product_variants(handle)
+                checked_count += 1
+                variants = self._get_product_variants(
+                    handle,
+                    fast_mode=fast_mode,
+                    deadline=deadline,
+                    cf_state=cf_state,
+                )
                 if not variants:
+                    empty_fetches += 1
                     logger.debug(f"No variant data fetched for {handle}; skipping candidate.")
                     continue
 
@@ -242,12 +325,19 @@ class MightyMeepleProvider:
             logger.error(f"Error checking Mighty Meeple for '{card_name}': {e}")
             return self._empty_result(card_name, fallback_search_url)
 
-    def _fetch_suggest_products(self, url: str) -> list[dict]:
+    def _fetch_suggest_products(
+        self,
+        url: str,
+        timeout: float = 8.0,
+        cf_state: dict | None = None,
+    ) -> list[dict]:
         """Fetches product suggestions from Mighty Meeple Shopify suggest endpoint."""
         try:
-            resp = self.session.get(url, timeout=8)
+            resp = self.session.get(url, timeout=max(1.0, float(timeout)))
             if self._is_cloudflare_challenge(resp):
                 logger.warning(f"Cloudflare/bot challenge on suggest query: {url}")
+                if cf_state is not None:
+                    cf_state["suggest_blocked"] = True
                 return []
             if resp.status_code == 200:
                 data = resp.json()
@@ -278,28 +368,60 @@ class MightyMeepleProvider:
             or "Verifying your connection..." in text
         )
 
-    def _get_product_variants(self, handle: str) -> list[dict]:
-        """Fetches Shopify product variant details via .js endpoint with caching and backoff."""
+    def _get_product_variants(
+        self,
+        handle: str,
+        fast_mode: bool = False,
+        deadline: float | None = None,
+        cf_state: dict | None = None,
+    ) -> list[dict]:
+        """Fetches Shopify product variant details via .js endpoint with caching and bounded backoff."""
         if not handle:
             return []
         if handle in MightyMeepleProvider._variant_cache:
             return MightyMeepleProvider._variant_cache[handle]
 
-        for attempt in range(3):
+        if deadline is not None and (deadline - time.monotonic()) <= 0.3:
+            return []
+
+        max_attempts = 1 if fast_mode else 2
+        cf_limit = 1 if fast_mode else 2
+
+        for attempt in range(max_attempts):
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.3:
+                    return []
+                req_timeout = min(4.0 if fast_mode else 8.0, max(1.0, remaining))
+            else:
+                req_timeout = 4.0 if fast_mode else 8.0
+
             try:
                 url = f"{MIGHTY_MEEPLE_BASE}/products/{handle}.js"
-                r = self.session.get(url, timeout=8)
+                r = self.session.get(url, timeout=req_timeout)
                 if self._is_cloudflare_challenge(r):
-                    retry_sec = 2.0
+                    if cf_state is not None:
+                        cf_state["blocked_count"] = cf_state.get("blocked_count", 0) + 1
+                    retry_sec = 1.5
                     if hasattr(r, "headers") and "Retry-After" in r.headers:
                         try:
-                            retry_sec = max(2.0, float(r.headers["Retry-After"]))
+                            retry_sec = float(r.headers["Retry-After"])
                         except (ValueError, TypeError):
                             pass
+                    retry_sec = min(3.0, max(1.0, retry_sec))
                     logger.warning(
-                        f"Mighty Meeple Cloudflare/rate challenge (HTTP {getattr(r, 'status_code', 'N/A')}) on {handle} (attempt {attempt+1}/3, backoff {retry_sec}s)"
+                        f"Mighty Meeple Cloudflare/rate challenge (HTTP {getattr(r, 'status_code', 'N/A')}) on {handle} (attempt {attempt+1}/{max_attempts})"
                     )
-                    time.sleep(retry_sec * (attempt + 1))
+                    if fast_mode:
+                        return []
+                    sleep_sec = min(3.0, retry_sec * (attempt + 1))
+                    if (
+                        (cf_state is not None and cf_state.get("blocked_count", 0) >= cf_limit)
+                        or (attempt + 1 >= max_attempts)
+                        or (deadline is not None and time.monotonic() + sleep_sec >= deadline)
+                    ):
+                        return []
+                    time.sleep(sleep_sec)
                     continue
 
                 if r.status_code == 200:
@@ -307,14 +429,28 @@ class MightyMeepleProvider:
                         data = r.json()
                         variants = data.get("variants", [])
                         if variants:
+                            if len(MightyMeepleProvider._variant_cache) >= 2000:
+                                for old_k in list(MightyMeepleProvider._variant_cache.keys())[:500]:
+                                    MightyMeepleProvider._variant_cache.pop(old_k, None)
                             MightyMeepleProvider._variant_cache[handle] = variants
                             return variants
                     except Exception as json_err:
                         logger.debug(f"JSON decode error on {handle}: {json_err}")
                 elif r.status_code == 429:
-                    time.sleep(2.0 * (attempt + 1))
+                    if cf_state is not None:
+                        cf_state["blocked_count"] = cf_state.get("blocked_count", 0) + 1
+                    if fast_mode or attempt + 1 >= max_attempts:
+                        return []
+                    sleep_sec = min(3.0, 2.0 * (attempt + 1))
+                    if deadline is not None and time.monotonic() + sleep_sec >= deadline:
+                        return []
+                    time.sleep(sleep_sec)
             except Exception as e:
                 logger.debug(f"Attempt {attempt+1} failed to fetch variants for handle {handle}: {e}")
+                if fast_mode or attempt + 1 >= max_attempts:
+                    return []
+                if deadline is not None and time.monotonic() + 0.5 >= deadline:
+                    return []
                 time.sleep(0.5)
         return []
 
@@ -370,6 +506,9 @@ class MightyMeepleProvider:
         set_name: str | None,
         set_code: str | None,
         collector_number: str | None = None,
+        fast_mode: bool = False,
+        deadline: float | None = None,
+        cf_state: dict | None = None,
     ) -> list[dict]:
         """
         Filters products strictly matching card name, with high-precision variant matching
@@ -413,12 +552,26 @@ class MightyMeepleProvider:
             valid_name_products = sorted(valid_name_products, key=_set_match_priority)
 
         # Step 2: Specific Version Matching via SKU (Highest Precision)
+        local_variants: dict[str, list[dict]] = {}
+        max_sku_probes = 8 if fast_mode else 15
+        cf_limit = 1 if fast_mode else 2
         if target_set_code and target_coll_num:
-            for idx, p in enumerate(valid_name_products):
+            for idx, p in enumerate(valid_name_products[:max_sku_probes]):
+                if deadline is not None and time.monotonic() >= deadline - 0.3:
+                    break
+                if cf_state is not None and cf_state.get("blocked_count", 0) >= cf_limit:
+                    break
                 handle = p.get("handle")
-                if idx > 0 and handle and handle not in MightyMeepleProvider._variant_cache:
+                if not fast_mode and idx > 0 and handle and handle not in MightyMeepleProvider._variant_cache:
                     time.sleep(0.25)
-                variants = self._get_product_variants(handle)
+                variants = self._get_product_variants(
+                    handle,
+                    fast_mode=fast_mode,
+                    deadline=deadline,
+                    cf_state=cf_state,
+                )
+                if handle:
+                    local_variants[handle] = variants
                 title_lower = p.get("title", "").lower()
                 for v in variants:
                     sku = (v.get("sku") or "").upper()
@@ -454,9 +607,23 @@ class MightyMeepleProvider:
                                     return [p]
 
             # Step 2b: Substring SKU matching with promo guards
-            for p in valid_name_products:
+            for p in valid_name_products[:max_sku_probes]:
                 handle = p.get("handle")
-                variants = self._get_product_variants(handle)
+                if handle and handle in local_variants:
+                    variants = local_variants[handle]
+                else:
+                    if deadline is not None and time.monotonic() >= deadline - 0.3:
+                        break
+                    if cf_state is not None and cf_state.get("blocked_count", 0) >= cf_limit:
+                        break
+                    variants = self._get_product_variants(
+                        handle,
+                        fast_mode=fast_mode,
+                        deadline=deadline,
+                        cf_state=cf_state,
+                    )
+                    if handle:
+                        local_variants[handle] = variants
                 title_lower = p.get("title", "").lower()
                 for v in variants:
                     sku = (v.get("sku") or "").upper()

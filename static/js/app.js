@@ -11,6 +11,19 @@ const swipeTrackState = {
     "registry-swipe-track": { index: 0 },
     "deals-swipe-track": { index: 0 }
 };
+let isSubmittingAddCard = false;
+let printsFetchSeq = 0;
+let isSubmittingAcquireCard = false;
+
+async function safeParseJsonResponse(res) {
+    const text = await res.text();
+    if (!text) return {};
+    try {
+        return JSON.parse(text);
+    } catch (_) {
+        return { error: `Unexpected server response (HTTP ${res.status})` };
+    }
+}
 
 // =========================================================================
 // Tactical Timezone Formatter (Eastern Time)
@@ -111,8 +124,15 @@ function unlockBody(force = false) {
 function openAddCardModal() {
     const modal = document.getElementById("modal-add-card");
     if (modal) {
+        const wasHidden = modal.classList.contains("hidden");
         modal.classList.remove("hidden");
-        lockBody();
+        if (wasHidden) lockBody();
+        isSubmittingAddCard = false;
+        const submitBtn = document.getElementById("btn-submit-add-card");
+        if (submitBtn) {
+            submitBtn.innerHTML = "Add to Watchlist";
+            submitBtn.disabled = (!currentPrintsData || currentPrintsData.length === 0);
+        }
         const input = document.getElementById("card-search-input");
         if (input) input.focus();
     }
@@ -195,8 +215,9 @@ function openCardImageOverlay(el) {
 function closeCardImageModal() {
     const modal = document.getElementById("modal-card-image");
     if (modal) {
+        const wasVisible = !modal.classList.contains("hidden");
         modal.classList.add("hidden");
-        unlockBody();
+        if (wasVisible) unlockBody();
     }
 }
 
@@ -260,14 +281,26 @@ function syncTagPillHighlight(pillSelector, tagValue) {
 function closeAddCardModal() {
     const modal = document.getElementById("modal-add-card");
     if (modal) {
+        const wasVisible = !modal.classList.contains("hidden");
         modal.classList.add("hidden");
-        unlockBody();
-        document.getElementById("card-search-input").value = "";
+        if (wasVisible) unlockBody();
+        printsFetchSeq++;
+        isSubmittingAddCard = false;
+        const searchInput = document.getElementById("card-search-input");
+        if (searchInput) searchInput.value = "";
         const tagInput = document.getElementById("card-tag-input");
         if (tagInput) tagInput.value = "";
-        document.getElementById("autocomplete-dropdown").classList.add("hidden");
-        document.getElementById("print-selector-container").classList.add("hidden");
-        document.getElementById("btn-submit-add-card").disabled = true;
+        const targetPriceInput = document.getElementById("card-target-price-input");
+        if (targetPriceInput) targetPriceInput.value = "";
+        const dropdown = document.getElementById("autocomplete-dropdown");
+        if (dropdown) dropdown.classList.add("hidden");
+        const printContainer = document.getElementById("print-selector-container");
+        if (printContainer) printContainer.classList.add("hidden");
+        const submitBtn = document.getElementById("btn-submit-add-card");
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = "Add to Watchlist";
+        }
         currentPrintsData = [];
         currentPriceIntel = { market: null, great: null, good: null, fair: null };
     }
@@ -276,8 +309,9 @@ function closeAddCardModal() {
 function openBulkAddModal() {
     const modal = document.getElementById("modal-bulk-add");
     if (modal) {
+        const wasHidden = modal.classList.contains("hidden");
         modal.classList.remove("hidden");
-        lockBody();
+        if (wasHidden) lockBody();
         const textarea = document.getElementById("bulk-cards-input");
         if (textarea) {
             textarea.focus();
@@ -289,8 +323,9 @@ function openBulkAddModal() {
 function closeBulkAddModal() {
     const modal = document.getElementById("modal-bulk-add");
     if (modal) {
+        const wasVisible = !modal.classList.contains("hidden");
         modal.classList.add("hidden");
-        unlockBody();
+        if (wasVisible) unlockBody();
         const tagInput = document.getElementById("bulk-tag-input");
         if (tagInput) tagInput.value = "";
         const progressBox = document.getElementById("bulk-progress-box");
@@ -428,8 +463,9 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
 function closeEditTargetModal() {
     const modal = document.getElementById("modal-edit-target");
     if (modal) {
+        const wasVisible = !modal.classList.contains("hidden");
         modal.classList.add("hidden");
-        unlockBody();
+        if (wasVisible) unlockBody();
     }
 }
 
@@ -559,6 +595,19 @@ document.addEventListener("DOMContentLoaded", () => {
         searchInput.addEventListener("input", (e) => {
             const query = e.target.value.trim();
             clearTimeout(autocompleteTimeout);
+
+            // Invalidate previously loaded prints when the search text diverges so stale cards cannot be submitted
+            if (currentPrintsData && currentPrintsData.length > 0) {
+                const selectedName = (currentPrintsData[0]?.name || "").toLowerCase();
+                if (query.toLowerCase() !== selectedName) {
+                    currentPrintsData = [];
+                    currentPriceIntel = { market: null, great: null, good: null, fair: null };
+                    const printContainer = document.getElementById("print-selector-container");
+                    if (printContainer) printContainer.classList.add("hidden");
+                    const submitBtn = document.getElementById("btn-submit-add-card");
+                    if (submitBtn) submitBtn.disabled = true;
+                }
+            }
 
             if (query.length < 2) {
                 dropdown.classList.add("hidden");
@@ -771,6 +820,7 @@ document.addEventListener("DOMContentLoaded", () => {
             closeEditTargetModal();
             closeCadenceModal();
             closeCardImageModal();
+            closeAcquireCardModal();
             closeCommandPalette();
             if (typeof closeBuylistVariantModal === "function") closeBuylistVariantModal();
             closeMobileDrawer();
@@ -789,14 +839,41 @@ async function selectCardName(cardName) {
     const printSelect = document.getElementById("card-print-select");
     const finishSelect = document.getElementById("card-finish-select");
     const submitBtn = document.getElementById("btn-submit-add-card");
+    const searchBtn = document.getElementById("btn-search-card");
 
+    const reqSeq = ++printsFetchSeq;
+    currentPrintsData = [];
+    if (submitBtn) submitBtn.disabled = true;
     if (searchInput) searchInput.value = cardName;
     if (dropdown) dropdown.classList.add("hidden");
+
+    const origSearchHtml = searchBtn ? searchBtn.innerHTML : "";
+    if (searchBtn) {
+        searchBtn.disabled = true;
+        searchBtn.innerHTML = `
+            <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span>Loading...</span>
+        `;
+    }
 
     // Fetch Prints
     try {
         const res = await fetch(`/api/scryfall/prints?name=${encodeURIComponent(cardName)}`);
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
+        if (reqSeq !== printsFetchSeq) return;
+
+        if (!res.ok) {
+            if (res.status === 401) {
+                showToast("Session expired. Please sign in again.", "error");
+            } else {
+                showToast(data.error || "Failed to load printing classifications", "error");
+            }
+            return;
+        }
+
         currentPrintsData = data.prints || [];
 
         if (currentPrintsData.length === 0) {
@@ -829,8 +906,14 @@ async function selectCardName(cardName) {
         updateSelectedPrintView();
 
     } catch (err) {
+        if (reqSeq !== printsFetchSeq) return;
         console.error("Error loading prints:", err);
         showToast("Failed to load printing classifications", "error");
+    } finally {
+        if (searchBtn && reqSeq === printsFetchSeq) {
+            searchBtn.disabled = false;
+            searchBtn.innerHTML = origSearchHtml;
+        }
     }
 }
 
@@ -945,6 +1028,8 @@ function updateSelectedPrintView() {
 // Add Card Submit Action
 // =========================================================================
 async function submitAddCard() {
+    if (isSubmittingAddCard) return;
+
     const printSelect = document.getElementById("card-print-select");
     const finishSelect = document.getElementById("card-finish-select");
     const targetPriceInput = document.getElementById("card-target-price-input");
@@ -970,8 +1055,8 @@ async function submitAddCard() {
             set_code: null,
             collector_number: null,
             image_uri: canonical.image_uri,
-            finish: finishSelect.value,
-            target_price: targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
+            finish: finishSelect ? finishSelect.value : "any",
+            target_price: targetPriceInput && targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
             tag: tagValue,
         };
@@ -988,15 +1073,24 @@ async function submitAddCard() {
             set_code: printObj.set_code,
             collector_number: printObj.collector_number,
             image_uri: printObj.image_uri,
-            finish: finishSelect.value,
-            target_price: targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
+            finish: finishSelect ? finishSelect.value : "any",
+            target_price: targetPriceInput && targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
             tag: tagValue,
         };
     }
 
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Scanning Telemetry...";
+    isSubmittingAddCard = true;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `
+            <svg class="w-3.5 h-3.5 animate-spin inline mr-1.5" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span>Scanning Telemetry...</span>
+        `;
+    }
 
     try {
         const res = await fetch("/api/watchlist/add", {
@@ -1005,25 +1099,33 @@ async function submitAddCard() {
             body: JSON.stringify(payload),
         });
 
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || `Target acquired: ${payload.name}`, "success");
             closeAddCardModal();
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Add to Watchlist";
             if (!window.location.pathname.includes("/buylist")) {
                 setTimeout(() => window.location.reload(), 500);
             }
         } else {
-            showToast(data.error || "Failed to register target", "error");
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Add to Watchlist";
+            if (res.status === 409) {
+                showToast(data.error || "This card is already on your watchlist.", "info");
+            } else {
+                showToast(data.error || "Failed to register target", "error");
+            }
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = "Add to Watchlist";
+            }
         }
     } catch (err) {
         console.error("Add card error:", err);
-        showToast("Communication failure adding target", "error");
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Add to Watchlist";
+        showToast("Communication failure adding target. Please refresh to verify if it was added.", "error");
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = "Add to Watchlist";
+        }
+    } finally {
+        isSubmittingAddCard = false;
     }
 }
 
@@ -1082,7 +1184,7 @@ async function submitBulkAdd() {
             body: JSON.stringify(payload),
         });
 
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             const added = data.added_count || 0;
             const skipped = data.skipped_count || 0;
@@ -1126,16 +1228,6 @@ async function submitBulkAdd() {
 // TCGplayer Purchase Reconciliation Modal & Execution
 // =========================================================================
 let currentTcgReconciliationData = null;
-
-function escapeHtml(str) {
-    if (!str) return "";
-    return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
 
 let currentTcgFetchedGmailOrders = [];
 let currentTcgModalMode = "reconcile";
@@ -1826,7 +1918,7 @@ async function executeTcgPurchaseReconciliation() {
             body: JSON.stringify(payload),
         });
 
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || "Order reconciled and logged.", "success");
 
@@ -1990,7 +2082,7 @@ async function deleteTrackedTcgOrder(orderId) {
     }
     try {
         const res = await fetch(`/api/orders/tcgplayer/${orderId}`, { method: "DELETE" });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || "Order removed.", "success");
             await loadTrackedTcgOrders(false);
@@ -2035,7 +2127,7 @@ async function submitEditTarget() {
             }),
         });
 
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast("Target configuration committed.", "success");
             closeEditTargetModal();
@@ -2561,7 +2653,7 @@ function refreshRegistryTagsDom() {
 async function toggleMightyMeepleAlert(itemId) {
     try {
         const res = await fetch(`/api/watchlist/toggle-mm-alert/${itemId}`, { method: "POST" });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message, "success");
             const btn = document.getElementById(`mm-alert-btn-${itemId}`);
@@ -2594,7 +2686,7 @@ async function triggerRefreshCard(itemId) {
 
     try {
         const res = await fetch(`/api/watchlist/refresh/${itemId}`, { method: "POST" });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || "Target price intel refreshed", "success");
             if (data.card && document.getElementById(`card-row-${itemId}`)) {
@@ -2623,7 +2715,7 @@ async function triggerRefreshAll() {
 
     try {
         const res = await fetch("/api/watchlist/refresh-all", { method: "POST" });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || "Telemetry synchronized", "success");
             setTimeout(() => window.location.reload(), 600);
@@ -2689,7 +2781,7 @@ async function deleteCard(itemId, cardName) {
 
     try {
         const res = await fetch(`/api/watchlist/delete/${itemId}`, { method: "DELETE" });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || `Target ${cardName} de-registered`, "success");
             const elem = document.getElementById(`card-row-${itemId}`) || document.getElementById(`deal-card-${itemId}`);
@@ -2880,7 +2972,7 @@ async function executeBulkTerminate() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ card_ids: cardIds }),
         });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || `De-registered ${count} targets.`, "success");
             cardIds.forEach(id => {
@@ -2968,7 +3060,7 @@ async function submitBulkTag() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ card_ids: cardIds, tag: tag }),
         });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || `Updated tags for ${count} targets.`, "success");
             if (Array.isArray(data.cards)) {
@@ -3389,6 +3481,21 @@ function updateInPersonGroupHeadersVisibility() {
 // =========================================================================
 // In-Person Target Acquisition Modal Controls
 // =========================================================================
+function openAcquireCardModalFromBtn(btn) {
+    if (!btn) return;
+    const id = btn.getAttribute("data-item-id");
+    const name = btn.getAttribute("data-card-name") || "";
+    const rawTarget = btn.getAttribute("data-target-price");
+    const rawLowest = btn.getAttribute("data-lowest-price");
+    const targetPrice = (rawTarget !== null && rawTarget !== "") ? parseFloat(rawTarget) : null;
+    const lowestPrice = (rawLowest !== null && rawLowest !== "") ? parseFloat(rawLowest) : null;
+    const setCode = btn.getAttribute("data-set-code") || "";
+    const collectorNumber = btn.getAttribute("data-collector-number") || "";
+    const finish = btn.getAttribute("data-finish") || "nonfoil";
+    const imageUri = btn.getAttribute("data-image-uri") || "";
+    openAcquireCardModal(id, name, targetPrice, lowestPrice, setCode, collectorNumber, finish, imageUri);
+}
+
 function openAcquireCardModal(id, name, targetPrice, lowestPrice, setCode, collectorNumber, finish, imageUri) {
     const modal = document.getElementById("modal-inperson-acquire");
     if (!modal) return;
@@ -3445,12 +3552,20 @@ function openAcquireCardModal(id, name, targetPrice, lowestPrice, setCode, colle
         toggleAcquireInventoryFields(true);
     }
 
+    const wasHidden = modal.classList.contains("hidden");
     modal.classList.remove("hidden");
+    if (wasHidden) lockBody();
+    isSubmittingAcquireCard = false;
 }
 
 function closeAcquireCardModal() {
     const modal = document.getElementById("modal-inperson-acquire");
-    if (modal) modal.classList.add("hidden");
+    if (modal) {
+        const wasVisible = !modal.classList.contains("hidden");
+        modal.classList.add("hidden");
+        if (wasVisible) unlockBody();
+    }
+    isSubmittingAcquireCard = false;
 }
 
 function handleInPersonAcquireBackdropClick(event) {
@@ -3471,9 +3586,11 @@ function toggleAcquireInventoryFields(checked) {
 }
 
 async function submitAcquireCard() {
+    if (isSubmittingAcquireCard) return;
     const itemId = document.getElementById("acquire-modal-item-id")?.value;
     if (!itemId) return;
 
+    isSubmittingAcquireCard = true;
     const btn = document.getElementById("btn-submit-acquire");
     const origHtml = btn ? btn.innerHTML : "";
     if (btn) {
@@ -3501,7 +3618,7 @@ async function submitAcquireCard() {
             })
         });
 
-        const data = await resp.json();
+        const data = await safeParseJsonResponse(resp);
         if (!resp.ok || !data.success) {
             throw new Error(data.error || "Failed to mark target as acquired");
         }
@@ -3515,6 +3632,7 @@ async function submitAcquireCard() {
     } catch (err) {
         showToast(`Acquisition failed: ${err.message}`, "error");
     } finally {
+        isSubmittingAcquireCard = false;
         if (btn) {
             btn.disabled = false;
             btn.innerHTML = origHtml;
@@ -3911,7 +4029,7 @@ async function testDiscordWebhook() {
     showToast("Transmitting Discord telemetry ping...", "info");
     try {
         const res = await fetch("/api/discord/test", { method: "POST" });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message, "success");
         } else {
@@ -3936,8 +4054,9 @@ async function openCadenceModal() {
 function closeCadenceModal() {
     const modal = document.getElementById("modal-cadence-settings");
     if (modal) {
+        const wasVisible = !modal.classList.contains("hidden");
         modal.classList.add("hidden");
-        unlockBody();
+        if (wasVisible) unlockBody();
     }
 }
 
@@ -4096,7 +4215,7 @@ async function testUserDiscordWebhook() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         });
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || "Test webhook delivered successfully!", "success");
         } else {
@@ -4154,7 +4273,7 @@ async function saveCadenceSettings() {
             body: JSON.stringify(payload),
         });
 
-        const data = await res.json();
+        const data = await safeParseJsonResponse(res);
         if (res.ok) {
             showToast(data.message || "Surveillance & notification settings committed", "success");
             closeCadenceModal();

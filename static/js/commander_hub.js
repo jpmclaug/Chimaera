@@ -2996,6 +2996,16 @@ function setFleetChartMetric(metric) {
     renderFleetPositioningChart(allDecks, metric);
 }
 
+async function safeParseCommanderJson(resp) {
+    const text = await resp.text();
+    if (!text) return {};
+    try {
+        return JSON.parse(text);
+    } catch (_) {
+        return { error: `Unexpected server response (HTTP ${resp.status})` };
+    }
+}
+
 // Watchlist Button Handler for single cards
 async function handleWatchClick(btn) {
     const name = btn.getAttribute('data-name');
@@ -3018,7 +3028,7 @@ async function handleWatchClick(btn) {
                 tag: activeDeck ? activeDeck.deck_name : 'Commander'
             })
         });
-        const data = await resp.json();
+        const data = await safeParseCommanderJson(resp);
         if (resp.ok) {
             showToast(`Added '${name}' to your Watchlist!`, 'success');
             btn.className = "watch-card-btn px-2.5 py-1 bg-emerald-500/20 text-emerald-300 rounded-none text-[10px] font-mono uppercase font-bold border border-emerald-500/40 transition flex items-center gap-1 mx-auto";
@@ -3168,7 +3178,7 @@ async function handleUpgradeWatchClick(btn) {
                 tag: activeDeck ? activeDeck.deck_name : 'Commander Upgrade'
             })
         });
-        const data = await resp.json();
+        const data = await safeParseCommanderJson(resp);
         if (resp.ok) {
             showToast(`Added upgrade '${name}' to Watchlist!`, 'success');
             btn.className = "w-full py-1.5 bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold uppercase rounded-none border border-emerald-500/40 text-center";
@@ -4660,7 +4670,7 @@ async function addSharedCardToWatchlist(cardName, btn) {
                 tag: 'Commander Staple'
             })
         });
-        const data = await resp.json();
+        const data = await safeParseCommanderJson(resp);
         if (resp.ok) {
             showToast(`Added '${cardName}' to Watchlist!`, 'success');
             btn.className = "px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-none text-[10px] font-mono uppercase font-bold border border-emerald-500/40";

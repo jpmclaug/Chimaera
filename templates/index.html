@@ -1047,8 +1047,16 @@
 
                     <!-- Action Buttons -->
                     <div class="font-mono text-xs pt-1">
-                        <button type="button" 
-                            onclick="openAcquireCardModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 'null' }}, '{{ item.set_code or '' }}', '{{ item.collector_number or '' }}', '{{ item.finish or 'nonfoil' }}', '{{ item.image_uri or '' }}')"
+                        <button type="button"
+                            data-item-id="{{ item.id }}"
+                            data-card-name="{{ item.name }}"
+                            data-target-price="{{ item.target_price if item.target_price is not none else '' }}"
+                            data-lowest-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}"
+                            data-set-code="{{ item.set_code or '' }}"
+                            data-collector-number="{{ item.collector_number or '' }}"
+                            data-finish="{{ item.finish or 'nonfoil' }}"
+                            data-image-uri="{{ item.image_uri or '' }}"
+                            onclick="openAcquireCardModalFromBtn(this)"
                             class="w-full btn-teal py-1 text-[11px] font-bold uppercase flex items-center justify-center space-x-1"
                             title="Mark as Acquired in person and optionally ingest into inventory">
                             <span>✓ Acquired</span>
@@ -1158,8 +1166,16 @@
                         </div>
                     </div>
 
-                    <button type="button" 
-                        onclick="openAcquireCardModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 'null' }}, '{{ item.set_code or '' }}', '{{ item.collector_number or '' }}', '{{ item.finish or 'nonfoil' }}', '{{ item.image_uri or '' }}')"
+                    <button type="button"
+                        data-item-id="{{ item.id }}"
+                        data-card-name="{{ item.name }}"
+                        data-target-price="{{ item.target_price if item.target_price is not none else '' }}"
+                        data-lowest-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}"
+                        data-set-code="{{ item.set_code or '' }}"
+                        data-collector-number="{{ item.collector_number or '' }}"
+                        data-finish="{{ item.finish or 'nonfoil' }}"
+                        data-image-uri="{{ item.image_uri or '' }}"
+                        onclick="openAcquireCardModalFromBtn(this)"
                         class="btn-teal px-2.5 py-1 text-[11px] font-bold uppercase"
                         title="Acquire card in person">
                         ✓ Got It

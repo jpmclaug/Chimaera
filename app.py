@@ -6,6 +6,8 @@ import os
 import re
 import secrets
 import threading
+import time
+import urllib.parse
 from collections import defaultdict
 from functools import wraps
 from datetime import datetime, timezone
@@ -2137,7 +2139,12 @@ def create_app(test_config=None):
                 return jsonify({"error": f"'{name}' ({set_code} #{collector_number or '?'}, {finish.capitalize()}) is already on your watchlist."}), 409
 
         # Resolve canonical info and metadata from Scryfall
-        card_info = scryfall_provider.get_card_named(name)
+        card_info = None
+        try:
+            card_info = scryfall_provider.get_card_named(name)
+        except Exception as sf_err:
+            logger.warning(f"Scryfall metadata lookup failed for '{name}': {sf_err}")
+
         if card_info:
             if not scryfall_id:
                 scryfall_id = card_info.get("id")
@@ -2177,13 +2184,29 @@ def create_app(test_config=None):
         )
         db.session.add(new_item)
         db.session.commit()
+        new_item_id = new_item.id
 
-        # Run initial price poll across all providers
-        deal_engine.poll_card(new_item, notify=True)
+        # Run initial fast-mode price poll across providers without blocking persistence
+        try:
+            deal_engine.poll_card(new_item, notify=True, fast_mode=True)
+        except Exception as poll_err:
+            logger.warning(
+                f"Initial price poll failed for '{name}' (item_id={new_item_id}): {poll_err}",
+                exc_info=True,
+            )
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+            new_item = db.session.get(WatchlistItem, new_item_id)
+
+        if new_item is None:
+            new_item = db.session.get(WatchlistItem, new_item_id)
 
         version_desc = "Any Version" if set_code is None else f"{set_code} #{collector_number or '?'}"
         log_activity("CARD_ADD", details=f"Registered target '{name}' ({version_desc})", user=user)
         return jsonify({
+            "success": True,
             "message": f"Successfully added {name} ({version_desc}) to watchlist.",
             "card": new_item.to_dict(),
         }), 201
@@ -2225,6 +2248,7 @@ def create_app(test_config=None):
         }
 
         added_items = []
+        added_info_pairs = []
         skipped_items = []
         failed_items = []
 
@@ -2296,22 +2320,101 @@ def create_app(test_config=None):
             )
             db.session.add(new_item)
             added_items.append(new_item)
+            added_info_pairs.append((new_item, card_info))
             existing_any_set.add(c_lower)
 
         if added_items:
             db.session.commit()
+            added_ids = [item.id for item in added_items]
 
-            # Run initial price poll across all providers for newly added items
-            for item in added_items:
+            # Immediately seed baseline TCGplayer VendorPrice from Scryfall collection data
+            now_seed = utc_now()
+            seeded_any = False
+            for item_obj, c_info in added_info_pairs:
+                prices = (c_info or {}).get("prices") or {}
+                p_val = None
+                if finish == "foil":
+                    p_val = prices.get("usd_foil") or prices.get("usd_etched") or prices.get("usd")
+                elif finish == "etched":
+                    p_val = prices.get("usd_etched") or prices.get("usd_foil") or prices.get("usd")
+                elif finish == "any":
+                    cand_nums = []
+                    for raw_p in (prices.get("usd"), prices.get("usd_foil"), prices.get("usd_etched")):
+                        try:
+                            if raw_p is not None and float(raw_p) > 0:
+                                cand_nums.append(float(raw_p))
+                        except (ValueError, TypeError):
+                            pass
+                    if cand_nums:
+                        p_val = min(cand_nums)
+                else:
+                    p_val = prices.get("usd") or prices.get("usd_foil")
+
+                if p_val is not None:
+                    try:
+                        num_p = round(float(p_val), 2)
+                        if num_p > 0:
+                            set_tag = ((c_info or {}).get("set_code") or "").upper()
+                            cond = f"Market NM ({set_tag})" if set_tag else "Market NM"
+                            p_url = (c_info or {}).get("tcgplayer_url") or (
+                                f"https://www.tcgplayer.com/search/magic/product?q={urllib.parse.quote(item_obj.name)}"
+                            )
+                            db.session.add(VendorPrice(
+                                watchlist_id=item_obj.id,
+                                vendor_name="TCGplayer",
+                                price=num_p,
+                                condition=cond,
+                                in_stock=True,
+                                product_url=p_url,
+                                search_url=p_url,
+                                last_checked=now_seed,
+                            ))
+                            seeded_any = True
+                    except (ValueError, TypeError):
+                        pass
+
+            if seeded_any:
                 try:
-                    deal_engine.poll_card(item, notify=True)
+                    db.session.commit()
+                except Exception as seed_err:
+                    logger.warning(f"Failed seeding baseline bulk TCGplayer prices: {seed_err}")
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+
+            # Run initial fast-mode price poll across providers within a bounded wall-clock budget
+            poll_deadline = time.monotonic() + 20.0
+            had_poll_rollback = False
+            for item_id in added_ids:
+                if time.monotonic() >= poll_deadline:
+                    logger.info(
+                        f"Bulk add fast-poll budget reached; remaining {len(added_ids)} targets will complete in background sweep."
+                    )
+                    break
+                item_obj = db.session.get(WatchlistItem, item_id)
+                if item_obj is None:
+                    continue
+                try:
+                    deal_engine.poll_card(item_obj, notify=True, fast_mode=True)
                 except Exception as e:
-                    logger.error(f"Error polling new bulk item {item.name}: {e}")
+                    logger.error(f"Error polling new bulk item {item_obj.name}: {e}")
+                    had_poll_rollback = True
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+
+            if had_poll_rollback:
+                refetched = WatchlistItem.query.filter(WatchlistItem.id.in_(added_ids)).all()
+                by_id = {obj.id: obj for obj in refetched}
+                added_items = [by_id[i] for i in added_ids if i in by_id]
 
         summary_msg = f"Successfully registered {len(added_items)} targets ({len(skipped_items)} skipped, {len(failed_items)} unresolved)."
         log_activity("BULK_CARD_ADD", details=f"Batch import: {len(added_items)} registered, {len(skipped_items)} skipped, {len(failed_items)} failed", user=user)
 
         return jsonify({
+            "success": True,
             "message": summary_msg,
             "total_requested": len(card_names),
             "added_count": len(added_items),

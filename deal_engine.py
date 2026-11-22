@@ -1,7 +1,9 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, wait as futures_wait, ALL_COMPLETED
 from datetime import datetime, timezone
 import requests
+from sqlalchemy.exc import OperationalError, DBAPIError
 from config import Config
 from models import db, WatchlistItem, VendorPrice, SystemSetting, User, MicrocenterItem, ActivityLog
 from card_utils import fix_mojibake
@@ -23,7 +25,7 @@ class DealEngine:
             store_name=Config.MICROCENTER_STORE_NAME,
         )
 
-    def poll_card(self, item: WatchlistItem, notify: bool = True) -> dict:
+    def poll_card(self, item: WatchlistItem, notify: bool = True, fast_mode: bool = False) -> dict:
         """
         Polls all 3 providers for a single WatchlistItem, upserts VendorPrice records,
         and dispatches a Discord deal alert if a new deal threshold is met.
@@ -43,121 +45,197 @@ class DealEngine:
                 except Exception as name_err:
                     logger.debug(f"Could not resolve canonical name from Scryfall: {name_err}")
 
+        # Extract plain primitive values before spawning worker threads (never touch ORM/session in threads)
+        item_id = item.id
+        item_name = item.name
         is_any = item.is_any_version
-        version_label = "Any Version" if is_any else (item.set_code or "N/A")
-        logger.info(f"Polling prices for: {item.name} ({version_label}, {item.finish})")
+        item_set_code = None if is_any else item.set_code
+        item_collector_number = None if is_any else item.collector_number
+        item_finish = item.finish
+        item_scryfall_id = item.scryfall_id
+
+        version_label = "Any Version" if is_any else (item_set_code or "N/A")
+        logger.info(f"Polling prices for: {item_name} ({version_label}, {item_finish})")
 
         # 1. Scryfall / TCGplayer (with error isolation and fallback)
         tcg_data = None
         try:
             if is_any:
-                tcg_data = self.scryfall.get_cheapest_tcgplayer_price(item.name, finish=item.finish)
+                tcg_data = self.scryfall.get_cheapest_tcgplayer_price(item_name, finish=item_finish)
             else:
-                tcg_data = self.scryfall.get_tcgplayer_price(item.scryfall_id, finish=item.finish)
+                tcg_data = self.scryfall.get_tcgplayer_price(item_scryfall_id, finish=item_finish)
                 # Fallback to cheapest price if specific printing has no direct price listed
                 if not tcg_data or not tcg_data.get("in_stock") or tcg_data.get("price", 0) <= 0:
-                    cheapest_fallback = self.scryfall.get_cheapest_tcgplayer_price(item.name, finish=item.finish)
+                    cheapest_fallback = self.scryfall.get_cheapest_tcgplayer_price(item_name, finish=item_finish)
                     if cheapest_fallback and cheapest_fallback.get("price", 0) > 0:
                         tcg_data = cheapest_fallback
         except Exception as sf_err:
-            logger.warning(f"Error querying Scryfall/TCGplayer for {item.name}: {sf_err}")
+            logger.warning(f"Error querying Scryfall/TCGplayer for {item_name}: {sf_err}")
 
         ref_price = tcg_data.get("price") if tcg_data and tcg_data.get("in_stock") else None
+        set_name = None
+        if not is_any and item_set_code:
+            try:
+                set_name = self.scryfall.get_set_name(item_set_code)
+            except Exception as set_err:
+                logger.debug(f"Error resolving set name for {item_set_code}: {set_err}")
 
-        # 2. Mighty Meeple (with error isolation)
-        mm_data = None
-        try:
-            set_name = self.scryfall.get_set_name(item.set_code) if not is_any and item.set_code else None
-            mm_data = self.mightymeeple.search_card(
-                card_name=item.name,
+        # 2. Mighty Meeple & 3. eBay in parallel (using plain primitives only)
+        def _fetch_mm():
+            return self.mightymeeple.search_card(
+                card_name=item_name,
                 set_name=set_name,
-                set_code=None if is_any else item.set_code,
-                collector_number=None if is_any else item.collector_number,
-                finish=item.finish,
+                set_code=item_set_code,
+                collector_number=item_collector_number,
+                finish=item_finish,
+                fast_mode=fast_mode,
+                max_seconds=5.0 if fast_mode else None,
             )
-        except Exception as mm_err:
-            logger.warning(f"Error querying Mighty Meeple for {item.name}: {mm_err}")
 
-        # 3. eBay (with error isolation)
-        ebay_data = None
-        try:
-            ebay_data = self.ebay.search_card(
-                card_name=item.name,
-                set_code=None if is_any else item.set_code,
-                finish=item.finish,
+        def _fetch_ebay():
+            return self.ebay.search_card(
+                card_name=item_name,
+                set_code=item_set_code,
+                finish=item_finish,
                 reference_price=ref_price,
+                timeout=4.0 if fast_mode else 8.0,
             )
-        except Exception as ebay_err:
-            logger.warning(f"Error querying eBay for {item.name}: {ebay_err}")
+
+        mm_data = None
+        ebay_data = None
+        executor = ThreadPoolExecutor(max_workers=2)
+        try:
+            mm_fut = executor.submit(_fetch_mm)
+            ebay_fut = executor.submit(_fetch_ebay)
+            if fast_mode:
+                futures_wait([mm_fut, ebay_fut], timeout=5.5, return_when=ALL_COMPLETED)
+                if mm_fut.done():
+                    try:
+                        mm_data = mm_fut.result()
+                    except Exception as mm_err:
+                        logger.warning(f"Error querying Mighty Meeple for {item_name}: {mm_err}")
+                else:
+                    logger.warning(f"Mighty Meeple fast_mode poll timed out for {item_name}")
+                if ebay_fut.done():
+                    try:
+                        ebay_data = ebay_fut.result()
+                    except Exception as ebay_err:
+                        logger.warning(f"Error querying eBay for {item_name}: {ebay_err}")
+                else:
+                    logger.warning(f"eBay fast_mode poll timed out for {item_name}")
+            else:
+                try:
+                    mm_data = mm_fut.result()
+                except Exception as mm_err:
+                    logger.warning(f"Error querying Mighty Meeple for {item_name}: {mm_err}")
+                try:
+                    ebay_data = ebay_fut.result()
+                except Exception as ebay_err:
+                    logger.warning(f"Error querying eBay for {item_name}: {ebay_err}")
+        finally:
+            if fast_mode:
+                executor.shutdown(wait=False, cancel_futures=True)
+            else:
+                executor.shutdown(wait=True)
 
         now = datetime.now(timezone.utc)
         results = [tcg_data, mm_data, ebay_data]
 
-        # Check previous Mighty Meeple stock status before upserting
-        mm_existing = VendorPrice.query.filter_by(watchlist_id=item.id, vendor_name="Mighty Meeple").first()
-        mm_was_in_stock = bool(mm_existing and mm_existing.in_stock and mm_existing.price > 0)
+        # Upsert VendorPrice records with retry on transient Neon/Postgres SSL connection drop
+        mm_was_in_stock = False
+        for db_attempt in range(2):
+            try:
+                mm_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Mighty Meeple").first()
+                mm_was_in_stock = bool(mm_existing and mm_existing.in_stock and mm_existing.price > 0)
 
-        for vendor_data in results:
-            if not vendor_data:
-                continue
+                for vendor_data in results:
+                    if not vendor_data:
+                        continue
 
-            v_name = vendor_data.get("vendor_name")
-            existing = (
-                VendorPrice.query.filter_by(
-                    watchlist_id=item.id,
-                    vendor_name=v_name,
-                ).first()
-            )
+                    v_name = vendor_data.get("vendor_name")
+                    existing = (
+                        VendorPrice.query.filter_by(
+                            watchlist_id=item_id,
+                            vendor_name=v_name,
+                        ).first()
+                    )
 
-            if existing:
-                existing.price = float(vendor_data.get("price", 0.0))
-                existing.condition = vendor_data.get("condition", "NM")
-                existing.in_stock = bool(vendor_data.get("in_stock", True))
-                existing.product_url = vendor_data.get("product_url")
-                existing.search_url = vendor_data.get("search_url") or vendor_data.get("product_url")
-                existing.last_checked = now
-            else:
-                new_vp = VendorPrice(
-                    watchlist_id=item.id,
-                    vendor_name=v_name,
-                    price=float(vendor_data.get("price", 0.0)),
-                    condition=vendor_data.get("condition", "NM"),
-                    in_stock=bool(vendor_data.get("in_stock", True)),
-                    product_url=vendor_data.get("product_url"),
-                    search_url=vendor_data.get("search_url") or vendor_data.get("product_url"),
-                    last_checked=now,
-                )
-                db.session.add(new_vp)
+                    if existing:
+                        existing.price = float(vendor_data.get("price", 0.0))
+                        existing.condition = vendor_data.get("condition", "NM")
+                        existing.in_stock = bool(vendor_data.get("in_stock", True))
+                        existing.product_url = vendor_data.get("product_url")
+                        existing.search_url = vendor_data.get("search_url") or vendor_data.get("product_url")
+                        existing.last_checked = now
+                    else:
+                        new_vp = VendorPrice(
+                            watchlist_id=item_id,
+                            vendor_name=v_name,
+                            price=float(vendor_data.get("price", 0.0)),
+                            condition=vendor_data.get("condition", "NM"),
+                            in_stock=bool(vendor_data.get("in_stock", True)),
+                            product_url=vendor_data.get("product_url"),
+                            search_url=vendor_data.get("search_url") or vendor_data.get("product_url"),
+                            last_checked=now,
+                        )
+                        db.session.add(new_vp)
 
-        db.session.commit()
+                db.session.commit()
+                break
+            except (OperationalError, DBAPIError) as db_err:
+                logger.warning(f"DB error committing VendorPrice for {item_name} (attempt {db_attempt + 1}/2): {db_err}")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                if db_attempt == 0 and item_id is not None:
+                    item = db.session.get(WatchlistItem, item_id)
+                    if item is None:
+                        return {
+                            "card_id": item_id,
+                            "card_name": item_name,
+                            "is_deal": False,
+                            "lowest_price": None,
+                            "mm_in_stock": False,
+                            "vendors": [],
+                        }
+                    continue
+                raise
 
-        # Check for Mighty Meeple In-Stock Alert
-        mm_now_in_stock = bool(mm_data and mm_data.get("in_stock") and mm_data.get("price", 0) > 0)
-        global_mm_alert = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
-        card_mm_alert = bool(item.notify_mm_stock if item.notify_mm_stock is not None else True)
+        if item is None and item_id is not None:
+            item = db.session.get(WatchlistItem, item_id)
 
-        if notify and mm_now_in_stock and not mm_was_in_stock and global_mm_alert and card_mm_alert:
-            logger.info(f"Mighty Meeple restock detected for {item.name}! Dispatching stock alert...")
-            self.send_discord_mm_stock_alert(item=item, mm_data=mm_data)
+        # Check for Mighty Meeple In-Stock Alert and general deal notifications
+        if notify and item is not None:
+            try:
+                mm_now_in_stock = bool(mm_data and mm_data.get("in_stock") and mm_data.get("price", 0) > 0)
+                global_mm_alert = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
+                card_mm_alert = bool(item.notify_mm_stock if item.notify_mm_stock is not None else True)
 
-        # Check for general deal & send notification
-        if notify and item.is_deal:
-            best = item.best_vendor
-            if best:
-                self.send_discord_deal_alert(
-                    item=item,
-                    best_vendor=best,
-                    savings_amount=item.savings_amount,
-                    savings_percent=item.savings_percent,
-                )
+                if mm_now_in_stock and not mm_was_in_stock and global_mm_alert and card_mm_alert:
+                    logger.info(f"Mighty Meeple restock detected for {item.name}! Dispatching stock alert...")
+                    self.send_discord_mm_stock_alert(item=item, mm_data=mm_data, fast_mode=fast_mode)
+
+                if item.is_deal:
+                    best = item.best_vendor
+                    if best:
+                        self.send_discord_deal_alert(
+                            item=item,
+                            best_vendor=best,
+                            savings_amount=item.savings_amount,
+                            savings_percent=item.savings_percent,
+                            fast_mode=fast_mode,
+                        )
+            except Exception as notify_err:
+                logger.warning(f"Error dispatching Discord alert for {item_name}: {notify_err}")
 
         return {
-            "card_id": item.id,
-            "card_name": item.name,
-            "is_deal": item.is_deal,
-            "lowest_price": item.lowest_in_stock_price,
-            "mm_in_stock": item.mm_in_stock,
-            "vendors": [v.to_dict() for v in item.vendor_prices],
+            "card_id": item.id if item else item_id,
+            "card_name": item.name if item else item_name,
+            "is_deal": item.is_deal if item else False,
+            "lowest_price": item.lowest_in_stock_price if item else None,
+            "mm_in_stock": item.mm_in_stock if item else False,
+            "vendors": [v.to_dict() for v in item.vendor_prices] if item else [],
         }
 
     def poll_all_cards(self, notify: bool = True) -> list[dict]:
@@ -288,6 +366,7 @@ class DealEngine:
         savings_percent: float,
         user: User | None = None,
         webhook_url: str | None = None,
+        fast_mode: bool = False,
     ) -> bool:
         """Dispatches a rich Discord Webhook embed for an active deal."""
         target_user = user or (item.user if item else None)
@@ -362,13 +441,18 @@ class DealEngine:
                 "embeds": [embed],
             }
 
-            for attempt in range(2):
-                resp = requests.post(dest_url, json=payload, timeout=10)
+            max_attempts = 1 if fast_mode else 2
+            req_timeout = 5 if fast_mode else 10
+            for attempt in range(max_attempts):
+                resp = requests.post(dest_url, json=payload, timeout=req_timeout)
                 if resp.status_code in (200, 204):
                     logger.info(f"Discord deal alert sent successfully for {item_name} to {dest_url[:45]}...")
-                    time.sleep(0.5)
+                    if not fast_mode:
+                        time.sleep(0.5)
                     return True
                 elif resp.status_code == 429:
+                    if fast_mode or attempt + 1 >= max_attempts:
+                        break
                     retry_sec = 2.0
                     try:
                         retry_sec = float(resp.json().get("retry_after", 2.0))
@@ -394,6 +478,7 @@ class DealEngine:
         mm_data: dict,
         user: User | None = None,
         webhook_url: str | None = None,
+        fast_mode: bool = False,
     ) -> bool:
         """Dispatches a rich Discord Webhook embed specifically for Mighty Meeple in-stock restocks."""
         target_user = user or (item.user if item else None)
@@ -470,13 +555,18 @@ class DealEngine:
                 "embeds": [embed],
             }
 
-            for attempt in range(2):
-                resp = requests.post(dest_url, json=payload, timeout=10)
+            max_attempts = 1 if fast_mode else 2
+            req_timeout = 5 if fast_mode else 10
+            for attempt in range(max_attempts):
+                resp = requests.post(dest_url, json=payload, timeout=req_timeout)
                 if resp.status_code in (200, 204):
                     logger.info(f"Discord Mighty Meeple stock alert sent successfully for {item_name} to {dest_url[:45]}...")
-                    time.sleep(0.5)
+                    if not fast_mode:
+                        time.sleep(0.5)
                     return True
                 elif resp.status_code == 429:
+                    if fast_mode or attempt + 1 >= max_attempts:
+                        break
                     retry_sec = 2.0
                     try:
                         retry_sec = float(resp.json().get("retry_after", 2.0))
