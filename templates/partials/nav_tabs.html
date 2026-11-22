@@ -14,6 +14,9 @@
         <span class="bg-[#DC143C] text-white text-[9px] px-1.5 py-0.2 font-bold">{{ deals_count }}</span>
         {% endif %}
     </a>
+    <a href="/deals#sealed" onclick="if (typeof switchDealsSection === 'function' && document.getElementById('deals-sealed-finder-container')) { event.preventDefault(); switchDealsSection('sealed'); }" class="px-3 py-1.5 flex items-center gap-1.5 border border-transparent text-[#94A3B8] hover:text-[#F59E0B] hover:bg-[#10141D]/50 transition whitespace-nowrap">
+        <span>📦 Sealed Deals</span>
+    </a>
     <a href="/buylist" class="px-3 py-1.5 flex items-center gap-1.5 border {% if active_tab == 'buylist' %}bg-[#10141D] text-[#2DD4BF] border-[#2DD4BF] font-bold{% else %}border-transparent text-[#94A3B8] hover:text-white hover:bg-[#10141D]/50{% endif %} transition whitespace-nowrap">
         <span>Buylist Scanner</span>
     </a>

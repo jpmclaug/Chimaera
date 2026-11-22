@@ -47,7 +47,14 @@ from models import (
 )
 from playtest_engine import PlaytestEngine
 from deal_engine import DealEngine
-from providers import ScryfallProvider, MightyMeepleProvider, MicrocenterProvider, EDHRECProvider, TCGplayerLotProvider
+from providers import (
+    ScryfallProvider,
+    MightyMeepleProvider,
+    MicrocenterProvider,
+    EDHRECProvider,
+    TCGplayerLotProvider,
+    TCGplayerSealedProvider,
+)
 from deck_parser import DeckParser, DeckParseError
 from card_classifier import MTGCardClassifier
 from deck_analyzer import DeckAnalyzer
@@ -153,13 +160,15 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN tag VARCHAR(100)"))
                         conn.commit()
 
-                    # Ensure in-person card metadata columns exist in watchlist_item
+                    # Ensure in-person card metadata and sealed product columns exist in watchlist_item
                     for col_name, col_type in [
                         ("type_line", "VARCHAR(255)"),
                         ("color_identity", "VARCHAR(50)"),
                         ("colors", "VARCHAR(50)"),
                         ("mana_cost", "VARCHAR(100)"),
                         ("cmc", "FLOAT"),
+                        ("tcgplayer_product_id", "INTEGER"),
+                        ("tcgplayer_market_price", "FLOAT"),
                     ]:
                         if col_name not in cols:
                             logger.info(f"Adding {col_name} column to watchlist_item...")
@@ -398,6 +407,8 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS colors VARCHAR(50)"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS mana_cost VARCHAR(100)"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS cmc FLOAT"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tcgplayer_product_id INTEGER"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tcgplayer_market_price FLOAT"))
                         conn.execute(db.text("ALTER TABLE vendor_price ADD COLUMN IF NOT EXISTS search_url TEXT"))
                         conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS discord_webhook_url VARCHAR(500)"))
                         conn.execute(db.text("ALTER TABLE \"user\" ADD COLUMN IF NOT EXISTS inventory_gdrive_url TEXT"))
@@ -724,9 +735,11 @@ def create_app(test_config=None):
     upgrade_engine = DualTierUpgradeEngine(scryfall_provider=scryfall_provider)
     edhrec_provider = EDHRECProvider()
     tcgplayer_lot_provider = TCGplayerLotProvider()
+    tcgplayer_sealed_provider = TCGplayerSealedProvider()
     card_add_evaluator = CardAddEvaluator(scryfall_provider=scryfall_provider, edhrec_provider=edhrec_provider)
     app.edhrec_provider = edhrec_provider
     app.tcgplayer_lot_provider = tcgplayer_lot_provider
+    app.tcgplayer_sealed_provider = tcgplayer_sealed_provider
     app.upgrade_engine = upgrade_engine
     app.inventory_manager = inventory_manager
     app.card_add_evaluator = card_add_evaluator
@@ -1715,8 +1728,11 @@ def create_app(test_config=None):
         allow_mp = bool(data.get("allow_mp", False))
         english_only = bool(data.get("english_only", True))
 
-        # Query user watchlist items and enrich with collection ownership status
-        user_items = WatchlistItem.query.filter_by(user_id=user.id).all()
+        # Query user watchlist single cards (exclude sealed products) and enrich with collection ownership status
+        user_items = [
+            it for it in WatchlistItem.query.filter_by(user_id=user.id).all()
+            if not it.is_sealed
+        ]
         enrich_watchlist_items_with_binder_status(user_items, user.id)
 
         try:
@@ -1750,6 +1766,317 @@ def create_app(test_config=None):
                 "sellers": [],
                 "total_sellers_found": 0,
             }), 500
+
+    # ---------------------------------------------------------
+    # API Routes: TCGplayer Sealed Product Deal Finder
+    # ---------------------------------------------------------
+    @app.route("/sealed-deals")
+    @login_required
+    def sealed_deals_redirect():
+        """Convenience route redirecting to the Sealed Product Deal Finder tab on /deals."""
+        return redirect("/deals#sealed")
+
+    @app.route("/api/sealed/sets", methods=["GET"])
+    @login_required
+    def api_sealed_sets():
+        """Returns MTG sets that have sealed products listed on TCGplayer."""
+        q = (request.args.get("q") or "").strip() or None
+        force_refresh = (request.args.get("refresh") or "").strip() in ("1", "true", "yes")
+        try:
+            sets_list = tcgplayer_sealed_provider.get_sealed_sets(query=q, force_refresh=force_refresh)
+            return jsonify({
+                "success": True,
+                "sets": sets_list,
+                "count": len(sets_list),
+            })
+        except Exception as e:
+            logger.error(f"Error fetching TCGplayer sealed sets: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e), "sets": [], "count": 0}), 500
+
+    @app.route("/api/sealed/products", methods=["GET"])
+    @login_required
+    def api_sealed_products():
+        """Returns sealed products available on TCGplayer for one or more selected MTG sets."""
+        user = get_current_user()
+        raw_sets = (request.args.get("set") or request.args.get("sets") or "").strip()
+        if not raw_sets:
+            return jsonify({"success": False, "error": "Please select an MTG set.", "products": []}), 400
+
+        set_url_names = [s.strip() for s in raw_sets.split(",") if s.strip()]
+        raw_cats = (request.args.get("categories") or "").strip()
+        categories = [c.strip().lower() for c in raw_cats.split(",") if c.strip()] if raw_cats else None
+        booster_subtype = (request.args.get("subtype") or "").strip() or None
+        include_cases = (request.args.get("include_cases") or "").strip().lower() in ("1", "true", "yes")
+        in_stock_only = (request.args.get("in_stock_only") or "").strip().lower() in ("1", "true", "yes")
+
+        try:
+            products = tcgplayer_sealed_provider.get_set_sealed_products(
+                set_url_names=set_url_names,
+                categories=categories,
+                booster_subtype=booster_subtype,
+                include_cases=include_cases,
+                in_stock_only=in_stock_only,
+            )
+
+            # Mark which sealed products are already on the user's watchlist
+            watched_rows = WatchlistItem.query.filter(
+                WatchlistItem.user_id == user.id,
+                WatchlistItem.tcgplayer_product_id.isnot(None),
+            ).all()
+            watched_by_pid = {int(w.tcgplayer_product_id): w for w in watched_rows if w.tcgplayer_product_id}
+
+            for p in products:
+                w_item = watched_by_pid.get(int(p["productId"]))
+                p["inWatchlist"] = w_item is not None
+                p["watchlistItemId"] = w_item.id if w_item else None
+                p["watchlistTargetPrice"] = w_item.target_price if w_item else None
+
+            return jsonify({
+                "success": True,
+                "sets": set_url_names,
+                "products": products,
+                "count": len(products),
+            })
+        except Exception as e:
+            logger.error(f"Error fetching sealed products for {set_url_names}: {e}", exc_info=True)
+            return jsonify({"success": False, "error": str(e), "products": [], "count": 0}), 500
+
+    @app.route("/api/sealed/scan-deals", methods=["POST"])
+    @login_required
+    def api_sealed_scan_deals():
+        """Scans live TCGplayer seller listings for selected sealed products and evaluates deals."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        products = data.get("products") or []
+        if not isinstance(products, list) or not products:
+            return jsonify({
+                "success": False,
+                "error": "Please select at least one sealed product to scan.",
+                "products": [],
+            }), 400
+
+        tolerance_mode = str(data.get("tolerance_mode") or "market_0").strip().lower()
+        if tolerance_mode not in ("market_0", "good_minus_5", "great_minus_10", "target_only", "flex_10", "all"):
+            tolerance_mode = "market_0"
+
+        english_only = bool(data.get("english_only", True))
+        try:
+            max_listings = max(3, min(25, int(data.get("max_listings", 10))))
+        except (ValueError, TypeError):
+            max_listings = 10
+
+        try:
+            result = tcgplayer_sealed_provider.scan_sealed_deals(
+                selected_products=products[:25],
+                tolerance_mode=tolerance_mode,
+                english_only=english_only,
+                max_listings_per_product=max_listings,
+            )
+
+            # Annotate watchlist status
+            watched_rows = WatchlistItem.query.filter(
+                WatchlistItem.user_id == user.id,
+                WatchlistItem.tcgplayer_product_id.isnot(None),
+            ).all()
+            watched_by_pid = {int(w.tcgplayer_product_id): w for w in watched_rows if w.tcgplayer_product_id}
+            for p in result.get("products", []):
+                w_item = watched_by_pid.get(int(p["productId"]))
+                p["inWatchlist"] = w_item is not None
+                p["watchlistItemId"] = w_item.id if w_item else None
+
+            summary = result.get("summary") or {}
+            log_activity(
+                "SEALED_DEAL_SCAN",
+                details=(
+                    f"Scanned {summary.get('productsScanned', 0)} sealed products "
+                    f"(tolerance={tolerance_mode}, deals={summary.get('dealsFound', 0)})"
+                ),
+                user=user,
+            )
+            return jsonify(result)
+        except Exception as e:
+            logger.error(f"Error scanning TCGplayer sealed deals: {e}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "error": f"Failed to scan sealed product deals: {str(e)}",
+                "products": [],
+            }), 500
+
+    @app.route("/api/watchlist/add-sealed", methods=["POST"])
+    @login_required
+    def api_watchlist_add_sealed():
+        """Adds one or more selected TCGplayer sealed products to the user's Watchlist Registry."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_items = data.get("products")
+        if not raw_items and data.get("productId"):
+            raw_items = [data]
+
+        if not isinstance(raw_items, list) or not raw_items:
+            return jsonify({"success": False, "error": "No sealed products provided."}), 400
+
+        default_tag = (data.get("tag") or "Sealed").strip() or "Sealed"
+        target_strategy = (data.get("target_strategy") or "custom").strip().lower()
+
+        existing_rows = WatchlistItem.query.filter(
+            WatchlistItem.user_id == user.id,
+            WatchlistItem.tcgplayer_product_id.isnot(None),
+        ).all()
+        existing_by_pid = {int(r.tcgplayer_product_id): r for r in existing_rows if r.tcgplayer_product_id}
+
+        added = []
+        updated = []
+        skipped = []
+        now = utc_now()
+
+        for entry in raw_items:
+            raw_pid = entry.get("productId") or entry.get("product_id")
+            if not raw_pid:
+                continue
+            try:
+                pid = int(raw_pid)
+            except (ValueError, TypeError):
+                continue
+
+            name = (entry.get("productName") or entry.get("name") or "").strip()
+            if not name:
+                continue
+
+            set_code = (entry.get("setCode") or entry.get("set_code") or "").strip().upper()[:10] or None
+            cat_label = (entry.get("categoryLabel") or entry.get("category_label") or "Sealed Product").strip()
+            image_url = (entry.get("imageUrl") or entry.get("image_url") or f"https://tcgplayer-cdn.tcgplayer.com/product/{pid}_in_400x400.jpg").strip()
+            tcg_url = (entry.get("tcgplayerUrl") or entry.get("bestBuyUrl") or f"https://www.tcgplayer.com/product/{pid}?Language=English").strip()
+
+            market_price = None
+            raw_mkt = entry.get("marketPrice") if "marketPrice" in entry else entry.get("market_price")
+            if raw_mkt is not None and str(raw_mkt).strip() != "":
+                try:
+                    val = round(float(raw_mkt), 2)
+                    if val > 0:
+                        market_price = val
+                except (ValueError, TypeError):
+                    pass
+
+            landed_price = None
+            raw_landed = (
+                entry.get("bestLandedPrice")
+                if "bestLandedPrice" in entry
+                else (entry.get("lowestLandedPrice") if "lowestLandedPrice" in entry else entry.get("lowest_landed_price"))
+            )
+            if raw_landed is not None and str(raw_landed).strip() != "":
+                try:
+                    val = round(float(raw_landed), 2)
+                    if val > 0:
+                        landed_price = val
+                except (ValueError, TypeError):
+                    pass
+
+            # Determine target price
+            target_price = None
+            raw_target = entry.get("targetPrice") if "targetPrice" in entry else entry.get("target_price")
+            if raw_target is not None and str(raw_target).strip() != "":
+                try:
+                    val = round(float(raw_target), 2)
+                    if val > 0:
+                        target_price = val
+                except (ValueError, TypeError):
+                    pass
+
+            if target_price is None and market_price:
+                if target_strategy in ("market", "market_0"):
+                    target_price = market_price
+                elif target_strategy in ("5_off", "good_minus_5"):
+                    target_price = round(market_price * 0.95, 2)
+                elif target_strategy in ("10_off", "great_minus_10", "good"):
+                    target_price = round(market_price * 0.90, 2)
+                elif target_strategy in ("15_off", "great"):
+                    target_price = round(market_price * 0.85, 2)
+
+            tag = (entry.get("tag") or default_tag).strip() or "Sealed"
+            type_line = f"Sealed Product — {cat_label}"
+
+            existing = existing_by_pid.get(pid)
+            if existing:
+                changed = False
+                if target_price is not None and existing.target_price != target_price:
+                    existing.target_price = target_price
+                    changed = True
+                if market_price is not None:
+                    existing.tcgplayer_market_price = market_price
+                    changed = True
+                if changed:
+                    updated.append(existing)
+                else:
+                    skipped.append({"productId": pid, "name": name, "reason": "Already on your watchlist."})
+                continue
+
+            new_item = WatchlistItem(
+                user_id=user.id,
+                name=name,
+                scryfall_id=None,
+                set_code=set_code,
+                collector_number="SEALED",
+                image_uri=image_url,
+                finish="sealed",
+                type_line=type_line,
+                target_price=target_price,
+                notify_mm_stock=False,
+                tag=tag,
+                tcgplayer_product_id=pid,
+                tcgplayer_market_price=market_price,
+            )
+            db.session.add(new_item)
+            db.session.flush()
+
+            # Seed initial TCGplayer VendorPrice from the scanned landed price
+            if landed_price is not None and landed_price > 0:
+                seller_name = (entry.get("bestSellerName") or "TCGplayer").strip()
+                cond = f"Unopened ({seller_name})"[:20]
+                db.session.add(VendorPrice(
+                    watchlist_id=new_item.id,
+                    vendor_name="TCGplayer",
+                    price=landed_price,
+                    condition=cond,
+                    in_stock=True,
+                    product_url=tcg_url,
+                    search_url=f"https://www.tcgplayer.com/product/{pid}?Language=English",
+                    last_checked=now,
+                ))
+
+            added.append(new_item)
+            existing_by_pid[pid] = new_item
+
+        db.session.commit()
+
+        # If any newly added sealed items didn't have a seeded price yet, poll them quickly
+        for item_obj in added:
+            if not item_obj.vendor_prices:
+                try:
+                    deal_engine.poll_sealed_item(item_obj, notify=False, fast_mode=True)
+                except Exception as poll_err:
+                    logger.warning(f"Initial sealed poll failed for '{item_obj.name}': {poll_err}")
+
+        log_activity(
+            "SEALED_WATCHLIST_ADD",
+            details=f"Added {len(added)} sealed product(s) to watchlist ({len(updated)} updated, {len(skipped)} skipped)",
+            user=user,
+        )
+
+        return jsonify({
+            "success": True,
+            "addedCount": len(added),
+            "updatedCount": len(updated),
+            "skippedCount": len(skipped),
+            "added": [it.to_dict() for it in added],
+            "updated": [it.to_dict() for it in updated],
+            "skipped": skipped,
+            "message": (
+                f"Added {len(added)} sealed product(s) to your Watchlist"
+                + (f", updated {len(updated)}" if updated else "")
+                + (f", {len(skipped)} already watched" if skipped else "")
+                + "."
+            ),
+        }), 201 if added else 200
 
     @app.route("/buylist")
     @login_required

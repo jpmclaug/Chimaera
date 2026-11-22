@@ -7,7 +7,13 @@ from sqlalchemy.exc import OperationalError, DBAPIError
 from config import Config
 from models import db, WatchlistItem, VendorPrice, SystemSetting, User, MicrocenterItem, ActivityLog
 from card_utils import fix_mojibake
-from providers import ScryfallProvider, MightyMeepleProvider, EbayProvider, MicrocenterProvider
+from providers import (
+    ScryfallProvider,
+    MightyMeepleProvider,
+    EbayProvider,
+    MicrocenterProvider,
+    TCGplayerSealedProvider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,16 +26,121 @@ class DealEngine:
         self.scryfall = ScryfallProvider()
         self.mightymeeple = MightyMeepleProvider()
         self.ebay = EbayProvider()
+        self.tcgplayer_sealed = TCGplayerSealedProvider()
         self.microcenter = MicrocenterProvider(
             store_id=Config.MICROCENTER_STORE_ID,
             store_name=Config.MICROCENTER_STORE_NAME,
         )
+
+    def poll_sealed_item(self, item: WatchlistItem, notify: bool = True, fast_mode: bool = False) -> dict:
+        """
+        Polls live TCGplayer lowest landed price (listing + shipping) and official
+        TCGplayer market price for a watched sealed MTG product.
+        """
+        item_id = item.id
+        item_name = item.name
+        pid = item.tcgplayer_product_id
+
+        logger.info(f"Polling sealed TCGplayer prices for: {item_name} (productId={pid})")
+
+        tcg_data = None
+        if pid:
+            try:
+                tcg_data = self.tcgplayer_sealed.poll_sealed_product(
+                    product_id=pid,
+                    product_name=item_name,
+                    english_only=True,
+                )
+            except Exception as err:
+                logger.warning(f"Error querying TCGplayer sealed product {pid} ({item_name}): {err}")
+
+        now = datetime.now(timezone.utc)
+        for db_attempt in range(2):
+            try:
+                if tcg_data:
+                    mkt = tcg_data.get("market_price")
+                    if mkt is not None and mkt > 0:
+                        item.tcgplayer_market_price = round(float(mkt), 2)
+                    if not item.image_uri and tcg_data.get("image_url"):
+                        item.image_uri = tcg_data["image_url"]
+
+                    existing = VendorPrice.query.filter_by(
+                        watchlist_id=item_id,
+                        vendor_name="TCGplayer",
+                    ).first()
+                    if existing:
+                        existing.price = float(tcg_data.get("price", 0.0))
+                        existing.condition = tcg_data.get("condition", "Unopened")
+                        existing.in_stock = bool(tcg_data.get("in_stock", False))
+                        existing.product_url = tcg_data.get("product_url")
+                        existing.search_url = tcg_data.get("search_url") or tcg_data.get("product_url")
+                        existing.last_checked = now
+                    else:
+                        db.session.add(VendorPrice(
+                            watchlist_id=item_id,
+                            vendor_name="TCGplayer",
+                            price=float(tcg_data.get("price", 0.0)),
+                            condition=tcg_data.get("condition", "Unopened"),
+                            in_stock=bool(tcg_data.get("in_stock", False)),
+                            product_url=tcg_data.get("product_url"),
+                            search_url=tcg_data.get("search_url") or tcg_data.get("product_url"),
+                            last_checked=now,
+                        ))
+                db.session.commit()
+                break
+            except (OperationalError, DBAPIError) as db_err:
+                logger.warning(f"DB error committing sealed VendorPrice for {item_name}: {db_err}")
+                try:
+                    db.session.rollback()
+                except Exception:
+                    pass
+                if db_attempt == 0 and item_id is not None:
+                    item = db.session.get(WatchlistItem, item_id)
+                    if item is None:
+                        return {
+                            "card_id": item_id,
+                            "card_name": item_name,
+                            "is_deal": False,
+                            "lowest_price": None,
+                            "mm_in_stock": False,
+                            "vendors": [],
+                        }
+                    continue
+                raise
+
+        if item is None and item_id is not None:
+            item = db.session.get(WatchlistItem, item_id)
+
+        if notify and item is not None and item.is_deal:
+            try:
+                best = item.best_vendor
+                if best:
+                    self.send_discord_deal_alert(
+                        item=item,
+                        best_vendor=best,
+                        savings_amount=item.savings_amount,
+                        savings_percent=item.savings_percent,
+                        fast_mode=fast_mode,
+                    )
+            except Exception as notify_err:
+                logger.warning(f"Error dispatching sealed Discord alert for {item_name}: {notify_err}")
+
+        return {
+            "card_id": item.id if item else item_id,
+            "card_name": item.name if item else item_name,
+            "is_deal": item.is_deal if item else False,
+            "lowest_price": item.lowest_in_stock_price if item else None,
+            "mm_in_stock": False,
+            "vendors": [v.to_dict() for v in item.vendor_prices] if item else [],
+        }
 
     def poll_card(self, item: WatchlistItem, notify: bool = True, fast_mode: bool = False) -> dict:
         """
         Polls all 3 providers for a single WatchlistItem, upserts VendorPrice records,
         and dispatches a Discord deal alert if a new deal threshold is met.
         """
+        if item.is_sealed and item.tcgplayer_product_id:
+            return self.poll_sealed_item(item, notify=notify, fast_mode=fast_mode)
         # Proactive card name sanitization for corrupted encoding/mojibake
         if "\ufffd" in item.name or any(marker in item.name for marker in ("\u00c3", "\u00c2")):
             repaired = fix_mojibake(item.name)

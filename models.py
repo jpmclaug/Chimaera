@@ -281,6 +281,8 @@ class WatchlistItem(db.Model):
     colors = db.Column(db.String(50), nullable=True)
     mana_cost = db.Column(db.String(100), nullable=True)
     cmc = db.Column(db.Float, nullable=True)
+    tcgplayer_product_id = db.Column(db.Integer, nullable=True, index=True)
+    tcgplayer_market_price = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=utc_now)
 
     # Relationships
@@ -359,8 +361,21 @@ class WatchlistItem(db.Model):
         return bool(mm and mm.in_stock and mm.price > 0)
 
     @property
+    def is_sealed(self) -> bool:
+        """Returns True if this watchlist item is a sealed MTG product tracked via TCGplayer."""
+        if self.tcgplayer_product_id is not None:
+            return True
+        if (self.finish or "").strip().lower() == "sealed":
+            return True
+        if (self.type_line or "").strip().lower().startswith("sealed"):
+            return True
+        return False
+
+    @property
     def market_price(self):
         """Returns TCGplayer market reference baseline price or None."""
+        if self.tcgplayer_market_price is not None and self.tcgplayer_market_price > 0:
+            return round(float(self.tcgplayer_market_price), 2)
         tcg = self.get_vendor_price("TCGplayer")
         if tcg and tcg.price > 0:
             return tcg.price
@@ -599,6 +614,9 @@ class WatchlistItem(db.Model):
             "tag": self.tag,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "is_any_version": self.is_any_version,
+            "is_sealed": self.is_sealed,
+            "tcgplayer_product_id": self.tcgplayer_product_id,
+            "tcgplayer_market_price": self.tcgplayer_market_price,
             "is_deal": self.is_deal,
             "in_binder": self.in_binder,
             "binder_count": self.binder_count,

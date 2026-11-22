@@ -105,6 +105,8 @@
                     class="w-full md:w-auto bg-[#10141D] border border-[#263245] px-2.5 py-1.5 sm:py-2 text-xs text-white focus:border-[#00CED1] uppercase font-mono font-medium truncate h-9">
                     <option value="all">ALL TARGETS</option>
                     <option value="deals">DEALS ONLY</option>
+                    <option value="sealed_only">📦 SEALED PRODUCTS ONLY</option>
+                    <option value="singles_only">🃏 SINGLES ONLY</option>
                     <option value="in_binder">💼 IN BINDER ONLY</option>
                     <option value="not_in_binder">NOT IN BINDER</option>
                     <option value="in_stock">IN STOCK ONLY</option>
@@ -349,6 +351,7 @@
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
             data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
             data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
+            data-is-sealed="{{ 'true' if item.is_sealed else 'false' }}"
             data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
             data-binder-count="{{ item.binder_count or 0 }}"
             data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
@@ -395,12 +398,19 @@
 
                         <!-- Badges & Alerts -->
                         <div class="flex flex-wrap gap-1.5 mt-1.5 items-center">
+                            {% if item.is_sealed %}
+                            <span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold tracking-wider">📦 SEALED</span>
+                            {% if item.set_code and item.set_code.upper() != 'ANY' %}
+                            <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase font-medium">{{ item.set_code }}</span>
+                            {% endif %}
+                            {% else %}
                             {% if item.set_code and item.set_code.upper() != 'ANY' %}
                             <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase font-medium">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
                             {% else %}
                             <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold tracking-wider">ANY VERSION</span>
                             {% endif %}
                             <span data-card-finish-badge="true" class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase font-semibold">{{ item.finish }}</span>
+                            {% endif %}
                             
                             <!-- In Binder Indicator Badge -->
                             <div id="card-binder-wrapper-{{ item.id }}" class="inline-flex items-center">
@@ -611,6 +621,7 @@
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
             data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
             data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
+            data-is-sealed="{{ 'true' if item.is_sealed else 'false' }}"
             data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
             data-binder-count="{{ item.binder_count or 0 }}"
             data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"

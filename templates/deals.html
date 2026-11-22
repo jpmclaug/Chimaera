@@ -32,22 +32,29 @@
         </div>
     </div>
 
-    <!-- Deals Mode Section Switcher (Single Deals vs Seller Lot Finder) -->
-    <div class="flex items-center border border-[#263245] bg-[#1B2230] p-1 gap-1">
+    <!-- Deals Mode Section Switcher (Single Deals vs Seller Lot Finder vs Sealed Product Deals) -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 border border-[#263245] bg-[#1B2230] p-1 gap-1">
         <button onclick="switchDealsSection('single')" id="btn-deals-sec-single"
-            class="flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#DC143C] text-white">
+            class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#DC143C] text-white">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
             </svg>
             <span>Priority Deals ({{ deals_count }})</span>
         </button>
         <button onclick="switchDealsSection('lots')" id="btn-deals-sec-lots"
-            class="flex-1 py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
+            class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
             <svg class="w-4 h-4 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
             </svg>
-            <span>TCGplayer Seller Lot Finder (5+ Cards)</span>
-            <span class="hidden sm:inline-block bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[9px] px-1.5 py-0.2 tracking-wider">NEW</span>
+            <span>Seller Lot Finder (5+ Cards)</span>
+        </button>
+        <button onclick="switchDealsSection('sealed')" id="btn-deals-sec-sealed"
+            class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
+            <svg class="w-4 h-4 text-[#F59E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+            </svg>
+            <span>📦 Sealed Product Deals</span>
+            <span class="hidden sm:inline-block bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] px-1.5 py-0.2 tracking-wider">NEW</span>
         </button>
     </div>
 
@@ -871,6 +878,218 @@
         </div>
 
     </div><!-- End of deals-lot-finder-container -->
+
+    <!-- =========================================================================
+         SECTION C: TCGPLAYER SEALED PRODUCT DEAL FINDER
+         ========================================================================= -->
+    <div id="deals-sealed-finder-container" class="hidden space-y-4 sm:space-y-6">
+
+        <!-- Step 1 & 2: Set Picker + Sealed Product Category Filters -->
+        <div class="bg-[#1B2230] border border-[#263245] p-3.5 sm:p-5 space-y-4 font-mono">
+            <!-- Header -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2 h-2 bg-[#F59E0B] inline-block"></span>
+                        <span class="text-xs font-bold text-[#F59E0B] uppercase tracking-wider">TCGPLAYER SEALED SURVEILLANCE // SET &amp; PRODUCT DEAL FINDER</span>
+                    </div>
+                    <h3 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5">
+                        Find MTG Sealed Product Deals on TCGplayer
+                    </h3>
+                    <p class="text-xs text-[#94A3B8] font-sans mt-0.5">
+                        Select an MTG set, check the sealed products you want (Booster Boxes, Individual Boosters, Bundles, Prerelease/Starter), scan live unopened listings ranked by Landed Price (Price + Shipping) vs. Market &amp; Target Price, or add them to your Watchlist.
+                    </p>
+                </div>
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                    <span class="text-[11px] text-[#64748B] bg-[#10141D] px-2.5 py-1 border border-[#263245]" id="sealed-sets-count-badge">
+                        Loading sets...
+                    </span>
+                </div>
+            </div>
+
+            <!-- Step 1: Select MTG Set -->
+            <div class="space-y-2">
+                <label class="text-[10px] uppercase font-bold text-[#F59E0B] tracking-wider block">
+                    Step 1 // Select MTG Set
+                </label>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <div class="relative">
+                        <input type="text" id="sealed-set-search" placeholder="SEARCH SET BY NAME OR CODE (E.G. DUSKMOURN, MH3, FDN)..."
+                            class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white uppercase placeholder-[#64748B] focus:border-[#F59E0B] font-mono h-9"
+                            oninput="filterSealedSetDropdown(this.value)">
+                    </div>
+                    <div class="flex gap-2">
+                        <select id="sealed-set-select" onchange="loadSealedProductsForSelectedSet()"
+                            class="flex-1 bg-[#10141D] border border-[#263245] px-2.5 py-2 text-xs text-white focus:border-[#F59E0B] font-mono h-9">
+                            <option value="">-- SELECT AN MTG SET --</option>
+                        </select>
+                        <button type="button" onclick="loadSealedProductsForSelectedSet()" class="btn-bridge px-3 h-9 text-xs text-[#F59E0B] hover:text-white border-[#F59E0B]/40 uppercase font-bold flex-shrink-0">
+                            Load
+                        </button>
+                    </div>
+                </div>
+                <!-- Quick Recent Set Pills -->
+                <div id="sealed-recent-sets-bar" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+                    <span class="text-[10px] text-[#64748B] uppercase font-bold flex-shrink-0">RECENT SETS:</span>
+                    <span class="text-[10px] text-[#64748B] italic">Loading...</span>
+                </div>
+            </div>
+
+            <!-- Step 2: Sealed Product Category & Booster Type Filters -->
+            <div class="space-y-2.5 pt-2 border-t border-[#263245]">
+                <label class="text-[10px] uppercase font-bold text-[#00CED1] tracking-wider block">
+                    Step 2 // Filter Sealed Product Types
+                </label>
+
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                    <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] cursor-pointer">
+                        <input type="checkbox" class="sealed-cat-checkbox text-[#00CED1] bg-[#161C28] border-[#263245]" value="booster_box" checked onchange="renderSealedSetProducts()">
+                        <span class="text-white font-bold">📦 Booster Boxes</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] cursor-pointer">
+                        <input type="checkbox" class="sealed-cat-checkbox text-[#00CED1] bg-[#161C28] border-[#263245]" value="booster_pack" checked onchange="renderSealedSetProducts()">
+                        <span class="text-white font-bold">🃏 Booster Packs / Sleeved</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] cursor-pointer">
+                        <input type="checkbox" class="sealed-cat-checkbox text-[#00CED1] bg-[#161C28] border-[#263245]" value="bundle" checked onchange="renderSealedSetProducts()">
+                        <span class="text-white font-bold">🎁 Bundles &amp; Fat Packs</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#10141D] border border-[#263245] hover:border-[#00CED1] cursor-pointer">
+                        <input type="checkbox" class="sealed-cat-checkbox text-[#00CED1] bg-[#161C28] border-[#263245]" value="prerelease_starter" checked onchange="renderSealedSetProducts()">
+                        <span class="text-white font-bold">⚔️ Prerelease / Starter / Jumpstart</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#10141D] border border-[#263245] hover:border-[#94A3B8] cursor-pointer">
+                        <input type="checkbox" class="sealed-cat-checkbox text-[#00CED1] bg-[#161C28] border-[#263245]" value="commander_deck" onchange="renderSealedSetProducts()">
+                        <span class="text-[#94A3B8]">Commander / Precons</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 bg-[#10141D] border border-[#263245] hover:border-[#94A3B8] cursor-pointer">
+                        <input type="checkbox" id="sealed-include-cases" class="sealed-cat-checkbox text-[#00CED1] bg-[#161C28] border-[#263245]" value="case_other" onchange="loadSealedProductsForSelectedSet()">
+                        <span class="text-[#94A3B8]">Include Cases</span>
+                    </label>
+                </div>
+
+                <!-- Booster Subtype Filter Pills -->
+                <div class="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span class="text-[10px] text-[#64748B] uppercase font-bold mr-1">BOOSTER TYPE:</span>
+                    <button type="button" onclick="setSealedBoosterSubtype('all')" class="sealed-subtype-pill tag-pill active" data-subtype="all">ALL</button>
+                    <button type="button" onclick="setSealedBoosterSubtype('Play')" class="sealed-subtype-pill tag-pill" data-subtype="Play">Play</button>
+                    <button type="button" onclick="setSealedBoosterSubtype('Collector')" class="sealed-subtype-pill tag-pill" data-subtype="Collector">Collector</button>
+                    <button type="button" onclick="setSealedBoosterSubtype('Draft')" class="sealed-subtype-pill tag-pill" data-subtype="Draft">Draft</button>
+                    <button type="button" onclick="setSealedBoosterSubtype('Set')" class="sealed-subtype-pill tag-pill" data-subtype="Set">Set</button>
+                    <button type="button" onclick="setSealedBoosterSubtype('Jumpstart')" class="sealed-subtype-pill tag-pill" data-subtype="Jumpstart">Jumpstart</button>
+                    <button type="button" onclick="setSealedBoosterSubtype('Standard')" class="sealed-subtype-pill tag-pill" data-subtype="Standard">Standard / Other</button>
+                </div>
+            </div>
+
+            <!-- Deal Evaluation Controls -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#263245]">
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Deal Threshold Rule</label>
+                    <select id="sealed-tolerance-mode" class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#F59E0B]">
+                        <option value="market_0" selected>&le; Target OR &le; Market Price (Recommended)</option>
+                        <option value="good_minus_5">Good Deal: &le; 5% Below Market (or &le; Target)</option>
+                        <option value="great_minus_10">Great Deal: &le; 10% Below Market (or &le; Target)</option>
+                        <option value="target_only">Strict: &le; Custom Target Price Only</option>
+                        <option value="flex_10">Flexible: Within +10% of Market</option>
+                        <option value="all">Show All Lowest Listings</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Watchlist Tag (When Saving)</label>
+                    <input type="text" id="sealed-watchlist-tag" value="Sealed" placeholder="e.g. Sealed, Duskmourn"
+                        class="w-full bg-[#10141D] border border-[#263245] text-xs text-[#C084FC] p-2 font-mono focus:border-[#F59E0B]">
+                </div>
+                <div>
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Language &amp; Target Presets</label>
+                    <div class="flex items-center justify-between gap-2 h-9 px-2.5 bg-[#10141D] border border-[#263245]">
+                        <label class="inline-flex items-center space-x-1.5 text-xs text-[#00CED1] font-bold cursor-pointer">
+                            <input type="checkbox" id="sealed-english-only" checked class="form-checkbox text-[#00CED1] rounded-none bg-[#161C28] border-[#263245]">
+                            <span>English Only</span>
+                        </label>
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="applySealedTargetPreset(0.95)" class="text-[10px] px-1.5 py-0.5 bg-[#161C28] border border-[#263245] text-[#2DD4BF] hover:text-white" title="Set target price to 5% below Market">-5%</button>
+                            <button type="button" onclick="applySealedTargetPreset(0.90)" class="text-[10px] px-1.5 py-0.5 bg-[#161C28] border border-[#263245] text-[#00CED1] hover:text-white" title="Set target price to 10% below Market">-10%</button>
+                            <button type="button" onclick="applySealedTargetPreset(1.00)" class="text-[10px] px-1.5 py-0.5 bg-[#161C28] border border-[#263245] text-[#94A3B8] hover:text-white" title="Set target price equal to Market">Mkt</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Set Sealed Products Selection Panel -->
+        <div id="sealed-products-selection-panel" class="bg-[#1B2230] border border-[#263245] p-3.5 sm:p-5 space-y-3 font-mono">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-2.5">
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs font-bold text-white uppercase tracking-wider" id="sealed-selected-set-heading">Select a Set Above to Browse Sealed Products</span>
+                    <span class="text-[10px] bg-[#10141D] text-[#00CED1] border border-[#263245] px-2 py-0.5 hidden" id="sealed-product-count-pill">0 products</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+                    <button type="button" onclick="selectSealedProductsPreset('all')" class="btn-bridge px-2 py-1 text-[#00CED1] hover:text-white uppercase font-bold">Select All</button>
+                    <button type="button" onclick="selectSealedProductsPreset('boxes')" class="btn-bridge px-2 py-1 text-[#F59E0B] hover:text-white uppercase font-bold">Boxes Only</button>
+                    <button type="button" onclick="selectSealedProductsPreset('packs')" class="btn-bridge px-2 py-1 text-[#2DD4BF] hover:text-white uppercase font-bold">Packs Only</button>
+                    <button type="button" onclick="selectSealedProductsPreset('below_market')" class="btn-bridge px-2 py-1 text-[#10B981] hover:text-white uppercase font-bold">Below Market</button>
+                    <button type="button" onclick="selectSealedProductsPreset('clear')" class="btn-bridge px-2 py-1 text-[#64748B] hover:text-white uppercase font-bold">Clear</button>
+                </div>
+            </div>
+
+            <!-- Products Grid -->
+            <div id="sealed-products-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div class="col-span-full py-8 text-center text-xs text-[#94A3B8]">
+                    Pick an MTG set above (e.g. <strong>Duskmourn: House of Horror</strong>, <strong>Foundations</strong>, or <strong>Modern Horizons 3</strong>) to inspect its Booster Boxes, Booster Packs, Bundles, and Prerelease Packs.
+                </div>
+            </div>
+
+            <!-- Action Bar for Selected Products -->
+            <div class="pt-3 border-t border-[#263245] flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-xs text-[#94A3B8] flex items-center space-x-2">
+                    <span class="w-2 h-2 rounded-full bg-[#F59E0B] inline-block"></span>
+                    <span id="sealed-selection-status">0 sealed products selected.</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    <button type="button" id="btn-watch-sealed-selected" onclick="addSelectedSealedToWatchlist()" disabled
+                        class="btn-bridge px-4 py-2 text-xs text-[#10B981] border-[#10B981]/50 hover:bg-[#10B981] hover:text-[#10141D] font-bold uppercase tracking-wider disabled:opacity-40 transition">
+                        ➕ Add Selected to Watchlist
+                    </button>
+                    <button type="button" id="btn-scan-sealed-deals" onclick="runSealedDealScan()" disabled
+                        class="btn-bridge px-5 py-2 bg-[#F59E0B] hover:bg-[#F59E0B]/90 text-[#10141D] text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 disabled:opacity-40 transition">
+                        <svg id="sealed-scan-spinner" class="w-4 h-4 text-[#10141D] hidden animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span id="sealed-scan-btn-label">🔍 Scan Live TCGplayer Deals</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sealed Scan KPI Telemetry -->
+        <div id="sealed-scan-kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Products Scanned</div>
+                <div class="text-xl font-bold text-white" id="kpi-sealed-scanned">0</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5" id="kpi-sealed-duration">0.0s live scan</div>
+            </div>
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Active Deals Found</div>
+                <div class="text-xl font-bold text-[#10B981]" id="kpi-sealed-deals">0</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5">meeting selected rule</div>
+            </div>
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Best Savings vs Market</div>
+                <div class="text-xl font-bold text-[#FF3358]" id="kpi-sealed-best-savings">$0.00</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5" id="kpi-sealed-best-pct">0.0% off market</div>
+            </div>
+            <div class="bg-[#1B2230] border border-[#263245] p-3">
+                <div class="text-[10px] text-[#94A3B8] uppercase">Multi-Item Sellers</div>
+                <div class="text-xl font-bold text-[#00CED1]" id="kpi-sealed-multi-sellers">0</div>
+                <div class="text-[10px] text-[#64748B] mt-0.5">stocking 2+ selected items</div>
+            </div>
+        </div>
+
+        <!-- Live Deal Scan Results Container -->
+        <div id="sealed-results-container" class="space-y-4"></div>
+
+    </div><!-- End of deals-sealed-finder-container -->
 
 </div>
 {% endblock %}
