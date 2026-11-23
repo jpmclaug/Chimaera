@@ -532,6 +532,82 @@
                         </div>
                     </div>
 
+                    {% if item.is_sealed %}
+                    {% set ck = item.get_vendor_price('Card Kingdom') %}
+                    {% set shop_trusted_list = item.vendor_prices | selectattr('vendor_name', 'defined') | list %}
+
+                    <!-- Card Kingdom (Sealed) -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
+                        <div class="flex items-center space-x-1.5 min-w-0">
+                            <span class="px-1 py-0.2 bg-[#8B5CF6]/20 text-[#C4B5FD] border border-[#8B5CF6]/40 text-[10px] font-bold uppercase">CK</span>
+                            <span class="text-[#94A3B8] text-xs font-medium truncate">Card Kingdom</span>
+                        </div>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            {% if ck and ck.price > 0 %}
+                            <span class="font-bold text-white text-xs">${{ "%.2f"|format(ck.price) }}</span>
+                            <span class="text-xs uppercase font-bold {% if ck.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">
+                                ({{ "In" if ck.in_stock else "Out" }})
+                            </span>
+                            {% if ck.product_url %}
+                            <a href="{{ ck.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Buy</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#64748B] text-xs">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Shopify / Shop App Trusted & Unverified Offers -->
+                    {% set ns = namespace(has_shop=false) %}
+                    {% for vp in item.vendor_prices %}
+                        {% if vp.vendor_name.startswith('Shop · ') %}
+                        {% set ns.has_shop = true %}
+                        {% set shop_label = vp.vendor_name[7:] %}
+                        <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#00CED1]/40">
+                            <div class="flex items-center space-x-1.5 min-w-0">
+                                <span class="px-1 py-0.2 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[10px] font-bold uppercase flex-shrink-0">SHOP</span>
+                                <span class="text-white text-xs font-medium truncate" title="{{ shop_label }}">{{ shop_label }}</span>
+                            </div>
+                            <div class="flex items-center space-x-2 flex-shrink-0 ml-2">
+                                <span class="font-bold text-white text-xs">${{ "%.2f"|format(vp.price) }}</span>
+                                {% if vp.product_url %}
+                                <a href="{{ vp.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Buy</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% elif vp.vendor_name.startswith('Shop (unverified) · ') %}
+                        {% set ns.has_shop = true %}
+                        {% set shop_label = vp.vendor_name[20:] %}
+                        <div class="flex items-center justify-between text-xs bg-[#10141D]/60 px-3 py-1.5 border border-[#263245]" title="Unverified Shop storefront — excluded from Discord alerts until trusted">
+                            <div class="flex items-center space-x-1.5 min-w-0">
+                                <span class="px-1 py-0.2 bg-[#334155]/60 text-[#94A3B8] border border-[#475569] text-[10px] font-bold uppercase flex-shrink-0">UNVERIFIED</span>
+                                <span class="text-[#94A3B8] text-xs truncate" title="{{ shop_label }}">{{ shop_label }}</span>
+                            </div>
+                            <div class="flex items-center space-x-2 flex-shrink-0 ml-2">
+                                <span class="font-bold text-[#94A3B8] text-xs">${{ "%.2f"|format(vp.price) }}</span>
+                                {% if vp.product_url %}
+                                <a href="{{ vp.product_url }}" target="_blank" rel="noopener" class="text-[#94A3B8] hover:text-white underline text-xs uppercase font-bold">View</a>
+                                {% endif %}
+                                <button type="button"
+                                        onclick="trustShopifyStore({{ vp.id }}, '{{ shop_label|replace("'", "\\'") }}', '{{ (vp.product_url or '')|replace("'", "\\'") }}', this)"
+                                        class="px-1.5 py-0.5 bg-[#1E293B] hover:bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[10px] uppercase font-bold"
+                                        title="Add {{ shop_label }} to trusted Shop allowlist">
+                                    Trust
+                                </button>
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                    {% if not ns.has_shop %}
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
+                        <div class="flex items-center space-x-1.5">
+                            <span class="px-1 py-0.2 bg-[#334155]/50 text-[#94A3B8] border border-[#475569]/60 text-[10px] font-bold uppercase">SHOP</span>
+                            <span class="text-[#94A3B8] text-xs font-medium">Shop App</span>
+                        </div>
+                        <span class="text-[#64748B] text-xs">N/A</span>
+                    </div>
+                    {% endif %}
+                    {% else %}
                     <!-- Mighty Meeple -->
                     <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
                         <div class="flex items-center space-x-1.5">
@@ -577,6 +653,7 @@
                             {% endif %}
                         </div>
                     </div>
+                    {% endif %}
                 </div>
             </div>
 
@@ -1299,4 +1376,40 @@
     </div>
 
 </div>
+<script>
+async function trustShopifyStore(vendorPriceId, storeName, productUrl, btnEl) {
+    let domain = '';
+    try {
+        if (productUrl) domain = new URL(productUrl).hostname.replace(/^www\./, '');
+    } catch (e) {}
+    if (!confirm(`Trust "${storeName || domain}" for sealed deal alerts?\n\nOffers from this store will count toward deal triggers and Discord alerts.`)) {
+        return;
+    }
+    if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = '...';
+    }
+    try {
+        const resp = await fetch('/api/sealed/trusted-shops/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: storeName,
+                domain: domain,
+                vendor_price_id: vendorPriceId,
+            }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to trust store.');
+            if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Trust'; }
+        }
+    } catch (err) {
+        alert('Network error trusting store.');
+        if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Trust'; }
+    }
+}
+</script>
 {% endblock %}

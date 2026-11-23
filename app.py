@@ -1902,6 +1902,113 @@ def create_app(test_config=None):
                 "products": [],
             }), 500
 
+    @app.route("/.well-known/ucp/agent-profile.json", methods=["GET"])
+    def ucp_agent_profile():
+        """Serves Chimera's public UCP agent capability profile for Shopify Global Catalog discovery."""
+        return jsonify({
+            "$schema": "https://ucp.dev/schemas/profile.json",
+            "ucp": {
+                "version": "2026-08-25",
+            },
+            "capabilities": [
+                {
+                    "name": "dev.ucp.shopping.catalog",
+                    "version": "2026-08-25",
+                },
+            ],
+        })
+
+    @app.route("/api/sealed/trusted-shops", methods=["GET"])
+    @login_required
+    def api_sealed_trusted_shops_list():
+        """Returns the current allowlist of trusted Shopify/Shop app sealed retailers."""
+        from providers.sealed_trust import get_trusted_shops
+
+        return jsonify({
+            "success": True,
+            "trusted_shops": get_trusted_shops(),
+        })
+
+    @app.route("/api/sealed/trusted-shops/add", methods=["POST"])
+    @login_required
+    def api_sealed_trusted_shops_add():
+        """Adds a Shopify store to the trusted allowlist and optionally promotes an unverified VendorPrice row."""
+        from providers.sealed_trust import add_trusted_shop
+
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        domain = (data.get("domain") or "").strip()
+        shop_gid = (data.get("shop_gid") or "").strip()
+        vendor_price_id = data.get("vendor_price_id")
+
+        if not (name or domain or shop_gid):
+            return jsonify({"success": False, "error": "Provide at least one of name, domain, or shop_gid."}), 400
+
+        updated = add_trusted_shop(name=name, domain=domain, shop_gid=shop_gid)
+
+        promoted = False
+        if vendor_price_id is not None:
+            try:
+                vp = db.session.get(VendorPrice, int(vendor_price_id))
+                if vp and vp.watchlist_item and vp.watchlist_item.user_id == user.id:
+                    if vp.vendor_name.startswith("Shop (unverified) · "):
+                        store_label = vp.vendor_name[len("Shop (unverified) · "):].strip() or name
+                        new_vname = f"Shop · {store_label}"[:50]
+                        # Remove any existing trusted Shop row on the same item
+                        existing_trusted = VendorPrice.query.filter(
+                            VendorPrice.watchlist_id == vp.watchlist_id,
+                            VendorPrice.id != vp.id,
+                            VendorPrice.vendor_name.like("Shop · %"),
+                        ).all()
+                        for old_row in existing_trusted:
+                            db.session.delete(old_row)
+                        vp.vendor_name = new_vname
+                        vp.condition = "Unopened"
+                        vp.in_stock = True
+                        db.session.commit()
+                        promoted = True
+            except Exception as prom_err:
+                logger.warning(f"Failed promoting VendorPrice {vendor_price_id}: {prom_err}")
+                db.session.rollback()
+
+        log_activity(
+            "SEALED_TRUST_SHOP",
+            details=f"Trusted Shopify store: name='{name}', domain='{domain}' (promoted={promoted})",
+            user=user,
+        )
+        return jsonify({
+            "success": True,
+            "promoted": promoted,
+            "trusted_shops": updated,
+        })
+
+    @app.route("/api/sealed/trusted-shops/remove", methods=["POST"])
+    @login_required
+    def api_sealed_trusted_shops_remove():
+        """Removes a Shopify store from the trusted allowlist."""
+        from providers.sealed_trust import remove_trusted_shop
+
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        domain = (data.get("domain") or "").strip()
+        shop_gid = (data.get("shop_gid") or "").strip()
+
+        if not (name or domain or shop_gid):
+            return jsonify({"success": False, "error": "Provide at least one of name, domain, or shop_gid."}), 400
+
+        updated = remove_trusted_shop(name=name, domain=domain, shop_gid=shop_gid)
+        log_activity(
+            "SEALED_UNTRUST_SHOP",
+            details=f"Removed trusted Shopify store: name='{name}', domain='{domain}'",
+            user=user,
+        )
+        return jsonify({
+            "success": True,
+            "trusted_shops": updated,
+        })
+
     @app.route("/api/watchlist/add-sealed", methods=["POST"])
     @login_required
     def api_watchlist_add_sealed():

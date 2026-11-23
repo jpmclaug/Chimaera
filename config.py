@@ -104,4 +104,15 @@ class Config:
     GMAIL_IMAP_EMAIL = os.getenv("GMAIL_IMAP_EMAIL", "").strip()
     GMAIL_IMAP_APP_PASSWORD = os.getenv("GMAIL_IMAP_APP_PASSWORD", "").strip()
 
+    # Multi-Retailer Sealed Surveillance (Shopify Global Catalog / Shop app)
+    UCP_AGENT_PROFILE_URL = os.getenv("UCP_AGENT_PROFILE_URL", "").strip() or (
+        f"{APP_BASE_URL}/.well-known/ucp/agent-profile.json" if APP_BASE_URL else ""
+    )
+    SHOPIFY_CATALOG_CLIENT_ID = os.getenv("SHOPIFY_CATALOG_CLIENT_ID", "").strip()
+    SHOPIFY_CATALOG_CLIENT_SECRET = os.getenv("SHOPIFY_CATALOG_CLIENT_SECRET", "").strip()
+    try:
+        SEALED_MIN_MARKET_RATIO = float(os.getenv("SEALED_MIN_MARKET_RATIO", "0.55"))
+    except (ValueError, TypeError):
+        SEALED_MIN_MARKET_RATIO = 0.55
+
 

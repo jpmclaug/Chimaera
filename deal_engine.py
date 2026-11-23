@@ -13,7 +13,10 @@ from providers import (
     EbayProvider,
     MicrocenterProvider,
     TCGplayerSealedProvider,
+    CardKingdomSealedProvider,
+    ShopifyCatalogProvider,
 )
+from providers.sealed_trust import get_trusted_shops
 
 logger = logging.getLogger(__name__)
 
@@ -27,21 +30,60 @@ class DealEngine:
         self.mightymeeple = MightyMeepleProvider()
         self.ebay = EbayProvider()
         self.tcgplayer_sealed = TCGplayerSealedProvider()
+        self.cardkingdom_sealed = CardKingdomSealedProvider()
+        self.shopify_catalog = ShopifyCatalogProvider()
         self.microcenter = MicrocenterProvider(
             store_id=Config.MICROCENTER_STORE_ID,
             store_name=Config.MICROCENTER_STORE_NAME,
         )
 
+    @staticmethod
+    def _upsert_vendor_price(
+        watchlist_id: int,
+        vendor_name: str,
+        price: float,
+        condition: str,
+        in_stock: bool,
+        product_url: str | None,
+        search_url: str | None,
+        now: datetime,
+    ) -> None:
+        existing = VendorPrice.query.filter_by(
+            watchlist_id=watchlist_id,
+            vendor_name=vendor_name,
+        ).first()
+        if existing:
+            existing.price = float(price)
+            existing.condition = (condition or "Unopened")[:20]
+            existing.in_stock = bool(in_stock)
+            existing.product_url = product_url
+            existing.search_url = search_url or product_url
+            existing.last_checked = now
+        else:
+            db.session.add(VendorPrice(
+                watchlist_id=watchlist_id,
+                vendor_name=vendor_name[:50],
+                price=float(price),
+                condition=(condition or "Unopened")[:20],
+                in_stock=bool(in_stock),
+                product_url=product_url,
+                search_url=search_url or product_url,
+                last_checked=now,
+            ))
+
     def poll_sealed_item(self, item: WatchlistItem, notify: bool = True, fast_mode: bool = False) -> dict:
         """
-        Polls live TCGplayer lowest landed price (listing + shipping) and official
-        TCGplayer market price for a watched sealed MTG product.
+        Polls live prices for a watched sealed MTG product across:
+          1. TCGplayer (lowest landed price + official market baseline)
+          2. Card Kingdom (public sealed pricelist)
+          3. Shopify Global Catalog / Shop app (trusted + unverified offers with scam filter)
         """
         item_id = item.id
         item_name = item.name
         pid = item.tcgplayer_product_id
+        existing_market = item.tcgplayer_market_price
 
-        logger.info(f"Polling sealed TCGplayer prices for: {item_name} (productId={pid})")
+        logger.info(f"Polling sealed prices for: {item_name} (productId={pid})")
 
         tcg_data = None
         if pid:
@@ -54,6 +96,50 @@ class DealEngine:
             except Exception as err:
                 logger.warning(f"Error querying TCGplayer sealed product {pid} ({item_name}): {err}")
 
+        effective_market = (
+            tcg_data.get("market_price")
+            if (tcg_data and tcg_data.get("market_price"))
+            else existing_market
+        )
+
+        # Read feature flags & trusted allowlist on the main thread (within app context)
+        ck_enabled = SystemSetting.get_bool("sealed_cardkingdom_enabled", default=True)
+        shop_enabled = SystemSetting.get_bool("sealed_shopify_enabled", default=True)
+        trusted_shops = get_trusted_shops() if shop_enabled else []
+
+        ck_data = None
+        shop_result = None
+
+        if ck_enabled or shop_enabled:
+            def _fetch_ck():
+                try:
+                    return self.cardkingdom_sealed.find_offer(item_name)
+                except Exception as err:
+                    logger.warning(f"Error querying Card Kingdom sealed for '{item_name}': {err}")
+                    return None
+
+            def _fetch_shop():
+                try:
+                    return self.shopify_catalog.find_offers(
+                        item_name,
+                        market_price=effective_market,
+                        trusted_shops=trusted_shops,
+                    )
+                except Exception as err:
+                    logger.warning(f"Error querying Shopify Catalog for '{item_name}': {err}")
+                    return None
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                fut_ck = pool.submit(_fetch_ck) if ck_enabled else None
+                fut_shop = pool.submit(_fetch_shop) if shop_enabled else None
+                if fut_ck:
+                    ck_data = fut_ck.result()
+                if fut_shop:
+                    shop_result = fut_shop.result()
+
+        best_trusted_shop = shop_result.get("best_trusted") if isinstance(shop_result, dict) else None
+        best_unverified_shop = shop_result.get("best_unverified") if isinstance(shop_result, dict) else None
+
         now = datetime.now(timezone.utc)
         for db_attempt in range(2):
             try:
@@ -64,28 +150,70 @@ class DealEngine:
                     if not item.image_uri and tcg_data.get("image_url"):
                         item.image_uri = tcg_data["image_url"]
 
-                    existing = VendorPrice.query.filter_by(
+                    self._upsert_vendor_price(
                         watchlist_id=item_id,
                         vendor_name="TCGplayer",
-                    ).first()
-                    if existing:
-                        existing.price = float(tcg_data.get("price", 0.0))
-                        existing.condition = tcg_data.get("condition", "Unopened")
-                        existing.in_stock = bool(tcg_data.get("in_stock", False))
-                        existing.product_url = tcg_data.get("product_url")
-                        existing.search_url = tcg_data.get("search_url") or tcg_data.get("product_url")
-                        existing.last_checked = now
-                    else:
-                        db.session.add(VendorPrice(
+                        price=float(tcg_data.get("price", 0.0)),
+                        condition=tcg_data.get("condition", "Unopened"),
+                        in_stock=bool(tcg_data.get("in_stock", False)),
+                        product_url=tcg_data.get("product_url"),
+                        search_url=tcg_data.get("search_url") or tcg_data.get("product_url"),
+                        now=now,
+                    )
+
+                if ck_enabled and ck_data:
+                    self._upsert_vendor_price(
+                        watchlist_id=item_id,
+                        vendor_name="Card Kingdom",
+                        price=float(ck_data.get("price", 0.0)),
+                        condition=ck_data.get("condition", "Unopened"),
+                        in_stock=bool(ck_data.get("in_stock", False)),
+                        product_url=ck_data.get("product_url"),
+                        search_url=ck_data.get("search_url") or ck_data.get("product_url"),
+                        now=now,
+                    )
+
+                if shop_enabled and shop_result is not None:
+                    # Clean up stale Shop rows when the cheapest store changes or disappears
+                    trusted_vname = best_trusted_shop["vendor_name"] if best_trusted_shop else None
+                    unverified_vname = best_unverified_shop["vendor_name"] if best_unverified_shop else None
+                    existing_shop_rows = VendorPrice.query.filter(
+                        VendorPrice.watchlist_id == item_id,
+                        db.or_(
+                            VendorPrice.vendor_name.like("Shop · %"),
+                            VendorPrice.vendor_name.like("Shop (unverified) · %"),
+                        ),
+                    ).all()
+                    for row in existing_shop_rows:
+                        if row.vendor_name.startswith("Shop · ") and row.vendor_name != trusted_vname:
+                            db.session.delete(row)
+                        elif row.vendor_name.startswith("Shop (unverified) · ") and row.vendor_name != unverified_vname:
+                            db.session.delete(row)
+
+                    if best_trusted_shop:
+                        self._upsert_vendor_price(
                             watchlist_id=item_id,
-                            vendor_name="TCGplayer",
-                            price=float(tcg_data.get("price", 0.0)),
-                            condition=tcg_data.get("condition", "Unopened"),
-                            in_stock=bool(tcg_data.get("in_stock", False)),
-                            product_url=tcg_data.get("product_url"),
-                            search_url=tcg_data.get("search_url") or tcg_data.get("product_url"),
-                            last_checked=now,
-                        ))
+                            vendor_name=best_trusted_shop["vendor_name"],
+                            price=float(best_trusted_shop.get("price", 0.0)),
+                            condition=best_trusted_shop.get("condition", "Unopened"),
+                            in_stock=True,
+                            product_url=best_trusted_shop.get("product_url"),
+                            search_url=best_trusted_shop.get("search_url") or best_trusted_shop.get("product_url"),
+                            now=now,
+                        )
+
+                    if best_unverified_shop:
+                        self._upsert_vendor_price(
+                            watchlist_id=item_id,
+                            vendor_name=best_unverified_shop["vendor_name"],
+                            price=float(best_unverified_shop.get("price", 0.0)),
+                            condition="Unverified",
+                            in_stock=False,
+                            product_url=best_unverified_shop.get("product_url"),
+                            search_url=best_unverified_shop.get("search_url") or best_unverified_shop.get("product_url"),
+                            now=now,
+                        )
+
                 db.session.commit()
                 break
             except (OperationalError, DBAPIError) as db_err:

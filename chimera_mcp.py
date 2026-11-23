@@ -750,6 +750,34 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    {
+        "name": "scan_sealed_retailers",
+        "description": (
+            "Runs an on-demand sweep of the user's watched sealed MTG products across TCGplayer, "
+            "Card Kingdom, and Shopify Global Catalog (Shop app), returning a ranked deal comparison "
+            "with trusted offers and optional unverified storefronts."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Optional substring filter to scan only matching sealed watchlist items (e.g. 'Wilds of Eldraine', 'Modern Horizons 3').",
+                },
+                "include_unverified": {
+                    "type": "boolean",
+                    "description": "If true, also includes best unverified Shopify storefront offers (still excluded from deal triggers). Defaults to False.",
+                    "default": False,
+                },
+                "live": {
+                    "type": "boolean",
+                    "description": "If true (default), actively polls live retailer prices before returning; if false, returns the latest saved snapshot.",
+                    "default": True,
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -3042,6 +3070,92 @@ def _execute_manage_tcgplayer_orders(user: User, args: dict[str, Any]) -> dict[s
     }
 
 
+def _execute_scan_sealed_retailers(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """Scans the user's sealed watchlist items across TCGplayer, Card Kingdom, and Shop app."""
+    from deal_engine import DealEngine
+
+    query_str = (args.get("query") or "").strip().lower()
+    include_unverified = bool(args.get("include_unverified", False))
+    live = bool(args.get("live", True))
+
+    all_items = WatchlistItem.query.filter_by(user_id=user.id).all()
+    sealed_items = [i for i in all_items if i.is_sealed]
+    if query_str:
+        sealed_items = [i for i in sealed_items if query_str in (i.name or "").lower()]
+
+    if not sealed_items:
+        return {
+            "success": True,
+            "count": 0,
+            "deals_found": 0,
+            "items": [],
+            "message": "No matching sealed watchlist items found.",
+        }
+
+    engine = DealEngine() if live else None
+    rows: list[dict[str, Any]] = []
+
+    for item in sealed_items:
+        if live and engine is not None:
+            try:
+                engine.poll_sealed_item(item, notify=False, fast_mode=True)
+            except Exception as err:
+                logger.warning(f"MCP scan_sealed_retailers error polling '{item.name}': {err}")
+
+        tcg_vp = item.get_vendor_price("TCGplayer")
+        ck_vp = item.get_vendor_price("Card Kingdom")
+        trusted_shop_vp = next(
+            (v for v in item.vendor_prices if v.vendor_name.startswith("Shop · ")),
+            None,
+        )
+        unverified_shop_vp = next(
+            (v for v in item.vendor_prices if v.vendor_name.startswith("Shop (unverified) · ")),
+            None,
+        )
+
+        best = item.best_vendor
+        row: dict[str, Any] = {
+            "id": item.id,
+            "name": item.name,
+            "target_price": item.target_price,
+            "market_price": item.market_price,
+            "is_deal": item.is_deal,
+            "lowest_trusted_price": item.lowest_in_stock_price,
+            "best_vendor": best.vendor_name if best else None,
+            "best_url": best.product_url if best else None,
+            "savings_amount": item.savings_amount,
+            "savings_percent": item.savings_percent,
+            "tcgplayer": tcg_vp.to_dict() if tcg_vp else None,
+            "card_kingdom": ck_vp.to_dict() if ck_vp else None,
+            "shop_trusted": trusted_shop_vp.to_dict() if trusted_shop_vp else None,
+        }
+        if include_unverified:
+            row["shop_unverified"] = unverified_shop_vp.to_dict() if unverified_shop_vp else None
+        rows.append(row)
+
+    # Rank active deals first (highest savings %), then closest to target / lowest vs market
+    def _sort_key(r: dict[str, Any]):
+        if r["is_deal"]:
+            return (0, -(r["savings_percent"] or 0.0), r["lowest_trusted_price"] or 999999.0)
+        low = r["lowest_trusted_price"]
+        tgt = r["target_price"]
+        if low is not None and tgt and tgt > 0:
+            return (1, (low - tgt) / tgt, low)
+        return (2, 9999.0, low if low is not None else 999999.0)
+
+    rows.sort(key=_sort_key)
+    deals_found = sum(1 for r in rows if r["is_deal"])
+
+    return {
+        "success": True,
+        "count": len(rows),
+        "deals_found": deals_found,
+        "include_unverified": include_unverified,
+        "live": live,
+        "items": rows,
+    }
+
+
 TOOL_HANDLERS = {
     "get_inventory_summary": _execute_get_inventory_summary,
     "check_inventory_cards": _execute_check_inventory_cards,
@@ -3078,6 +3192,7 @@ TOOL_HANDLERS = {
     "manage_tcgplayer_orders": _execute_manage_tcgplayer_orders,
     "get_tcgplayer_orders": _execute_manage_tcgplayer_orders,
     "complete_tcgplayer_order": _execute_manage_tcgplayer_orders,
+    "scan_sealed_retailers": _execute_scan_sealed_retailers,
 }
 
 

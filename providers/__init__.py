@@ -5,6 +5,8 @@ from .microcenter import MicrocenterProvider
 from .edhrec import EDHRECProvider
 from .tcgplayer_lots import TCGplayerLotProvider
 from .tcgplayer_sealed import TCGplayerSealedProvider
+from .cardkingdom_sealed import CardKingdomSealedProvider
+from .shopify_catalog import ShopifyCatalogProvider
 
 __all__ = [
     "ScryfallProvider",
@@ -14,4 +16,6 @@ __all__ = [
     "EDHRECProvider",
     "TCGplayerLotProvider",
     "TCGplayerSealedProvider",
+    "CardKingdomSealedProvider",
+    "ShopifyCatalogProvider",
 ]
