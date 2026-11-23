@@ -5753,9 +5753,11 @@ function switchDealsSection(section) {
     const singleContainer = document.getElementById("deals-single-container");
     const lotsContainer = document.getElementById("deals-lot-finder-container");
     const sealedContainer = document.getElementById("deals-sealed-finder-container");
+    const retailersContainer = document.getElementById("deals-retailers-container");
     const btnSingle = document.getElementById("btn-deals-sec-single");
     const btnLots = document.getElementById("btn-deals-sec-lots");
     const btnSealed = document.getElementById("btn-deals-sec-sealed");
+    const btnRetailers = document.getElementById("btn-deals-sec-retailers");
 
     if (!singleContainer || !lotsContainer) return;
 
@@ -5764,9 +5766,11 @@ function switchDealsSection(section) {
     singleContainer.classList.add("hidden");
     lotsContainer.classList.add("hidden");
     if (sealedContainer) sealedContainer.classList.add("hidden");
+    if (retailersContainer) retailersContainer.classList.add("hidden");
     if (btnSingle) btnSingle.className = inactiveCls;
     if (btnLots) btnLots.className = inactiveCls;
     if (btnSealed) btnSealed.className = inactiveCls;
+    if (btnRetailers) btnRetailers.className = inactiveCls;
 
     if (section === "lots") {
         lotsContainer.classList.remove("hidden");
@@ -5781,6 +5785,12 @@ function switchDealsSection(section) {
         }
         try { history.replaceState(null, "", "#sealed"); } catch (e) {}
         initSealedProductFinder();
+    } else if (section === "retailers" && retailersContainer) {
+        retailersContainer.classList.remove("hidden");
+        if (btnRetailers) {
+            btnRetailers.className = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#8B5CF6] text-white";
+        }
+        try { history.replaceState(null, "", "#retailers"); } catch (e) {}
     } else {
         singleContainer.classList.remove("hidden");
         if (btnSingle) {

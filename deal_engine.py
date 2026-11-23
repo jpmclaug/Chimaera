@@ -14,9 +14,10 @@ from providers import (
     MicrocenterProvider,
     TCGplayerSealedProvider,
     CardKingdomSealedProvider,
+    CardKingdomSinglesProvider,
     ShopifyCatalogProvider,
 )
-from providers.sealed_trust import get_trusted_shops
+from providers.sealed_trust import get_blocked_shops, get_trusted_shops
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class DealEngine:
         self.ebay = EbayProvider()
         self.tcgplayer_sealed = TCGplayerSealedProvider()
         self.cardkingdom_sealed = CardKingdomSealedProvider()
+        self.cardkingdom_singles = CardKingdomSinglesProvider()
         self.shopify_catalog = ShopifyCatalogProvider()
         self.microcenter = MicrocenterProvider(
             store_id=Config.MICROCENTER_STORE_ID,
@@ -102,10 +104,11 @@ class DealEngine:
             else existing_market
         )
 
-        # Read feature flags & trusted allowlist on the main thread (within app context)
+        # Read feature flags & trusted/blocked lists on the main thread (within app context)
         ck_enabled = SystemSetting.get_bool("sealed_cardkingdom_enabled", default=True)
         shop_enabled = SystemSetting.get_bool("sealed_shopify_enabled", default=True)
         trusted_shops = get_trusted_shops() if shop_enabled else []
+        blocked_shops = get_blocked_shops() if shop_enabled else []
 
         ck_data = None
         shop_result = None
@@ -124,6 +127,7 @@ class DealEngine:
                         item_name,
                         market_price=effective_market,
                         trusted_shops=trusted_shops,
+                        blocked_shops=blocked_shops,
                     )
                 except Exception as err:
                     logger.warning(f"Error querying Shopify Catalog for '{item_name}': {err}")
@@ -319,7 +323,9 @@ class DealEngine:
             except Exception as set_err:
                 logger.debug(f"Error resolving set name for {item_set_code}: {set_err}")
 
-        # 2. Mighty Meeple & 3. eBay in parallel (using plain primitives only)
+        # 2. Mighty Meeple, 3. eBay, & 4. Card Kingdom in parallel (using plain primitives only)
+        ck_singles_enabled = SystemSetting.get_bool("singles_cardkingdom_enabled", default=True)
+
         def _fetch_mm():
             return self.mightymeeple.search_card(
                 card_name=item_name,
@@ -340,14 +346,26 @@ class DealEngine:
                 timeout=4.0 if fast_mode else 8.0,
             )
 
+        def _fetch_ck_single():
+            return self.cardkingdom_singles.search_card(
+                card_name=item_name,
+                scryfall_id=item_scryfall_id,
+                finish=item_finish,
+                is_any_version=is_any,
+                timeout=5.0 if fast_mode else 25.0,
+            )
+
         mm_data = None
         ebay_data = None
-        executor = ThreadPoolExecutor(max_workers=2)
+        ck_data = None
+        executor = ThreadPoolExecutor(max_workers=3)
         try:
             mm_fut = executor.submit(_fetch_mm)
             ebay_fut = executor.submit(_fetch_ebay)
+            ck_fut = executor.submit(_fetch_ck_single) if ck_singles_enabled else None
+            all_futs = [f for f in (mm_fut, ebay_fut, ck_fut) if f is not None]
             if fast_mode:
-                futures_wait([mm_fut, ebay_fut], timeout=5.5, return_when=ALL_COMPLETED)
+                futures_wait(all_futs, timeout=5.5, return_when=ALL_COMPLETED)
                 if mm_fut.done():
                     try:
                         mm_data = mm_fut.result()
@@ -362,6 +380,14 @@ class DealEngine:
                         logger.warning(f"Error querying eBay for {item_name}: {ebay_err}")
                 else:
                     logger.warning(f"eBay fast_mode poll timed out for {item_name}")
+                if ck_fut is not None:
+                    if ck_fut.done():
+                        try:
+                            ck_data = ck_fut.result()
+                        except Exception as ck_err:
+                            logger.warning(f"Error querying Card Kingdom for {item_name}: {ck_err}")
+                    else:
+                        logger.warning(f"Card Kingdom fast_mode poll timed out for {item_name}")
             else:
                 try:
                     mm_data = mm_fut.result()
@@ -371,6 +397,11 @@ class DealEngine:
                     ebay_data = ebay_fut.result()
                 except Exception as ebay_err:
                     logger.warning(f"Error querying eBay for {item_name}: {ebay_err}")
+                if ck_fut is not None:
+                    try:
+                        ck_data = ck_fut.result()
+                    except Exception as ck_err:
+                        logger.warning(f"Error querying Card Kingdom for {item_name}: {ck_err}")
         finally:
             if fast_mode:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -378,7 +409,7 @@ class DealEngine:
                 executor.shutdown(wait=True)
 
         now = datetime.now(timezone.utc)
-        results = [tcg_data, mm_data, ebay_data]
+        results = [tcg_data, mm_data, ebay_data, ck_data]
 
         # Upsert VendorPrice records with retry on transient Neon/Postgres SSL connection drop
         mm_was_in_stock = False

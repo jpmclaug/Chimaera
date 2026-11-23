@@ -18,6 +18,7 @@ from chimera_mcp import execute_mcp_tool
 from deal_engine import DealEngine
 from models import AllowedEmail, SystemSetting, User, VendorPrice, WatchlistItem, db
 from providers.cardkingdom_sealed import CardKingdomSealedProvider
+from providers.cardkingdom_singles import CardKingdomSinglesProvider
 from providers.sealed_matcher import build_search_query, match_sealed
 from providers.sealed_trust import evaluate_offers_trust
 from providers.shopify_catalog import ShopifyCatalogProvider
@@ -610,3 +611,229 @@ def test_ucp_profile_and_trusted_shops_api_and_mcp(test_client_and_app):
         assert payload["deals_found"] == 1
         assert payload["items"][0]["best_vendor"] == "Shop · CaveGamers"
         assert payload["items"][0]["lowest_trusted_price"] == 229.99
+
+
+# ---------------------------------------------------------------------------
+# 7. Seller Blacklist & Whitelist Manager tests
+# ---------------------------------------------------------------------------
+
+def test_blacklist_precedence_and_purge_api_and_deals_page(test_client_and_app):
+    client, app, user_id = test_client_and_app
+
+    # Blacklisted seller must be dropped even when price is normal and it appears on allowlist
+    offers = [
+        {
+            "title": "Wilds of Eldraine Set Booster Box",
+            "price": 320.00,
+            "shop_name": "SketchyStore",
+            "shop_domain": "sketchystore.com",
+            "shop_url": "https://sketchystore.com",
+            "shop_gid": "gid://shopify/Shop/555",
+        }
+    ]
+    decisions = evaluate_offers_trust(
+        offers,
+        market_price=360.0,
+        trusted_shops=[{"name": "SketchyStore", "domain": "sketchystore.com", "shop_gid": ""}],
+        blocked_shops=[{"name": "SketchyStore", "domain": "sketchystore.com", "shop_gid": ""}],
+    )
+    assert decisions[0][1].status == "suspicious"
+    assert decisions[0][1].reason == "blacklisted"
+
+    # Seed a sealed watchlist item with a trusted Shop row, then blacklist via API
+    with app.app_context():
+        item = WatchlistItem(
+            user_id=user_id,
+            name="Wilds of Eldraine - Set Booster Display",
+            finish="sealed",
+            tcgplayer_product_id=496038,
+            target_price=300.0,
+            tcgplayer_market_price=363.04,
+        )
+        db.session.add(item)
+        db.session.flush()
+        vp = VendorPrice(
+            watchlist_id=item.id,
+            vendor_name="Shop (unverified) · SketchyStore",
+            price=250.00,
+            condition="Unverified",
+            in_stock=False,
+            product_url="https://sketchystore.com/products/woe-box",
+        )
+        db.session.add(vp)
+        db.session.commit()
+        vp_id = vp.id
+
+    # Verify /deals renders the Retail & Sellers tab with the unverified seller
+    deals_resp = client.get("/deals")
+    assert deals_resp.status_code == 200
+    html = deals_resp.get_data(as_text=True)
+    assert "deals-retailers-container" in html
+    assert "SketchyStore" in html
+
+    # Blacklist the seller -> purges VendorPrice row immediately
+    block_resp = client.post(
+        "/api/sealed/blocked-shops/add",
+        json={"name": "SketchyStore", "domain": "sketchystore.com", "vendor_price_id": vp_id},
+    )
+    assert block_resp.status_code == 200
+    block_data = block_resp.get_json()
+    assert block_data["success"] is True
+    assert block_data["removed_rows"] >= 1
+    assert any(s["name"] == "SketchyStore" for s in block_data["blocked_shops"])
+
+    with app.app_context():
+        assert db.session.get(VendorPrice, vp_id) is None
+
+    # Unblock via API
+    unblock_resp = client.post(
+        "/api/sealed/blocked-shops/remove",
+        json={"name": "SketchyStore", "domain": "sketchystore.com"},
+    )
+    assert unblock_resp.status_code == 200
+    assert not any(s["name"] == "SketchyStore" for s in unblock_resp.get_json()["blocked_shops"])
+
+
+# ---------------------------------------------------------------------------
+# 8. Card Kingdom Singles Provider & DealEngine.poll_card integration tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_CK_SINGLES_PRICELIST = {
+    "meta": {"created_at": "2026-11-23 05:06:32", "base_url": "https://www.cardkingdom.com/"},
+    "data": [
+        {
+            "id": 20001,
+            "scryfall_id": "sf-sol-ring-cmm",
+            "url": "mtg/commander-masters/sol-ring",
+            "name": "Sol Ring",
+            "edition": "Commander Masters",
+            "is_foil": "false",
+            "price_retail": "1.99",
+            "qty_retail": 15,
+            "condition_values": {"nm_price": "1.99", "nm_qty": 10, "ex_price": "1.59", "ex_qty": 5},
+        },
+        {
+            "id": 20002,
+            "scryfall_id": "sf-sol-ring-cmm",
+            "url": "mtg/commander-masters/sol-ring-foil",
+            "name": "Sol Ring",
+            "edition": "Commander Masters",
+            "is_foil": "true",
+            "price_retail": "4.99",
+            "qty_retail": 3,
+            "condition_values": {"nm_price": "4.99", "nm_qty": 3},
+        },
+        {
+            "id": 20003,
+            "scryfall_id": "sf-sol-ring-2xm",
+            "url": "mtg/double-masters/sol-ring",
+            "name": "Sol Ring",
+            "edition": "Double Masters",
+            "is_foil": "false",
+            "price_retail": "1.29",
+            "qty_retail": 8,
+            "condition_values": {"nm_price": "1.29", "nm_qty": 8},
+        },
+        {
+            "id": 20004,
+            "scryfall_id": "sf-bala-ged",
+            "url": "mtg/zendikar-rising/bala-ged-recovery",
+            "name": "Bala Ged Recovery // Bala Ged Sanctuary",
+            "edition": "Zendikar Rising",
+            "is_foil": "false",
+            "price_retail": "5.49",
+            "qty_retail": 0,
+            "condition_values": {"nm_price": "5.49", "nm_qty": 0},
+        },
+    ],
+}
+
+
+def test_cardkingdom_singles_lookup_and_caching():
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.headers = {"ETag": '"ck-singles-v1"'}
+    mock_resp.json.return_value = SAMPLE_CK_SINGLES_PRICELIST
+    mock_session.get.return_value = mock_resp
+
+    provider = CardKingdomSinglesProvider(session=mock_session, cache_ttl_seconds=3600, use_shared_cache=False)
+
+    # Exact printing by scryfall_id (nonfoil vs foil)
+    exact_nf = provider.search_card("Sol Ring", scryfall_id="sf-sol-ring-cmm", finish="nonfoil", is_any_version=False)
+    assert exact_nf is not None
+    assert exact_nf["vendor_name"] == "Card Kingdom"
+    assert exact_nf["price"] == 1.99
+    assert exact_nf["in_stock"] is True
+    assert exact_nf["condition"] == "NM"
+
+    exact_foil = provider.search_card("Sol Ring", scryfall_id="sf-sol-ring-cmm", finish="foil", is_any_version=False)
+    assert exact_foil is not None
+    assert exact_foil["price"] == 4.99
+
+    # Any version picks cheapest in-stock printing ($1.29 Double Masters)
+    any_ver = provider.search_card("Sol Ring", finish="nonfoil", is_any_version=True)
+    assert any_ver is not None
+    assert any_ver["price"] == 1.29
+
+    # DFC front-face lookup & out-of-stock status
+    dfc = provider.search_card("Bala Ged Recovery", finish="nonfoil", is_any_version=True)
+    assert dfc is not None
+    assert dfc["price"] == 5.49
+    assert dfc["in_stock"] is False
+
+    # All lookups hit HTTP only once
+    assert mock_session.get.call_count == 1
+
+
+def test_deal_engine_poll_card_includes_cardkingdom_for_singles(test_client_and_app):
+    _, app, user_id = test_client_and_app
+    with app.app_context():
+        card = WatchlistItem(
+            user_id=user_id,
+            name="Sol Ring",
+            scryfall_id="sf-sol-ring-cmm",
+            set_code=None,  # Any Version
+            finish="nonfoil",
+            target_price=1.50,
+        )
+        db.session.add(card)
+        db.session.commit()
+
+        engine = DealEngine(app=app)
+        with (
+            patch.object(
+                engine.scryfall,
+                "get_cheapest_tcgplayer_price",
+                return_value={
+                    "vendor_name": "TCGplayer",
+                    "price": 2.10,
+                    "condition": "NM",
+                    "in_stock": True,
+                    "product_url": "https://www.tcgplayer.com/search/magic/product?q=Sol+Ring",
+                    "search_url": "https://www.tcgplayer.com/search/magic/product?q=Sol+Ring",
+                },
+            ),
+            patch.object(engine.mightymeeple, "search_card", return_value=None),
+            patch.object(engine.ebay, "search_card", return_value=None),
+            patch.object(
+                engine.cardkingdom_singles,
+                "search_card",
+                return_value={
+                    "vendor_name": "Card Kingdom",
+                    "price": 1.29,
+                    "condition": "NM",
+                    "in_stock": True,
+                    "product_url": "https://www.cardkingdom.com/mtg/double-masters/sol-ring",
+                    "search_url": "https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=Sol+Ring",
+                },
+            ),
+            patch.object(engine, "send_discord_deal_alert") as mock_alert,
+        ):
+            result = engine.poll_card(card, notify=True, fast_mode=True)
+
+        assert result["is_deal"] is True
+        assert result["lowest_price"] == 1.29
+        mock_alert.assert_called_once()
+        assert mock_alert.call_args.kwargs["best_vendor"].vendor_name == "Card Kingdom"
+

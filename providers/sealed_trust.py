@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 TRUSTED_SHOPS_SETTING_KEY = "sealed_trusted_shops"
+BLOCKED_SHOPS_SETTING_KEY = "sealed_blocked_shops"
 
 # Sensible initial allowlist of reputable MTG Shopify storefronts.
 # Users can add/remove entries via the Chimera UI or API (persisted in SystemSetting).
@@ -138,7 +139,8 @@ def save_trusted_shops(shops: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def add_trusted_shop(name: str = "", domain: str = "", shop_gid: str = "") -> list[dict[str, str]]:
-    """Adds a single store to the trusted allowlist and persists it."""
+    """Adds a single store to the trusted allowlist, removing it from the blacklist if present."""
+    remove_blocked_shop(name=name, domain=domain, shop_gid=shop_gid)
     current = get_trusted_shops()
     current.append({
         "name": (name or "").strip(),
@@ -164,6 +166,121 @@ def remove_trusted_shop(name: str = "", domain: str = "", shop_gid: str = "") ->
             continue
         kept.append(entry)
     return save_trusted_shops(kept)
+
+
+def get_blocked_shops() -> list[dict[str, str]]:
+    """
+    Loads the blacklisted Shopify store list from SystemSetting.
+    Returns an empty list if not yet configured or outside app context.
+    """
+    try:
+        from models import SystemSetting
+
+        raw = SystemSetting.get_val(BLOCKED_SHOPS_SETTING_KEY)
+        if raw:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                cleaned: list[dict[str, str]] = []
+                for entry in parsed:
+                    if isinstance(entry, dict):
+                        cleaned.append({
+                            "name": str(entry.get("name") or "").strip(),
+                            "domain": _extract_host(str(entry.get("domain") or "")),
+                            "shop_gid": str(entry.get("shop_gid") or "").strip(),
+                        })
+                    elif isinstance(entry, str) and entry.strip():
+                        val = entry.strip()
+                        if val.startswith("gid://"):
+                            cleaned.append({"name": "", "domain": "", "shop_gid": val})
+                        elif "." in val:
+                            cleaned.append({"name": "", "domain": _extract_host(val), "shop_gid": ""})
+                        else:
+                            cleaned.append({"name": val, "domain": "", "shop_gid": ""})
+                return cleaned
+    except Exception as exc:
+        logger.debug(f"Using empty blocked shops (SystemSetting unavailable): {exc}")
+    return []
+
+
+def save_blocked_shops(shops: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Persists the blacklisted Shopify store list to SystemSetting."""
+    from models import SystemSetting
+
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for entry in shops:
+        name = str(entry.get("name") or "").strip()
+        domain = _extract_host(str(entry.get("domain") or ""))
+        shop_gid = str(entry.get("shop_gid") or "").strip()
+        if not (name or domain or shop_gid):
+            continue
+        key = (shop_gid.lower(), domain, name.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append({"name": name, "domain": domain, "shop_gid": shop_gid})
+
+    SystemSetting.set_val(BLOCKED_SHOPS_SETTING_KEY, json.dumps(normalized))
+    return normalized
+
+
+def add_blocked_shop(name: str = "", domain: str = "", shop_gid: str = "") -> list[dict[str, str]]:
+    """Adds a store to the blacklist and removes it from the trusted allowlist if present."""
+    remove_trusted_shop(name=name, domain=domain, shop_gid=shop_gid)
+    current = get_blocked_shops()
+    current.append({
+        "name": (name or "").strip(),
+        "domain": _extract_host(domain or ""),
+        "shop_gid": (shop_gid or "").strip(),
+    })
+    return save_blocked_shops(current)
+
+
+def remove_blocked_shop(name: str = "", domain: str = "", shop_gid: str = "") -> list[dict[str, str]]:
+    """Removes matching store(s) from the blacklist and persists it."""
+    target_name = (name or "").strip().lower()
+    target_domain = _extract_host(domain or "")
+    target_gid = (shop_gid or "").strip().lower()
+    current = get_blocked_shops()
+    kept = []
+    for entry in current:
+        if target_gid and entry.get("shop_gid", "").lower() == target_gid:
+            continue
+        if target_domain and _extract_host(entry.get("domain", "")) == target_domain:
+            continue
+        if target_name and entry.get("name", "").strip().lower() == target_name:
+            continue
+        kept.append(entry)
+    return save_blocked_shops(kept)
+
+
+def is_shop_blocked(
+    *,
+    shop_gid: str = "",
+    shop_domain: str = "",
+    shop_url: str = "",
+    shop_name: str = "",
+    blocked_shops: Optional[Iterable[dict[str, str]]] = None,
+) -> bool:
+    """Checks whether a Shopify merchant matches any entry in the blacklist."""
+    entries = list(blocked_shops) if blocked_shops is not None else get_blocked_shops()
+    gid_l = (shop_gid or "").strip().lower()
+    dom_l = _extract_host(shop_domain)
+    url_host = _extract_host(shop_url)
+    name_l = (shop_name or "").strip().lower()
+
+    for entry in entries:
+        e_gid = (entry.get("shop_gid") or "").strip().lower()
+        e_dom = _extract_host(entry.get("domain") or "")
+        e_name = (entry.get("name") or "").strip().lower()
+
+        if e_gid and gid_l and e_gid == gid_l:
+            return True
+        if e_dom and (dom_l == e_dom or url_host == e_dom):
+            return True
+        if e_name and name_l and e_name == name_l:
+            return True
+    return False
 
 
 def is_shop_trusted(
@@ -207,6 +324,7 @@ def evaluate_offers_trust(
     market_price: Optional[float] = None,
     min_market_ratio: float = 0.55,
     trusted_shops: Optional[Iterable[dict[str, str]]] = None,
+    blocked_shops: Optional[Iterable[dict[str, str]]] = None,
 ) -> list[tuple[dict[str, Any], TrustDecision]]:
     """
     Evaluates a batch of offers from a single catalog search and returns
@@ -217,6 +335,7 @@ def evaluate_offers_trust(
     numeral store-name clones like "PULL STORE I / II / III").
     """
     allowlist = list(trusted_shops) if trusted_shops is not None else get_trusted_shops()
+    blocklist = list(blocked_shops) if blocked_shops is not None else get_blocked_shops()
 
     # 1. Pre-compute batch clone-farm signals
     title_price_shops: dict[tuple[str, int], set[str]] = defaultdict(set)
@@ -250,6 +369,17 @@ def evaluate_offers_trust(
         shop_name = str(offer.get("shop_name") or "")
         title = str(offer.get("title") or "")
         price = float(offer.get("price") or 0.0)
+
+        # Rule 0: Explicit user blacklist always wins
+        if is_shop_blocked(
+            shop_gid=shop_gid,
+            shop_domain=shop_domain,
+            shop_url=shop_url,
+            shop_name=shop_name,
+            blocked_shops=blocklist,
+        ):
+            results.append((offer, TrustDecision("suspicious", "blacklisted")))
+            continue
 
         # Rule 1: Explicit trusted allowlist
         if is_shop_trusted(

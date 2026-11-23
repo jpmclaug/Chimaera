@@ -26,7 +26,7 @@ import requests
 
 from config import Config
 from .sealed_matcher import build_search_query, match_sealed
-from .sealed_trust import evaluate_offers_trust, get_trusted_shops
+from .sealed_trust import evaluate_offers_trust, get_blocked_shops, get_trusted_shops
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +353,7 @@ class ShopifyCatalogProvider:
         market_price: Optional[float] = None,
         max_price: Optional[float] = None,
         trusted_shops: Optional[Iterable[dict[str, str]]] = None,
+        blocked_shops: Optional[Iterable[dict[str, str]]] = None,
         min_market_ratio: Optional[float] = None,
         limit_pages: int = 2,
     ) -> dict[str, Any]:
@@ -383,6 +384,7 @@ class ShopifyCatalogProvider:
             return empty
 
         allowlist = list(trusted_shops) if trusted_shops is not None else get_trusted_shops()
+        blocklist = list(blocked_shops) if blocked_shops is not None else get_blocked_shops()
         trusted_gids = [
             s["shop_gid"] for s in allowlist if isinstance(s, dict) and str(s.get("shop_gid") or "").startswith("gid://")
         ]
@@ -441,6 +443,7 @@ class ShopifyCatalogProvider:
             market_price=market_price,
             min_market_ratio=ratio,
             trusted_shops=allowlist,
+            blocked_shops=blocklist,
         )
 
         trusted_offers: list[dict[str, Any]] = []

@@ -1641,10 +1641,48 @@ def create_app(test_config=None):
     @login_required
     def deals():
         """Dedicated Active Deals view scoped to the authenticated user."""
+        from providers.sealed_trust import get_blocked_shops, get_trusted_shops
+
         user = get_current_user()
         all_items = WatchlistItem.query.filter_by(user_id=user.id).order_by(WatchlistItem.created_at.desc()).all()
         enrich_watchlist_items_with_binder_status(all_items, user.id)
         deal_items = [item for item in all_items if item.is_deal]
+
+        # Build sealed multi-retailer summary rows (deals & near-target unverified Shop offers first)
+        sealed_rows = []
+        for item in all_items:
+            if not item.is_sealed:
+                continue
+            tcg_vp = item.get_vendor_price("TCGplayer")
+            ck_vp = item.get_vendor_price("Card Kingdom")
+            shop_trusted_vp = next((v for v in item.vendor_prices if v.vendor_name.startswith("Shop · ")), None)
+            shop_unverified_vp = next(
+                (v for v in item.vendor_prices if v.vendor_name.startswith("Shop (unverified) · ")),
+                None,
+            )
+            tgt = item.target_price or 0.0
+            unv_under_target = bool(
+                shop_unverified_vp and shop_unverified_vp.price > 0 and tgt > 0 and shop_unverified_vp.price <= tgt
+            )
+            sealed_rows.append({
+                "item": item,
+                "tcg": tcg_vp,
+                "ck": ck_vp,
+                "shop_trusted": shop_trusted_vp,
+                "shop_unverified": shop_unverified_vp,
+                "is_deal": item.is_deal,
+                "unverified_under_target": unv_under_target,
+            })
+
+        def _sealed_sort_key(r):
+            if r["is_deal"]:
+                return (0, -(r["item"].savings_percent or 0.0), (r["item"].name or "").lower())
+            if r["unverified_under_target"]:
+                return (1, r["shop_unverified"].price - (r["item"].target_price or 0.0), (r["item"].name or "").lower())
+            return (2, 0.0, (r["item"].name or "").lower())
+
+        sealed_rows.sort(key=_sealed_sort_key)
+        sealed_opportunities_count = sum(1 for r in sealed_rows if r["is_deal"] or r["unverified_under_target"])
 
         total_savings = sum(item.savings_amount for item in deal_items)
         user_tags = sorted(list({item.tag.strip() for item in all_items if item.tag and item.tag.strip()}))
@@ -1658,6 +1696,10 @@ def create_app(test_config=None):
             total_savings=total_savings,
             user_tags=user_tags,
             all_watchlist_items=watchlist_dropdown_items,
+            sealed_rows=sealed_rows,
+            sealed_opportunities_count=sealed_opportunities_count,
+            trusted_shops=get_trusted_shops(),
+            blocked_shops=get_blocked_shops(),
             active_tab="deals",
         )
 
@@ -2007,6 +2049,106 @@ def create_app(test_config=None):
         return jsonify({
             "success": True,
             "trusted_shops": updated,
+        })
+
+    @app.route("/api/sealed/seller-lists", methods=["GET"])
+    @login_required
+    def api_sealed_seller_lists():
+        """Returns both whitelisted (trusted) and blacklisted (blocked) Shopify/Shop app sellers."""
+        from providers.sealed_trust import get_blocked_shops, get_trusted_shops
+
+        return jsonify({
+            "success": True,
+            "trusted_shops": get_trusted_shops(),
+            "blocked_shops": get_blocked_shops(),
+        })
+
+    @app.route("/api/sealed/blocked-shops/add", methods=["POST"])
+    @login_required
+    def api_sealed_blocked_shops_add():
+        """Blacklists a Shopify/Shop app seller, removes it from whitelist, and purges its VendorPrice rows."""
+        from providers.sealed_trust import add_blocked_shop, get_trusted_shops
+
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        domain = (data.get("domain") or "").strip()
+        shop_gid = (data.get("shop_gid") or "").strip()
+        vendor_price_id = data.get("vendor_price_id")
+
+        if not (name or domain or shop_gid):
+            return jsonify({"success": False, "error": "Provide at least one of name, domain, or shop_gid."}), 400
+
+        blocked = add_blocked_shop(name=name, domain=domain, shop_gid=shop_gid)
+
+        # Immediately remove matching Shop VendorPrice rows for this user
+        removed_rows = 0
+        try:
+            user_item_ids = [
+                r[0] for r in db.session.query(WatchlistItem.id).filter_by(user_id=user.id).all()
+            ]
+            if vendor_price_id is not None:
+                vp = db.session.get(VendorPrice, int(vendor_price_id))
+                if vp and vp.watchlist_id in user_item_ids:
+                    db.session.delete(vp)
+                    removed_rows += 1
+            if user_item_ids and (name or domain):
+                shop_rows = VendorPrice.query.filter(
+                    VendorPrice.watchlist_id.in_(user_item_ids),
+                    db.or_(
+                        VendorPrice.vendor_name.like("Shop · %"),
+                        VendorPrice.vendor_name.like("Shop (unverified) · %"),
+                    ),
+                ).all()
+                name_l = name.lower()
+                dom_l = domain.lower().replace("www.", "")
+                for row in shop_rows:
+                    v_l = (row.vendor_name or "").lower()
+                    url_l = (row.product_url or "").lower()
+                    if (name_l and name_l in v_l) or (dom_l and dom_l in url_l):
+                        db.session.delete(row)
+                        removed_rows += 1
+            db.session.commit()
+        except Exception as del_err:
+            logger.warning(f"Failed purging blocked seller VendorPrice rows: {del_err}")
+            db.session.rollback()
+
+        log_activity(
+            "SEALED_BLOCK_SHOP",
+            details=f"Blacklisted Shopify store: name='{name}', domain='{domain}' (purged={removed_rows})",
+            user=user,
+        )
+        return jsonify({
+            "success": True,
+            "removed_rows": removed_rows,
+            "blocked_shops": blocked,
+            "trusted_shops": get_trusted_shops(),
+        })
+
+    @app.route("/api/sealed/blocked-shops/remove", methods=["POST"])
+    @login_required
+    def api_sealed_blocked_shops_remove():
+        """Removes a Shopify/Shop app seller from the blacklist."""
+        from providers.sealed_trust import remove_blocked_shop
+
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        domain = (data.get("domain") or "").strip()
+        shop_gid = (data.get("shop_gid") or "").strip()
+
+        if not (name or domain or shop_gid):
+            return jsonify({"success": False, "error": "Provide at least one of name, domain, or shop_gid."}), 400
+
+        blocked = remove_blocked_shop(name=name, domain=domain, shop_gid=shop_gid)
+        log_activity(
+            "SEALED_UNBLOCK_SHOP",
+            details=f"Unblocked Shopify store: name='{name}', domain='{domain}'",
+            user=user,
+        )
+        return jsonify({
+            "success": True,
+            "blocked_shops": blocked,
         })
 
     @app.route("/api/watchlist/add-sealed", methods=["POST"])

@@ -32,8 +32,8 @@
         </div>
     </div>
 
-    <!-- Deals Mode Section Switcher (Single Deals vs Seller Lot Finder vs Sealed Product Deals) -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 border border-[#263245] bg-[#1B2230] p-1 gap-1">
+    <!-- Deals Mode Section Switcher (Single Deals vs Seller Lot Finder vs Sealed Product Deals vs Retail & Sellers) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 border border-[#263245] bg-[#1B2230] p-1 gap-1">
         <button onclick="switchDealsSection('single')" id="btn-deals-sec-single"
             class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#DC143C] text-white">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -41,20 +41,26 @@
             </svg>
             <span>Priority Deals ({{ deals_count }})</span>
         </button>
+        <button onclick="switchDealsSection('retailers')" id="btn-deals-sec-retailers"
+            class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
+            <span>🏪 Retail &amp; Sellers</span>
+            {% if sealed_opportunities_count %}
+            <span class="bg-[#8B5CF6]/30 text-[#DDD6FE] border border-[#8B5CF6]/60 text-[10px] px-1.5 py-0.2">{{ sealed_opportunities_count }}</span>
+            {% endif %}
+        </button>
         <button onclick="switchDealsSection('lots')" id="btn-deals-sec-lots"
             class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
             <svg class="w-4 h-4 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
             </svg>
-            <span>Seller Lot Finder (5+ Cards)</span>
+            <span>Seller Lot Finder</span>
         </button>
         <button onclick="switchDealsSection('sealed')" id="btn-deals-sec-sealed"
             class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
             <svg class="w-4 h-4 text-[#F59E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
             </svg>
-            <span>📦 Sealed Product Deals</span>
-            <span class="hidden sm:inline-block bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] px-1.5 py-0.2 tracking-wider">NEW</span>
+            <span>📦 Sealed Scanner</span>
         </button>
     </div>
 
@@ -1091,5 +1097,278 @@
 
     </div><!-- End of deals-sealed-finder-container -->
 
+    <!-- =========================================================================
+         SECTION D: MULTI-RETAILER DEALS & SELLER WHITELIST / BLACKLIST
+         ========================================================================= -->
+    <div id="deals-retailers-container" class="hidden space-y-5">
+
+        <!-- Watchlist Sealed Deals Comparison Table -->
+        <div class="bg-[#1B2230] border border-[#263245] p-4 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                    <div class="text-xs font-mono font-bold text-[#C4B5FD] uppercase tracking-wider">
+                        MULTI-RETAILER SEALED BOARD // TCGPLAYER • CARD KINGDOM • SHOP APP
+                    </div>
+                    <p class="text-xs text-[#94A3B8] mt-0.5">
+                        Review live prices across retailers and <strong class="text-[#00CED1]">Whitelist</strong> reputable Shop stores for Discord alerts or <strong class="text-[#FF3358]">Blacklist</strong> sketchy sellers permanently.
+                    </p>
+                </div>
+                <div class="flex items-center space-x-2 font-mono text-xs flex-shrink-0">
+                    <label class="flex items-center space-x-1.5 bg-[#10141D] border border-[#263245] px-2.5 py-1.5 cursor-pointer">
+                        <input type="checkbox" id="retailers-deals-only-toggle" onchange="filterRetailerRows()" class="w-3.5 h-3.5 text-[#8B5CF6] bg-[#10141D] border-[#263245] focus:ring-0">
+                        <span class="text-[#CBD5E1] uppercase">Deals &amp; Under-Target Only</span>
+                    </label>
+                </div>
+            </div>
+
+            {% if sealed_rows %}
+            <div class="overflow-x-auto border border-[#263245]">
+                <table class="w-full text-left font-mono text-xs">
+                    <thead class="bg-[#10141D] text-[#94A3B8] uppercase text-[10px] border-b border-[#263245]">
+                        <tr>
+                            <th class="px-3 py-2">Sealed Product</th>
+                            <th class="px-3 py-2 text-right">Target</th>
+                            <th class="px-3 py-2 text-right">TCGplayer</th>
+                            <th class="px-3 py-2 text-right">Card Kingdom</th>
+                            <th class="px-3 py-2">Shop (Whitelisted)</th>
+                            <th class="px-3 py-2">Shop (Unverified)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#263245]">
+                        {% for row in sealed_rows %}
+                        {% set it = row.item %}
+                        {% set is_opp = row.is_deal or row.unverified_under_target %}
+                        <tr class="retailer-deal-row {% if row.is_deal %}bg-[#10B981]/10{% elif row.unverified_under_target %}bg-[#F59E0B]/10{% else %}bg-[#141925]/60{% endif %} hover:bg-[#1E293B]/60"
+                            data-is-opp="{{ 'true' if is_opp else 'false' }}">
+                            <td class="px-3 py-2.5">
+                                <div class="font-bold text-white">{{ it.name }}</div>
+                                <div class="text-[10px] text-[#64748B] mt-0.5 flex items-center space-x-2">
+                                    {% if row.is_deal %}
+                                    <span class="text-[#10B981] font-bold uppercase">★ ACTIVE DEAL</span>
+                                    {% elif row.unverified_under_target %}
+                                    <span class="text-[#F59E0B] font-bold uppercase">? UNVERIFIED UNDER TARGET</span>
+                                    {% endif %}
+                                    {% if it.market_price %}
+                                    <span>Mkt: ${{ "%.2f"|format(it.market_price) }}</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-3 py-2.5 text-right font-bold text-[#94A3B8]">
+                                {% if it.target_price and it.target_price > 0 %}${{ "%.2f"|format(it.target_price) }}{% else %}<span class="text-[#64748B]">—</span>{% endif %}
+                            </td>
+                            <td class="px-3 py-2.5 text-right">
+                                {% if row.tcg and row.tcg.price > 0 %}
+                                <div class="font-bold {% if it.target_price and row.tcg.in_stock and row.tcg.price <= it.target_price %}text-[#10B981]{% else %}text-white{% endif %}">
+                                    ${{ "%.2f"|format(row.tcg.price) }}
+                                </div>
+                                {% if row.tcg.product_url %}
+                                <a href="{{ row.tcg.product_url }}" target="_blank" rel="noopener" class="text-[10px] text-[#00CED1] hover:text-white underline uppercase">Buy</a>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-[#64748B]">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-2.5 text-right">
+                                {% if row.ck and row.ck.price > 0 %}
+                                <div class="font-bold {% if it.target_price and row.ck.in_stock and row.ck.price <= it.target_price %}text-[#10B981]{% else %}text-white{% endif %}">
+                                    ${{ "%.2f"|format(row.ck.price) }}
+                                    <span class="text-[10px] {% if row.ck.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In" if row.ck.in_stock else "Out" }})</span>
+                                </div>
+                                {% if row.ck.product_url %}
+                                <a href="{{ row.ck.product_url }}" target="_blank" rel="noopener" class="text-[10px] text-[#C4B5FD] hover:text-white underline uppercase">Buy</a>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-[#64748B]">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-2.5">
+                                {% if row.shop_trusted %}
+                                {% set t_label = row.shop_trusted.vendor_name[7:] %}
+                                <div class="flex items-center justify-between gap-2">
+                                    <div>
+                                        <span class="font-bold {% if it.target_price and row.shop_trusted.price <= it.target_price %}text-[#10B981]{% else %}text-white{% endif %}">${{ "%.2f"|format(row.shop_trusted.price) }}</span>
+                                        <span class="text-[#00CED1] ml-1">{{ t_label }}</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5 flex-shrink-0">
+                                        {% if row.shop_trusted.product_url %}
+                                        <a href="{{ row.shop_trusted.product_url }}" target="_blank" rel="noopener" class="text-[10px] text-[#00CED1] hover:text-white underline uppercase font-bold">Buy</a>
+                                        {% endif %}
+                                        <button type="button"
+                                            onclick="dealsSellerAction('block', '{{ t_label|replace("'", "\\'") }}', '{{ (row.shop_trusted.product_url or '')|replace("'", "\\'") }}', {{ row.shop_trusted.id }})"
+                                            class="px-1.5 py-0.5 bg-[#10141D] hover:bg-[#DC143C]/30 text-[#FF3358] border border-[#DC143C]/40 text-[10px] uppercase font-bold"
+                                            title="Blacklist {{ t_label }}">Block</button>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <span class="text-[#64748B]">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-2.5">
+                                {% if row.shop_unverified %}
+                                {% set u_label = row.shop_unverified.vendor_name[20:] %}
+                                <div class="flex items-center justify-between gap-2">
+                                    <div>
+                                        <span class="font-bold {% if row.unverified_under_target %}text-[#F59E0B]{% else %}text-[#94A3B8]{% endif %}">${{ "%.2f"|format(row.shop_unverified.price) }}</span>
+                                        <span class="text-[#CBD5E1] ml-1">{{ u_label }}</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1.5 flex-shrink-0">
+                                        {% if row.shop_unverified.product_url %}
+                                        <a href="{{ row.shop_unverified.product_url }}" target="_blank" rel="noopener" class="text-[10px] text-[#94A3B8] hover:text-white underline uppercase">View</a>
+                                        {% endif %}
+                                        <button type="button"
+                                            onclick="dealsSellerAction('trust', '{{ u_label|replace("'", "\\'") }}', '{{ (row.shop_unverified.product_url or '')|replace("'", "\\'") }}', {{ row.shop_unverified.id }})"
+                                            class="px-1.5 py-0.5 bg-[#10141D] hover:bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[10px] uppercase font-bold"
+                                            title="Whitelist {{ u_label }}">Whitelist</button>
+                                        <button type="button"
+                                            onclick="dealsSellerAction('block', '{{ u_label|replace("'", "\\'") }}', '{{ (row.shop_unverified.product_url or '')|replace("'", "\\'") }}', {{ row.shop_unverified.id }})"
+                                            class="px-1.5 py-0.5 bg-[#10141D] hover:bg-[#DC143C]/30 text-[#FF3358] border border-[#DC143C]/40 text-[10px] uppercase font-bold"
+                                            title="Blacklist {{ u_label }}">Blacklist</button>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <span class="text-[#64748B]">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-xs font-mono text-[#64748B] bg-[#10141D] border border-[#263245] p-4 text-center">
+                No sealed products on your watchlist yet. Add sealed items from the Sealed Scanner tab to compare TCGplayer, Card Kingdom, and Shop app retailers.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Whitelist & Blacklist Seller Manager -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 font-mono">
+            <!-- Whitelisted (Trusted) Sellers -->
+            <div class="bg-[#1B2230] border border-[#00CED1]/40 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-[#00CED1] uppercase tracking-wider">
+                        ✓ Whitelisted Sellers ({{ trusted_shops|length }})
+                    </h3>
+                    <span class="text-[10px] text-[#94A3B8]">Eligible for deals &amp; Discord alerts</span>
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" id="input-whitelist-name" placeholder="Store name (e.g. GameNerdz)" class="flex-1 bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white focus:border-[#00CED1]">
+                    <input type="text" id="input-whitelist-domain" placeholder="Domain (optional)" class="flex-1 bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white focus:border-[#00CED1]">
+                    <button type="button" onclick="manualSellerAdd('trust')" class="px-3 py-1.5 bg-[#00CED1]/20 hover:bg-[#00CED1]/30 text-[#00CED1] border border-[#00CED1]/50 text-xs uppercase font-bold">Add</button>
+                </div>
+                <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {% for s in trusted_shops %}
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] border border-[#263245] px-2.5 py-1.5">
+                        <div class="truncate">
+                            <span class="text-white font-bold">{{ s.name or s.domain or s.shop_gid }}</span>
+                            {% if s.domain and s.name %}<span class="text-[#64748B] ml-1.5">{{ s.domain }}</span>{% endif %}
+                        </div>
+                        <div class="flex items-center space-x-1.5 flex-shrink-0 ml-2">
+                            <button type="button" onclick="dealsSellerAction('block', '{{ (s.name or '')|replace("'", "\\'") }}', '{{ (s.domain or '')|replace("'", "\\'") }}', null)" class="text-[10px] text-[#FF3358] hover:underline uppercase font-bold">Blacklist</button>
+                            <span class="text-[#334155]">|</span>
+                            <button type="button" onclick="dealsSellerAction('untrust', '{{ (s.name or '')|replace("'", "\\'") }}', '{{ (s.domain or '')|replace("'", "\\'") }}', null)" class="text-[10px] text-[#94A3B8] hover:text-white uppercase">Remove</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-xs text-[#64748B] py-2">No whitelisted sellers yet.</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Blacklisted (Blocked) Sellers -->
+            <div class="bg-[#1B2230] border border-[#DC143C]/40 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-[#FF3358] uppercase tracking-wider">
+                        ✕ Blacklisted Sellers ({{ blocked_shops|length }})
+                    </h3>
+                    <span class="text-[10px] text-[#94A3B8]">Hidden &amp; dropped from all scans</span>
+                </div>
+                <div class="flex gap-2">
+                    <input type="text" id="input-blacklist-name" placeholder="Store name (e.g. reformesa)" class="flex-1 bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white focus:border-[#DC143C]">
+                    <input type="text" id="input-blacklist-domain" placeholder="Domain (optional)" class="flex-1 bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white focus:border-[#DC143C]">
+                    <button type="button" onclick="manualSellerAdd('block')" class="px-3 py-1.5 bg-[#DC143C]/20 hover:bg-[#DC143C]/30 text-[#FF3358] border border-[#DC143C]/50 text-xs uppercase font-bold">Block</button>
+                </div>
+                <div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {% for s in blocked_shops %}
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] border border-[#263245] px-2.5 py-1.5">
+                        <div class="truncate">
+                            <span class="text-white font-bold">{{ s.name or s.domain or s.shop_gid }}</span>
+                            {% if s.domain and s.name %}<span class="text-[#64748B] ml-1.5">{{ s.domain }}</span>{% endif %}
+                        </div>
+                        <div class="flex items-center space-x-1.5 flex-shrink-0 ml-2">
+                            <button type="button" onclick="dealsSellerAction('trust', '{{ (s.name or '')|replace("'", "\\'") }}', '{{ (s.domain or '')|replace("'", "\\'") }}', null)" class="text-[10px] text-[#00CED1] hover:underline uppercase font-bold">Whitelist</button>
+                            <span class="text-[#334155]">|</span>
+                            <button type="button" onclick="dealsSellerAction('unblock', '{{ (s.name or '')|replace("'", "\\'") }}', '{{ (s.domain or '')|replace("'", "\\'") }}', null)" class="text-[10px] text-[#94A3B8] hover:text-white uppercase">Unblock</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-xs text-[#64748B] py-2">No blacklisted sellers yet. Click "Blacklist" on any sketchy Shop storefront above to permanently hide it.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div><!-- End of deals-retailers-container -->
+
 </div>
+<script>
+function filterRetailerRows() {
+    const onlyOpps = document.getElementById('retailers-deals-only-toggle')?.checked;
+    document.querySelectorAll('.retailer-deal-row').forEach(tr => {
+        const isOpp = tr.getAttribute('data-is-opp') === 'true';
+        tr.classList.toggle('hidden', Boolean(onlyOpps && !isOpp));
+    });
+}
+
+async function dealsSellerAction(action, name, urlOrDomain, vendorPriceId) {
+    let domain = '';
+    if (urlOrDomain) {
+        try {
+            domain = urlOrDomain.includes('://')
+                ? new URL(urlOrDomain).hostname.replace(/^www\./, '')
+                : urlOrDomain.replace(/^www\./, '');
+        } catch (e) { domain = urlOrDomain; }
+    }
+    const endpoints = {
+        trust: '/api/sealed/trusted-shops/add',
+        untrust: '/api/sealed/trusted-shops/remove',
+        block: '/api/sealed/blocked-shops/add',
+        unblock: '/api/sealed/blocked-shops/remove',
+    };
+    const payload = { name: name || '', domain: domain || '' };
+    if (vendorPriceId) payload.vendor_price_id = vendorPriceId;
+    try {
+        const resp = await fetch(endpoints[action], {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            window.location.hash = '#retailers';
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to update seller list.');
+        }
+    } catch (err) {
+        alert('Network error updating seller list.');
+    }
+}
+
+async function manualSellerAdd(action) {
+    const prefix = action === 'trust' ? 'whitelist' : 'blacklist';
+    const name = (document.getElementById(`input-${prefix}-name`)?.value || '').trim();
+    const domain = (document.getElementById(`input-${prefix}-domain`)?.value || '').trim();
+    if (!name && !domain) {
+        alert('Enter a store name or domain.');
+        return;
+    }
+    await dealsSellerAction(action, name, domain, null);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.location.hash === '#retailers' && typeof switchDealsSection === 'function') {
+        switchDealsSection('retailers');
+    }
+});
+</script>
 {% endblock %}
