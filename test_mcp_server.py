@@ -819,6 +819,49 @@ class TestChimeraMcpServer(unittest.TestCase):
         wl_after2 = self._call_tool("get_watchlist", {"cards": ["Mana Vault"]})
         self.assertEqual(wl_after2["total_matching"], 0)
 
+    @patch("inventory_manager.InventoryManager.start_background_enrichment")
+    def test_upload_inventory_and_manage_tcg_orders_auto_remove_watchlist(self, mock_enrich):
+        """Verifies upload_inventory (with TCGplayer text) and manage_tcgplayer_orders(action='import') auto-remove matched watchlist cards."""
+        mock_enrich.return_value = {"is_running": False}
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = (
+                {
+                    "metallic rebuke": {"id": "sf-mr-1", "name": "Metallic Rebuke", "prices": {"usd": "0.50"}},
+                    "frogmite": {"id": "sf-fr-1", "name": "Frogmite", "prices": {"usd": "0.25"}},
+                    "rhystic study": {"id": "sf-rs-1", "name": "Rhystic Study", "prices": {"usd": "35.00"}},
+                },
+                [],
+            )
+            self._call_tool("add_to_watchlist", {"cards": ["Metallic Rebuke", "Frogmite", "Rhystic Study"], "target_price": 5.0})
+
+        with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:
+            mock_coll.return_value = ({}, [])
+            up_res = self._call_tool(
+                "upload_inventory",
+                {
+                    "text": "1\tMagic - Aether Revolt - Metallic Rebuke - Near Mint",
+                    "binder_name": "Acquired",
+                },
+            )
+            self.assertTrue(up_res["success"])
+            self.assertEqual(up_res["watchlist_removed_count"], 1)
+            self.assertEqual(up_res["watchlist_removed_names"], ["Metallic Rebuke"])
+
+        imp_res = self._call_tool(
+            "manage_tcgplayer_orders",
+            {
+                "action": "import",
+                "text": "2\tMagic - Mirrodin - Frogmite - Moderately Played",
+            },
+        )
+        self.assertTrue(imp_res["success"])
+        self.assertEqual(imp_res["watchlist_removed_count"], 1)
+        self.assertEqual(imp_res["watchlist_removed_names"], ["Frogmite"])
+
+        wl_remaining = self._call_tool("get_watchlist", {"cards": ["Metallic Rebuke", "Frogmite", "Rhystic Study"]})
+        self.assertEqual(wl_remaining["total_matching"], 1)
+        self.assertEqual(wl_remaining["watchlist"][0]["name"], "Rhystic Study")
+
     def test_bulk_search_card_prices(self):
         """Verifies search_card_prices tool with single card and bulk list."""
         with patch("providers.scryfall.ScryfallProvider.get_cards_collection") as mock_coll:

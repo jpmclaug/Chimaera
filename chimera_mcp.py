@@ -716,7 +716,8 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "name": "manage_tcgplayer_orders",
         "description": (
             "Lists tracked TCGplayer orders (both in-transit 'ordered' and 'completed'), "
-            "fetches recent TCGplayer order confirmation emails via Gmail IMAP, or marks an order complete "
+            "imports pasted TCGplayer order text, fetches recent TCGplayer order confirmation emails via Gmail IMAP "
+            "(auto-removing matched cards from the watchlist), or marks an order complete "
             "to automatically move its cards from the 'Ordered' binder into the permanent collection binder."
         ),
         "inputSchema": {
@@ -724,9 +725,13 @@ MCP_TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["list", "complete", "fetch_gmail"],
-                    "description": "Action to perform: 'list' (default), 'complete' (mark order delivered), or 'fetch_gmail'.",
+                    "enum": ["list", "import", "complete", "fetch_gmail"],
+                    "description": "Action to perform: 'list' (default), 'import' (parse pasted order text & remove from watchlist), 'complete' (mark order delivered), or 'fetch_gmail'.",
                     "default": "list",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Pasted TCGplayer order manifest text when action='import'.",
                 },
                 "order_id": {
                     "type": "integer",
@@ -738,8 +743,19 @@ MCP_TOOLS: list[dict[str, Any]] = [
                 },
                 "binder_name": {
                     "type": "string",
-                    "description": "Destination binder name when marking an order complete (default 'Acquired').",
+                    "description": "Destination binder name when importing completed orders or marking an order complete (default 'Acquired').",
                     "default": "Acquired",
+                },
+                "inventory_mode": {
+                    "type": "string",
+                    "enum": ["ordered", "completed"],
+                    "description": "Inventory status for imported orders: 'ordered' (default, held in 'Ordered' binder) or 'completed'.",
+                    "default": "ordered",
+                },
+                "add_to_inventory": {
+                    "type": "boolean",
+                    "description": "Whether to add imported cards to inventory (default true).",
+                    "default": True,
                 },
                 "days_back": {
                     "type": "integer",
@@ -922,7 +938,7 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
     text_content = args.get("text")
     if text_content and isinstance(text_content, str) and text_content.strip():
         try:
-            from tcgplayer_parser import TCGPlayerPurchaseParser
+            from tcgplayer_parser import TCGPlayerPurchaseParser, extract_parenthetical_alias
             tcg_items = TCGPlayerPurchaseParser.parse(text_content)
             if tcg_items and len(tcg_items) > 0:
                 extracted_tcg = []
@@ -930,11 +946,13 @@ def _parse_card_input_list(args: dict[str, Any]) -> list[dict[str, Any]]:
                     extracted_tcg.append({
                         "raw_query": item.raw_line or item.card_name,
                         "clean_name": normalize_card_name(item.card_name),
+                        "alias_name": extract_parenthetical_alias(item.raw_name),
                         "quantity": max(1, int(item.quantity or 1)),
                         "set_name": item.set_name,
                         "collector_number": item.collector_number or None,
                         "condition": item.condition or "Near Mint",
                         "foil": item.finish or "nonfoil",
+                        "is_tcgplayer_manifest": True,
                     })
                 if extracted_tcg:
                     return extracted_tcg
@@ -2640,6 +2658,39 @@ def _execute_upload_inventory(user: User, args: dict[str, Any]) -> dict[str, Any
         mode=mode,
     )
 
+    # Automatically remove matching WatchlistItem rows when importing a TCGplayer order manifest
+    watchlist_removed_names: list[str] = []
+    text_arg = args.get("text")
+    is_tcg_order_text = False
+    if isinstance(text_arg, str) and text_arg.strip():
+        try:
+            from tcgplayer_parser import TCGPlayerPurchaseParser, extract_parenthetical_alias
+            is_tcg_order_text = TCGPlayerPurchaseParser.is_likely_tcgplayer_manifest(text_arg)
+        except Exception:
+            is_tcg_order_text = False
+
+    if is_tcg_order_text:
+        from tcgplayer_parser import extract_parenthetical_alias
+        user_targets = WatchlistItem.query.filter_by(user_id=user.id).all()
+        if user_targets:
+            candidate_names = []
+            for pc in parsed_cards:
+                if pc.get("name"):
+                    candidate_names.append(pc["name"])
+                alias = extract_parenthetical_alias(pc.get("raw_name") or "")
+                if alias:
+                    candidate_names.append(alias)
+            for target in user_targets:
+                if any(card_names_match(cand, target.name) for cand in candidate_names):
+                    watchlist_removed_names.append(target.name)
+                    db.session.delete(target)
+            if watchlist_removed_names:
+                db.session.commit()
+
+    msg = f"Successfully imported {len(parsed_cards)} cards into inventory ({mode} mode)."
+    if watchlist_removed_names:
+        msg += f" Removed {len(watchlist_removed_names)} matching card(s) from watchlist."
+
     return {
         "success": True,
         "mode": mode,
@@ -2649,8 +2700,10 @@ def _execute_upload_inventory(user: User, args: dict[str, Any]) -> dict[str, Any
         "total_cards_quantity": import_result.get("total_cards", 0),
         "unique_cards_count": import_result.get("unique_cards", 0),
         "total_collection_value_usd": import_result.get("total_value", 0.0),
+        "watchlist_removed_count": len(watchlist_removed_names),
+        "watchlist_removed_names": watchlist_removed_names,
         "errors": errors,
-        "message": f"Successfully imported {len(parsed_cards)} cards into inventory ({mode} mode).",
+        "message": msg,
     }
 
 
@@ -2962,10 +3015,10 @@ def _execute_reconcile_watchlist(user: User, args: dict[str, Any]) -> dict[str, 
     extracted_items = _parse_card_input_list(args)
     for item in extracted_items:
         clean_name = item["clean_name"]
-        item_qty = item.get("quantity", 1)
+        alias_name = item.get("alias_name") or ""
         purchased_entries.append(item)
         for target in user_targets:
-            if card_names_match(target.name, clean_name):
+            if card_names_match(target.name, clean_name) or (alias_name and card_names_match(target.name, alias_name)):
                 matched_targets[target.id] = target
 
     if not matched_targets and not extracted_items and not card_ids:
@@ -3014,11 +3067,132 @@ def _execute_reconcile_watchlist(user: User, args: dict[str, Any]) -> dict[str, 
 
 
 def _execute_manage_tcgplayer_orders(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    """Lists tracked TCGplayer orders, fetches Gmail order emails, or marks an order complete."""
+    """Lists tracked TCGplayer orders, imports pasted order text, fetches Gmail order emails, or marks an order complete."""
     from models import TCGPlayerOrder, SystemSetting, utc_now
     from inventory_manager import InventoryManager
+    from tcgplayer_parser import TCGPlayerPurchaseParser, TCGPlayerEmailFetcher, extract_parenthetical_alias
+
+    def _auto_remove_watchlist_matches(items_dicts: list[dict[str, Any]]) -> list[str]:
+        if not items_dicts:
+            return []
+        user_targets = WatchlistItem.query.filter_by(user_id=user.id).all()
+        if not user_targets:
+            return []
+        removed_names: list[str] = []
+        to_delete: dict[int, WatchlistItem] = {}
+        for p in items_dicts:
+            c_name = (p.get("card_name") or p.get("name") or "").strip()
+            alias_name = extract_parenthetical_alias(p.get("raw_name") or c_name)
+            for target in user_targets:
+                if (c_name and card_names_match(c_name, target.name)) or (alias_name and card_names_match(alias_name, target.name)):
+                    to_delete[target.id] = target
+        for target in to_delete.values():
+            removed_names.append(target.name)
+            db.session.delete(target)
+        return removed_names
 
     action = (args.get("action") or "list").strip().lower()
+    if action == "import":
+        raw_text = (args.get("text") or "").strip()
+        if not raw_text:
+            return {"error": "Provide 'text' containing a TCGplayer order manifest to import."}
+        package_groups = TCGPlayerPurchaseParser.parse_into_packages(raw_text)
+        items_dicts = [it.to_dict() for grp in package_groups for it in grp.get("items", [])]
+        if not items_dicts:
+            return {"error": "No valid TCGplayer card purchases could be parsed from the provided text."}
+
+        inv_mode = (args.get("inventory_mode") or "ordered").strip().lower()
+        if inv_mode not in ("ordered", "completed"):
+            inv_mode = "ordered"
+        dest_binder = (args.get("binder_name") or "Acquired").strip() or "Acquired"
+        eff_binder = "Ordered" if inv_mode == "ordered" else dest_binder
+        order_status = "ordered" if inv_mode == "ordered" else "completed"
+        add_inv = bool(args.get("add_to_inventory", True))
+
+        removed_names = _auto_remove_watchlist_matches(items_dicts)
+
+        created_orders: list[dict[str, Any]] = []
+        inv_added = 0
+        if add_inv:
+            inv_mgr = InventoryManager()
+            inv_added = inv_mgr.add_ordered_cards_to_binder(
+                user_id=user.id,
+                purchased_items=items_dicts,
+                binder_name=eff_binder,
+            )
+
+        base_ord = f"ORD-{utc_now().strftime('%Y%m%d-%H%M%S')}"
+        for idx, grp in enumerate(package_groups, start=1):
+            o_items = [it.to_dict() for it in grp.get("items", [])]
+            if not o_items:
+                continue
+            o_num = grp.get("order_number") or (f"{base_ord}-P{idx}" if len(package_groups) > 1 else base_ord)
+            s_name = grp.get("seller") or "TCGplayer Marketplace"
+            o_date = grp.get("order_date") or utc_now().strftime("%b %d, %Y")
+            total_qty = sum(max(1, int(x.get("quantity") or 1)) for x in o_items)
+            existing_ord = TCGPlayerOrder.query.filter_by(
+                user_id=user.id,
+                order_number=o_num,
+                seller_summary=s_name,
+            ).first()
+            if existing_ord:
+                existing_ord.items_json = json.dumps(o_items)
+                existing_ord.total_quantity = total_qty
+                existing_ord.unique_cards_count = len(o_items)
+                existing_ord.status = order_status
+                created_orders.append(existing_ord.to_dict())
+            else:
+                new_ord = TCGPlayerOrder(
+                    user_id=user.id,
+                    order_number=o_num,
+                    order_date_str=o_date,
+                    seller_summary=s_name,
+                    source="mcp_import",
+                    status=order_status,
+                    target_binder_name=dest_binder,
+                    total_quantity=total_qty,
+                    unique_cards_count=len(o_items),
+                    items_json=json.dumps(o_items),
+                    completed_at=utc_now() if order_status == "completed" else None,
+                )
+                db.session.add(new_ord)
+                db.session.flush()
+                created_orders.append(new_ord.to_dict())
+
+        db.session.commit()
+        return {
+            "success": True,
+            "orders": created_orders,
+            "packages_count": len(created_orders),
+            "inventory_added_count": inv_added,
+            "binder_name": eff_binder,
+            "watchlist_removed_count": len(removed_names),
+            "watchlist_removed_names": removed_names,
+            "message": f"Imported {len(created_orders)} order package(s) and removed {len(removed_names)} matching card(s) from watchlist.",
+        }
+
+    if action == "fetch_gmail":
+        email_addr = (SystemSetting.get_val(f"gmail_imap_email_{user.id}") or SystemSetting.get_val("gmail_imap_email") or user.email or "").strip()
+        app_pw = (SystemSetting.get_val(f"gmail_imap_app_password_{user.id}") or SystemSetting.get_val("gmail_imap_app_password") or "").strip()
+        if not email_addr or not app_pw:
+            return {"error": "Gmail IMAP credentials are not configured in Settings."}
+        days_back = int(args.get("days_back") or 30)
+        fetcher = TCGPlayerEmailFetcher(email_address=email_addr, app_password=app_pw)
+        fetch_res = fetcher.fetch_recent_orders(days_back=days_back)
+        all_items = fetch_res.get("items") or []
+        removed_names = _auto_remove_watchlist_matches(all_items)
+        if removed_names:
+            db.session.commit()
+        return {
+            "success": True,
+            "orders_found": fetch_res.get("orders_found", 0),
+            "total_cards_quantity": fetch_res.get("total_cards_quantity", 0),
+            "orders": fetch_res.get("orders", []),
+            "watchlist_removed_count": len(removed_names),
+            "watchlist_removed_names": removed_names,
+            "message": f"Fetched {fetch_res.get('orders_found', 0)} Gmail order(s) and removed {len(removed_names)} matching card(s) from watchlist.",
+        }
+
     if action == "complete":
         order_id = args.get("order_id")
         order_number = (args.get("order_number") or "").strip()

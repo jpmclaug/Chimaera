@@ -445,7 +445,7 @@ class TestTCGPlayerPurchaseReconciliation(unittest.TestCase):
             "1\tMagic - Mirrodin - Silver Myr - Lightly Played\n"
         )
 
-        # 1. Preview with Deck Fit
+        # 1. Preview is deterministic (zero AI / Deck Fit calls)
         prev_res = self.client.post(
             "/api/watchlist/reconcile-purchase/preview",
             data=json.dumps({"raw_text": manifest_subset}),
@@ -453,15 +453,10 @@ class TestTCGPlayerPurchaseReconciliation(unittest.TestCase):
         )
         self.assertEqual(prev_res.status_code, 200)
         prev_data = prev_res.get_json()
-        self.assertEqual(prev_data["evaluated_decks_count"], 1)
-        self.assertTrue(len(prev_data["deck_sorting_groups"]) >= 1)
-
-        # Metallic Rebuke should have deck_fit attached pointing to Urza Artifacts
-        matched = prev_data["matched_targets"][0]
-        self.assertEqual(matched["name"], "Metallic Rebuke")
-        self.assertIsNotNone(matched.get("deck_fit"))
-        self.assertEqual(matched["deck_fit"]["best_deck_name"], "Urza Artifacts")
-        self.assertTrue(matched["deck_fit"]["watchlist_tag_matched_deck"])
+        self.assertEqual(prev_data["evaluated_decks_count"], 0)
+        self.assertEqual(prev_data["deck_sorting_groups"], [])
+        self.assertEqual(prev_data["matched_targets_count"], 1)
+        self.assertEqual(prev_data["matched_targets"][0]["name"], "Metallic Rebuke")
 
         # 2. Execute reconciliation with inventory_mode="ordered"
         exec_res = self.client.post(
@@ -647,6 +642,125 @@ class TestTCGPlayerPurchaseReconciliation(unittest.TestCase):
         self.assertEqual(len(exec_data["orders"]), 3)
         sellers_created = [o["seller_summary"] for o in exec_data["orders"]]
         self.assertEqual(sellers_created, ["CardKingdomDirect", "StarCityVault", "TCGplayer Direct"])
+
+    def test_one_step_import_auto_removes_watchlist_and_skips_gemini(self):
+        from unittest.mock import patch
+        user_id = self.login_as()
+
+        with self.app.app_context():
+            w1 = WatchlistItem(user_id=user_id, name="Lightning Bolt", target_price=2.00)
+            w2 = WatchlistItem(user_id=user_id, name="Sol Ring", set_code="CMM", collector_number="400", finish="foil", target_price=5.00)
+            w3 = WatchlistItem(user_id=user_id, name="Rhystic Study", target_price=35.00)
+            db.session.add_all([w1, w2, w3])
+            db.session.commit()
+            w3_id = w3.id
+
+        manifest = (
+            "Qty\tDescription\n"
+            "=== Order #261110-AAA111 | Seller: AlphaCards | Date: Nov 10, 2026 ===\n"
+            "1\tMagic - Secret Lair Drop Series - Hadoken (Lightning Bolt) - Near Mint\n"
+            "1\tMagic - Fallout - Sol Ring - Surge Foil - Near Mint\n"
+            "2\tMagic - Mirrodin - Frogmite - Moderately Played\n"
+        )
+
+        with patch("gemini_analyzer.GeminiAnalyzer.analyze_deck", side_effect=AssertionError("Gemini should not be called")), \
+             patch("card_add_evaluator.CardAddEvaluator.evaluate_cards_suite", side_effect=AssertionError("CardAddEvaluator should not be called")):
+            res = self.client.post(
+                "/api/orders/tcgplayer/import",
+                data=json.dumps({
+                    "raw_text": manifest,
+                    "add_to_inventory": True,
+                    "inventory_mode": "ordered",
+                    "target_binder_name": "Acquired",
+                }),
+                content_type="application/json",
+            )
+
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["deleted_count"], 2)
+        self.assertEqual(set(data["deleted_names"]), {"Lightning Bolt", "Sol Ring"})
+        self.assertEqual(data["inventory_added_count"], 3)
+        self.assertEqual(len(data["orders"]), 1)
+
+        with self.app.app_context():
+            remaining = WatchlistItem.query.filter_by(user_id=user_id).all()
+            self.assertEqual(len(remaining), 1)
+            self.assertEqual(remaining[0].id, w3_id)
+            self.assertEqual(remaining[0].name, "Rhystic Study")
+
+    def test_gmail_fetch_auto_import_and_deduplication(self):
+        from unittest.mock import patch
+        user_id = self.login_as()
+
+        with self.app.app_context():
+            w1 = WatchlistItem(user_id=user_id, name="Metallic Rebuke", target_price=0.50)
+            w2 = WatchlistItem(user_id=user_id, name="Rhystic Study", target_price=35.00)
+            db.session.add_all([w1, w2])
+            db.session.commit()
+
+        fake_fetch_res = {
+            "orders_found": 1,
+            "total_cards_quantity": 2,
+            "orders": [
+                {
+                    "order_number": "998877-XYZ",
+                    "email_message_id": "<order-998877@tcgplayer.com>",
+                    "subject": "Order #998877-XYZ",
+                    "from": "sales@tcgplayer.com",
+                    "order_date_str": "Nov 08, 2026",
+                    "seller_summary": "CardKingdomDirect",
+                    "total_quantity": 2,
+                    "unique_cards_count": 2,
+                    "items": [
+                        {"card_name": "Metallic Rebuke", "raw_name": "Metallic Rebuke", "quantity": 1, "set_name": "Aether Revolt", "condition": "Near Mint", "finish": "nonfoil", "order_number": "998877-XYZ", "seller": "CardKingdomDirect", "order_date": "Nov 08, 2026", "package_index": 0},
+                        {"card_name": "Silver Myr", "raw_name": "Silver Myr", "quantity": 1, "set_name": "Mirrodin", "condition": "Lightly Played", "finish": "nonfoil", "order_number": "998877-XYZ", "seller": "CardKingdomDirect", "order_date": "Nov 08, 2026", "package_index": 0},
+                    ],
+                    "manifest_text": "1\tMagic - Aether Revolt - Metallic Rebuke - Near Mint\n1\tMagic - Mirrodin - Silver Myr - Lightly Played",
+                }
+            ],
+            "manifest_text": "1\tMagic - Aether Revolt - Metallic Rebuke - Near Mint\n1\tMagic - Mirrodin - Silver Myr - Lightly Played",
+        }
+
+        with patch("tcgplayer_parser.TCGPlayerEmailFetcher.fetch_recent_orders", return_value=fake_fetch_res):
+            res1 = self.client.post(
+                "/api/watchlist/tcgplayer-email/fetch",
+                data=json.dumps({
+                    "email": "test@chimera.local",
+                    "app_password": "abcd efgh ijkl mnop",
+                    "auto_import": True,
+                    "add_to_inventory": True,
+                    "inventory_mode": "ordered",
+                }),
+                content_type="application/json",
+            )
+            self.assertEqual(res1.status_code, 200)
+            d1 = res1.get_json()
+            self.assertEqual(d1["import_result"]["deleted_names"], ["Metallic Rebuke"])
+            self.assertEqual(d1["import_result"]["inventory_added_count"], 2)
+
+            # Second sync should not duplicate inventory cards
+            res2 = self.client.post(
+                "/api/watchlist/tcgplayer-email/fetch",
+                data=json.dumps({
+                    "email": "test@chimera.local",
+                    "app_password": "abcd efgh ijkl mnop",
+                    "auto_import": True,
+                    "add_to_inventory": True,
+                    "inventory_mode": "ordered",
+                }),
+                content_type="application/json",
+            )
+            self.assertEqual(res2.status_code, 200)
+            d2 = res2.get_json()
+            self.assertEqual(d2["import_result"]["inventory_added_count"], 0)
+
+        with self.app.app_context():
+            ordered_cards = UserInventoryCard.query.filter_by(user_id=user_id, binder_name="Ordered").all()
+            self.assertEqual(sum(c.quantity for c in ordered_cards), 2)
+            remaining = WatchlistItem.query.filter_by(user_id=user_id).all()
+            self.assertEqual([r.name for r in remaining], ["Rhystic Study"])
 
 
 if __name__ == "__main__":

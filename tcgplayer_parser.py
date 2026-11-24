@@ -68,8 +68,59 @@ FINISH_KEYWORDS = {
     "galaxy foil": "foil",
     "textured foil": "foil",
     "rainbow foil": "foil",
+    "double rainbow foil": "foil",
     "oil slick raised foil": "foil",
+    "surge foil": "foil",
+    "ripple foil": "foil",
+    "raised foil": "foil",
+    "fracture foil": "foil",
+    "gilded foil": "foil",
+    "mana foil": "foil",
+    "traditional foil": "foil",
+    "neon ink foil": "foil",
 }
+
+TREATMENT_KEYWORDS = {
+    "full art",
+    "showcase",
+    "borderless",
+    "borderless poster",
+    "extended art",
+    "retro frame",
+    "prerelease",
+    "promo",
+    "promo pack",
+    "buy-a-box",
+    "alt art",
+    "alternate art",
+    "anime",
+    "serialized",
+    "jp alternate art",
+    "etched",
+}
+
+
+def extract_parenthetical_alias(raw_name: Optional[str]) -> str:
+    """
+    Extracts a canonical card-name alias from parentheticals in raw_name when present
+    (e.g. 'Hadoken (Lightning Bolt)' -> 'Lightning Bolt'), ignoring collector numbers
+    and known treatment/finish labels like '(Showcase)' or '(0130)'.
+    """
+    if not raw_name:
+        return ""
+    for m in re.finditer(r"\(([^)]+)\)", str(raw_name)):
+        paren_val = m.group(1).strip()
+        if not paren_val:
+            continue
+        if re.match(r"^[A-Za-z0-9#-]{1,6}$", paren_val):
+            continue
+        p_low = paren_val.lower()
+        if p_low in TREATMENT_KEYWORDS or p_low in FINISH_KEYWORDS or p_low in KNOWN_CONDITIONS:
+            continue
+        if p_low.endswith(" foil") or p_low.endswith(" frame") or p_low.endswith(" art"):
+            continue
+        return normalize_card_name(paren_val)
+    return ""
 
 GAME_PREFIXES = {
     "magic",
@@ -853,7 +904,11 @@ class TCGPlayerPurchaseParser:
                         finish = "foil"
                 elif p_lower in ("foil", "non-foil", "nonfoil", "etched"):
                     finish = "foil" if "foil" in p_lower else ("etched" if "etched" in p_lower else "nonfoil")
-                elif p_lower in ("full art", "showcase", "borderless", "extended art", "retro frame"):
+                elif p_lower.endswith(" foil") and "non" not in p_lower:
+                    finish = "foil"
+                    if not treatment:
+                        treatment = p.strip()
+                elif p_lower in TREATMENT_KEYWORDS:
                     treatment = p.strip()
                 else:
                     cleaned_remaining.append(p)

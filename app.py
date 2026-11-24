@@ -76,7 +76,7 @@ from secret_lair_advisor import (
     SecretLairGeminiAdvisor,
 )
 from card_add_evaluator import CardAddEvaluator
-from tcgplayer_parser import TCGPlayerPurchaseParser, TCGPlayerEmailFetcher
+from tcgplayer_parser import TCGPlayerPurchaseParser, TCGPlayerEmailFetcher, extract_parenthetical_alias
 from timewalked_analyzer import (
     ArchidektClient as TimewalkedArchidektClient,
     BRACKET_NAMES as TIMEWALKED_BRACKET_NAMES,
@@ -3418,203 +3418,298 @@ def create_app(test_config=None):
 
         return ((user.email if user else ""), "", "none")
 
-    def _evaluate_order_items_deck_fit(
+    def _match_watchlist_items_for_purchased(
+        user_id: int,
+        purchased_items: List[Dict[str, Any]],
+    ) -> Tuple[List[WatchlistItem], Dict[int, Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Deterministically matches parsed TCGplayer purchased items against the user's
+        WatchlistItem registry by card name (including parenthetical aliases like
+        'Hadoken (Lightning Bolt)'), ignoring set/collector number/finish.
+        Returns: (matched_model_objects, matched_targets_dict_by_id, unmatched_items)
+        """
+        if not user_id or not purchased_items:
+            return [], {}, list(purchased_items or [])
+
+        user_targets = WatchlistItem.query.filter_by(user_id=user_id).all()
+        matched_models: Dict[int, WatchlistItem] = {}
+        matched_targets: Dict[int, Dict[str, Any]] = {}
+        unmatched_purchases: List[Dict[str, Any]] = []
+
+        for p in purchased_items:
+            c_name = (p.get("card_name") or p.get("name") or "").strip()
+            raw_name = (p.get("raw_name") or c_name).strip()
+            alias_name = extract_parenthetical_alias(raw_name)
+            candidate_names = [n for n in (c_name, alias_name) if n]
+
+            p_matched = False
+            for target in user_targets:
+                if any(card_names_match(cand, target.name) for cand in candidate_names):
+                    p_matched = True
+                    matched_models[target.id] = target
+                    if target.id not in matched_targets:
+                        matched_targets[target.id] = {
+                            "id": target.id,
+                            "name": target.name,
+                            "set_code": target.set_code or "",
+                            "collector_number": target.collector_number or "",
+                            "tag": target.tag,
+                            "finish": target.finish or "nonfoil",
+                            "target_price": target.target_price,
+                            "lowest_in_stock_price": target.lowest_in_stock_price,
+                            "is_deal": target.is_deal,
+                            "purchased_qty": int(p.get("quantity") or 1),
+                            "purchased_raw_name": raw_name,
+                            "purchased_set": p.get("set_name") or "",
+                            "purchased_condition": p.get("condition") or "",
+                            "purchased_finish": p.get("finish") or "nonfoil",
+                            "order_number": p.get("order_number") or "",
+                            "seller": p.get("seller") or "",
+                            "order_date": p.get("order_date") or "",
+                            "package_index": int(p.get("package_index") or 0),
+                        }
+                    else:
+                        matched_targets[target.id]["purchased_qty"] += int(p.get("quantity") or 1)
+
+            if not p_matched:
+                unmatched_purchases.append(dict(p))
+
+        return list(matched_models.values()), matched_targets, unmatched_purchases
+
+    def _import_and_reconcile_tcgplayer_orders(
         user: User,
-        parsed_items_dicts: List[Dict[str, Any]],
-        watchlist_tag_by_card: Dict[str, str],
-        offline: bool = False,
-    ) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]], int]:
+        raw_text: str = "",
+        purchased_items: Optional[List[Dict[str, Any]]] = None,
+        add_to_inventory: bool = True,
+        track_order: bool = True,
+        inventory_mode: str = "ordered",
+        target_binder_name: str = "Acquired",
+        order_metadata: Optional[Dict[str, Any]] = None,
+        explicit_target_ids: Optional[List[int]] = None,
+        auto_remove_watchlist: bool = True,
+    ) -> Tuple[Dict[str, Any], int]:
         """
-        Evaluates ordered cards against the user's saved Commander decks using CardAddEvaluator.
-        Returns: (deck_fit_by_card_key, deck_sorting_groups, evaluated_decks_count)
+        Deterministic 1-step TCGplayer order import & watchlist reconciliation:
+        1. Parses raw_text (if purchased_items not already supplied) with zero AI/Gemini calls.
+        2. Automatically deletes all matching WatchlistItem rows (and cascaded VendorPrice rows).
+        3. Idempotently logs new order packages to TCGPlayerOrder and adds cards to UserInventoryCard.
+        Returns: (response_payload, http_status)
         """
-        query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(
-            db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None)
-        )
-        user_decks = query.order_by(DeckAnalysis.updated_at.desc()).all()
-        if not user_decks or not parsed_items_dicts:
-            return {}, [], 0
+        items_list: List[Dict[str, Any]] = list(purchased_items or [])
+        order_groups: List[Dict[str, Any]] = []
 
-        deck_payloads = []
-        deck_by_id = {}
-        for d in user_decks:
-            dp = {
-                "id": d.id,
-                "deck_name": d.deck_name,
-                "commander_name": d.commander_name,
-                "commander_art": d.commander_art,
-                "color_identity": d.color_identity,
-                "archetype": d.archetype or "Commander Synergy",
-                "cards": d.get_parsed_cards(),
-                "stats": d.get_stats(),
-                "analysis": d.get_analysis(),
-                "is_pauper": d.is_pauper_commander,
-                "deck_format": d.deck_format,
-            }
-            deck_payloads.append(dp)
-            deck_by_id[d.id] = dp
+        if not items_list and raw_text and str(raw_text).strip():
+            package_groups = TCGPlayerPurchaseParser.parse_into_packages(str(raw_text))
+            for pkg_idx, grp in enumerate(package_groups):
+                grp_items = [it.to_dict() for it in grp.get("items", [])]
+                items_list.extend(grp_items)
+                if grp_items:
+                    order_groups.append({
+                        "package_index": pkg_idx,
+                        "order_number": grp.get("order_number") or "",
+                        "seller": grp.get("seller") or "TCGplayer Marketplace",
+                        "order_date": grp.get("order_date") or "",
+                        "unique_cards_count": len(grp_items),
+                        "total_quantity": sum(max(1, int(x.get("quantity") or 1)) for x in grp_items),
+                        "cards": grp_items,
+                    })
 
-        # Deduplicate card inputs for batch evaluation
-        unique_card_inputs: Dict[str, Dict[str, Any]] = {}
-        for item in parsed_items_dicts:
-            c_name = (item.get("card_name") or item.get("name") or "").strip()
-            if not c_name:
-                continue
-            k = normalize_card_name(c_name).lower()
-            if k not in unique_card_inputs:
-                unique_card_inputs[k] = {
-                    "name": c_name,
-                    "quantity": int(item.get("quantity") or 1),
-                    "raw_line": item.get("raw_line") or c_name,
-                }
-            else:
-                unique_card_inputs[k]["quantity"] += int(item.get("quantity") or 1)
+        if not items_list and not explicit_target_ids:
+            return ({
+                "error": "No valid TCGplayer card purchases could be parsed from the provided input.",
+                "suggestion": "Paste rows in format: 'Qty Description' (e.g. '1 Magic - Set Name - Card Name - Near Mint')",
+            }, 400)
 
-        is_test_offline = offline or bool(app.config.get("TESTING"))
-        candidate_list = list(unique_card_inputs.values())
+        # 1. Resolve WatchlistItems to remove (explicit IDs + automatic name matches)
+        targets_to_delete: Dict[int, WatchlistItem] = {}
+        if explicit_target_ids:
+            explicit_items = WatchlistItem.query.filter(
+                WatchlistItem.id.in_(explicit_target_ids),
+                WatchlistItem.user_id == user.id,
+            ).all()
+            if not explicit_items and not ((add_to_inventory or track_order) and items_list):
+                return ({"error": "No matching targets found in your registry."}, 404)
+            for item in explicit_items:
+                targets_to_delete[item.id] = item
 
-        if is_test_offline:
-            # Fast local enrichment using any cached DB cards or deck cards without external HTTP calls if offline
-            enriched_cards = []
-            for c in candidate_list:
-                c_name = c["name"]
-                inv_match = UserInventoryCard.query.filter(
-                    db.func.lower(UserInventoryCard.name) == c_name.lower()
-                ).first()
-                ci_list = inv_match.get_color_identity_list() if inv_match else []
-                enriched_cards.append({
-                    **c,
-                    "canonical_name": c_name,
-                    "color_identity": ci_list,
-                    "type_line": (inv_match.type_line if inv_match and inv_match.type_line else "Spell"),
-                    "mana_cost": (inv_match.mana_cost if inv_match and inv_match.mana_cost else ""),
-                    "cmc": (inv_match.cmc if inv_match and inv_match.cmc is not None else 2.0),
-                    "oracle_text": (inv_match.oracle_text if inv_match and inv_match.oracle_text else ""),
-                    "image_uri": (inv_match.image_uri if inv_match and inv_match.image_uri else ""),
-                    "price_usd": (inv_match.price_usd if inv_match else None),
-                    "legalities": {"commander": "legal", "paupercommander": "legal"},
-                })
-        else:
-            enriched_cards = card_add_evaluator.enrich_cards(candidate_list)
+        if auto_remove_watchlist and items_list:
+            matched_models, _, _ = _match_watchlist_items_for_purchased(user.id, items_list)
+            for item in matched_models:
+                targets_to_delete[item.id] = item
 
-        suite_res = card_add_evaluator.evaluate_cards_suite(
-            cards=enriched_cards,
-            decks=deck_payloads,
-            use_gemini=False,
-            offline=is_test_offline,
-        )
+        deleted_ids: List[int] = []
+        deleted_names: List[str] = []
+        for item in targets_to_delete.values():
+            deleted_ids.append(item.id)
+            deleted_names.append(item.name)
+            db.session.delete(item)
 
-        deck_fit_by_key: Dict[str, Dict[str, Any]] = {}
-        sorting_buckets: Dict[Any, Dict[str, Any]] = {}
+        # 2. Group purchased items by (order_number, seller, package_index) and log orders/inventory
+        inv_mode = (inventory_mode or "ordered").strip().lower()
+        if inv_mode not in ("ordered", "completed"):
+            inv_mode = "ordered"
+        target_binder = (target_binder_name or "Acquired").strip() or "Acquired"
+        effective_binder = "Ordered" if inv_mode == "ordered" else target_binder
+        order_status = "ordered" if inv_mode == "ordered" else "completed"
+        meta = order_metadata or {}
 
-        for cm in suite_res.get("card_matrix", []):
-            c_name = cm.get("card_name") or ""
-            c_key = normalize_card_name(c_name).lower()
-            recs = cm.get("deck_recommendations") or []
-            incompat = cm.get("incompatible_decks") or []
-            already_in = [inc["deck_name"] for inc in incompat if inc.get("reason") == "Already in Deck"]
+        inventory_added = 0
+        created_orders: List[Dict[str, Any]] = []
+        skipped_existing_packages = 0
 
-            # Check if watchlist tag matches one of the user's decks
-            w_tag = ""
-            for tk, tv in watchlist_tag_by_card.items():
-                if card_names_match(tk, c_name) and tv:
-                    w_tag = tv
-                    break
+        if (add_to_inventory or track_order) and items_list:
+            base_ord_num = (
+                (meta.get("order_number") or "").strip()
+                or f"ORD-{utc_now().strftime('%Y%m%d-%H%M%S')}"
+            )
+            default_seller = (meta.get("seller_summary") or "").strip() or "TCGplayer Marketplace"
+            default_date_str = (meta.get("order_date_str") or "").strip() or utc_now().strftime("%b %d, %Y")
 
-            tagged_deck_rec = None
-            if w_tag:
-                w_tag_low = w_tag.lower().strip()
-                for r in recs:
-                    d_name_low = (r.get("deck_name") or "").lower()
-                    cmdr_low = (r.get("commander_name") or "").lower()
-                    if w_tag_low in d_name_low or d_name_low in w_tag_low or (cmdr_low and (w_tag_low in cmdr_low or cmdr_low in w_tag_low)):
-                        tagged_deck_rec = r
-                        break
+            pkg_buckets: List[Dict[str, Any]] = []
+            bucket_index_by_key: Dict[Tuple[str, str, int], int] = {}
 
-            best_rec = recs[0] if recs else None
-            primary_rec = tagged_deck_rec or best_rec
-
-            fit_summary = {
-                "has_fit": primary_rec is not None,
-                "best_deck_id": primary_rec["deck_id"] if primary_rec else None,
-                "best_deck_name": primary_rec["deck_name"] if primary_rec else None,
-                "best_commander_name": primary_rec.get("commander_name") if primary_rec else None,
-                "fit_verdict": primary_rec.get("fit_verdict") if primary_rec else ("Already in Deck" if already_in else "No Legal Fit"),
-                "synergy_rating": primary_rec.get("synergy_rating", 0) if primary_rec else 0,
-                "role": primary_rec.get("role", "") if primary_rec else "",
-                "suggested_cut": primary_rec.get("suggested_cut") if primary_rec else None,
-                "suggested_cut_cmc": primary_rec.get("suggested_cut_cmc") if primary_rec else None,
-                "cut_reason": primary_rec.get("cut_reason", "") if primary_rec else "",
-                "rationale": primary_rec.get("rationale", "") if primary_rec else "",
-                "edhrec_inclusion_percent": primary_rec.get("edhrec_inclusion_percent") if primary_rec else None,
-                "completes_combos": primary_rec.get("completes_combos", []) if primary_rec else [],
-                "matched_watchlist_tag": w_tag or None,
-                "watchlist_tag_matched_deck": bool(tagged_deck_rec is not None),
-                "algorithmic_top_deck": best_rec["deck_name"] if best_rec else None,
-                "runner_up_decks": [
-                    {
-                        "deck_id": r["deck_id"],
-                        "deck_name": r["deck_name"],
-                        "commander_name": r.get("commander_name"),
-                        "fit_verdict": r.get("fit_verdict"),
-                        "synergy_rating": r.get("synergy_rating"),
-                        "suggested_cut": r.get("suggested_cut"),
-                    }
-                    for r in recs[:3]
-                    if not primary_rec or r["deck_id"] != primary_rec["deck_id"]
-                ][:2],
-                "already_in_decks": already_in,
-                "image_uri": cm.get("image_uri") or "",
-                "mana_cost": cm.get("mana_cost") or "",
-                "type_line": cm.get("type_line") or "",
-                "price_usd": cm.get("price_usd"),
-            }
-            deck_fit_by_key[c_key] = fit_summary
-
-            # Assign to sorting bucket
-            bucket_key = primary_rec["deck_id"] if primary_rec else "unassigned"
-            if bucket_key not in sorting_buckets:
-                if primary_rec and primary_rec["deck_id"] in deck_by_id:
-                    dp_meta = deck_by_id[primary_rec["deck_id"]]
-                    sorting_buckets[bucket_key] = {
-                        "deck_id": dp_meta["id"],
-                        "deck_name": dp_meta["deck_name"],
-                        "commander_name": dp_meta.get("commander_name") or "Commander",
-                        "commander_art": dp_meta.get("commander_art") or "",
-                        "color_identity": dp_meta.get("color_identity") or "",
-                        "cards": [],
-                    }
+            for p in items_list:
+                p_ord = (p.get("order_number") or "").strip()
+                p_sel = (p.get("seller") or p.get("seller_summary") or "").strip()
+                p_date = (p.get("order_date") or "").strip()
+                p_pkg_idx = int(p.get("package_index") or 0)
+                key = (p_ord, p_sel, p_pkg_idx)
+                if key not in bucket_index_by_key:
+                    bucket_index_by_key[key] = len(pkg_buckets)
+                    pkg_buckets.append({
+                        "order_number": p_ord,
+                        "seller": p_sel,
+                        "order_date": p_date,
+                        "package_index": p_pkg_idx,
+                        "items": [p],
+                    })
                 else:
-                    sorting_buckets[bucket_key] = {
-                        "deck_id": None,
-                        "deck_name": "Binder / Unassigned Reserve",
-                        "commander_name": "Already in Deck or Outside Fleet Colors",
-                        "commander_art": "",
-                        "color_identity": "",
-                        "cards": [],
+                    pkg_buckets[bucket_index_by_key[key]]["items"].append(p)
+
+            items_for_inventory: List[Dict[str, Any]] = []
+            total_buckets = len(pkg_buckets)
+            for b_idx, bucket in enumerate(pkg_buckets, start=1):
+                o_items = bucket["items"]
+                o_num = bucket["order_number"]
+                if not o_num:
+                    o_num = f"{base_ord_num}-P{b_idx}" if total_buckets > 1 else base_ord_num
+
+                s_name = bucket["seller"]
+                if not s_name:
+                    s_name = f"Package {b_idx}" if (total_buckets > 1 and default_seller == "TCGplayer Marketplace") else default_seller
+
+                o_date = bucket["order_date"] or default_date_str
+                total_qty = sum(max(1, int(x.get("quantity") or 1)) for x in o_items)
+
+                existing_ord = TCGPlayerOrder.query.filter_by(
+                    user_id=user.id,
+                    order_number=o_num,
+                    seller_summary=s_name,
+                ).first()
+                if not existing_ord and total_buckets == 1:
+                    existing_ord = TCGPlayerOrder.query.filter_by(
+                        user_id=user.id,
+                        order_number=o_num,
+                    ).first()
+
+                if existing_ord:
+                    skipped_existing_packages += 1
+                    existing_ord.seller_summary = s_name
+                    existing_ord.order_date_str = o_date
+                    existing_ord.items_json = json.dumps(o_items)
+                    existing_ord.total_quantity = total_qty
+                    existing_ord.unique_cards_count = len(o_items)
+                    existing_ord.status = order_status
+                    if order_status == "completed" and not existing_ord.completed_at:
+                        existing_ord.completed_at = utc_now()
+                    created_orders.append(existing_ord.to_dict())
+                else:
+                    items_for_inventory.extend(o_items)
+                    msg_id = meta.get("email_message_id")
+                    if msg_id and total_buckets > 1:
+                        msg_id = f"{msg_id}#pkg{b_idx}"
+                    new_ord = TCGPlayerOrder(
+                        user_id=user.id,
+                        order_number=o_num,
+                        email_message_id=msg_id,
+                        order_date_str=o_date,
+                        seller_summary=s_name,
+                        source=meta.get("source") or "manual_paste",
+                        status=order_status,
+                        target_binder_name=target_binder,
+                        total_quantity=total_qty,
+                        unique_cards_count=len(o_items),
+                        items_json=json.dumps(o_items),
+                        completed_at=utc_now() if order_status == "completed" else None,
+                    )
+                    db.session.add(new_ord)
+                    db.session.flush()
+                    created_orders.append(new_ord.to_dict())
+
+            if items_for_inventory:
+                inventory_added = inventory_manager.add_ordered_cards_to_binder(
+                    user_id=user.id,
+                    purchased_items=items_for_inventory,
+                    binder_name=effective_binder,
+                )
+
+            if not order_groups:
+                order_groups = [
+                    {
+                        "package_index": idx,
+                        "order_number": o["order_number"],
+                        "seller": o["seller_summary"],
+                        "order_date": o["order_date_str"],
+                        "unique_cards_count": o["unique_cards_count"],
+                        "total_quantity": o["total_quantity"],
+                        "cards": o["items"],
                     }
+                    for idx, o in enumerate(created_orders)
+                ]
 
-            qty_ordered = unique_card_inputs.get(c_key, {}).get("quantity", 1)
-            sorting_buckets[bucket_key]["cards"].append({
-                "card_name": c_name,
-                "quantity": qty_ordered,
-                "image_uri": cm.get("image_uri") or "",
-                "fit_verdict": fit_summary["fit_verdict"],
-                "synergy_rating": fit_summary["synergy_rating"],
-                "role": fit_summary["role"],
-                "suggested_cut": fit_summary["suggested_cut"],
-                "cut_reason": fit_summary["cut_reason"],
-                "rationale": fit_summary["rationale"],
-                "watchlist_tag": w_tag or None,
-                "already_in_decks": already_in,
-            })
+        db.session.commit()
 
-        # Sort groups: assigned decks with highest card count first, unassigned last
-        deck_sorting_groups = sorted(
-            sorting_buckets.values(),
-            key=lambda g: (1 if g["deck_id"] is None else 0, -len(g["cards"])),
+        names_summary = ", ".join(deleted_names[:5])
+        if len(deleted_names) > 5:
+            names_summary += f" and {len(deleted_names) - 5} more"
+
+        details_msg = f"Imported TCGplayer order: removed {len(deleted_ids)} watchlist target(s)"
+        if names_summary:
+            details_msg += f" [{names_summary}]"
+        if inventory_added > 0:
+            details_msg += f" and added {inventory_added} item(s) to '{effective_binder}' binder"
+
+        log_activity(
+            "PURCHASE_RECONCILIATION",
+            details=details_msg,
+            user=user,
         )
-        return deck_fit_by_key, deck_sorting_groups, len(deck_payloads)
+
+        msg_parts = []
+        if deleted_ids:
+            msg_parts.append(f"removed {len(deleted_ids)} card(s) from watchlist")
+        if inventory_added:
+            msg_parts.append(f"logged {inventory_added} item(s) to '{effective_binder}' binder")
+        elif created_orders and skipped_existing_packages == len(created_orders):
+            msg_parts.append(f"synced {len(created_orders)} existing order(s)")
+        final_msg = "Successfully " + " and ".join(msg_parts) + "." if msg_parts else "Order import complete."
+
+        total_qty_all = sum(max(1, int(x.get("quantity") or 1)) for x in items_list)
+        return ({
+            "success": True,
+            "message": final_msg,
+            "deleted_ids": deleted_ids,
+            "deleted_names": deleted_names,
+            "deleted_count": len(deleted_ids),
+            "inventory_added_count": inventory_added,
+            "binder_name": effective_binder,
+            "order_status": order_status,
+            "orders": created_orders,
+            "order_groups": order_groups,
+            "packages_count": len(created_orders) or len(order_groups),
+            "total_purchased_lines": len(items_list),
+            "total_purchased_qty": total_qty_all,
+        }, 200)
 
     @app.route("/api/watchlist/tcgplayer-email/settings", methods=["GET", "POST"])
     @login_required
@@ -3719,12 +3814,79 @@ def create_app(test_config=None):
                 if ord_obj.get("manifest_text"):
                     untracked_manifest_lines.append(ord_obj["manifest_text"])
 
-        # If all discovered orders were already tracked, still provide combined manifest so user can inspect deck fit
         effective_manifest = (
             "\n".join(untracked_manifest_lines)
             if len(untracked_manifest_lines) > 1
             else fetch_res.get("manifest_text", "")
         )
+
+        auto_import = bool(data.get("auto_import", False))
+        import_result = None
+        if auto_import and orders:
+            all_fetched_items = [it for ord_obj in orders for it in (ord_obj.get("items") or [])]
+            new_fetched_items = [
+                it for ord_obj in orders
+                if not ord_obj.get("already_tracked")
+                for it in (ord_obj.get("items") or [])
+            ]
+            add_inv = bool(data.get("add_to_inventory", True))
+            inv_mode = (data.get("inventory_mode") or "ordered").strip().lower()
+            target_binder = (data.get("target_binder_name") or "Acquired").strip() or "Acquired"
+
+            # Import new packages into orders/inventory, and auto-remove any watchlist matches across all fetched items
+            if new_fetched_items:
+                import_payload, _ = _import_and_reconcile_tcgplayer_orders(
+                    user=user,
+                    purchased_items=new_fetched_items,
+                    add_to_inventory=add_inv,
+                    track_order=add_inv,
+                    inventory_mode=inv_mode,
+                    target_binder_name=target_binder,
+                    order_metadata={"source": "gmail_imap"},
+                    auto_remove_watchlist=True,
+                )
+            else:
+                import_payload = {
+                    "success": True,
+                    "message": "All fetched Gmail orders were already tracked.",
+                    "deleted_ids": [],
+                    "deleted_names": [],
+                    "deleted_count": 0,
+                    "inventory_added_count": 0,
+                    "binder_name": "Ordered" if inv_mode == "ordered" else target_binder,
+                    "order_status": "ordered" if inv_mode == "ordered" else "completed",
+                    "orders": [],
+                    "order_groups": [],
+                }
+
+            # Ensure any watchlist items matching already-tracked fetched orders are also removed
+            extra_matched_models, _, _ = _match_watchlist_items_for_purchased(user.id, all_fetched_items)
+            if extra_matched_models:
+                existing_del = set(import_payload.get("deleted_ids") or [])
+                extra_deleted = []
+                for item in extra_matched_models:
+                    if item.id not in existing_del:
+                        existing_del.add(item.id)
+                        import_payload["deleted_ids"].append(item.id)
+                        import_payload["deleted_names"].append(item.name)
+                        extra_deleted.append(item.name)
+                        db.session.delete(item)
+                if extra_deleted:
+                    db.session.commit()
+                    import_payload["deleted_count"] = len(import_payload["deleted_ids"])
+                    log_activity(
+                        "PURCHASE_RECONCILIATION",
+                        details=f"Removed {len(extra_deleted)} watchlist target(s) from synced Gmail orders: {', '.join(extra_deleted[:5])}",
+                        user=user,
+                    )
+
+            # Refresh already_tracked flags on returned orders after auto_import
+            for ord_obj in orders:
+                if not ord_obj.get("already_tracked"):
+                    ord_obj["already_tracked"] = True
+                    ord_obj["tracked_status"] = import_payload.get("order_status", "ordered")
+
+            import_result = import_payload
 
         return jsonify({
             "success": True,
@@ -3733,15 +3895,16 @@ def create_app(test_config=None):
             "total_cards_quantity": fetch_res.get("total_cards_quantity", 0),
             "orders": orders,
             "manifest_text": effective_manifest,
+            "import_result": import_result,
         })
 
     @app.route("/api/watchlist/reconcile-purchase/preview", methods=["POST"])
     @login_required
     def reconcile_purchase_preview():
         """
-        Parses TCGplayer purchase text (splitting into distinct Order & Seller packages and deduplicating
-        consolidated summary tables), identifies matching targets currently on user's watchlist,
-        and evaluates every ordered card against the user's Commander fleet for Best Deck Fit & Suggested Cuts.
+        Deterministically parses TCGplayer purchase text (splitting into distinct Order & Seller packages
+        and deduplicating consolidated summary tables) and identifies matching targets on user's watchlist.
+        Runs purely locally with zero Gemini or AI calls.
         """
         user = get_current_user()
         data = request.get_json(silent=True) or {}
@@ -3757,92 +3920,30 @@ def create_app(test_config=None):
                 "suggestion": "Ensure the pasted text contains rows in format: 'Qty Description' (e.g. '1 Magic - Set Name - Card Name - Near Mint')"
             }), 400
 
-        user_targets = WatchlistItem.query.filter_by(user_id=user.id).all()
-        matched_targets: Dict[int, Dict[str, Any]] = {}
-        unmatched_purchases: List[Dict[str, Any]] = []
-        watchlist_tag_by_card: Dict[str, str] = {}
-        matched_card_keys: Set[str] = set()
-
-        for p in parsed_items:
-            p_matched = False
-            for target in user_targets:
-                if card_names_match(p.card_name, target.name):
-                    p_matched = True
-                    matched_card_keys.add(normalize_card_name(p.card_name).lower())
-                    if target.tag:
-                        watchlist_tag_by_card[p.card_name] = target.tag
-                    if target.id not in matched_targets:
-                        matched_targets[target.id] = {
-                            "id": target.id,
-                            "name": target.name,
-                            "set_code": target.set_code or "",
-                            "collector_number": target.collector_number or "",
-                            "tag": target.tag,
-                            "finish": target.finish or "nonfoil",
-                            "target_price": target.target_price,
-                            "lowest_in_stock_price": target.lowest_in_stock_price,
-                            "is_deal": target.is_deal,
-                            "purchased_qty": p.quantity,
-                            "purchased_raw_name": p.raw_name,
-                            "purchased_set": p.set_name,
-                            "purchased_condition": p.condition,
-                            "purchased_finish": p.finish,
-                            "order_number": p.order_number,
-                            "seller": p.seller,
-                            "order_date": p.order_date,
-                            "package_index": p.package_index,
-                        }
-                    else:
-                        matched_targets[target.id]["purchased_qty"] += p.quantity
-
-            if not p_matched:
-                unmatched_purchases.append(p.to_dict())
-
         parsed_items_dicts = [p.to_dict() for p in parsed_items]
-        include_deck_fit = bool(data.get("include_deck_fit", True))
-        offline_eval = bool(data.get("offline", False))
-
-        deck_fit_by_key: Dict[str, Dict[str, Any]] = {}
-        deck_sorting_groups: List[Dict[str, Any]] = []
-        evaluated_decks_count = 0
-
-        if include_deck_fit:
-            try:
-                deck_fit_by_key, deck_sorting_groups, evaluated_decks_count = _evaluate_order_items_deck_fit(
-                    user=user,
-                    parsed_items_dicts=parsed_items_dicts,
-                    watchlist_tag_by_card=watchlist_tag_by_card,
-                    offline=offline_eval,
-                )
-            except Exception as eval_err:
-                logger.warning(f"Deck-fit evaluation during purchase preview skipped: {eval_err}")
-
-        # Attach deck_fit telemetry to matched_targets, unmatched_purchases, and parsed_items
-        def _find_fit(c_name: str) -> Optional[Dict[str, Any]]:
-            if not c_name or not deck_fit_by_key:
-                return None
-            k = normalize_card_name(c_name).lower()
-            if k in deck_fit_by_key:
-                return deck_fit_by_key[k]
-            for df_key, df_val in deck_fit_by_key.items():
-                if card_names_match(df_key, c_name):
-                    return df_val
-            return None
-
-        for m in matched_targets.values():
-            m["deck_fit"] = _find_fit(m["name"])
-
-        for u in unmatched_purchases:
-            u["deck_fit"] = _find_fit(u.get("card_name") or u.get("raw_name") or "")
+        _, matched_targets, unmatched_purchases = _match_watchlist_items_for_purchased(user.id, parsed_items_dicts)
+        matched_card_keys = {
+            normalize_card_name(m["name"]).lower()
+            for m in matched_targets.values()
+            if m.get("name")
+        }
+        watchlist_tag_by_card = {
+            m["name"]: m["tag"]
+            for m in matched_targets.values()
+            if m.get("tag")
+        }
 
         for p_dict in parsed_items_dicts:
             c_name = p_dict.get("card_name") or p_dict.get("raw_name") or ""
-            fit_info = _find_fit(c_name)
-            p_dict["deck_fit"] = fit_info
+            alias_name = extract_parenthetical_alias(p_dict.get("raw_name") or "")
+            is_match = (
+                normalize_card_name(c_name).lower() in matched_card_keys
+                or (bool(alias_name) and normalize_card_name(alias_name).lower() in matched_card_keys)
+            )
             p_dict["watchlist_tag"] = watchlist_tag_by_card.get(p_dict.get("card_name") or "")
-            p_dict["is_watchlist_match"] = normalize_card_name(c_name).lower() in matched_card_keys
+            p_dict["is_watchlist_match"] = is_match
 
-        # Build structured order_groups by (Order #, Seller) package for the frontend 'By Order & Seller' view
+        # Build structured order_groups by (Order #, Seller) package
         order_groups: List[Dict[str, Any]] = []
         items_by_pkg_idx: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
         for p_dict in parsed_items_dicts:
@@ -3873,15 +3974,46 @@ def create_app(test_config=None):
             "unmatched_purchases_count": len(unmatched_purchases),
             "unmatched_purchases": unmatched_purchases,
             "parsed_items": parsed_items_dicts,
-            "deck_sorting_groups": deck_sorting_groups,
-            "evaluated_decks_count": evaluated_decks_count,
+            "deck_sorting_groups": [],
+            "evaluated_decks_count": 0,
         })
+
+    @app.route("/api/orders/tcgplayer/import", methods=["POST"])
+    @login_required
+    def import_tcgplayer_orders():
+        """
+        1-step TCGplayer order import: parses pasted/fetched order text deterministically
+        (zero Gemini/AI calls), removes all matching cards from the user's watchlist,
+        and logs packages into TCGPlayerOrder + UserInventoryCard.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_text = data.get("raw_text") or data.get("text") or ""
+        purchased_items = data.get("purchased_items") or []
+        add_to_inventory = bool(data.get("add_to_inventory", True))
+        track_order = bool(data.get("track_order", add_to_inventory))
+        inventory_mode = (data.get("inventory_mode") or "ordered").strip().lower()
+        target_binder = (data.get("target_binder_name") or "Acquired").strip() or "Acquired"
+        order_metadata = data.get("order_metadata") or {}
+
+        payload, status_code = _import_and_reconcile_tcgplayer_orders(
+            user=user,
+            raw_text=str(raw_text),
+            purchased_items=purchased_items,
+            add_to_inventory=add_to_inventory,
+            track_order=track_order,
+            inventory_mode=inventory_mode,
+            target_binder_name=target_binder,
+            order_metadata=order_metadata,
+            auto_remove_watchlist=True,
+        )
+        return jsonify(payload), status_code
 
     @app.route("/api/watchlist/reconcile-purchase/execute", methods=["POST"])
     @login_required
     def reconcile_purchase_execute():
         """
-        De-registers selected target IDs from user's watchlist that were purchased,
+        De-registers matching targets from user's watchlist that were purchased,
         adds purchased items to the Collection Binder (as 'Ordered' in-transit by default, or 'Acquired'),
         and records tracked TCGPlayerOrder rows split up by Order Number and Seller.
         """
@@ -3893,9 +4025,11 @@ def create_app(test_config=None):
         inventory_mode = (data.get("inventory_mode") or "ordered").strip().lower()
         target_binder = (data.get("target_binder_name") or "Acquired").strip() or "Acquired"
         purchased_items = data.get("purchased_items", [])
+        raw_text = data.get("raw_text") or data.get("text") or ""
         order_metadata = data.get("order_metadata") or {}
+        auto_remove_watchlist = bool(data.get("auto_remove_watchlist", True))
 
-        if (not target_ids or not isinstance(target_ids, list)) and not ((add_to_inventory or track_order) and purchased_items):
+        if (not target_ids or not isinstance(target_ids, list)) and not ((add_to_inventory or track_order) and (purchased_items or raw_text)):
             return jsonify({"error": "No target card IDs or purchased items provided for reconciliation."}), 400
 
         valid_ids: List[int] = []
@@ -3907,161 +4041,19 @@ def create_app(test_config=None):
             except (ValueError, TypeError):
                 return jsonify({"error": "Invalid target ID format."}), 400
 
-        deleted_ids: List[int] = []
-        deleted_names: List[str] = []
-
-        if valid_ids:
-            items = WatchlistItem.query.filter(
-                WatchlistItem.id.in_(valid_ids),
-                WatchlistItem.user_id == user.id,
-            ).all()
-
-            if not items and not ((add_to_inventory or track_order) and purchased_items):
-                return jsonify({"error": "No matching targets found in your registry."}), 404
-
-            for item in items:
-                deleted_ids.append(item.id)
-                deleted_names.append(item.name)
-                db.session.delete(item)
-
-        # Determine binder name for UserInventoryCard insertion
-        # By default, ordered cards are placed in binder_name="Ordered" until the order is marked complete
-        effective_binder = "Ordered" if inventory_mode == "ordered" else target_binder
-        order_status = "ordered" if inventory_mode == "ordered" else "completed"
-
-        inventory_added = 0
-        if (add_to_inventory or track_order) and purchased_items:
-            inventory_added = inventory_manager.add_ordered_cards_to_binder(
-                user_id=user.id,
-                purchased_items=purchased_items,
-                binder_name=effective_binder,
-            )
-
-        # Create or update tracked TCGPlayerOrder record(s) split by (order_number, seller, package_index)
-        created_orders: List[Dict[str, Any]] = []
-        if (add_to_inventory or track_order) and purchased_items:
-            base_ord_num = (
-                (order_metadata.get("order_number") or "").strip()
-                or f"ORD-{utc_now().strftime('%Y%m%d-%H%M%S')}"
-            )
-            default_seller = (order_metadata.get("seller_summary") or "").strip() or "TCGplayer Marketplace"
-            default_date_str = (order_metadata.get("order_date_str") or "").strip() or utc_now().strftime("%b %d, %Y")
-
-            # Group purchased_items by (order_number, seller, package_index) preserving order
-            pkg_buckets: List[Dict[str, Any]] = []
-            bucket_index_by_key: Dict[Tuple[str, str, int], int] = {}
-
-            for p in purchased_items:
-                p_ord = (p.get("order_number") or "").strip()
-                p_sel = (p.get("seller") or p.get("seller_summary") or "").strip()
-                p_date = (p.get("order_date") or "").strip()
-                p_pkg_idx = int(p.get("package_index") or 0)
-                key = (p_ord, p_sel, p_pkg_idx)
-                if key not in bucket_index_by_key:
-                    bucket_index_by_key[key] = len(pkg_buckets)
-                    pkg_buckets.append({
-                        "order_number": p_ord,
-                        "seller": p_sel,
-                        "order_date": p_date,
-                        "package_index": p_pkg_idx,
-                        "items": [p],
-                    })
-                else:
-                    pkg_buckets[bucket_index_by_key[key]]["items"].append(p)
-
-            total_buckets = len(pkg_buckets)
-            for b_idx, bucket in enumerate(pkg_buckets, start=1):
-                o_items = bucket["items"]
-                o_num = bucket["order_number"]
-                if not o_num:
-                    o_num = f"{base_ord_num}-P{b_idx}" if total_buckets > 1 else base_ord_num
-
-                s_name = bucket["seller"]
-                if not s_name:
-                    s_name = f"Package {b_idx}" if (total_buckets > 1 and default_seller == "TCGplayer Marketplace") else default_seller
-
-                o_date = bucket["order_date"] or default_date_str
-                total_qty = sum(max(1, int(x.get("quantity") or 1)) for x in o_items)
-
-                # Match existing order by (user_id, order_number, seller_summary)
-                existing_ord = TCGPlayerOrder.query.filter_by(
-                    user_id=user.id,
-                    order_number=o_num,
-                    seller_summary=s_name,
-                ).first()
-                if not existing_ord and total_buckets == 1:
-                    existing_ord = TCGPlayerOrder.query.filter_by(
-                        user_id=user.id,
-                        order_number=o_num,
-                    ).first()
-
-                if existing_ord:
-                    existing_ord.seller_summary = s_name
-                    existing_ord.order_date_str = o_date
-                    existing_ord.items_json = json.dumps(o_items)
-                    existing_ord.total_quantity = total_qty
-                    existing_ord.unique_cards_count = len(o_items)
-                    existing_ord.status = order_status
-                    if order_status == "completed":
-                        existing_ord.completed_at = utc_now()
-                    created_orders.append(existing_ord.to_dict())
-                else:
-                    msg_id = order_metadata.get("email_message_id")
-                    if msg_id and total_buckets > 1:
-                        msg_id = f"{msg_id}#pkg{b_idx}"
-                    new_ord = TCGPlayerOrder(
-                        user_id=user.id,
-                        order_number=o_num,
-                        email_message_id=msg_id,
-                        order_date_str=o_date,
-                        seller_summary=s_name,
-                        source=order_metadata.get("source") or "manual_paste",
-                        status=order_status,
-                        target_binder_name=target_binder,
-                        total_quantity=total_qty,
-                        unique_cards_count=len(o_items),
-                        items_json=json.dumps(o_items),
-                        completed_at=utc_now() if order_status == "completed" else None,
-                    )
-                    db.session.add(new_ord)
-                    db.session.flush()
-                    created_orders.append(new_ord.to_dict())
-
-        db.session.commit()
-
-        names_summary = ", ".join(deleted_names[:5])
-        if len(deleted_names) > 5:
-            names_summary += f" and {len(deleted_names) - 5} more"
-
-        details_msg = f"Reconciled TCGplayer purchase: removed {len(deleted_ids)} target(s)"
-        if names_summary:
-            details_msg += f" [{names_summary}]"
-        if inventory_added > 0:
-            details_msg += f" and added {inventory_added} item(s) to '{effective_binder}' binder"
-
-        log_activity(
-            "PURCHASE_RECONCILIATION",
-            details=details_msg,
+        payload, status_code = _import_and_reconcile_tcgplayer_orders(
             user=user,
+            raw_text=str(raw_text),
+            purchased_items=purchased_items,
+            add_to_inventory=add_to_inventory,
+            track_order=track_order,
+            inventory_mode=inventory_mode,
+            target_binder_name=target_binder,
+            order_metadata=order_metadata,
+            explicit_target_ids=valid_ids,
+            auto_remove_watchlist=auto_remove_watchlist,
         )
-
-        msg_parts = []
-        if deleted_ids:
-            msg_parts.append(f"de-registered {len(deleted_ids)} watchlist target(s)")
-        if inventory_added:
-            msg_parts.append(f"logged {inventory_added} card(s) to '{effective_binder}' binder")
-        final_msg = "Successfully " + " and ".join(msg_parts) + "." if msg_parts else "Order reconciliation complete."
-
-        return jsonify({
-            "message": final_msg,
-            "deleted_ids": deleted_ids,
-            "deleted_names": deleted_names,
-            "deleted_count": len(deleted_ids),
-            "inventory_added_count": inventory_added,
-            "binder_name": effective_binder,
-            "order_status": order_status,
-            "orders": created_orders,
-        })
+        return jsonify(payload), status_code
 
     @app.route("/api/orders/tcgplayer", methods=["GET"])
     @login_required
