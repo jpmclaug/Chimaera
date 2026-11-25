@@ -226,6 +226,11 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "description": "If true, only returns cards currently in stock at Mighty Meeple.",
                     "default": False,
                 },
+                "ck_in_stock_only": {
+                    "type": "boolean",
+                    "description": "If true, only returns cards currently in stock at Card Kingdom.",
+                    "default": False,
+                },
                 "in_binder": {
                     "type": "boolean",
                     "description": "Optional filter for inventory presence: true = only cards user already owns in inventory; false = only unowned watchlist cards.",
@@ -1387,6 +1392,7 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
     deals_only = bool(args.get("deals_only", False))
     in_stock_only = bool(args.get("in_stock_only", False))
     mm_in_stock_only = bool(args.get("mm_in_stock_only", False))
+    ck_in_stock_only = bool(args.get("ck_in_stock_only", False))
     untagged_only = bool(args.get("untagged_only", False))
     include_vendor_details = bool(args.get("include_vendor_details", True))
     in_binder_filter = args.get("in_binder")
@@ -1438,6 +1444,8 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
         if in_stock_only and (item.lowest_in_stock_price is None or item.lowest_in_stock_price <= 0):
             continue
         if mm_in_stock_only and not item.mm_in_stock:
+            continue
+        if ck_in_stock_only and not item.ck_in_stock:
             continue
         if in_binder_filter is not None and bool(item.in_binder) != in_binder_filter:
             continue
@@ -1570,6 +1578,7 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
         "returned_count": min(len(serialized), limit),
         "deals_count": sum(1 for i in serialized if i.get("is_deal")),
         "mm_in_stock_count": sum(1 for i in serialized if i.get("mm_in_stock")),
+        "ck_in_stock_count": sum(1 for i in serialized if i.get("ck_in_stock")),
         "in_binder_count": sum(1 for i in serialized if i.get("in_binder")),
         "total_target_value_usd": total_target,
         "total_lowest_price_usd": total_lowest,
@@ -2384,6 +2393,7 @@ def _execute_add_to_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any
                 cmc=cmc,
                 target_price=target_price,
                 notify_mm_stock=True,
+                notify_ck_stock=True,
                 tag=tag,
             )
             db.session.add(new_item)

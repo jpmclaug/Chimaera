@@ -400,7 +400,7 @@ function toggleBulkCustomTargetInput() {
     }
 }
 
-async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true, currentTag = "", currentFinish = "") {
+async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true, currentTag = "", currentFinish = "", notifyCK = true) {
     const modal = document.getElementById("modal-edit-target");
     if (!modal) return;
 
@@ -428,6 +428,11 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
     const mmCheckbox = document.getElementById("edit-target-mm-alert");
     if (mmCheckbox) {
         mmCheckbox.checked = Boolean(notifyMM);
+    }
+
+    const ckCheckbox = document.getElementById("edit-target-ck-alert");
+    if (ckCheckbox) {
+        ckCheckbox.checked = Boolean(notifyCK);
     }
 
     modal.classList.remove("hidden");
@@ -1034,6 +1039,7 @@ async function submitAddCard() {
     const finishSelect = document.getElementById("card-finish-select");
     const targetPriceInput = document.getElementById("card-target-price-input");
     const notifyMMCheckbox = document.getElementById("card-notify-mm-input");
+    const notifyCKCheckbox = document.getElementById("card-notify-ck-input");
     const tagInput = document.getElementById("card-tag-input");
     const submitBtn = document.getElementById("btn-submit-add-card");
 
@@ -1058,6 +1064,7 @@ async function submitAddCard() {
             finish: finishSelect ? finishSelect.value : "any",
             target_price: targetPriceInput && targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
+            notify_ck_stock: notifyCKCheckbox ? notifyCKCheckbox.checked : true,
             tag: tagValue,
         };
     } else {
@@ -1076,6 +1083,7 @@ async function submitAddCard() {
             finish: finishSelect ? finishSelect.value : "any",
             target_price: targetPriceInput && targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
+            notify_ck_stock: notifyCKCheckbox ? notifyCKCheckbox.checked : true,
             tag: tagValue,
         };
     }
@@ -1138,6 +1146,7 @@ async function submitBulkAdd() {
     const strategySelect = document.getElementById("bulk-target-strategy-select");
     const customTargetInput = document.getElementById("bulk-custom-target-input");
     const notifyMMCheckbox = document.getElementById("bulk-notify-mm-input");
+    const notifyCKCheckbox = document.getElementById("bulk-notify-ck-input");
     const tagInput = document.getElementById("bulk-tag-input");
     const submitBtn = document.getElementById("btn-submit-bulk-add");
     const progressBox = document.getElementById("bulk-progress-box");
@@ -1159,6 +1168,7 @@ async function submitBulkAdd() {
         target_strategy: strategySelect ? strategySelect.value : "none",
         target_price: (strategySelect && strategySelect.value === "custom" && customTargetInput?.value) ? parseFloat(customTargetInput.value) : null,
         notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
+        notify_ck_stock: notifyCKCheckbox ? notifyCKCheckbox.checked : true,
         tag: (tagInput ? tagInput.value : "").trim() || null,
     };
 
@@ -1778,6 +1788,7 @@ async function submitEditTarget() {
     const itemId = document.getElementById("edit-target-item-id").value;
     const targetPriceVal = document.getElementById("edit-target-price-input").value;
     const mmAlertChecked = document.getElementById("edit-target-mm-alert")?.checked ?? true;
+    const ckAlertChecked = document.getElementById("edit-target-ck-alert")?.checked ?? true;
     const finishVal = document.getElementById("edit-target-finish-select")?.value || "any";
     const tagInput = document.getElementById("edit-target-tag-input");
     const tagVal = (tagInput ? tagInput.value : "").trim();
@@ -1795,6 +1806,7 @@ async function submitEditTarget() {
             body: JSON.stringify({
                 target_price: targetPriceVal ? parseFloat(targetPriceVal) : null,
                 notify_mm_stock: mmAlertChecked,
+                notify_ck_stock: ckAlertChecked,
                 finish: finishVal,
                 tag: tagVal,
             }),
@@ -1833,7 +1845,7 @@ function updateCardInRegistryDom(card) {
     const targetArg = card.target_price !== null && card.target_price !== undefined ? card.target_price : "null";
     const safeTag = (card.tag || "").replace(/'/g, "\\'");
     const safeFinish = (card.finish || "any").toLowerCase().trim();
-    const editOnclickStr = `openEditTargetModal(${cid}, '${safeName}', ${targetArg}, ${card.notify_mm_stock ? 'true' : 'false'}, ${card.is_any_version ? 'true' : 'false'}, '${safeTag}', '${safeFinish}')`;
+    const editOnclickStr = `openEditTargetModal(${cid}, '${safeName}', ${targetArg}, ${card.notify_mm_stock ? 'true' : 'false'}, ${card.is_any_version ? 'true' : 'false'}, '${safeTag}', '${safeFinish}', ${card.notify_ck_stock ? 'true' : 'false'})`;
 
     // 1. GRID VIEW UPDATES
     const gridRow = document.getElementById(`card-row-${cid}`);
@@ -1842,6 +1854,7 @@ function updateCardInRegistryDom(card) {
         gridRow.dataset.cardFinish = safeFinish;
         gridRow.dataset.isDeal = card.is_deal ? "true" : "false";
         gridRow.dataset.mmStock = card.mm_in_stock ? "true" : "false";
+        gridRow.dataset.ckStock = card.ck_in_stock ? "true" : "false";
         if (card.in_binder !== undefined) {
             gridRow.dataset.inBinder = card.in_binder ? "true" : "false";
             gridRow.dataset.binderCount = card.binder_count || 0;
@@ -2135,7 +2148,7 @@ function updateCardInRegistryDom(card) {
         if (swipeEditBtn) swipeEditBtn.setAttribute("onclick", editOnclickStr);
     }
 
-    // 4. MM ALERT BUTTON & STATUS
+    // 4. MM & CK ALERT BUTTONS & STATUS
     const mmStatus = document.getElementById(`mm-alert-status-${cid}`);
     if (mmStatus) {
         mmStatus.textContent = card.notify_mm_stock ? "ON" : "OFF";
@@ -2146,6 +2159,19 @@ function updateCardInRegistryDom(card) {
             mmBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25";
         } else {
             mmBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+        }
+    }
+
+    const ckStatus = document.getElementById(`ck-alert-status-${cid}`);
+    if (ckStatus) {
+        ckStatus.textContent = card.notify_ck_stock ? "ON" : "OFF";
+    }
+    const ckBtn = document.getElementById(`ck-alert-btn-${cid}`);
+    if (ckBtn) {
+        if (card.notify_ck_stock) {
+            ckBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#8B5CF6]/15 text-[#C4B5FD] border-[#8B5CF6]/50 hover:bg-[#8B5CF6]/25";
+        } else {
+            ckBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
         }
     }
 
@@ -2346,6 +2372,36 @@ async function toggleMightyMeepleAlert(itemId) {
         }
     } catch (err) {
         console.error("Error toggling MM alert:", err);
+        showToast("Communication error toggling alert", "error");
+    }
+}
+
+// =========================================================================
+// Toggle Card Kingdom Stock Alert (Per Card)
+// =========================================================================
+async function toggleCardKingdomAlert(itemId) {
+    try {
+        const res = await fetch(`/api/watchlist/toggle-ck-alert/${itemId}`, { method: "POST" });
+        const data = await safeParseJsonResponse(res);
+        if (res.ok) {
+            showToast(data.message, "success");
+            const btn = document.getElementById(`ck-alert-btn-${itemId}`);
+            const statusSpan = document.getElementById(`ck-alert-status-${itemId}`);
+            if (statusSpan) {
+                statusSpan.textContent = data.notify_ck_stock ? "ON" : "OFF";
+            }
+            if (btn) {
+                if (data.notify_ck_stock) {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#8B5CF6]/15 text-[#C4B5FD] border-[#8B5CF6]/50 hover:bg-[#8B5CF6]/25";
+                } else {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+                }
+            }
+        } else {
+            showToast(data.error || "Failed to toggle Card Kingdom alert", "error");
+        }
+    } catch (err) {
+        console.error("Error toggling CK alert:", err);
         showToast("Communication error toggling alert", "error");
     }
 }
@@ -3524,6 +3580,7 @@ function filterWatchlist() {
         const isDeal = card.dataset.isDeal === "true";
         const inStock = card.dataset.inStock === "true";
         const mmStock = card.dataset.mmStock === "true";
+        const ckStock = card.dataset.ckStock === "true";
         const isAny = card.dataset.isAny === "true";
         const isSealed = card.dataset.isSealed === "true";
         const inBinder = card.dataset.inBinder === "true";
@@ -3545,6 +3602,8 @@ function filterWatchlist() {
             matchesDeal = inStock;
         } else if (dealFilter === "mm_in_stock") {
             matchesDeal = mmStock;
+        } else if (dealFilter === "ck_in_stock") {
+            matchesDeal = ckStock;
         } else if (dealFilter === "any_version") {
             matchesDeal = isAny;
         } else if (dealFilter === "specific_print") {
@@ -3755,6 +3814,7 @@ async function fetchCadenceTelemetry() {
         const select = document.getElementById("cadence-interval-select");
         const autoCheck = document.getElementById("cadence-auto-enabled");
         const mmCheck = document.getElementById("cadence-notify-mm");
+        const ckCheck = document.getElementById("cadence-notify-ck");
         const ebaySelect = document.getElementById("cadence-ebay-mode");
         const workerStatusElem = document.getElementById("telemetry-worker-status");
         const lastPollElem = document.getElementById("telemetry-last-poll");
@@ -3784,6 +3844,10 @@ async function fetchCadenceTelemetry() {
 
         if (mmCheck) {
             mmCheck.checked = Boolean(data.notify_mm_stock_enabled !== undefined ? data.notify_mm_stock_enabled : true);
+        }
+
+        if (ckCheck) {
+            ckCheck.checked = Boolean(data.notify_ck_stock_enabled !== undefined ? data.notify_ck_stock_enabled : true);
         }
 
         if (ebaySelect && data.ebay_link_mode) {
@@ -3914,6 +3978,7 @@ async function saveCadenceSettings() {
     const select = document.getElementById("cadence-interval-select");
     const autoCheck = document.getElementById("cadence-auto-enabled");
     const mmCheck = document.getElementById("cadence-notify-mm");
+    const ckCheck = document.getElementById("cadence-notify-ck");
     const ebaySelect = document.getElementById("cadence-ebay-mode");
     const webhookInput = document.getElementById("user-discord-webhook-input");
     const btn = document.getElementById("btn-save-cadence");
@@ -3942,6 +4007,7 @@ async function saveCadenceSettings() {
             poll_interval_hours: select ? parseFloat(select.value) : 6.0,
             auto_poll_enabled: autoCheck ? autoCheck.checked : true,
             notify_mm_stock_enabled: mmCheck ? mmCheck.checked : true,
+            notify_ck_stock_enabled: ckCheck ? ckCheck.checked : true,
             ebay_link_mode: ebaySelect ? ebaySelect.value : "direct",
         };
 

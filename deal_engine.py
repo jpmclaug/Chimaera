@@ -235,6 +235,7 @@ class DealEngine:
                             "is_deal": False,
                             "lowest_price": None,
                             "mm_in_stock": False,
+                            "ck_in_stock": False,
                             "vendors": [],
                         }
                     continue
@@ -263,6 +264,7 @@ class DealEngine:
             "is_deal": item.is_deal if item else False,
             "lowest_price": item.lowest_in_stock_price if item else None,
             "mm_in_stock": False,
+            "ck_in_stock": item.ck_in_stock if item else False,
             "vendors": [v.to_dict() for v in item.vendor_prices] if item else [],
         }
 
@@ -413,10 +415,13 @@ class DealEngine:
 
         # Upsert VendorPrice records with retry on transient Neon/Postgres SSL connection drop
         mm_was_in_stock = False
+        ck_was_in_stock = False
         for db_attempt in range(2):
             try:
                 mm_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Mighty Meeple").first()
                 mm_was_in_stock = bool(mm_existing and mm_existing.in_stock and mm_existing.price > 0)
+                ck_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Card Kingdom").first()
+                ck_was_in_stock = bool(ck_existing and ck_existing.in_stock and ck_existing.price > 0)
 
                 for vendor_data in results:
                     if not vendor_data:
@@ -467,6 +472,7 @@ class DealEngine:
                             "is_deal": False,
                             "lowest_price": None,
                             "mm_in_stock": False,
+                            "ck_in_stock": False,
                             "vendors": [],
                         }
                     continue
@@ -475,7 +481,7 @@ class DealEngine:
         if item is None and item_id is not None:
             item = db.session.get(WatchlistItem, item_id)
 
-        # Check for Mighty Meeple In-Stock Alert and general deal notifications
+        # Check for Mighty Meeple / Card Kingdom In-Stock Alerts and general deal notifications
         if notify and item is not None:
             try:
                 mm_now_in_stock = bool(mm_data and mm_data.get("in_stock") and mm_data.get("price", 0) > 0)
@@ -485,6 +491,14 @@ class DealEngine:
                 if mm_now_in_stock and not mm_was_in_stock and global_mm_alert and card_mm_alert:
                     logger.info(f"Mighty Meeple restock detected for {item.name}! Dispatching stock alert...")
                     self.send_discord_mm_stock_alert(item=item, mm_data=mm_data, fast_mode=fast_mode)
+
+                ck_now_in_stock = bool(ck_data and ck_data.get("in_stock") and ck_data.get("price", 0) > 0)
+                global_ck_alert = SystemSetting.get_bool("notify_ck_stock_enabled", default=True)
+                card_ck_alert = bool(item.notify_ck_stock if item.notify_ck_stock is not None else True)
+
+                if ck_now_in_stock and not ck_was_in_stock and global_ck_alert and card_ck_alert:
+                    logger.info(f"Card Kingdom restock detected for {item.name}! Dispatching stock alert...")
+                    self.send_discord_ck_stock_alert(item=item, ck_data=ck_data, fast_mode=fast_mode)
 
                 if item.is_deal:
                     best = item.best_vendor
@@ -505,6 +519,7 @@ class DealEngine:
             "is_deal": item.is_deal if item else False,
             "lowest_price": item.lowest_in_stock_price if item else None,
             "mm_in_stock": item.mm_in_stock if item else False,
+            "ck_in_stock": item.ck_in_stock if item else False,
             "vendors": [v.to_dict() for v in item.vendor_prices] if item else [],
         }
 
@@ -742,33 +757,36 @@ class DealEngine:
 
         return False
 
-    def send_discord_mm_stock_alert(
+    def _send_discord_vendor_stock_alert(
         self,
+        vendor_name: str,
+        emoji: str,
+        color: int,
         item: WatchlistItem,
-        mm_data: dict,
+        vendor_data: dict,
         user: User | None = None,
         webhook_url: str | None = None,
         fast_mode: bool = False,
     ) -> bool:
-        """Dispatches a rich Discord Webhook embed specifically for Mighty Meeple in-stock restocks."""
+        """Shared helper to dispatch a rich Discord Webhook embed for vendor in-stock restocks."""
         target_user = user or (item.user if item else None)
         dest_url = self.get_effective_webhook_url(user=target_user, override_url=webhook_url)
 
         if not dest_url:
-            logger.debug(f"No Discord Webhook URL configured; skipping Mighty Meeple stock alert for {item.name if item else 'target'}.")
+            logger.debug(f"No Discord Webhook URL configured; skipping {vendor_name} stock alert for {item.name if item else 'target'}.")
             return False
 
         try:
-            price_val = float(mm_data.get("price", 0.0))
-            condition_val = mm_data.get("condition", "NM")
-            product_url = mm_data.get("product_url")
+            price_val = float(vendor_data.get("price", 0.0))
+            condition_val = vendor_data.get("condition", "NM")
+            product_url = vendor_data.get("product_url")
             set_label = "Any Version" if (item and item.is_any_version) else (item.set_code if item else "Unknown")
             item_name = item.name if item else "Monitored Card"
             finish_label = item.finish.capitalize() if item else "Nonfoil"
 
             fields = [
                 {
-                    "name": "Mighty Meeple Price",
+                    "name": f"{vendor_name} Price",
                     "value": f"**${price_val:.2f}** ({condition_val})",
                     "inline": True,
                 },
@@ -796,23 +814,23 @@ class DealEngine:
             if product_url:
                 fields.append({
                     "name": "Direct Purchase",
-                    "value": f"[🛒 Buy Now on Mighty Meeple]({product_url})",
+                    "value": f"[🛒 Buy Now on {vendor_name}]({product_url})",
                     "inline": False,
                 })
 
             fields.append({
                 "name": "Alert Configuration",
-                "value": "You can toggle Mighty Meeple stock alerts on or off anytime in the Chimaera Target Registry.",
+                "value": f"You can toggle {vendor_name} stock alerts on or off anytime in the Chimaera Target Registry.",
                 "inline": False,
             })
 
             embed = {
-                "title": f"🎲 Mighty Meeple In-Stock: {item_name}",
+                "title": f"{emoji} {vendor_name} In-Stock: {item_name}",
                 "description": f"**Set:** {set_label} | **Finish:** {finish_label}",
-                "color": 0x00CED1,  # Tactical Teal
+                "color": color,
                 "fields": fields,
                 "footer": {
-                    "text": "Chimaera MTG Tactical Intelligence // Mighty Meeple Surveillance",
+                    "text": f"Chimaera MTG Tactical Intelligence // {vendor_name} Surveillance",
                 },
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
@@ -830,7 +848,7 @@ class DealEngine:
             for attempt in range(max_attempts):
                 resp = requests.post(dest_url, json=payload, timeout=req_timeout)
                 if resp.status_code in (200, 204):
-                    logger.info(f"Discord Mighty Meeple stock alert sent successfully for {item_name} to {dest_url[:45]}...")
+                    logger.info(f"Discord {vendor_name} stock alert sent successfully for {item_name} to {dest_url[:45]}...")
                     if not fast_mode:
                         time.sleep(0.5)
                     return True
@@ -849,12 +867,52 @@ class DealEngine:
                     logger.warning(f"Discord webhook invalid/unauthorized ({resp.status_code}) for {dest_url[:45]}...")
                     break
                 else:
-                    logger.warning(f"Discord Mighty Meeple alert failed with status code {resp.status_code}: {resp.text}")
+                    logger.warning(f"Discord {vendor_name} alert failed with status code {resp.status_code}: {resp.text}")
                     break
         except Exception as e:
-            logger.error(f"Failed to send Discord Mighty Meeple stock alert: {e}")
+            logger.error(f"Failed to send Discord {vendor_name} stock alert: {e}")
 
         return False
+
+    def send_discord_mm_stock_alert(
+        self,
+        item: WatchlistItem,
+        mm_data: dict,
+        user: User | None = None,
+        webhook_url: str | None = None,
+        fast_mode: bool = False,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed specifically for Mighty Meeple in-stock restocks."""
+        return self._send_discord_vendor_stock_alert(
+            vendor_name="Mighty Meeple",
+            emoji="🎲",
+            color=0x00CED1,
+            item=item,
+            vendor_data=mm_data,
+            user=user,
+            webhook_url=webhook_url,
+            fast_mode=fast_mode,
+        )
+
+    def send_discord_ck_stock_alert(
+        self,
+        item: WatchlistItem,
+        ck_data: dict,
+        user: User | None = None,
+        webhook_url: str | None = None,
+        fast_mode: bool = False,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed specifically for Card Kingdom in-stock restocks."""
+        return self._send_discord_vendor_stock_alert(
+            vendor_name="Card Kingdom",
+            emoji="👑",
+            color=0x8B5CF6,
+            item=item,
+            vendor_data=ck_data,
+            user=user,
+            webhook_url=webhook_url,
+            fast_mode=fast_mode,
+        )
 
     def send_test_discord_notification(
         self,

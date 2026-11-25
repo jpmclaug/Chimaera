@@ -154,6 +154,12 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_mm_stock BOOLEAN DEFAULT 1 NOT NULL"))
                         conn.commit()
 
+                    # Ensure notify_ck_stock column exists in watchlist_item
+                    if "notify_ck_stock" not in cols:
+                        logger.info("Adding notify_ck_stock column to watchlist_item...")
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_ck_stock BOOLEAN DEFAULT 1 NOT NULL"))
+                        conn.commit()
+
                     # Ensure tag column exists in watchlist_item
                     if "tag" not in cols:
                         logger.info("Adding tag column to watchlist_item...")
@@ -401,6 +407,7 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item DROP CONSTRAINT IF EXISTS watchlist_item_scryfall_id_key"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_ck_stock BOOLEAN DEFAULT TRUE NOT NULL"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS type_line VARCHAR(255)"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
@@ -2270,6 +2277,7 @@ def create_app(test_config=None):
                 type_line=type_line,
                 target_price=target_price,
                 notify_mm_stock=False,
+                notify_ck_stock=False,
                 tag=tag,
                 tcgplayer_product_id=pid,
                 tcgplayer_market_price=market_price,
@@ -2683,6 +2691,7 @@ def create_app(test_config=None):
         finish = (data.get("finish") or "nonfoil").strip().lower()
         target_price_raw = data.get("target_price")
         notify_mm_stock = bool(data.get("notify_mm_stock", True))
+        notify_ck_stock = bool(data.get("notify_ck_stock", True))
         tag = (data.get("tag") or "").strip() or None
 
         if not name:
@@ -2756,6 +2765,7 @@ def create_app(test_config=None):
             cmc=cmc,
             target_price=target_price,
             notify_mm_stock=notify_mm_stock,
+            notify_ck_stock=notify_ck_stock,
             tag=tag,
         )
         db.session.add(new_item)
@@ -2808,6 +2818,7 @@ def create_app(test_config=None):
 
         finish = (data.get("finish") or "nonfoil").strip().lower()
         notify_mm_stock = bool(data.get("notify_mm_stock", True))
+        notify_ck_stock = bool(data.get("notify_ck_stock", True))
         target_strategy = (data.get("target_strategy") or "none").strip().lower()
         custom_target_price = data.get("target_price")
         tag = (data.get("tag") or "").strip() or None
@@ -2892,6 +2903,7 @@ def create_app(test_config=None):
                 cmc=card_info.get("cmc") if card_info else None,
                 target_price=target_price,
                 notify_mm_stock=notify_mm_stock,
+                notify_ck_stock=notify_ck_stock,
                 tag=tag,
             )
             db.session.add(new_item)
@@ -3025,6 +3037,30 @@ def create_app(test_config=None):
             "card": item.to_dict(),
         })
 
+    @app.route("/api/watchlist/toggle-ck-alert/<int:item_id>", methods=["POST"])
+    @login_required
+    def toggle_ck_alert(item_id):
+        """Toggle Card Kingdom stock alert for a specific card."""
+        user = get_current_user()
+        item = db.session.get(WatchlistItem, item_id)
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
+
+        data = request.get_json(silent=True) or {}
+        if "notify_ck_stock" in data:
+            item.notify_ck_stock = bool(data["notify_ck_stock"])
+        else:
+            item.notify_ck_stock = not bool(item.notify_ck_stock if item.notify_ck_stock is not None else True)
+
+        db.session.commit()
+        status_str = "ENABLED" if item.notify_ck_stock else "DISABLED"
+        log_activity("CARD_UPDATE", details=f"Toggled CK alert to {status_str} for '{item.name}'", user=user)
+        return jsonify({
+            "message": f"Card Kingdom in-stock alert {status_str} for {item.name}.",
+            "notify_ck_stock": item.notify_ck_stock,
+            "card": item.to_dict(),
+        })
+
     @app.route("/api/watchlist/update-scope/<int:item_id>", methods=["POST"])
     @login_required
     def update_card_scope(item_id):
@@ -3094,6 +3130,9 @@ def create_app(test_config=None):
 
         if "notify_mm_stock" in data:
             item.notify_mm_stock = bool(data["notify_mm_stock"])
+
+        if "notify_ck_stock" in data:
+            item.notify_ck_stock = bool(data["notify_ck_stock"])
 
         if "tag" in data:
             raw_tag = (data.get("tag") or "").strip()
@@ -4272,6 +4311,7 @@ def create_app(test_config=None):
         interval_hours = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
         auto_enabled = SystemSetting.get_bool("auto_poll_enabled", default=True)
         notify_mm_stock = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
+        notify_ck_stock = SystemSetting.get_bool("notify_ck_stock_enabled", default=True)
         ebay_link_mode = SystemSetting.get_val("ebay_link_mode", default="direct")
         last_poll_time = SystemSetting.get_val("last_poll_time")
         last_poll_status = SystemSetting.get_val("last_poll_status", "No surveillance cycles recorded.")
@@ -4284,6 +4324,7 @@ def create_app(test_config=None):
             "poll_interval_hours": interval_hours,
             "auto_poll_enabled": auto_enabled,
             "notify_mm_stock_enabled": notify_mm_stock,
+            "notify_ck_stock_enabled": notify_ck_stock,
             "ebay_link_mode": ebay_link_mode,
             "last_poll_time": last_poll_time,
             "recent_poll_times": SystemSetting.get_recent_successful_runs("registry", limit=3),
@@ -4304,6 +4345,7 @@ def create_app(test_config=None):
         interval_raw = data.get("poll_interval_hours")
         auto_enabled_raw = data.get("auto_poll_enabled")
         notify_mm_raw = data.get("notify_mm_stock_enabled")
+        notify_ck_raw = data.get("notify_ck_stock_enabled")
         ebay_mode_raw = data.get("ebay_link_mode")
 
         if interval_raw is not None:
@@ -4323,6 +4365,10 @@ def create_app(test_config=None):
             mm_val = "true" if bool(notify_mm_raw) else "false"
             SystemSetting.set_val("notify_mm_stock_enabled", mm_val)
 
+        if notify_ck_raw is not None:
+            ck_val = "true" if bool(notify_ck_raw) else "false"
+            SystemSetting.set_val("notify_ck_stock_enabled", ck_val)
+
         if ebay_mode_raw is not None:
             mode_str = "search" if str(ebay_mode_raw).lower() == "search" else "direct"
             SystemSetting.set_val("ebay_link_mode", mode_str)
@@ -4330,6 +4376,7 @@ def create_app(test_config=None):
         current_interval = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
         current_auto = SystemSetting.get_bool("auto_poll_enabled", default=True)
         current_mm = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
+        current_ck = SystemSetting.get_bool("notify_ck_stock_enabled", default=True)
         current_ebay = SystemSetting.get_val("ebay_link_mode", default="direct")
 
         return jsonify({
@@ -4337,6 +4384,7 @@ def create_app(test_config=None):
             "poll_interval_hours": current_interval,
             "auto_poll_enabled": current_auto,
             "notify_mm_stock_enabled": current_mm,
+            "notify_ck_stock_enabled": current_ck,
             "ebay_link_mode": current_ebay,
         })
 
@@ -6640,6 +6688,7 @@ def create_app(test_config=None):
                 target_price=target_price,
                 tag=tag,
                 notify_mm_stock=True,
+                notify_ck_stock=True,
             )
             db.session.add(item)
             db.session.commit()

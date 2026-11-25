@@ -275,6 +275,7 @@ class WatchlistItem(db.Model):
     finish = db.Column(db.String(20), default="nonfoil")  # nonfoil, foil, etched
     target_price = db.Column(db.Float, nullable=True)
     notify_mm_stock = db.Column(db.Boolean, default=True, nullable=False)
+    notify_ck_stock = db.Column(db.Boolean, default=True, nullable=False)
     tag = db.Column(db.String(100), nullable=True, index=True)
     type_line = db.Column(db.String(255), nullable=True)
     color_identity = db.Column(db.String(50), nullable=True)
@@ -361,6 +362,17 @@ class WatchlistItem(db.Model):
         return bool(mm and mm.in_stock and mm.price > 0)
 
     @property
+    def ck_vendor_price(self):
+        """Returns Card Kingdom VendorPrice record or None."""
+        return self.get_vendor_price("Card Kingdom")
+
+    @property
+    def ck_in_stock(self):
+        """Returns True if Card Kingdom currently has this card in stock."""
+        ck = self.ck_vendor_price
+        return bool(ck and ck.in_stock and ck.price > 0)
+
+    @property
     def is_sealed(self) -> bool:
         """Returns True if this watchlist item is a sealed MTG product tracked via TCGplayer."""
         if self.tcgplayer_product_id is not None:
@@ -412,6 +424,12 @@ class WatchlistItem(db.Model):
     def mighty_meeple_price(self) -> float | None:
         """Returns latest Mighty Meeple price or None."""
         vp = self.get_vendor_price("Mighty Meeple")
+        return round(float(vp.price), 2) if (vp and vp.price > 0) else None
+
+    @property
+    def card_kingdom_price(self) -> float | None:
+        """Returns latest Card Kingdom price or None."""
+        vp = self.get_vendor_price("Card Kingdom")
         return round(float(vp.price), 2) if (vp and vp.price > 0) else None
 
     @property
@@ -611,6 +629,7 @@ class WatchlistItem(db.Model):
             "color_bucket": self.color_bucket,
             "target_price": self.target_price,
             "notify_mm_stock": bool(self.notify_mm_stock if self.notify_mm_stock is not None else True),
+            "notify_ck_stock": bool(self.notify_ck_stock if self.notify_ck_stock is not None else True),
             "tag": self.tag,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "is_any_version": self.is_any_version,
@@ -627,6 +646,7 @@ class WatchlistItem(db.Model):
             "market_price": self.market_price,
             "tcgplayer_price": self.tcgplayer_price,
             "mighty_meeple_price": self.mighty_meeple_price,
+            "card_kingdom_price": self.card_kingdom_price,
             "ebay_price": self.ebay_price,
             "best_vendor": self.best_vendor_name,
             "savings_amount": self.savings_amount,
@@ -635,6 +655,7 @@ class WatchlistItem(db.Model):
             "suggested_great_price": self.suggested_great_price,
             "price_rating": self.price_rating,
             "mm_in_stock": self.mm_in_stock,
+            "ck_in_stock": self.ck_in_stock,
         }
         if include_vendor_details:
             data["vendor_prices"] = [vp.to_dict() for vp in self.vendor_prices]

@@ -859,6 +859,14 @@
                         </label>
                     </div>
 
+                    <!-- Card Kingdom Alert Checkbox -->
+                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="card-notify-ck-input" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="card-notify-ck-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Send alert if card becomes in stock at Card Kingdom
+                        </label>
+                    </div>
+
                     <!-- Card Preview Telemetry Box -->
                     <div id="card-preview-box" class="bg-[#10141D] border border-[#263245] p-3 flex items-center space-x-3.5 mt-2">
                         <img id="card-preview-img" src="" alt="" class="w-16 h-22 object-cover border border-[#263245] bg-[#0C0F17]">
@@ -969,6 +977,14 @@
                     <input type="checkbox" id="bulk-notify-mm-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
                     <label for="bulk-notify-mm-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
                         Send alert if cards become in stock at Mighty Meeple
+                    </label>
+                </div>
+
+                <!-- Card Kingdom Alert Checkbox -->
+                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                    <input type="checkbox" id="bulk-notify-ck-input" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                    <label for="bulk-notify-ck-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                        Send alert if cards become in stock at Card Kingdom
                     </label>
                 </div>
 
@@ -1256,6 +1272,14 @@
                         Notify if in stock at Mighty Meeple
                     </label>
                 </div>
+
+                <!-- Edit CK In-Stock Alert Checkbox -->
+                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
+                    <input type="checkbox" id="edit-target-ck-alert" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                    <label for="edit-target-ck-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                        Notify if in stock at Card Kingdom
+                    </label>
+                </div>
             </div>
 
             <!-- Sticky Pinned Action Footer -->
@@ -1392,6 +1416,14 @@
                     <input type="checkbox" id="cadence-notify-mm" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
                     <label for="cadence-notify-mm" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
                         Enable Mighty Meeple In-Stock Notifications
+                    </label>
+                </div>
+
+                <!-- Card Kingdom Global Alert Toggle -->
+                <div class="flex items-center space-x-3 bg-[#10141D] p-3 border border-[#263245]">
+                    <input type="checkbox" id="cadence-notify-ck" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                    <label for="cadence-notify-ck" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
+                        Enable Card Kingdom In-Stock Notifications
                     </label>
                 </div>
 
