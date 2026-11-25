@@ -2552,49 +2552,57 @@ async function triggerRefreshAll() {
     if (icon) icon.classList.add("animate-spin-custom");
     if (btn) btn.disabled = true;
 
-    showToast("Executing price surveillance scan...", "info");
+    showToast("Starting full watchlist price surveillance...", "info");
 
     try {
-        const res = await fetch("/api/watchlist/refresh-all?async=1", { method: "POST" });
-        const data = await safeParseJsonResponse(res);
-        if (res.status === 202 || data.status === "running") {
-            const pollStatus = async () => {
-                for (let attempt = 0; attempt < 300; attempt++) {
-                    await new Promise(r => setTimeout(r, 2000));
-                    const stRes = await fetch("/api/watchlist/refresh-status");
-                    const stData = await safeParseJsonResponse(stRes);
-                    if (stData.status === "completed") {
-                        showToast(stData.message || "Telemetry synchronized", "success");
-                        setTimeout(() => window.location.reload(), 600);
-                        return;
-                    }
-                    if (stData.status === "error") {
-                        showToast(stData.error || "Surveillance poll failure", "error");
-                        return;
-                    }
-                    if (stData.status === "idle") {
-                        setTimeout(() => window.location.reload(), 400);
-                        return;
-                    }
-                    if (btn && stData.total > 0) {
-                        btn.title = `Polling ${stData.completed || 0} / ${stData.total} targets...`;
-                    }
-                }
-                showToast("Surveillance scan still running in background. Refresh page shortly.", "info");
-            };
-            await pollStatus();
-        } else if (res.ok) {
-            showToast(data.message || "Telemetry synchronized", "success");
-            setTimeout(() => window.location.reload(), 600);
-        } else {
-            showToast(data.error || "Price poll failed", "error");
+        const idsRes = await fetch("/api/watchlist/ids");
+        const idsData = await safeParseJsonResponse(idsRes);
+        if (!idsRes.ok || !Array.isArray(idsData.item_ids)) {
+            showToast(idsData.error || "Failed to load watchlist targets", "error");
+            return;
         }
+
+        const itemIds = idsData.item_ids;
+        if (itemIds.length === 0) {
+            showToast("No watchlist targets to refresh.", "info");
+            return;
+        }
+
+        const batchSize = 5;
+        let completed = 0;
+        for (let i = 0; i < itemIds.length; i += batchSize) {
+            const chunk = itemIds.slice(i, i + batchSize);
+            const isLast = (i + batchSize) >= itemIds.length;
+            if (btn) {
+                btn.title = `Polling ${completed} / ${itemIds.length} targets...`;
+            }
+            const res = await fetch("/api/watchlist/refresh-batch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item_ids: chunk, finalize: isLast }),
+            });
+            const data = await safeParseJsonResponse(res);
+            if (!res.ok) {
+                showToast(data.error || `Batch poll failed at ${completed}/${itemIds.length}`, "error");
+                return;
+            }
+            completed += chunk.length;
+            if (!isLast && (completed % 15 === 0 || completed === chunk.length)) {
+                showToast(`Scanned ${completed} / ${itemIds.length} targets...`, "info");
+            }
+        }
+
+        showToast(`Successfully refreshed all ${itemIds.length} targets`, "success");
+        setTimeout(() => window.location.reload(), 600);
     } catch (err) {
         console.error("Refresh all error:", err);
         showToast("Surveillance poll failure", "error");
     } finally {
         if (icon) icon.classList.remove("animate-spin-custom");
-        if (btn) btn.disabled = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.title = "Poll Watchlist Prices";
+        }
     }
 }
 

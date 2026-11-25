@@ -331,6 +331,22 @@ class ScgCsiIntegrationTests(unittest.TestCase):
         self.assertIn(f"scg-alert-btn-{cid}", idx_html)
         self.assertIn(f"csi-alert-btn-{cid}", idx_html)
 
+        # Batched Refresh-All endpoints (Cloud Run friendly)
+        r_ids = self.client.get("/api/watchlist/ids")
+        self.assertEqual(r_ids.status_code, 200)
+        ids_json = r_ids.get_json()
+        self.assertEqual(ids_json["total"], 2)
+
+        with patch.object(DealEngine, "poll_user_cards", return_value=[{"is_deal": False}]) as mock_poll:
+            r_batch = self.client.post(
+                "/api/watchlist/refresh-batch",
+                data=json.dumps({"item_ids": [cid], "finalize": True}),
+                content_type="application/json",
+            )
+            self.assertEqual(r_batch.status_code, 200)
+            self.assertEqual(r_batch.get_json()["polled"], 1)
+            self.assertEqual(mock_poll.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

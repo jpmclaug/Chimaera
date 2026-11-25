@@ -3388,6 +3388,55 @@ def create_app(test_config=None):
             "recent_poll_times": recent_times[:3],
         })
 
+    @app.route("/api/watchlist/ids", methods=["GET"])
+    @login_required
+    def get_watchlist_ids():
+        """Returns the list of WatchlistItem IDs for the current user."""
+        user = get_current_user()
+        rows = WatchlistItem.query.with_entities(WatchlistItem.id).filter_by(user_id=user.id).order_by(WatchlistItem.id.asc()).all()
+        return jsonify({"item_ids": [r[0] for r in rows], "total": len(rows)})
+
+    @app.route("/api/watchlist/refresh-batch", methods=["POST"])
+    @login_required
+    def refresh_watchlist_batch():
+        """Polls a small batch of WatchlistItems synchronously (Cloud Run friendly)."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_ids = data.get("item_ids") or []
+        try:
+            item_ids = [int(i) for i in raw_ids][:20]
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid item_ids payload."}), 400
+
+        finalize = bool(data.get("finalize", False))
+        items = []
+        if item_ids:
+            items = WatchlistItem.query.filter(
+                WatchlistItem.user_id == user.id,
+                WatchlistItem.id.in_(item_ids),
+            ).all()
+
+        results = deal_engine.poll_user_cards(items, notify=True, fast_mode=True) if items else []
+
+        if finalize:
+            now = utc_now()
+            all_user_items = WatchlistItem.query.filter_by(user_id=user.id).all()
+            deals_found = sum(1 for it in all_user_items if it.is_deal)
+            SystemSetting.record_successful_run("registry", dt=now)
+            SystemSetting.set_val("last_poll_count", len(all_user_items))
+            SystemSetting.set_val("last_poll_deals", deals_found)
+            SystemSetting.set_val(
+                "last_poll_status",
+                f"Surveillance cycle complete: {len(all_user_items)} targets monitored, {deals_found} active deals triggered."
+            )
+            log_activity("PRICE_REFRESH", details=f"Refreshed all {len(all_user_items)} targets (batched)", user=user)
+
+        return jsonify({
+            "success": True,
+            "polled": len(results),
+            "deals_in_batch": sum(1 for r in results if r.get("is_deal")),
+        })
+
     @app.route("/api/watchlist/refresh-status", methods=["GET"])
     @login_required
     def refresh_all_status():
