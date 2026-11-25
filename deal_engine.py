@@ -150,6 +150,7 @@ class DealEngine:
                         market_price=effective_market,
                         trusted_shops=trusted_shops,
                         blocked_shops=blocked_shops,
+                        limit_pages=1 if fast_mode else 2,
                     )
                 except Exception as err:
                     logger.warning(f"Error querying Shopify Catalog for '{item_name}': {err}")
@@ -716,19 +717,32 @@ class DealEngine:
         logger.info(f"Completed poll for all watchlist items ({len(summary)} scanned, {deals_found} deals).")
         return summary
 
-    def poll_user_cards(self, items: list[WatchlistItem], notify: bool = True) -> list[dict]:
+    def poll_user_cards(
+        self,
+        items: list[WatchlistItem],
+        notify: bool = True,
+        fast_mode: bool = False,
+        progress_cb=None,
+    ) -> list[dict]:
         """Polls prices for a specific user's WatchlistItems."""
         summary = []
+        total = len(items)
         for idx, item in enumerate(items):
             try:
-                res = self.poll_card(item, notify=notify)
+                res = self.poll_card(item, notify=notify, fast_mode=fast_mode)
                 summary.append(res)
             except Exception as e:
                 logger.error(f"Error polling card {item.name} (ID: {item.id}): {e}")
 
+            if progress_cb is not None:
+                try:
+                    progress_cb(idx + 1, total)
+                except Exception:
+                    pass
+
             # Polite inter-target pacing to avoid vendor 429 rate limits
-            if idx < len(items) - 1:
-                time.sleep(0.5)
+            if idx < total - 1:
+                time.sleep(0.15 if fast_mode else 0.5)
         return summary
 
     def get_effective_webhook_url(

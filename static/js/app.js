@@ -2555,9 +2555,35 @@ async function triggerRefreshAll() {
     showToast("Executing price surveillance scan...", "info");
 
     try {
-        const res = await fetch("/api/watchlist/refresh-all", { method: "POST" });
+        const res = await fetch("/api/watchlist/refresh-all?async=1", { method: "POST" });
         const data = await safeParseJsonResponse(res);
-        if (res.ok) {
+        if (res.status === 202 || data.status === "running") {
+            const pollStatus = async () => {
+                for (let attempt = 0; attempt < 300; attempt++) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    const stRes = await fetch("/api/watchlist/refresh-status");
+                    const stData = await safeParseJsonResponse(stRes);
+                    if (stData.status === "completed") {
+                        showToast(stData.message || "Telemetry synchronized", "success");
+                        setTimeout(() => window.location.reload(), 600);
+                        return;
+                    }
+                    if (stData.status === "error") {
+                        showToast(stData.error || "Surveillance poll failure", "error");
+                        return;
+                    }
+                    if (stData.status === "idle") {
+                        setTimeout(() => window.location.reload(), 400);
+                        return;
+                    }
+                    if (btn && stData.total > 0) {
+                        btn.title = `Polling ${stData.completed || 0} / ${stData.total} targets...`;
+                    }
+                }
+                showToast("Surveillance scan still running in background. Refresh page shortly.", "info");
+            };
+            await pollStatus();
+        } else if (res.ok) {
             showToast(data.message || "Telemetry synchronized", "success");
             setTimeout(() => window.location.reload(), 600);
         } else {

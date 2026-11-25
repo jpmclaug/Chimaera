@@ -3282,12 +3282,95 @@ def create_app(test_config=None):
             "card": item.to_dict(),
         })
 
+    _refresh_jobs: dict[int, dict] = {}
+    _refresh_jobs_lock = threading.Lock()
+
     @app.route("/api/watchlist/refresh-all", methods=["POST"])
     @login_required
     def refresh_all_cards():
-        """Manually refresh all cards on the user's watchlist."""
+        """Manually refresh all cards on the user's watchlist (supports ?async=1 background mode)."""
         user = get_current_user()
-        items = WatchlistItem.query.filter_by(user_id=user.id).all()
+        user_id = user.id
+        data = request.get_json(silent=True) or {}
+        use_async = (
+            (request.args.get("async") or "").strip().lower() in ("1", "true", "yes")
+            or bool(data.get("async"))
+        )
+
+        if use_async and not app.config.get("TESTING"):
+            with _refresh_jobs_lock:
+                existing_job = _refresh_jobs.get(user_id)
+                if existing_job and existing_job.get("status") == "running":
+                    return jsonify(dict(existing_job)), 202
+
+                total_items = WatchlistItem.query.filter_by(user_id=user_id).count()
+                job_state = {
+                    "status": "running",
+                    "completed": 0,
+                    "total": total_items,
+                    "message": f"Scanning 0 / {total_items} targets...",
+                    "error": None,
+                }
+                _refresh_jobs[user_id] = job_state
+
+            def _run_refresh_job(uid: int):
+                with app.app_context():
+                    try:
+                        u_items = WatchlistItem.query.filter_by(user_id=uid).all()
+                        with _refresh_jobs_lock:
+                            _refresh_jobs[uid]["total"] = len(u_items)
+
+                        def _on_progress(done_cnt: int, tot_cnt: int):
+                            with _refresh_jobs_lock:
+                                if uid in _refresh_jobs:
+                                    _refresh_jobs[uid]["completed"] = done_cnt
+                                    _refresh_jobs[uid]["total"] = tot_cnt
+                                    _refresh_jobs[uid]["message"] = f"Scanning {done_cnt} / {tot_cnt} targets..."
+
+                        results = deal_engine.poll_user_cards(
+                            u_items,
+                            notify=True,
+                            fast_mode=True,
+                            progress_cb=_on_progress,
+                        )
+                        now = utc_now()
+                        recent_times = SystemSetting.record_successful_run("registry", dt=now)
+                        deals_found = sum(1 for s in results if s.get("is_deal"))
+                        SystemSetting.set_val("last_poll_count", len(results))
+                        SystemSetting.set_val("last_poll_deals", deals_found)
+                        SystemSetting.set_val(
+                            "last_poll_status",
+                            f"Surveillance cycle complete: {len(results)} targets monitored, {deals_found} active deals triggered."
+                        )
+                        u_obj = db.session.get(User, uid)
+                        log_activity("PRICE_REFRESH", details=f"Refreshed all {len(results)} targets", user=u_obj)
+                        with _refresh_jobs_lock:
+                            _refresh_jobs[uid] = {
+                                "status": "completed",
+                                "completed": len(results),
+                                "total": len(u_items),
+                                "message": f"Successfully refreshed {len(results)} cards.",
+                                "recent_poll_times": recent_times[:3],
+                                "error": None,
+                            }
+                    except Exception as job_err:
+                        logger.error(f"Background refresh-all failed for user {uid}: {job_err}", exc_info=True)
+                        with _refresh_jobs_lock:
+                            _refresh_jobs[uid] = {
+                                "status": "error",
+                                "completed": _refresh_jobs.get(uid, {}).get("completed", 0),
+                                "total": _refresh_jobs.get(uid, {}).get("total", 0),
+                                "message": None,
+                                "error": str(job_err),
+                            }
+                    finally:
+                        db.session.remove()
+
+            t = threading.Thread(target=_run_refresh_job, args=(user_id,), daemon=True)
+            t.start()
+            return jsonify(dict(_refresh_jobs[user_id])), 202
+
+        items = WatchlistItem.query.filter_by(user_id=user_id).all()
         results = deal_engine.poll_user_cards(items, notify=True)
         now = utc_now()
         recent_times = SystemSetting.record_successful_run("registry", dt=now)
@@ -3304,6 +3387,15 @@ def create_app(test_config=None):
             "count": len(results),
             "recent_poll_times": recent_times[:3],
         })
+
+    @app.route("/api/watchlist/refresh-status", methods=["GET"])
+    @login_required
+    def refresh_all_status():
+        """Returns background refresh-all job status for the current user."""
+        user = get_current_user()
+        with _refresh_jobs_lock:
+            job = dict(_refresh_jobs.get(user.id) or {"status": "idle", "completed": 0, "total": 0})
+        return jsonify(job)
 
     @app.route("/api/watchlist/delete/<int:item_id>", methods=["DELETE", "POST"])
     @login_required
