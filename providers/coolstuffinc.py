@@ -113,6 +113,7 @@ class CoolStuffIncProvider:
 
     _shared_lock = threading.Lock()
     _shared_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+    _shared_cookies: dict[str, str] = {}
 
     def __init__(
         self,
@@ -132,6 +133,7 @@ class CoolStuffIncProvider:
     def clear_shared_cache(cls) -> None:
         with cls._shared_lock:
             cls._shared_cache.clear()
+            cls._shared_cookies.clear()
 
     def _create_session(self):
         try:
@@ -160,12 +162,28 @@ class CoolStuffIncProvider:
     def _ensure_session_cookie(self, timeout: float = 8.0, force: bool = False) -> None:
         if self._custom_session is not None and not force:
             return
+        with self._shared_lock:
+            shared_cookies = dict(type(self)._shared_cookies)
+        if shared_cookies and not force:
+            try:
+                self.session.cookies.update(shared_cookies)
+                self._thread_local.bootstrapped = True
+                return
+            except Exception:
+                pass
         bootstrapped = getattr(self._thread_local, "bootstrapped", False)
         if bootstrapped and not force:
             return
         try:
             self.session.get(CSI_BOOTSTRAP_URL, timeout=max(2.0, float(timeout)))
             self._thread_local.bootstrapped = True
+            try:
+                cookie_dict = {k: v for k, v in self.session.cookies.items()}
+                if cookie_dict:
+                    with self._shared_lock:
+                        type(self)._shared_cookies = cookie_dict
+            except Exception:
+                pass
         except Exception as exc:
             logger.debug(f"CoolStuffInc session bootstrap warning: {exc}")
 
