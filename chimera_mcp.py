@@ -231,6 +231,16 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "description": "If true, only returns cards currently in stock at Card Kingdom.",
                     "default": False,
                 },
+                "scg_in_stock_only": {
+                    "type": "boolean",
+                    "description": "If true, only returns cards currently in stock at Star City Games.",
+                    "default": False,
+                },
+                "csi_in_stock_only": {
+                    "type": "boolean",
+                    "description": "If true, only returns cards currently in stock at CoolStuffInc.",
+                    "default": False,
+                },
                 "in_binder": {
                     "type": "boolean",
                     "description": "Optional filter for inventory presence: true = only cards user already owns in inventory; false = only unowned watchlist cards.",
@@ -775,7 +785,7 @@ MCP_TOOLS: list[dict[str, Any]] = [
         "name": "scan_sealed_retailers",
         "description": (
             "Runs an on-demand sweep of the user's watched sealed MTG products across TCGplayer, "
-            "Card Kingdom, and Shopify Global Catalog (Shop app), returning a ranked deal comparison "
+            "Card Kingdom, Star City Games, CoolStuffInc, and Shopify Global Catalog (Shop app), returning a ranked deal comparison "
             "with trusted offers and optional unverified storefronts."
         ),
         "inputSchema": {
@@ -1393,6 +1403,8 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
     in_stock_only = bool(args.get("in_stock_only", False))
     mm_in_stock_only = bool(args.get("mm_in_stock_only", False))
     ck_in_stock_only = bool(args.get("ck_in_stock_only", False))
+    scg_in_stock_only = bool(args.get("scg_in_stock_only", False))
+    csi_in_stock_only = bool(args.get("csi_in_stock_only", False))
     untagged_only = bool(args.get("untagged_only", False))
     include_vendor_details = bool(args.get("include_vendor_details", True))
     in_binder_filter = args.get("in_binder")
@@ -1446,6 +1458,10 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
         if mm_in_stock_only and not item.mm_in_stock:
             continue
         if ck_in_stock_only and not item.ck_in_stock:
+            continue
+        if scg_in_stock_only and not item.scg_in_stock:
+            continue
+        if csi_in_stock_only and not item.csi_in_stock:
             continue
         if in_binder_filter is not None and bool(item.in_binder) != in_binder_filter:
             continue
@@ -1579,6 +1595,8 @@ def _execute_get_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any]:
         "deals_count": sum(1 for i in serialized if i.get("is_deal")),
         "mm_in_stock_count": sum(1 for i in serialized if i.get("mm_in_stock")),
         "ck_in_stock_count": sum(1 for i in serialized if i.get("ck_in_stock")),
+        "scg_in_stock_count": sum(1 for i in serialized if i.get("scg_in_stock")),
+        "csi_in_stock_count": sum(1 for i in serialized if i.get("csi_in_stock")),
         "in_binder_count": sum(1 for i in serialized if i.get("in_binder")),
         "total_target_value_usd": total_target,
         "total_lowest_price_usd": total_lowest,
@@ -2394,6 +2412,8 @@ def _execute_add_to_watchlist(user: User, args: dict[str, Any]) -> dict[str, Any
                 target_price=target_price,
                 notify_mm_stock=True,
                 notify_ck_stock=True,
+                notify_scg_stock=True,
+                notify_csi_stock=True,
                 tag=tag,
             )
             db.session.add(new_item)
@@ -3288,6 +3308,8 @@ def _execute_scan_sealed_retailers(user: User, args: dict[str, Any]) -> dict[str
 
         tcg_vp = item.get_vendor_price("TCGplayer")
         ck_vp = item.get_vendor_price("Card Kingdom")
+        scg_vp = item.get_vendor_price("Star City Games")
+        csi_vp = item.get_vendor_price("CoolStuffInc")
         trusted_shop_vp = next(
             (v for v in item.vendor_prices if v.vendor_name.startswith("Shop · ")),
             None,
@@ -3311,6 +3333,8 @@ def _execute_scan_sealed_retailers(user: User, args: dict[str, Any]) -> dict[str
             "savings_percent": item.savings_percent,
             "tcgplayer": tcg_vp.to_dict() if tcg_vp else None,
             "card_kingdom": ck_vp.to_dict() if ck_vp else None,
+            "star_city_games": scg_vp.to_dict() if scg_vp else None,
+            "coolstuffinc": csi_vp.to_dict() if csi_vp else None,
             "shop_trusted": trusted_shop_vp.to_dict() if trusted_shop_vp else None,
         }
         if include_unverified:

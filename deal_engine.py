@@ -15,6 +15,8 @@ from providers import (
     TCGplayerSealedProvider,
     CardKingdomSealedProvider,
     CardKingdomSinglesProvider,
+    StarCityGamesProvider,
+    CoolStuffIncProvider,
     ShopifyCatalogProvider,
 )
 from providers.sealed_trust import get_blocked_shops, get_trusted_shops
@@ -33,6 +35,8 @@ class DealEngine:
         self.tcgplayer_sealed = TCGplayerSealedProvider()
         self.cardkingdom_sealed = CardKingdomSealedProvider()
         self.cardkingdom_singles = CardKingdomSinglesProvider()
+        self.starcitygames = StarCityGamesProvider()
+        self.coolstuffinc = CoolStuffIncProvider()
         self.shopify_catalog = ShopifyCatalogProvider()
         self.microcenter = MicrocenterProvider(
             store_id=Config.MICROCENTER_STORE_ID,
@@ -106,19 +110,37 @@ class DealEngine:
 
         # Read feature flags & trusted/blocked lists on the main thread (within app context)
         ck_enabled = SystemSetting.get_bool("sealed_cardkingdom_enabled", default=True)
+        scg_enabled = SystemSetting.get_bool("sealed_starcitygames_enabled", default=True)
+        csi_enabled = SystemSetting.get_bool("sealed_coolstuffinc_enabled", default=True)
         shop_enabled = SystemSetting.get_bool("sealed_shopify_enabled", default=True)
         trusted_shops = get_trusted_shops() if shop_enabled else []
         blocked_shops = get_blocked_shops() if shop_enabled else []
 
         ck_data = None
+        scg_data = None
+        csi_data = None
         shop_result = None
 
-        if ck_enabled or shop_enabled:
+        if ck_enabled or scg_enabled or csi_enabled or shop_enabled:
             def _fetch_ck():
                 try:
                     return self.cardkingdom_sealed.find_offer(item_name)
                 except Exception as err:
                     logger.warning(f"Error querying Card Kingdom sealed for '{item_name}': {err}")
+                    return None
+
+            def _fetch_scg():
+                try:
+                    return self.starcitygames.find_offer(item_name, tcgplayer_product_id=pid)
+                except Exception as err:
+                    logger.warning(f"Error querying Star City Games sealed for '{item_name}': {err}")
+                    return None
+
+            def _fetch_csi():
+                try:
+                    return self.coolstuffinc.find_offer(item_name)
+                except Exception as err:
+                    logger.warning(f"Error querying CoolStuffInc sealed for '{item_name}': {err}")
                     return None
 
             def _fetch_shop():
@@ -133,11 +155,17 @@ class DealEngine:
                     logger.warning(f"Error querying Shopify Catalog for '{item_name}': {err}")
                     return None
 
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            with ThreadPoolExecutor(max_workers=4) as pool:
                 fut_ck = pool.submit(_fetch_ck) if ck_enabled else None
+                fut_scg = pool.submit(_fetch_scg) if scg_enabled else None
+                fut_csi = pool.submit(_fetch_csi) if csi_enabled else None
                 fut_shop = pool.submit(_fetch_shop) if shop_enabled else None
                 if fut_ck:
                     ck_data = fut_ck.result()
+                if fut_scg:
+                    scg_data = fut_scg.result()
+                if fut_csi:
+                    csi_data = fut_csi.result()
                 if fut_shop:
                     shop_result = fut_shop.result()
 
@@ -174,6 +202,30 @@ class DealEngine:
                         in_stock=bool(ck_data.get("in_stock", False)),
                         product_url=ck_data.get("product_url"),
                         search_url=ck_data.get("search_url") or ck_data.get("product_url"),
+                        now=now,
+                    )
+
+                if scg_enabled and scg_data:
+                    self._upsert_vendor_price(
+                        watchlist_id=item_id,
+                        vendor_name="Star City Games",
+                        price=float(scg_data.get("price", 0.0)),
+                        condition=scg_data.get("condition", "Unopened"),
+                        in_stock=bool(scg_data.get("in_stock", False)),
+                        product_url=scg_data.get("product_url"),
+                        search_url=scg_data.get("search_url") or scg_data.get("product_url"),
+                        now=now,
+                    )
+
+                if csi_enabled and csi_data:
+                    self._upsert_vendor_price(
+                        watchlist_id=item_id,
+                        vendor_name="CoolStuffInc",
+                        price=float(csi_data.get("price", 0.0)),
+                        condition=csi_data.get("condition", "Unopened"),
+                        in_stock=bool(csi_data.get("in_stock", False)),
+                        product_url=csi_data.get("product_url"),
+                        search_url=csi_data.get("search_url") or csi_data.get("product_url"),
                         now=now,
                     )
 
@@ -236,6 +288,8 @@ class DealEngine:
                             "lowest_price": None,
                             "mm_in_stock": False,
                             "ck_in_stock": False,
+                            "scg_in_stock": False,
+                            "csi_in_stock": False,
                             "vendors": [],
                         }
                     continue
@@ -265,6 +319,8 @@ class DealEngine:
             "lowest_price": item.lowest_in_stock_price if item else None,
             "mm_in_stock": False,
             "ck_in_stock": item.ck_in_stock if item else False,
+            "scg_in_stock": item.scg_in_stock if item else False,
+            "csi_in_stock": item.csi_in_stock if item else False,
             "vendors": [v.to_dict() for v in item.vendor_prices] if item else [],
         }
 
@@ -325,8 +381,10 @@ class DealEngine:
             except Exception as set_err:
                 logger.debug(f"Error resolving set name for {item_set_code}: {set_err}")
 
-        # 2. Mighty Meeple, 3. eBay, & 4. Card Kingdom in parallel (using plain primitives only)
+        # 2. Mighty Meeple, 3. eBay, 4. Card Kingdom, 5. Star City Games, & 6. CoolStuffInc in parallel (using plain primitives only)
         ck_singles_enabled = SystemSetting.get_bool("singles_cardkingdom_enabled", default=True)
+        scg_singles_enabled = SystemSetting.get_bool("singles_starcitygames_enabled", default=True)
+        csi_singles_enabled = SystemSetting.get_bool("singles_coolstuffinc_enabled", default=True)
 
         def _fetch_mm():
             return self.mightymeeple.search_card(
@@ -357,15 +415,43 @@ class DealEngine:
                 timeout=5.0 if fast_mode else 25.0,
             )
 
+        def _fetch_scg_single():
+            return self.starcitygames.search_card(
+                card_name=item_name,
+                set_name=set_name,
+                set_code=item_set_code,
+                collector_number=item_collector_number,
+                finish=item_finish,
+                is_any_version=is_any,
+                fast_mode=fast_mode,
+                timeout=5.0 if fast_mode else 8.0,
+            )
+
+        def _fetch_csi_single():
+            return self.coolstuffinc.search_card(
+                card_name=item_name,
+                set_name=set_name,
+                set_code=item_set_code,
+                collector_number=item_collector_number,
+                finish=item_finish,
+                is_any_version=is_any,
+                fast_mode=fast_mode,
+                timeout=5.0 if fast_mode else 8.0,
+            )
+
         mm_data = None
         ebay_data = None
         ck_data = None
-        executor = ThreadPoolExecutor(max_workers=3)
+        scg_data = None
+        csi_data = None
+        executor = ThreadPoolExecutor(max_workers=5)
         try:
             mm_fut = executor.submit(_fetch_mm)
             ebay_fut = executor.submit(_fetch_ebay)
             ck_fut = executor.submit(_fetch_ck_single) if ck_singles_enabled else None
-            all_futs = [f for f in (mm_fut, ebay_fut, ck_fut) if f is not None]
+            scg_fut = executor.submit(_fetch_scg_single) if scg_singles_enabled else None
+            csi_fut = executor.submit(_fetch_csi_single) if csi_singles_enabled else None
+            all_futs = [f for f in (mm_fut, ebay_fut, ck_fut, scg_fut, csi_fut) if f is not None]
             if fast_mode:
                 futures_wait(all_futs, timeout=5.5, return_when=ALL_COMPLETED)
                 if mm_fut.done():
@@ -390,6 +476,22 @@ class DealEngine:
                             logger.warning(f"Error querying Card Kingdom for {item_name}: {ck_err}")
                     else:
                         logger.warning(f"Card Kingdom fast_mode poll timed out for {item_name}")
+                if scg_fut is not None:
+                    if scg_fut.done():
+                        try:
+                            scg_data = scg_fut.result()
+                        except Exception as scg_err:
+                            logger.warning(f"Error querying Star City Games for {item_name}: {scg_err}")
+                    else:
+                        logger.warning(f"Star City Games fast_mode poll timed out for {item_name}")
+                if csi_fut is not None:
+                    if csi_fut.done():
+                        try:
+                            csi_data = csi_fut.result()
+                        except Exception as csi_err:
+                            logger.warning(f"Error querying CoolStuffInc for {item_name}: {csi_err}")
+                    else:
+                        logger.warning(f"CoolStuffInc fast_mode poll timed out for {item_name}")
             else:
                 try:
                     mm_data = mm_fut.result()
@@ -404,6 +506,16 @@ class DealEngine:
                         ck_data = ck_fut.result()
                     except Exception as ck_err:
                         logger.warning(f"Error querying Card Kingdom for {item_name}: {ck_err}")
+                if scg_fut is not None:
+                    try:
+                        scg_data = scg_fut.result()
+                    except Exception as scg_err:
+                        logger.warning(f"Error querying Star City Games for {item_name}: {scg_err}")
+                if csi_fut is not None:
+                    try:
+                        csi_data = csi_fut.result()
+                    except Exception as csi_err:
+                        logger.warning(f"Error querying CoolStuffInc for {item_name}: {csi_err}")
         finally:
             if fast_mode:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -411,17 +523,23 @@ class DealEngine:
                 executor.shutdown(wait=True)
 
         now = datetime.now(timezone.utc)
-        results = [tcg_data, mm_data, ebay_data, ck_data]
+        results = [tcg_data, mm_data, ebay_data, ck_data, scg_data, csi_data]
 
         # Upsert VendorPrice records with retry on transient Neon/Postgres SSL connection drop
         mm_was_in_stock = False
         ck_was_in_stock = False
+        scg_was_in_stock = False
+        csi_was_in_stock = False
         for db_attempt in range(2):
             try:
                 mm_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Mighty Meeple").first()
                 mm_was_in_stock = bool(mm_existing and mm_existing.in_stock and mm_existing.price > 0)
                 ck_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Card Kingdom").first()
                 ck_was_in_stock = bool(ck_existing and ck_existing.in_stock and ck_existing.price > 0)
+                scg_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Star City Games").first()
+                scg_was_in_stock = bool(scg_existing and scg_existing.in_stock and scg_existing.price > 0)
+                csi_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="CoolStuffInc").first()
+                csi_was_in_stock = bool(csi_existing and csi_existing.in_stock and csi_existing.price > 0)
 
                 for vendor_data in results:
                     if not vendor_data:
@@ -473,6 +591,8 @@ class DealEngine:
                             "lowest_price": None,
                             "mm_in_stock": False,
                             "ck_in_stock": False,
+                            "scg_in_stock": False,
+                            "csi_in_stock": False,
                             "vendors": [],
                         }
                     continue
@@ -481,7 +601,7 @@ class DealEngine:
         if item is None and item_id is not None:
             item = db.session.get(WatchlistItem, item_id)
 
-        # Check for Mighty Meeple / Card Kingdom In-Stock Alerts and general deal notifications
+        # Check for Mighty Meeple / Card Kingdom / SCG / CSI In-Stock Alerts and general deal notifications
         if notify and item is not None:
             try:
                 mm_now_in_stock = bool(mm_data and mm_data.get("in_stock") and mm_data.get("price", 0) > 0)
@@ -499,6 +619,22 @@ class DealEngine:
                 if ck_now_in_stock and not ck_was_in_stock and global_ck_alert and card_ck_alert:
                     logger.info(f"Card Kingdom restock detected for {item.name}! Dispatching stock alert...")
                     self.send_discord_ck_stock_alert(item=item, ck_data=ck_data, fast_mode=fast_mode)
+
+                scg_now_in_stock = bool(scg_data and scg_data.get("in_stock") and scg_data.get("price", 0) > 0)
+                global_scg_alert = SystemSetting.get_bool("notify_scg_stock_enabled", default=True)
+                card_scg_alert = bool(item.notify_scg_stock if item.notify_scg_stock is not None else True)
+
+                if scg_now_in_stock and not scg_was_in_stock and global_scg_alert and card_scg_alert:
+                    logger.info(f"Star City Games restock detected for {item.name}! Dispatching stock alert...")
+                    self.send_discord_scg_stock_alert(item=item, scg_data=scg_data, fast_mode=fast_mode)
+
+                csi_now_in_stock = bool(csi_data and csi_data.get("in_stock") and csi_data.get("price", 0) > 0)
+                global_csi_alert = SystemSetting.get_bool("notify_csi_stock_enabled", default=True)
+                card_csi_alert = bool(item.notify_csi_stock if item.notify_csi_stock is not None else True)
+
+                if csi_now_in_stock and not csi_was_in_stock and global_csi_alert and card_csi_alert:
+                    logger.info(f"CoolStuffInc restock detected for {item.name}! Dispatching stock alert...")
+                    self.send_discord_csi_stock_alert(item=item, csi_data=csi_data, fast_mode=fast_mode)
 
                 if item.is_deal:
                     best = item.best_vendor
@@ -520,6 +656,8 @@ class DealEngine:
             "lowest_price": item.lowest_in_stock_price if item else None,
             "mm_in_stock": item.mm_in_stock if item else False,
             "ck_in_stock": item.ck_in_stock if item else False,
+            "scg_in_stock": item.scg_in_stock if item else False,
+            "csi_in_stock": item.csi_in_stock if item else False,
             "vendors": [v.to_dict() for v in item.vendor_prices] if item else [],
         }
 
@@ -909,6 +1047,46 @@ class DealEngine:
             color=0x8B5CF6,
             item=item,
             vendor_data=ck_data,
+            user=user,
+            webhook_url=webhook_url,
+            fast_mode=fast_mode,
+        )
+
+    def send_discord_scg_stock_alert(
+        self,
+        item: WatchlistItem,
+        scg_data: dict,
+        user: User | None = None,
+        webhook_url: str | None = None,
+        fast_mode: bool = False,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed specifically for Star City Games in-stock restocks."""
+        return self._send_discord_vendor_stock_alert(
+            vendor_name="Star City Games",
+            emoji="⭐",
+            color=0xF59E0B,
+            item=item,
+            vendor_data=scg_data,
+            user=user,
+            webhook_url=webhook_url,
+            fast_mode=fast_mode,
+        )
+
+    def send_discord_csi_stock_alert(
+        self,
+        item: WatchlistItem,
+        csi_data: dict,
+        user: User | None = None,
+        webhook_url: str | None = None,
+        fast_mode: bool = False,
+    ) -> bool:
+        """Dispatches a rich Discord Webhook embed specifically for CoolStuffInc in-stock restocks."""
+        return self._send_discord_vendor_stock_alert(
+            vendor_name="CoolStuffInc",
+            emoji="❄️",
+            color=0x38BDF8,
+            item=item,
+            vendor_data=csi_data,
             user=user,
             webhook_url=webhook_url,
             fast_mode=fast_mode,

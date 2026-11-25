@@ -683,7 +683,7 @@
         <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div class="flex items-center space-x-3">
                 <span class="text-[#00CED1] font-bold font-heading tracking-wide">CHIMAERA</span>
-                <span class="text-[#94A3B8]">// SECTOR MTG-CORE &bull; SURVEILLANCE ENGINES: SCRYFALL &bull; MIGHTY MEEPLE &bull; EBAY</span>
+                <span class="text-[#94A3B8]">// SECTOR MTG-CORE &bull; SURVEILLANCE ENGINES: SCRYFALL &bull; CARD KINGDOM &bull; STAR CITY GAMES &bull; COOLSTUFFINC &bull; MIGHTY MEEPLE &bull; EBAY</span>
             </div>
             <div class="flex items-center space-x-4">
                 <a href="/system-overview" class="text-[#00CED1] hover:underline flex items-center space-x-1 font-bold">
@@ -851,20 +851,32 @@
                         </div>
                     </div>
 
-                    <!-- Mighty Meeple Alert Checkbox -->
-                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
-                        <input type="checkbox" id="card-notify-mm-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                        <label for="card-notify-mm-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
-                            Send alert if card becomes in stock at Mighty Meeple
-                        </label>
-                    </div>
-
-                    <!-- Card Kingdom Alert Checkbox -->
-                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
-                        <input type="checkbox" id="card-notify-ck-input" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                        <label for="card-notify-ck-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
-                            Send alert if card becomes in stock at Card Kingdom
-                        </label>
+                    <!-- Store In-Stock Alert Checkboxes (2x2 Grid) -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                            <input type="checkbox" id="card-notify-mm-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                            <label for="card-notify-mm-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                                Mighty Meeple in-stock alert
+                            </label>
+                        </div>
+                        <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                            <input type="checkbox" id="card-notify-ck-input" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                            <label for="card-notify-ck-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                                Card Kingdom in-stock alert
+                            </label>
+                        </div>
+                        <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                            <input type="checkbox" id="card-notify-scg-input" class="w-4 h-4 text-[#F59E0B] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                            <label for="card-notify-scg-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                                Star City Games in-stock alert
+                            </label>
+                        </div>
+                        <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                            <input type="checkbox" id="card-notify-csi-input" class="w-4 h-4 text-[#38BDF8] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                            <label for="card-notify-csi-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                                CoolStuffInc in-stock alert
+                            </label>
+                        </div>
                     </div>
 
                     <!-- Card Preview Telemetry Box -->
@@ -972,20 +984,32 @@
                     {% endif %}
                 </div>
 
-                <!-- Mighty Meeple Alert Checkbox -->
-                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
-                    <input type="checkbox" id="bulk-notify-mm-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                    <label for="bulk-notify-mm-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
-                        Send alert if cards become in stock at Mighty Meeple
-                    </label>
-                </div>
-
-                <!-- Card Kingdom Alert Checkbox -->
-                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
-                    <input type="checkbox" id="bulk-notify-ck-input" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                    <label for="bulk-notify-ck-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
-                        Send alert if cards become in stock at Card Kingdom
-                    </label>
+                <!-- Store In-Stock Alert Checkboxes (2x2 Grid) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="bulk-notify-mm-input" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="bulk-notify-mm-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Mighty Meeple in-stock alert
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="bulk-notify-ck-input" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="bulk-notify-ck-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Card Kingdom in-stock alert
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="bulk-notify-scg-input" class="w-4 h-4 text-[#F59E0B] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="bulk-notify-scg-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Star City Games in-stock alert
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="bulk-notify-csi-input" class="w-4 h-4 text-[#38BDF8] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="bulk-notify-csi-input" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            CoolStuffInc in-stock alert
+                        </label>
+                    </div>
                 </div>
 
                 <!-- Status & Progress Feedback Box -->
@@ -1265,20 +1289,32 @@
                     </div>
                 </div>
 
-                <!-- Edit MM In-Stock Alert Checkbox -->
-                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
-                    <input type="checkbox" id="edit-target-mm-alert" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                    <label for="edit-target-mm-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
-                        Notify if in stock at Mighty Meeple
-                    </label>
-                </div>
-
-                <!-- Edit CK In-Stock Alert Checkbox -->
-                <div class="flex items-center space-x-2.5 bg-[#10141D] p-2.5 border border-[#263245]">
-                    <input type="checkbox" id="edit-target-ck-alert" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                    <label for="edit-target-ck-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
-                        Notify if in stock at Card Kingdom
-                    </label>
+                <!-- Store In-Stock Alert Checkboxes (2x2 Grid) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="edit-target-mm-alert" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="edit-target-mm-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Mighty Meeple
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="edit-target-ck-alert" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="edit-target-ck-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Card Kingdom
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="edit-target-scg-alert" class="w-4 h-4 text-[#F59E0B] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="edit-target-scg-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            Star City Games
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-[#10141D] p-2.5 border border-[#263245]">
+                        <input type="checkbox" id="edit-target-csi-alert" class="w-4 h-4 text-[#38BDF8] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="edit-target-csi-alert" class="text-xs font-mono text-[#F1F5F9] cursor-pointer">
+                            CoolStuffInc
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -1411,20 +1447,32 @@
                     </label>
                 </div>
 
-                <!-- Mighty Meeple Global Alert Toggle -->
-                <div class="flex items-center space-x-3 bg-[#10141D] p-3 border border-[#263245]">
-                    <input type="checkbox" id="cadence-notify-mm" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                    <label for="cadence-notify-mm" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
-                        Enable Mighty Meeple In-Stock Notifications
-                    </label>
-                </div>
-
-                <!-- Card Kingdom Global Alert Toggle -->
-                <div class="flex items-center space-x-3 bg-[#10141D] p-3 border border-[#263245]">
-                    <input type="checkbox" id="cadence-notify-ck" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
-                    <label for="cadence-notify-ck" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
-                        Enable Card Kingdom In-Stock Notifications
-                    </label>
+                <!-- Store Global In-Stock Alert Toggles -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-3 border border-[#263245]">
+                        <input type="checkbox" id="cadence-notify-mm" class="w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="cadence-notify-mm" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
+                            Mighty Meeple Alerts
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-3 border border-[#263245]">
+                        <input type="checkbox" id="cadence-notify-ck" class="w-4 h-4 text-[#8B5CF6] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="cadence-notify-ck" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
+                            Card Kingdom Alerts
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-3 border border-[#263245]">
+                        <input type="checkbox" id="cadence-notify-scg" class="w-4 h-4 text-[#F59E0B] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="cadence-notify-scg" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
+                            Star City Games Alerts
+                        </label>
+                    </div>
+                    <div class="flex items-center space-x-2.5 bg-[#10141D] p-3 border border-[#263245]">
+                        <input type="checkbox" id="cadence-notify-csi" class="w-4 h-4 text-[#38BDF8] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer" checked>
+                        <label for="cadence-notify-csi" class="text-xs font-mono font-bold text-[#F1F5F9] cursor-pointer">
+                            CoolStuffInc Alerts
+                        </label>
+                    </div>
                 </div>
 
                 <!-- Personal Discord Webhook Alerts Configuration -->

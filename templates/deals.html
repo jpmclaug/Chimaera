@@ -251,6 +251,12 @@
                             {% if item.ck_in_stock %}
                             <span class="bg-[#8B5CF6]/20 text-[#C4B5FD] border border-[#8B5CF6] text-[10px] px-1.5 py-0.5 font-mono uppercase font-bold">Card Kingdom In-Stock</span>
                             {% endif %}
+                            {% if item.scg_in_stock %}
+                            <span class="bg-[#F59E0B]/20 text-[#FCD34D] border border-[#F59E0B] text-[10px] px-1.5 py-0.5 font-mono uppercase font-bold">Star City Games In-Stock</span>
+                            {% endif %}
+                            {% if item.csi_in_stock %}
+                            <span class="bg-[#38BDF8]/20 text-[#7DD3FC] border border-[#38BDF8] text-[10px] px-1.5 py-0.5 font-mono uppercase font-bold">CoolStuffInc In-Stock</span>
+                            {% endif %}
                         </div>
 
                         <!-- Savings Badge -->
@@ -1110,7 +1116,7 @@
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                     <div class="text-xs font-mono font-bold text-[#C4B5FD] uppercase tracking-wider">
-                        MULTI-RETAILER SEALED BOARD // TCGPLAYER • CARD KINGDOM • SHOP APP
+                        MULTI-RETAILER SEALED BOARD // TCGPLAYER • CARD KINGDOM • STAR CITY GAMES • COOLSTUFFINC • SHOP APP
                     </div>
                     <p class="text-xs text-[#94A3B8] mt-0.5">
                         Review live prices across retailers and <strong class="text-[#00CED1]">Whitelist</strong> reputable Shop stores for Discord alerts or <strong class="text-[#FF3358]">Blacklist</strong> sketchy sellers permanently.
@@ -1133,6 +1139,8 @@
                             <th class="px-3 py-2 text-right">Target</th>
                             <th class="px-3 py-2 text-right">TCGplayer</th>
                             <th class="px-3 py-2 text-right">Card Kingdom</th>
+                            <th class="px-3 py-2 text-right">Star City Games</th>
+                            <th class="px-3 py-2 text-right">CoolStuffInc</th>
                             <th class="px-3 py-2">Shop (Whitelisted)</th>
                             <th class="px-3 py-2">Shop (Unverified)</th>
                         </tr>
@@ -1179,6 +1187,32 @@
                                 </div>
                                 {% if row.ck.product_url %}
                                 <a href="{{ row.ck.product_url }}" target="_blank" rel="noopener" class="text-[10px] text-[#C4B5FD] hover:text-white underline uppercase">Buy</a>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-[#64748B]">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-2.5 text-right">
+                                {% if row.scg and row.scg.price > 0 %}
+                                <div class="font-bold {% if it.target_price and row.scg.in_stock and row.scg.price <= it.target_price %}text-[#10B981]{% else %}text-white{% endif %}">
+                                    ${{ "%.2f"|format(row.scg.price) }}
+                                    <span class="text-[10px] {% if row.scg.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In" if row.scg.in_stock else "Out" }})</span>
+                                </div>
+                                {% if row.scg.product_url %}
+                                <a href="{{ row.scg.product_url }}" target="_blank" rel="noopener" class="text-[10px] text-[#FCD34D] hover:text-white underline uppercase">Buy</a>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-[#64748B]">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-2.5 text-right">
+                                {% if row.csi and row.csi.price > 0 %}
+                                <div class="font-bold {% if it.target_price and row.csi.in_stock and row.csi.price <= it.target_price %}text-[#10B981]{% else %}text-white{% endif %}">
+                                    ${{ "%.2f"|format(row.csi.price) }}
+                                    <span class="text-[10px] {% if row.csi.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In" if row.csi.in_stock else "Out" }})</span>
+                                </div>
+                                {% if row.csi.product_url %}
+                                <a href="{{ row.csi.product_url }}" target="_blank" rel="noopener" class="text-[10px] text-[#7DD3FC] hover:text-white underline uppercase">Buy</a>
                                 {% endif %}
                                 {% else %}
                                 <span class="text-[#64748B]">N/A</span>

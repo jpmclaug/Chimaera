@@ -160,6 +160,17 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_ck_stock BOOLEAN DEFAULT 1 NOT NULL"))
                         conn.commit()
 
+                    # Ensure notify_scg_stock and notify_csi_stock columns exist in watchlist_item
+                    if "notify_scg_stock" not in cols:
+                        logger.info("Adding notify_scg_stock column to watchlist_item...")
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_scg_stock BOOLEAN DEFAULT 1 NOT NULL"))
+                        conn.commit()
+
+                    if "notify_csi_stock" not in cols:
+                        logger.info("Adding notify_csi_stock column to watchlist_item...")
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN notify_csi_stock BOOLEAN DEFAULT 1 NOT NULL"))
+                        conn.commit()
+
                     # Ensure tag column exists in watchlist_item
                     if "tag" not in cols:
                         logger.info("Adding tag column to watchlist_item...")
@@ -408,6 +419,8 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES \"user\"(id) ON DELETE CASCADE"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_mm_stock BOOLEAN DEFAULT TRUE NOT NULL"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_ck_stock BOOLEAN DEFAULT TRUE NOT NULL"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_scg_stock BOOLEAN DEFAULT TRUE NOT NULL"))
+                        conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS notify_csi_stock BOOLEAN DEFAULT TRUE NOT NULL"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS tag VARCHAR(100)"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS type_line VARCHAR(255)"))
                         conn.execute(db.text("ALTER TABLE watchlist_item ADD COLUMN IF NOT EXISTS color_identity VARCHAR(50)"))
@@ -1662,6 +1675,8 @@ def create_app(test_config=None):
                 continue
             tcg_vp = item.get_vendor_price("TCGplayer")
             ck_vp = item.get_vendor_price("Card Kingdom")
+            scg_vp = item.get_vendor_price("Star City Games")
+            csi_vp = item.get_vendor_price("CoolStuffInc")
             shop_trusted_vp = next((v for v in item.vendor_prices if v.vendor_name.startswith("Shop · ")), None)
             shop_unverified_vp = next(
                 (v for v in item.vendor_prices if v.vendor_name.startswith("Shop (unverified) · ")),
@@ -1675,6 +1690,8 @@ def create_app(test_config=None):
                 "item": item,
                 "tcg": tcg_vp,
                 "ck": ck_vp,
+                "scg": scg_vp,
+                "csi": csi_vp,
                 "shop_trusted": shop_trusted_vp,
                 "shop_unverified": shop_unverified_vp,
                 "is_deal": item.is_deal,
@@ -2278,6 +2295,8 @@ def create_app(test_config=None):
                 target_price=target_price,
                 notify_mm_stock=False,
                 notify_ck_stock=False,
+                notify_scg_stock=False,
+                notify_csi_stock=False,
                 tag=tag,
                 tcgplayer_product_id=pid,
                 tcgplayer_market_price=market_price,
@@ -2692,6 +2711,8 @@ def create_app(test_config=None):
         target_price_raw = data.get("target_price")
         notify_mm_stock = bool(data.get("notify_mm_stock", True))
         notify_ck_stock = bool(data.get("notify_ck_stock", True))
+        notify_scg_stock = bool(data.get("notify_scg_stock", True))
+        notify_csi_stock = bool(data.get("notify_csi_stock", True))
         tag = (data.get("tag") or "").strip() or None
 
         if not name:
@@ -2766,6 +2787,8 @@ def create_app(test_config=None):
             target_price=target_price,
             notify_mm_stock=notify_mm_stock,
             notify_ck_stock=notify_ck_stock,
+            notify_scg_stock=notify_scg_stock,
+            notify_csi_stock=notify_csi_stock,
             tag=tag,
         )
         db.session.add(new_item)
@@ -2819,6 +2842,8 @@ def create_app(test_config=None):
         finish = (data.get("finish") or "nonfoil").strip().lower()
         notify_mm_stock = bool(data.get("notify_mm_stock", True))
         notify_ck_stock = bool(data.get("notify_ck_stock", True))
+        notify_scg_stock = bool(data.get("notify_scg_stock", True))
+        notify_csi_stock = bool(data.get("notify_csi_stock", True))
         target_strategy = (data.get("target_strategy") or "none").strip().lower()
         custom_target_price = data.get("target_price")
         tag = (data.get("tag") or "").strip() or None
@@ -2904,6 +2929,8 @@ def create_app(test_config=None):
                 target_price=target_price,
                 notify_mm_stock=notify_mm_stock,
                 notify_ck_stock=notify_ck_stock,
+                notify_scg_stock=notify_scg_stock,
+                notify_csi_stock=notify_csi_stock,
                 tag=tag,
             )
             db.session.add(new_item)
@@ -3061,6 +3088,54 @@ def create_app(test_config=None):
             "card": item.to_dict(),
         })
 
+    @app.route("/api/watchlist/toggle-scg-alert/<int:item_id>", methods=["POST"])
+    @login_required
+    def toggle_scg_alert(item_id):
+        """Toggle Star City Games stock alert for a specific card."""
+        user = get_current_user()
+        item = db.session.get(WatchlistItem, item_id)
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
+
+        data = request.get_json(silent=True) or {}
+        if "notify_scg_stock" in data:
+            item.notify_scg_stock = bool(data["notify_scg_stock"])
+        else:
+            item.notify_scg_stock = not bool(item.notify_scg_stock if item.notify_scg_stock is not None else True)
+
+        db.session.commit()
+        status_str = "ENABLED" if item.notify_scg_stock else "DISABLED"
+        log_activity("CARD_UPDATE", details=f"Toggled SCG alert to {status_str} for '{item.name}'", user=user)
+        return jsonify({
+            "message": f"Star City Games in-stock alert {status_str} for {item.name}.",
+            "notify_scg_stock": item.notify_scg_stock,
+            "card": item.to_dict(),
+        })
+
+    @app.route("/api/watchlist/toggle-csi-alert/<int:item_id>", methods=["POST"])
+    @login_required
+    def toggle_csi_alert(item_id):
+        """Toggle CoolStuffInc stock alert for a specific card."""
+        user = get_current_user()
+        item = db.session.get(WatchlistItem, item_id)
+        if not item or item.user_id != user.id:
+            return jsonify({"error": "Card not found in your target registry."}), 404
+
+        data = request.get_json(silent=True) or {}
+        if "notify_csi_stock" in data:
+            item.notify_csi_stock = bool(data["notify_csi_stock"])
+        else:
+            item.notify_csi_stock = not bool(item.notify_csi_stock if item.notify_csi_stock is not None else True)
+
+        db.session.commit()
+        status_str = "ENABLED" if item.notify_csi_stock else "DISABLED"
+        log_activity("CARD_UPDATE", details=f"Toggled CSI alert to {status_str} for '{item.name}'", user=user)
+        return jsonify({
+            "message": f"CoolStuffInc in-stock alert {status_str} for {item.name}.",
+            "notify_csi_stock": item.notify_csi_stock,
+            "card": item.to_dict(),
+        })
+
     @app.route("/api/watchlist/update-scope/<int:item_id>", methods=["POST"])
     @login_required
     def update_card_scope(item_id):
@@ -3133,6 +3208,12 @@ def create_app(test_config=None):
 
         if "notify_ck_stock" in data:
             item.notify_ck_stock = bool(data["notify_ck_stock"])
+
+        if "notify_scg_stock" in data:
+            item.notify_scg_stock = bool(data["notify_scg_stock"])
+
+        if "notify_csi_stock" in data:
+            item.notify_csi_stock = bool(data["notify_csi_stock"])
 
         if "tag" in data:
             raw_tag = (data.get("tag") or "").strip()
@@ -4312,6 +4393,8 @@ def create_app(test_config=None):
         auto_enabled = SystemSetting.get_bool("auto_poll_enabled", default=True)
         notify_mm_stock = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
         notify_ck_stock = SystemSetting.get_bool("notify_ck_stock_enabled", default=True)
+        notify_scg_stock = SystemSetting.get_bool("notify_scg_stock_enabled", default=True)
+        notify_csi_stock = SystemSetting.get_bool("notify_csi_stock_enabled", default=True)
         ebay_link_mode = SystemSetting.get_val("ebay_link_mode", default="direct")
         last_poll_time = SystemSetting.get_val("last_poll_time")
         last_poll_status = SystemSetting.get_val("last_poll_status", "No surveillance cycles recorded.")
@@ -4325,6 +4408,8 @@ def create_app(test_config=None):
             "auto_poll_enabled": auto_enabled,
             "notify_mm_stock_enabled": notify_mm_stock,
             "notify_ck_stock_enabled": notify_ck_stock,
+            "notify_scg_stock_enabled": notify_scg_stock,
+            "notify_csi_stock_enabled": notify_csi_stock,
             "ebay_link_mode": ebay_link_mode,
             "last_poll_time": last_poll_time,
             "recent_poll_times": SystemSetting.get_recent_successful_runs("registry", limit=3),
@@ -4346,6 +4431,8 @@ def create_app(test_config=None):
         auto_enabled_raw = data.get("auto_poll_enabled")
         notify_mm_raw = data.get("notify_mm_stock_enabled")
         notify_ck_raw = data.get("notify_ck_stock_enabled")
+        notify_scg_raw = data.get("notify_scg_stock_enabled")
+        notify_csi_raw = data.get("notify_csi_stock_enabled")
         ebay_mode_raw = data.get("ebay_link_mode")
 
         if interval_raw is not None:
@@ -4369,6 +4456,14 @@ def create_app(test_config=None):
             ck_val = "true" if bool(notify_ck_raw) else "false"
             SystemSetting.set_val("notify_ck_stock_enabled", ck_val)
 
+        if notify_scg_raw is not None:
+            scg_val = "true" if bool(notify_scg_raw) else "false"
+            SystemSetting.set_val("notify_scg_stock_enabled", scg_val)
+
+        if notify_csi_raw is not None:
+            csi_val = "true" if bool(notify_csi_raw) else "false"
+            SystemSetting.set_val("notify_csi_stock_enabled", csi_val)
+
         if ebay_mode_raw is not None:
             mode_str = "search" if str(ebay_mode_raw).lower() == "search" else "direct"
             SystemSetting.set_val("ebay_link_mode", mode_str)
@@ -4377,6 +4472,8 @@ def create_app(test_config=None):
         current_auto = SystemSetting.get_bool("auto_poll_enabled", default=True)
         current_mm = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
         current_ck = SystemSetting.get_bool("notify_ck_stock_enabled", default=True)
+        current_scg = SystemSetting.get_bool("notify_scg_stock_enabled", default=True)
+        current_csi = SystemSetting.get_bool("notify_csi_stock_enabled", default=True)
         current_ebay = SystemSetting.get_val("ebay_link_mode", default="direct")
 
         return jsonify({
@@ -4385,6 +4482,8 @@ def create_app(test_config=None):
             "auto_poll_enabled": current_auto,
             "notify_mm_stock_enabled": current_mm,
             "notify_ck_stock_enabled": current_ck,
+            "notify_scg_stock_enabled": current_scg,
+            "notify_csi_stock_enabled": current_csi,
             "ebay_link_mode": current_ebay,
         })
 
@@ -6689,6 +6788,8 @@ def create_app(test_config=None):
                 tag=tag,
                 notify_mm_stock=True,
                 notify_ck_stock=True,
+                notify_scg_stock=True,
+                notify_csi_stock=True,
             )
             db.session.add(item)
             db.session.commit()

@@ -112,6 +112,8 @@
                     <option value="in_stock">IN STOCK ONLY</option>
                     <option value="mm_in_stock">MIGHTY MEEPLE IN STOCK</option>
                     <option value="ck_in_stock">CARD KINGDOM IN STOCK</option>
+                    <option value="scg_in_stock">STAR CITY GAMES IN STOCK</option>
+                    <option value="csi_in_stock">COOLSTUFFINC IN STOCK</option>
                     <option value="any_version">ANY VERSION (GENERAL)</option>
                     <option value="specific_print">SPECIFIC PRINTINGS</option>
                 </select>
@@ -352,6 +354,8 @@
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
             data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
             data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
+            data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
+            data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
             data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
             data-is-sealed="{{ 'true' if item.is_sealed else 'false' }}"
             data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
@@ -435,7 +439,7 @@
                                 <span>🏷️ {{ item.tag }}</span>
                             </button>
                             {% else %}
-                            <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '', '{{ (item.finish or 'any')|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }})"
+                            <button onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '', '{{ (item.finish or 'any')|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})"
                                 class="bg-[#10141D] hover:bg-[#222B3D] text-[#64748B] hover:text-[#C084FC] border border-[#263245] hover:border-[#9333EA]/50 text-[10px] px-1.5 py-0.5 font-mono uppercase transition"
                                 title="Assign Tag / Deck">
                                 + Tag
@@ -443,21 +447,40 @@
                             {% endif %}
                             </div>
 
-                            <!-- Mighty Meeple Stock Alert Toggle -->
-                            <button onclick="toggleMightyMeepleAlert({{ item.id }})" id="mm-alert-btn-{{ item.id }}"
-                                class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_mm_stock %}bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
-                                title="Toggle Mighty Meeple In-Stock Alert">
-                                <span>MM Alert:</span>
-                                <span id="mm-alert-status-{{ item.id }}">{{ "ON" if item.notify_mm_stock else "OFF" }}</span>
-                            </button>
+                            <!-- Compact 4-Badge Alert Row (MM / CK / SCG / CSI) -->
+                            <div class="flex flex-wrap items-center gap-1 mt-1">
+                                <!-- Mighty Meeple Stock Alert Toggle -->
+                                <button onclick="toggleMightyMeepleAlert({{ item.id }})" id="mm-alert-btn-{{ item.id }}"
+                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_mm_stock %}bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    title="Toggle Mighty Meeple In-Stock Alert">
+                                    <span>MM:</span>
+                                    <span id="mm-alert-status-{{ item.id }}">{{ "ON" if item.notify_mm_stock else "OFF" }}</span>
+                                </button>
 
-                            <!-- Card Kingdom Stock Alert Toggle -->
-                            <button onclick="toggleCardKingdomAlert({{ item.id }})" id="ck-alert-btn-{{ item.id }}"
-                                class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_ck_stock %}bg-[#8B5CF6]/15 text-[#C4B5FD] border-[#8B5CF6]/50 hover:bg-[#8B5CF6]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
-                                title="Toggle Card Kingdom In-Stock Alert">
-                                <span>CK Alert:</span>
-                                <span id="ck-alert-status-{{ item.id }}">{{ "ON" if item.notify_ck_stock else "OFF" }}</span>
-                            </button>
+                                <!-- Card Kingdom Stock Alert Toggle -->
+                                <button onclick="toggleCardKingdomAlert({{ item.id }})" id="ck-alert-btn-{{ item.id }}"
+                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_ck_stock %}bg-[#8B5CF6]/15 text-[#C4B5FD] border-[#8B5CF6]/50 hover:bg-[#8B5CF6]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    title="Toggle Card Kingdom In-Stock Alert">
+                                    <span>CK:</span>
+                                    <span id="ck-alert-status-{{ item.id }}">{{ "ON" if item.notify_ck_stock else "OFF" }}</span>
+                                </button>
+
+                                <!-- Star City Games Stock Alert Toggle -->
+                                <button onclick="toggleStarCityGamesAlert({{ item.id }})" id="scg-alert-btn-{{ item.id }}"
+                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_scg_stock %}bg-[#F59E0B]/15 text-[#FCD34D] border-[#F59E0B]/50 hover:bg-[#F59E0B]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    title="Toggle Star City Games In-Stock Alert">
+                                    <span>SCG:</span>
+                                    <span id="scg-alert-status-{{ item.id }}">{{ "ON" if item.notify_scg_stock else "OFF" }}</span>
+                                </button>
+
+                                <!-- CoolStuffInc Stock Alert Toggle -->
+                                <button onclick="toggleCoolStuffIncAlert({{ item.id }})" id="csi-alert-btn-{{ item.id }}"
+                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_csi_stock %}bg-[#38BDF8]/15 text-[#7DD3FC] border-[#38BDF8]/50 hover:bg-[#38BDF8]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    title="Toggle CoolStuffInc In-Stock Alert">
+                                    <span>CSI:</span>
+                                    <span id="csi-alert-status-{{ item.id }}">{{ "ON" if item.notify_csi_stock else "OFF" }}</span>
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Target vs Lowest Price & Price Intelligence Readout -->
@@ -527,6 +550,8 @@
                     {% set mm = item.get_vendor_price('Mighty Meeple') %}
                     {% set eb = item.get_vendor_price('eBay') %}
                     {% set ck = item.get_vendor_price('Card Kingdom') %}
+                    {% set scg = item.get_vendor_price('Star City Games') %}
+                    {% set csi = item.get_vendor_price('CoolStuffInc') %}
 
                     <!-- TCGplayer -->
                     <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
@@ -561,6 +586,48 @@
                             </span>
                             {% if ck.product_url %}
                             <a href="{{ ck.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Buy</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#64748B] text-xs">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Star City Games (Sealed) -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
+                        <div class="flex items-center space-x-1.5 min-w-0">
+                            <span class="px-1 py-0.2 bg-[#F59E0B]/20 text-[#FCD34D] border border-[#F59E0B]/40 text-[10px] font-bold uppercase">SCG</span>
+                            <span class="text-[#94A3B8] text-xs font-medium truncate">Star City Games</span>
+                        </div>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            {% if scg and scg.price > 0 %}
+                            <span class="font-bold text-white text-xs">${{ "%.2f"|format(scg.price) }}</span>
+                            <span class="text-xs uppercase font-bold {% if scg.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">
+                                ({{ "In" if scg.in_stock else "Out" }})
+                            </span>
+                            {% if scg.product_url %}
+                            <a href="{{ scg.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Buy</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#64748B] text-xs">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- CoolStuffInc (Sealed) -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
+                        <div class="flex items-center space-x-1.5 min-w-0">
+                            <span class="px-1 py-0.2 bg-[#38BDF8]/20 text-[#7DD3FC] border border-[#38BDF8]/40 text-[10px] font-bold uppercase">CSI</span>
+                            <span class="text-[#94A3B8] text-xs font-medium truncate">CoolStuffInc</span>
+                        </div>
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            {% if csi and csi.price > 0 %}
+                            <span class="font-bold text-white text-xs">${{ "%.2f"|format(csi.price) }}</span>
+                            <span class="text-xs uppercase font-bold {% if csi.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">
+                                ({{ "In" if csi.in_stock else "Out" }})
+                            </span>
+                            {% if csi.product_url %}
+                            <a href="{{ csi.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Buy</a>
                             {% endif %}
                             {% else %}
                             <span class="text-[#64748B] text-xs">N/A</span>
@@ -655,6 +722,54 @@
                         </div>
                     </div>
 
+                    <!-- Star City Games (Singles) -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
+                        <div class="flex items-center space-x-1.5">
+                            <span class="px-1 py-0.2 bg-[#F59E0B]/20 text-[#FCD34D] border border-[#F59E0B]/40 text-[10px] font-bold uppercase">SCG</span>
+                            <span class="text-[#94A3B8] text-xs font-medium">Star City Games</span>
+                            {% if scg and scg.in_stock %}
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#F59E0B] inline-block animate-pulse" title="In Stock at Star City Games"></span>
+                            {% endif %}
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            {% if scg and scg.price > 0 %}
+                            <span class="font-bold text-white text-xs">${{ "%.2f"|format(scg.price) }}</span>
+                            <span class="text-xs uppercase font-bold {% if scg.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">
+                                ({{ "In" if scg.in_stock else "Out" }})
+                            </span>
+                            {% if scg.product_url %}
+                            <a href="{{ scg.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Buy</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#64748B] text-xs">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- CoolStuffInc (Singles) -->
+                    <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
+                        <div class="flex items-center space-x-1.5">
+                            <span class="px-1 py-0.2 bg-[#38BDF8]/20 text-[#7DD3FC] border border-[#38BDF8]/40 text-[10px] font-bold uppercase">CSI</span>
+                            <span class="text-[#94A3B8] text-xs font-medium">CoolStuffInc</span>
+                            {% if csi and csi.in_stock %}
+                            <span class="w-1.5 h-1.5 rounded-full bg-[#38BDF8] inline-block animate-pulse" title="In Stock at CoolStuffInc"></span>
+                            {% endif %}
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            {% if csi and csi.price > 0 %}
+                            <span class="font-bold text-white text-xs">${{ "%.2f"|format(csi.price) }}</span>
+                            <span class="text-xs uppercase font-bold {% if csi.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">
+                                ({{ "In" if csi.in_stock else "Out" }})
+                            </span>
+                            {% if csi.product_url %}
+                            <a href="{{ csi.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline text-xs uppercase font-bold">Buy</a>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-[#64748B] text-xs">N/A</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
                     <!-- Mighty Meeple -->
                     <div class="flex items-center justify-between text-xs bg-[#10141D] px-3 py-1.5 border border-[#263245]">
                         <div class="flex items-center space-x-1.5">
@@ -717,7 +832,7 @@
                     <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-grid-{{ item.id }}" class="text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold flex items-center space-x-1" title="Toggle Target Selection">
                         <span class="btn-select-label-{{ item.id }}">Select</span>
                     </button>
-                    <button id="card-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }})" class="text-[#00CED1] hover:text-white uppercase font-bold">
+                    <button id="card-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})" class="text-[#00CED1] hover:text-white uppercase font-bold">
                         Edit Target
                     </button>
                     <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">
@@ -745,6 +860,8 @@
             data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
             data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
             data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
+            data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
+            data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
             data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
             data-is-sealed="{{ 'true' if item.is_sealed else 'false' }}"
             data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
@@ -818,6 +935,12 @@
                         {% if item.ck_in_stock %}
                         <span class="text-[#C4B5FD] border border-[#8B5CF6]/50 bg-[#8B5CF6]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">CK In-Stock</span>
                         {% endif %}
+                        {% if item.scg_in_stock %}
+                        <span class="text-[#FCD34D] border border-[#F59E0B]/50 bg-[#F59E0B]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">SCG In-Stock</span>
+                        {% endif %}
+                        {% if item.csi_in_stock %}
+                        <span class="text-[#7DD3FC] border border-[#38BDF8]/50 bg-[#38BDF8]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">CSI In-Stock</span>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -850,7 +973,7 @@
                     </a>
                     {% endif %}
 
-                    <button id="compact-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }})" 
+                    <button id="compact-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})" 
                         class="btn-bridge px-2 py-1 text-[11px] text-[#00CED1] hover:text-white" title="Edit Target & Tag">
                         Edit
                     </button>
@@ -900,6 +1023,8 @@
                     data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
                     data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
                     data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
+                    data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
+                    data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
                     data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
                     data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
                     data-binder-count="{{ item.binder_count or 0 }}"
@@ -992,6 +1117,9 @@
                                 <div class="text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Vendor Intelligence Matrix</div>
                                 {% set tcg = item.get_vendor_price('TCGplayer') %}
                                 {% set mm = item.get_vendor_price('Mighty Meeple') %}
+                                {% set ck = item.get_vendor_price('Card Kingdom') %}
+                                {% set scg = item.get_vendor_price('Star City Games') %}
+                                {% set csi = item.get_vendor_price('CoolStuffInc') %}
                                 {% set eb = item.get_vendor_price('eBay') %}
 
                                 <!-- TCGplayer -->
@@ -1018,6 +1146,54 @@
                                         <span class="font-bold {% if mm.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if mm.in_stock else "Out" }})</span>
                                         {% if mm.product_url %}
                                         <a href="{{ mm.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
+                                        {% endif %}
+                                        {% else %}
+                                        <span class="text-[#64748B]">N/A</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <!-- Card Kingdom -->
+                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
+                                    <span class="text-[#94A3B8]">Card Kingdom</span>
+                                    <div class="flex items-center space-x-2">
+                                        {% if ck and ck.price > 0 %}
+                                        <span class="font-bold text-white">${{ "%.2f"|format(ck.price) }}</span>
+                                        <span class="font-bold {% if ck.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if ck.in_stock else "Out" }})</span>
+                                        {% if ck.product_url %}
+                                        <a href="{{ ck.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
+                                        {% endif %}
+                                        {% else %}
+                                        <span class="text-[#64748B]">N/A</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <!-- Star City Games -->
+                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
+                                    <span class="text-[#94A3B8]">Star City Games</span>
+                                    <div class="flex items-center space-x-2">
+                                        {% if scg and scg.price > 0 %}
+                                        <span class="font-bold text-white">${{ "%.2f"|format(scg.price) }}</span>
+                                        <span class="font-bold {% if scg.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if scg.in_stock else "Out" }})</span>
+                                        {% if scg.product_url %}
+                                        <a href="{{ scg.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
+                                        {% endif %}
+                                        {% else %}
+                                        <span class="text-[#64748B]">N/A</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <!-- CoolStuffInc -->
+                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
+                                    <span class="text-[#94A3B8]">CoolStuffInc</span>
+                                    <div class="flex items-center space-x-2">
+                                        {% if csi and csi.price > 0 %}
+                                        <span class="font-bold text-white">${{ "%.2f"|format(csi.price) }}</span>
+                                        <span class="font-bold {% if csi.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if csi.in_stock else "Out" }})</span>
+                                        {% if csi.product_url %}
+                                        <a href="{{ csi.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
                                         {% endif %}
                                         {% else %}
                                         <span class="text-[#64748B]">N/A</span>
@@ -1055,7 +1231,7 @@
                                 <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-swipe-{{ item.id }}" class="btn-bridge px-2.5 py-1.5 text-xs text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold" title="Toggle Target Selection">
                                     <span class="btn-select-label-{{ item.id }}">Select</span>
                                 </button>
-                                <button id="swipe-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }})" class="btn-bridge px-3 py-1.5 text-[#00CED1] hover:text-white uppercase font-bold">
+                                <button id="swipe-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})" class="btn-bridge px-3 py-1.5 text-[#00CED1] hover:text-white uppercase font-bold">
                                     Edit Target
                                 </button>
                                 <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="btn-bridge px-2.5 py-1.5 text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">
@@ -1093,6 +1269,8 @@
                 data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
                 data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
                 data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
+                data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
+                data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
                 data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
                 data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
                 data-binder-count="{{ item.binder_count or 0 }}"
@@ -1190,6 +1368,18 @@
                             <span>${{ "%.2f"|format(item.ck_vendor_price.price) }}</span>
                         </div>
                         {% endif %}
+                        {% if item.scg_in_stock %}
+                        <div class="flex items-center justify-between text-[9px] text-[#FCD34D] font-bold border-t border-[#263245]/60 pt-0.5">
+                            <span>SCG Stock:</span>
+                            <span>${{ "%.2f"|format(item.scg_vendor_price.price) }}</span>
+                        </div>
+                        {% endif %}
+                        {% if item.csi_in_stock %}
+                        <div class="flex items-center justify-between text-[9px] text-[#7DD3FC] font-bold border-t border-[#263245]/60 pt-0.5">
+                            <span>CSI Stock:</span>
+                            <span>${{ "%.2f"|format(item.csi_vendor_price.price) }}</span>
+                        </div>
+                        {% endif %}
                     </div>
 
                     <!-- Action Buttons -->
@@ -1227,6 +1417,8 @@
                 data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
                 data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
                 data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
+                data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
+                data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
                 data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
                 data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
                 data-binder-count="{{ item.binder_count or 0 }}"

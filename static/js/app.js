@@ -400,7 +400,7 @@ function toggleBulkCustomTargetInput() {
     }
 }
 
-async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true, currentTag = "", currentFinish = "", notifyCK = true) {
+async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isAnyVersion = true, currentTag = "", currentFinish = "", notifyCK = true, notifySCG = true, notifyCSI = true) {
     const modal = document.getElementById("modal-edit-target");
     if (!modal) return;
 
@@ -433,6 +433,16 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
     const ckCheckbox = document.getElementById("edit-target-ck-alert");
     if (ckCheckbox) {
         ckCheckbox.checked = Boolean(notifyCK);
+    }
+
+    const scgCheckbox = document.getElementById("edit-target-scg-alert");
+    if (scgCheckbox) {
+        scgCheckbox.checked = Boolean(notifySCG);
+    }
+
+    const csiCheckbox = document.getElementById("edit-target-csi-alert");
+    if (csiCheckbox) {
+        csiCheckbox.checked = Boolean(notifyCSI);
     }
 
     modal.classList.remove("hidden");
@@ -1040,6 +1050,8 @@ async function submitAddCard() {
     const targetPriceInput = document.getElementById("card-target-price-input");
     const notifyMMCheckbox = document.getElementById("card-notify-mm-input");
     const notifyCKCheckbox = document.getElementById("card-notify-ck-input");
+    const notifySCGCheckbox = document.getElementById("card-notify-scg-input");
+    const notifyCSICheckbox = document.getElementById("card-notify-csi-input");
     const tagInput = document.getElementById("card-tag-input");
     const submitBtn = document.getElementById("btn-submit-add-card");
 
@@ -1065,6 +1077,8 @@ async function submitAddCard() {
             target_price: targetPriceInput && targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
             notify_ck_stock: notifyCKCheckbox ? notifyCKCheckbox.checked : true,
+            notify_scg_stock: notifySCGCheckbox ? notifySCGCheckbox.checked : true,
+            notify_csi_stock: notifyCSICheckbox ? notifyCSICheckbox.checked : true,
             tag: tagValue,
         };
     } else {
@@ -1084,6 +1098,8 @@ async function submitAddCard() {
             target_price: targetPriceInput && targetPriceInput.value ? parseFloat(targetPriceInput.value) : null,
             notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
             notify_ck_stock: notifyCKCheckbox ? notifyCKCheckbox.checked : true,
+            notify_scg_stock: notifySCGCheckbox ? notifySCGCheckbox.checked : true,
+            notify_csi_stock: notifyCSICheckbox ? notifyCSICheckbox.checked : true,
             tag: tagValue,
         };
     }
@@ -1147,6 +1163,8 @@ async function submitBulkAdd() {
     const customTargetInput = document.getElementById("bulk-custom-target-input");
     const notifyMMCheckbox = document.getElementById("bulk-notify-mm-input");
     const notifyCKCheckbox = document.getElementById("bulk-notify-ck-input");
+    const notifySCGCheckbox = document.getElementById("bulk-notify-scg-input");
+    const notifyCSICheckbox = document.getElementById("bulk-notify-csi-input");
     const tagInput = document.getElementById("bulk-tag-input");
     const submitBtn = document.getElementById("btn-submit-bulk-add");
     const progressBox = document.getElementById("bulk-progress-box");
@@ -1169,6 +1187,8 @@ async function submitBulkAdd() {
         target_price: (strategySelect && strategySelect.value === "custom" && customTargetInput?.value) ? parseFloat(customTargetInput.value) : null,
         notify_mm_stock: notifyMMCheckbox ? notifyMMCheckbox.checked : true,
         notify_ck_stock: notifyCKCheckbox ? notifyCKCheckbox.checked : true,
+        notify_scg_stock: notifySCGCheckbox ? notifySCGCheckbox.checked : true,
+        notify_csi_stock: notifyCSICheckbox ? notifyCSICheckbox.checked : true,
         tag: (tagInput ? tagInput.value : "").trim() || null,
     };
 
@@ -1789,6 +1809,8 @@ async function submitEditTarget() {
     const targetPriceVal = document.getElementById("edit-target-price-input").value;
     const mmAlertChecked = document.getElementById("edit-target-mm-alert")?.checked ?? true;
     const ckAlertChecked = document.getElementById("edit-target-ck-alert")?.checked ?? true;
+    const scgAlertChecked = document.getElementById("edit-target-scg-alert")?.checked ?? true;
+    const csiAlertChecked = document.getElementById("edit-target-csi-alert")?.checked ?? true;
     const finishVal = document.getElementById("edit-target-finish-select")?.value || "any";
     const tagInput = document.getElementById("edit-target-tag-input");
     const tagVal = (tagInput ? tagInput.value : "").trim();
@@ -1807,6 +1829,8 @@ async function submitEditTarget() {
                 target_price: targetPriceVal ? parseFloat(targetPriceVal) : null,
                 notify_mm_stock: mmAlertChecked,
                 notify_ck_stock: ckAlertChecked,
+                notify_scg_stock: scgAlertChecked,
+                notify_csi_stock: csiAlertChecked,
                 finish: finishVal,
                 tag: tagVal,
             }),
@@ -1845,7 +1869,7 @@ function updateCardInRegistryDom(card) {
     const targetArg = card.target_price !== null && card.target_price !== undefined ? card.target_price : "null";
     const safeTag = (card.tag || "").replace(/'/g, "\\'");
     const safeFinish = (card.finish || "any").toLowerCase().trim();
-    const editOnclickStr = `openEditTargetModal(${cid}, '${safeName}', ${targetArg}, ${card.notify_mm_stock ? 'true' : 'false'}, ${card.is_any_version ? 'true' : 'false'}, '${safeTag}', '${safeFinish}', ${card.notify_ck_stock ? 'true' : 'false'})`;
+    const editOnclickStr = `openEditTargetModal(${cid}, '${safeName}', ${targetArg}, ${card.notify_mm_stock ? 'true' : 'false'}, ${card.is_any_version ? 'true' : 'false'}, '${safeTag}', '${safeFinish}', ${card.notify_ck_stock ? 'true' : 'false'}, ${card.notify_scg_stock ? 'true' : 'false'}, ${card.notify_csi_stock ? 'true' : 'false'})`;
 
     // 1. GRID VIEW UPDATES
     const gridRow = document.getElementById(`card-row-${cid}`);
@@ -1855,6 +1879,8 @@ function updateCardInRegistryDom(card) {
         gridRow.dataset.isDeal = card.is_deal ? "true" : "false";
         gridRow.dataset.mmStock = card.mm_in_stock ? "true" : "false";
         gridRow.dataset.ckStock = card.ck_in_stock ? "true" : "false";
+        gridRow.dataset.scgStock = card.scg_in_stock ? "true" : "false";
+        gridRow.dataset.csiStock = card.csi_in_stock ? "true" : "false";
         if (card.in_binder !== undefined) {
             gridRow.dataset.inBinder = card.in_binder ? "true" : "false";
             gridRow.dataset.binderCount = card.binder_count || 0;
@@ -2175,6 +2201,32 @@ function updateCardInRegistryDom(card) {
         }
     }
 
+    const scgStatus = document.getElementById(`scg-alert-status-${cid}`);
+    if (scgStatus) {
+        scgStatus.textContent = card.notify_scg_stock ? "ON" : "OFF";
+    }
+    const scgBtn = document.getElementById(`scg-alert-btn-${cid}`);
+    if (scgBtn) {
+        if (card.notify_scg_stock) {
+            scgBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#F59E0B]/15 text-[#FCD34D] border-[#F59E0B]/50 hover:bg-[#F59E0B]/25";
+        } else {
+            scgBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+        }
+    }
+
+    const csiStatus = document.getElementById(`csi-alert-status-${cid}`);
+    if (csiStatus) {
+        csiStatus.textContent = card.notify_csi_stock ? "ON" : "OFF";
+    }
+    const csiBtn = document.getElementById(`csi-alert-btn-${cid}`);
+    if (csiBtn) {
+        if (card.notify_csi_stock) {
+            csiBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#38BDF8]/15 text-[#7DD3FC] border-[#38BDF8]/50 hover:bg-[#38BDF8]/25";
+        } else {
+            csiBtn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+        }
+    }
+
     // 5. IN-PERSON ART GRID UPDATES
     const inpersonArt = document.getElementById(`inperson-art-card-${cid}`);
     if (inpersonArt) {
@@ -2402,6 +2454,66 @@ async function toggleCardKingdomAlert(itemId) {
         }
     } catch (err) {
         console.error("Error toggling CK alert:", err);
+        showToast("Communication error toggling alert", "error");
+    }
+}
+
+// =========================================================================
+// Toggle Star City Games Stock Alert (Per Card)
+// =========================================================================
+async function toggleStarCityGamesAlert(itemId) {
+    try {
+        const res = await fetch(`/api/watchlist/toggle-scg-alert/${itemId}`, { method: "POST" });
+        const data = await safeParseJsonResponse(res);
+        if (res.ok) {
+            showToast(data.message, "success");
+            const btn = document.getElementById(`scg-alert-btn-${itemId}`);
+            const statusSpan = document.getElementById(`scg-alert-status-${itemId}`);
+            if (statusSpan) {
+                statusSpan.textContent = data.notify_scg_stock ? "ON" : "OFF";
+            }
+            if (btn) {
+                if (data.notify_scg_stock) {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#F59E0B]/15 text-[#FCD34D] border-[#F59E0B]/50 hover:bg-[#F59E0B]/25";
+                } else {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+                }
+            }
+        } else {
+            showToast(data.error || "Failed to toggle Star City Games alert", "error");
+        }
+    } catch (err) {
+        console.error("Error toggling SCG alert:", err);
+        showToast("Communication error toggling alert", "error");
+    }
+}
+
+// =========================================================================
+// Toggle CoolStuffInc Stock Alert (Per Card)
+// =========================================================================
+async function toggleCoolStuffIncAlert(itemId) {
+    try {
+        const res = await fetch(`/api/watchlist/toggle-csi-alert/${itemId}`, { method: "POST" });
+        const data = await safeParseJsonResponse(res);
+        if (res.ok) {
+            showToast(data.message, "success");
+            const btn = document.getElementById(`csi-alert-btn-${itemId}`);
+            const statusSpan = document.getElementById(`csi-alert-status-${itemId}`);
+            if (statusSpan) {
+                statusSpan.textContent = data.notify_csi_stock ? "ON" : "OFF";
+            }
+            if (btn) {
+                if (data.notify_csi_stock) {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#38BDF8]/15 text-[#7DD3FC] border-[#38BDF8]/50 hover:bg-[#38BDF8]/25";
+                } else {
+                    btn.className = "px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]";
+                }
+            }
+        } else {
+            showToast(data.error || "Failed to toggle CoolStuffInc alert", "error");
+        }
+    } catch (err) {
+        console.error("Error toggling CSI alert:", err);
         showToast("Communication error toggling alert", "error");
     }
 }
@@ -3581,6 +3693,8 @@ function filterWatchlist() {
         const inStock = card.dataset.inStock === "true";
         const mmStock = card.dataset.mmStock === "true";
         const ckStock = card.dataset.ckStock === "true";
+        const scgStock = card.dataset.scgStock === "true";
+        const csiStock = card.dataset.csiStock === "true";
         const isAny = card.dataset.isAny === "true";
         const isSealed = card.dataset.isSealed === "true";
         const inBinder = card.dataset.inBinder === "true";
@@ -3604,6 +3718,10 @@ function filterWatchlist() {
             matchesDeal = mmStock;
         } else if (dealFilter === "ck_in_stock") {
             matchesDeal = ckStock;
+        } else if (dealFilter === "scg_in_stock") {
+            matchesDeal = scgStock;
+        } else if (dealFilter === "csi_in_stock") {
+            matchesDeal = csiStock;
         } else if (dealFilter === "any_version") {
             matchesDeal = isAny;
         } else if (dealFilter === "specific_print") {
@@ -3850,6 +3968,16 @@ async function fetchCadenceTelemetry() {
             ckCheck.checked = Boolean(data.notify_ck_stock_enabled !== undefined ? data.notify_ck_stock_enabled : true);
         }
 
+        const scgCheck = document.getElementById("cadence-notify-scg");
+        if (scgCheck) {
+            scgCheck.checked = Boolean(data.notify_scg_stock_enabled !== undefined ? data.notify_scg_stock_enabled : true);
+        }
+
+        const csiCheck = document.getElementById("cadence-notify-csi");
+        if (csiCheck) {
+            csiCheck.checked = Boolean(data.notify_csi_stock_enabled !== undefined ? data.notify_csi_stock_enabled : true);
+        }
+
         if (ebaySelect && data.ebay_link_mode) {
             ebaySelect.value = data.ebay_link_mode;
         }
@@ -4003,11 +4131,15 @@ async function saveCadenceSettings() {
             }
         }
 
+        const scgCheck = document.getElementById("cadence-notify-scg");
+        const csiCheck = document.getElementById("cadence-notify-csi");
         const payload = {
             poll_interval_hours: select ? parseFloat(select.value) : 6.0,
             auto_poll_enabled: autoCheck ? autoCheck.checked : true,
             notify_mm_stock_enabled: mmCheck ? mmCheck.checked : true,
             notify_ck_stock_enabled: ckCheck ? ckCheck.checked : true,
+            notify_scg_stock_enabled: scgCheck ? scgCheck.checked : true,
+            notify_csi_stock_enabled: csiCheck ? csiCheck.checked : true,
             ebay_link_mode: ebaySelect ? ebaySelect.value : "direct",
         };
 

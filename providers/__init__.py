@@ -7,6 +7,8 @@ from .tcgplayer_lots import TCGplayerLotProvider
 from .tcgplayer_sealed import TCGplayerSealedProvider
 from .cardkingdom_sealed import CardKingdomSealedProvider
 from .cardkingdom_singles import CardKingdomSinglesProvider
+from .starcitygames import StarCityGamesProvider
+from .coolstuffinc import CoolStuffIncProvider
 from .shopify_catalog import ShopifyCatalogProvider
 
 __all__ = [
@@ -19,5 +21,7 @@ __all__ = [
     "TCGplayerSealedProvider",
     "CardKingdomSealedProvider",
     "CardKingdomSinglesProvider",
+    "StarCityGamesProvider",
+    "CoolStuffIncProvider",
     "ShopifyCatalogProvider",
 ]
