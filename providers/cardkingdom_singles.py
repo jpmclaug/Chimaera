@@ -11,6 +11,7 @@ lookups during watchlist polling.
 
 from __future__ import annotations
 
+import gc
 import logging
 import re
 import threading
@@ -241,24 +242,29 @@ class CardKingdomSinglesProvider:
                     new_last_mod = resp.headers.get("Last-Modified") or last_mod
                     now_ts = time.time()
 
+                    by_sf_out = dict(new_by_sf)
+                    by_name_out = dict(new_by_name)
                     if self.use_shared_cache:
                         cls = type(self)
-                        cls._shared_by_scryfall = dict(new_by_sf)
-                        cls._shared_by_name = dict(new_by_name)
+                        cls._shared_by_scryfall = by_sf_out
+                        cls._shared_by_name = by_name_out
                         cls._shared_base_url = new_base
                         cls._shared_fetched_at = now_ts
                         cls._shared_etag = new_etag
                         cls._shared_last_modified = new_last_mod
                     else:
-                        self._inst_by_scryfall = dict(new_by_sf)
-                        self._inst_by_name = dict(new_by_name)
+                        self._inst_by_scryfall = by_sf_out
+                        self._inst_by_name = by_name_out
                         self._inst_base_url = new_base
                         self._inst_fetched_at = now_ts
                         self._inst_etag = new_etag
                         self._inst_last_modified = new_last_mod
 
-                    logger.info(f"Card Kingdom singles pricelist indexed: {len(data)} entries.")
-                    return dict(new_by_sf), dict(new_by_name), new_base
+                    entry_count = len(data)
+                    del payload, data, new_by_sf, new_by_name
+                    gc.collect()
+                    logger.info(f"Card Kingdom singles pricelist indexed: {entry_count} entries.")
+                    return by_sf_out, by_name_out, new_base
             except Exception as exc:
                 logger.warning(f"Failed to fetch Card Kingdom singles pricelist: {exc}")
 

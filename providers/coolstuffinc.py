@@ -239,8 +239,8 @@ class CoolStuffIncProvider:
         parsed = self._parse_search_html(html_text)
         if self.cache_ttl_seconds > 0 and parsed:
             with lock:
-                if len(cache) >= 1000:
-                    for old_k in list(cache.keys())[:250]:
+                if len(cache) >= 100:
+                    for old_k in list(cache.keys())[:50]:
                         cache.pop(old_k, None)
                 cache[cache_key] = (time.time(), parsed)
         return parsed
