@@ -660,26 +660,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
                     if (suggestions.length === 0) {
                         dropdown.innerHTML = `
-                            <div class="p-2.5 text-xs font-mono text-[#94A3B8] text-center uppercase font-medium border-b border-[#263245]/60">[ NO MATCHING TARGETS IDENTIFIED ]</div>
-                            <div class="px-3.5 py-2.5 text-xs font-mono text-[#00CED1] hover:bg-[#222B3D] cursor-pointer transition flex items-center justify-between"
+                            <div class="p-3 text-xs font-mono text-[#94A3B8] text-center uppercase font-medium">[ NO MATCHING TARGETS IDENTIFIED ]</div>
+                            <div class="px-3.5 py-3 sm:py-2.5 text-sm sm:text-xs font-mono text-[#00CED1] hover:bg-[#222B3D] active:bg-[#222B3D] cursor-pointer transition flex items-center justify-between min-h-[44px] sm:min-h-0"
                                  data-action="search-direct">
                                 <span>🔍 Search Scryfall directly for "${escapeHtml(query)}"</span>
-                                <span class="text-xs text-[#00CED1] font-bold">&rarr;</span>
+                                <span class="text-xs text-[#00CED1] font-bold flex-shrink-0 ml-2">&rarr;</span>
                             </div>
                         `;
                     } else {
                         const itemsHtml = suggestions.map(name => `
-                            <div class="px-3.5 py-2.5 text-xs font-mono text-[#F1F5F9] hover:bg-[#222B3D] hover:text-[#00CED1] cursor-pointer transition flex items-center justify-between border-b border-[#263245]/60"
+                            <div class="px-3.5 py-3 sm:py-2.5 text-sm sm:text-xs font-mono text-white hover:bg-[#222B3D] active:bg-[#222B3D] hover:text-[#00CED1] cursor-pointer transition flex items-center justify-between min-h-[44px] sm:min-h-0"
                                  data-card-name="${escapeHtml(name)}">
-                                <span>${escapeHtml(name)}</span>
-                                <span class="text-xs text-[#00CED1] font-bold">&rarr;</span>
+                                <span class="truncate">${escapeHtml(name)}</span>
+                                <span class="text-xs text-[#00CED1] font-bold flex-shrink-0 ml-2">&rarr;</span>
                             </div>
                         `).join("");
                         const directHtml = `
-                            <div class="px-3.5 py-2 text-[11px] font-mono text-[#00CED1] hover:bg-[#222B3D] cursor-pointer transition flex items-center justify-between bg-[#151B27]"
+                            <div class="px-3.5 py-3 sm:py-2 text-xs sm:text-[11px] font-mono text-[#00CED1] hover:bg-[#222B3D] active:bg-[#222B3D] cursor-pointer transition flex items-center justify-between bg-[#151B27] min-h-[44px] sm:min-h-0"
                                  data-action="search-direct">
-                                <span>🔍 Search Scryfall directly for "${escapeHtml(query)}"</span>
-                                <span class="text-xs font-bold">&rarr;</span>
+                                <span class="truncate">🔍 Search Scryfall directly for "${escapeHtml(query)}"</span>
+                                <span class="text-xs font-bold flex-shrink-0 ml-2">&rarr;</span>
                             </div>
                         `;
                         dropdown.innerHTML = itemsHtml + directHtml;
