@@ -44,6 +44,7 @@ class DeckAnalysisResult:
     avg_cmc_nonland: float
     packages: dict[str, list[str]] = field(default_factory=dict)
     almost_included_combos_count: int = 0
+    almost_included_combos: list[dict[str, Any]] = field(default_factory=list)
     combo_source: str = "local_combo_db"
     land_count: int = 0
     card_details: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -396,6 +397,7 @@ class DeckClassifier:
             avg_cmc_nonland=round(avg_cmc, 2),
             packages=buckets,
             almost_included_combos_count=int(combo_data.get("almost_included_count", 0) or 0),
+            almost_included_combos=list(combo_data.get("almost_included") or []),
             combo_source=str(combo_data.get("source", "local_combo_db")),
             land_count=land_count,
             card_details=card_details,

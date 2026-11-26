@@ -186,6 +186,7 @@ class SuggestedUpgradeEngine:
         dismissed_names: Optional[list[str]] = None,
         limit_per_tier: int = 30,
         pre_resolved_cards: Optional[list[dict[str, Any]]] = None,
+        almost_included_combos: Optional[list[dict[str, Any]]] = None,
     ) -> dict[str, Any]:
         """Main evaluation routine."""
         if pre_resolved_cards:
@@ -220,9 +221,12 @@ class SuggestedUpgradeEngine:
             if ck not in edh_by_clean or item.get("inclusion_percent", 0) > edh_by_clean[ck].get("inclusion_percent", 0):
                 edh_by_clean[ck] = item
 
-        # 3. Find 'One Card Away' combos from Spellbook
-        combo_results = self.spellbook.find_combos(commanders, list(mainboard.keys()))
-        almost_combos = combo_results.get("almost_included") or []
+        # 3. Find 'One Card Away' combos from Spellbook (reuse pre-fetched if supplied)
+        if almost_included_combos is not None:
+            almost_combos = list(almost_included_combos)
+        else:
+            combo_results = self.spellbook.find_combos(commanders, list(mainboard.keys()))
+            almost_combos = combo_results.get("almost_included") or []
 
         combos_missing_card: dict[str, list[dict[str, Any]]] = {}
         for ac in almost_combos:

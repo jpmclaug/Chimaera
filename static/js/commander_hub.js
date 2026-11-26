@@ -4,6 +4,29 @@ const allDecks = Array.isArray(_hubInit.decks) ? _hubInit.decks : [];
 const initialFleetStats = _hubInit.fleetStats || {};
 let currentVaultDecks = [...allDecks];
 
+function debounce(fn, delayMs = 150) {
+    let timer = null;
+    return function (...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+            timer = null;
+            fn.apply(this, args);
+        }, delayMs);
+    };
+}
+
+let currentDeckCardsDirty = false;
+let _tooltipRafId = null;
+let _hoverRafId = null;
+
+function renderActiveVaultView(decks) {
+    if (currentVaultMode === 'table') {
+        renderMatrixTable(decks);
+    } else {
+        renderVaultGrid(decks);
+    }
+}
+
 function toScryfallThumb(url) {
     if (!url || typeof url !== 'string') return url || '';
     if (url.includes('cards.scryfall.io/normal/')) return url.replace('cards.scryfall.io/normal/', 'cards.scryfall.io/small/');
@@ -551,7 +574,11 @@ function showAnalyticsTooltip(key, event) {
 
 function moveAnalyticsTooltip(event) {
     if (!currentActiveTooltipKey) return;
-    positionAnalyticsTooltip(event);
+    if (_tooltipRafId) cancelAnimationFrame(_tooltipRafId);
+    _tooltipRafId = requestAnimationFrame(() => {
+        _tooltipRafId = null;
+        positionAnalyticsTooltip(event);
+    });
 }
 
 function hideAnalyticsTooltip(force = false) {
@@ -601,31 +628,37 @@ function positionAnalyticsTooltip(e) {
     popover.style.bottom = 'auto';
 }
 
+function isFinePointerDevice() {
+    return !window.matchMedia || window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+}
+
 function setupAnalyticsTooltips() {
-    // Delegated listeners for hover and click interactions
-    document.addEventListener('mouseover', (e) => {
-        const target = e.target.closest('[data-tooltip-key]');
-        if (target) {
-            const key = target.getAttribute('data-tooltip-key');
-            if (key) showAnalyticsTooltip(key, e);
-        }
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (currentActiveTooltipKey) {
-            moveAnalyticsTooltip(e);
-        }
-    });
-
-    document.addEventListener('mouseout', (e) => {
-        const target = e.target.closest('[data-tooltip-key]');
-        if (target) {
-            const related = e.relatedTarget ? e.relatedTarget.closest('[data-tooltip-key]') : null;
-            if (related !== target) {
-                hideAnalyticsTooltip();
+    // Delegated listeners for hover (desktop fine pointer only) and click interactions
+    if (isFinePointerDevice()) {
+        document.addEventListener('mouseover', (e) => {
+            const target = e.target.closest('[data-tooltip-key]');
+            if (target) {
+                const key = target.getAttribute('data-tooltip-key');
+                if (key) showAnalyticsTooltip(key, e);
             }
-        }
-    });
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (currentActiveTooltipKey) {
+                moveAnalyticsTooltip(e);
+            }
+        });
+
+        document.addEventListener('mouseout', (e) => {
+            const target = e.target.closest('[data-tooltip-key]');
+            if (target) {
+                const related = e.relatedTarget ? e.relatedTarget.closest('[data-tooltip-key]') : null;
+                if (related !== target) {
+                    hideAnalyticsTooltip();
+                }
+            }
+        });
+    }
 
     // Touch & mobile click support
     document.addEventListener('click', (e) => {
@@ -648,8 +681,6 @@ function setupAnalyticsTooltips() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     setupAnalyticsTooltips();
-    renderVaultGrid(currentVaultDecks);
-    renderMatrixTable(filteredDecks);
     updateDeckDropdowns(currentVaultDecks);
 
     // Auto-select first 2 decks for comparison dropdowns if available
@@ -670,6 +701,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const targetDeckId = urlParams.get('deck_id') || urlParams.get('deck') || (_hubInit.initialDeckId || '');
     const initView = urlParams.get('view') || (_hubInit.initialView || '');
     const initTab = urlParams.get('tab') || (_hubInit.initialTab || '');
+
+    if (initView !== 'matrix') {
+        renderVaultGrid(currentVaultDecks);
+    }
 
     if (targetDeckId) {
         await loadSavedDeckIntoInspector(targetDeckId, initTab);
@@ -704,15 +739,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         switchMainView('ingest');
     }
 
-    // Background fetch to ensure latest syncs are loaded
-    await refreshVaultList();
+    // Only fetch vault list on boot if initial server payload was not embedded
+    if (!allDecks || allDecks.length === 0) {
+        await refreshVaultList();
+    }
 
-    // Auto-update responsive card view on window resize
-    window.addEventListener('resize', () => {
-        if (currentCardViewMode === 'auto') {
-            applyCardViewMode();
+    // Throttled resize handler for responsive Card Registry view transitions
+    const onResizeCardView = debounce(() => {
+        if (currentCardViewMode === 'auto' && currentInspectorTab === 'cards') {
+            if (currentDeckCardsDirty) {
+                renderCardRegistryTable(currentDeckCards);
+                currentDeckCardsDirty = false;
+            } else {
+                sortAndFilterCardRegistry();
+            }
         }
-    });
+    }, 150);
+    window.addEventListener('resize', onResizeCardView);
 });
 
 // Update Deck Selector Dropdowns
@@ -886,7 +929,12 @@ function switchInspectorTab(tab, options = {}) {
     });
 
     if (currentInspectorTab === 'cards') {
-        applyCardViewMode();
+        if (currentDeckCardsDirty) {
+            currentDeckCardsDirty = false;
+            renderCardRegistryTable(currentDeckCards);
+        } else {
+            applyCardViewMode();
+        }
     }
 
     // Smoothly dock sticky tab bar below the top navigation bar so the user immediately sees the tab content
@@ -945,7 +993,7 @@ function renderVaultGrid(decks) {
         }).join('');
 
         return `
-            <div onclick="loadSavedDeckIntoInspector(${d.id})" class="bg-[#10141D] border border-[#263245] hover:border-cyan-500/60 rounded-none overflow-hidden shadow-xl hover:shadow-cyan-500/10 transition duration-200 group flex flex-col justify-between cursor-pointer transform hover:-translate-y-0.5">
+            <div onclick="loadSavedDeckIntoInspector(${d.id})" class="cmdr-vault-card bg-[#10141D] border border-[#263245] hover:border-cyan-500/60 rounded-none overflow-hidden shadow-xl hover:shadow-cyan-500/10 transition duration-200 group flex flex-col justify-between cursor-pointer transform hover:-translate-y-0.5">
                 <div>
                     <!-- Commander Portrait Header -->
                     <div class="relative h-24 sm:h-32 overflow-hidden bg-slate-900">
@@ -1031,7 +1079,7 @@ async function loadSavedDeckIntoInspector(deckId, targetTab = null) {
             setTimeout(() => switchInspectorTab(targetTab), 50);
         }
     } catch (e) {
-        showToast(`Error: ${e.message}`, 'error');
+        showCommanderToast(`Error: ${e.message}`, 'error');
     }
 }
 async function _legacyLoadSavedDeckIntoInspector(deckId) {
@@ -1046,7 +1094,7 @@ async function _legacyLoadSavedDeckIntoInspector(deckId) {
         } catch (_) {}
         displayDeckInInspector(deck);
     } catch (e) {
-        showToast(`Error: ${e.message}`, 'error');
+        showCommanderToast(`Error: ${e.message}`, 'error');
     }
 }
 
@@ -1298,8 +1346,15 @@ function displayDeckInInspector(deck, keepCurrentTab = false) {
     renderEngineAndSynergyTelemetry(stats);
     renderEndgameAndWinconTelemetry(stats);
 
-    // Render Full Card Table & Mobile Tiles
-    renderCardRegistryTable(cards);
+    // Defer full Card Registry DOM build until the user opens the Cards tab
+    currentDeckCards = cards;
+    safeSetText('cardRegistryTotalCount', cards.length);
+    if (currentInspectorTab === 'cards') {
+        currentDeckCardsDirty = false;
+        renderCardRegistryTable(cards);
+    } else {
+        currentDeckCardsDirty = true;
+    }
 
     // Render Format Rules Compliance Evaluation
     renderRulesEvaluation(deck);
@@ -1852,7 +1907,7 @@ async function toggleActiveDeckFormat() {
         activeDeck.is_pauper = newIsPauper;
         activeDeck.deck_format = newFormat;
         displayDeckInInspector(activeDeck, true);
-        showToast(`Switched format to ${newIsPauper ? 'Pauper Commander (PDH)' : 'Regular Commander (EDH)'}`, "info");
+        showCommanderToast(`Switched format to ${newIsPauper ? 'Pauper Commander (PDH)' : 'Regular Commander (EDH)'}`, "info");
         return;
     }
 
@@ -1883,7 +1938,7 @@ async function toggleActiveDeckFormat() {
             activeDeck.stats.rule_evaluation = data.rule_evaluation;
         }
 
-        showToast(`Deck format updated to ${newIsPauper ? 'Pauper Commander (PDH)' : 'Regular Commander (EDH)'}!`, "success");
+        showCommanderToast(`Deck format updated to ${newIsPauper ? 'Pauper Commander (PDH)' : 'Regular Commander (EDH)'}!`, "success");
         displayDeckInInspector(activeDeck, true);
         await refreshVaultList();
 
@@ -1892,7 +1947,7 @@ async function toggleActiveDeckFormat() {
             loadDualTierUpgrades(activeDeck.id);
         }
     } catch (e) {
-        showToast(`Format toggle error: ${e.message}`, "error");
+        showCommanderToast(`Format toggle error: ${e.message}`, "error");
     } finally {
         if (badge) {
             badge.classList.remove('opacity-50', 'pointer-events-none');
@@ -1914,7 +1969,7 @@ function renderManaCurve(curve) {
             <div class="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer"
                  title="Filter cards by CMC ${k}"
                  onclick="drillDownToCardRegistry('cmc', '${k}', 'CMC ${k}')">
-                <span class="text-[10px] font-mono text-cyan-400 font-bold mb-1 opacity-0 group-hover:opacity-100 transition">${count}</span>
+                <span class="text-[10px] font-mono text-cyan-400 font-bold mb-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">${count}</span>
                 <div class="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 group-hover:from-cyan-400 group-hover:to-cyan-200 rounded-t transition-all duration-300 shadow-lg shadow-cyan-500/10"
                      style="height: ${heightPct}%;"></div>
             </div>
@@ -2185,14 +2240,15 @@ function sortAndFilterCardRegistry() {
     // Update column sort indicators
     updateTableSortIndicators();
 
-    // Render Stacks (Archidekt / Moxfield cascading columns)
-    renderCardStacks(filtered, ratingsMap);
-
-    // Render Table Rows (Desktop)
-    renderDesktopTable(filtered, ratingsMap);
-
-    // Render Mobile Tiles
-    renderMobileTiles(filtered, ratingsMap);
+    // Render ONLY the active card view instead of rebuilding all 3 views per keystroke
+    const activeCardView = getActiveCardView();
+    if (activeCardView === 'stacks') {
+        renderCardStacks(filtered, ratingsMap);
+    } else if (activeCardView === 'tiles') {
+        renderMobileTiles(filtered, ratingsMap);
+    } else {
+        renderDesktopTable(filtered, ratingsMap);
+    }
 
     // Update Ownership Summary Bar
     if (activeDeck) {
@@ -2201,6 +2257,14 @@ function sortAndFilterCardRegistry() {
 
     // Ensure correct view mode is displayed
     applyCardViewMode();
+}
+
+const debouncedSortAndFilterCardRegistry = debounce(sortAndFilterCardRegistry, 150);
+
+function getActiveCardView() {
+    if (currentCardViewMode === 'stacks') return 'stacks';
+    if (currentCardViewMode === 'tiles' || (currentCardViewMode === 'auto' && window.innerWidth < 768)) return 'tiles';
+    return 'table';
 }
 
 function renderDesktopTable(cards, ratingsMap) {
@@ -2266,7 +2330,7 @@ function renderDesktopTable(cards, ratingsMap) {
         }
 
         return `
-            <tr class="hover:bg-[#1B2230]/50 transition group card-row" data-name="${escapeHtml(name.toLowerCase())}" data-type="${escapeHtml((c.type_line || '').toLowerCase())}">
+            <tr class="cmdr-card-row hover:bg-[#1B2230]/50 transition group card-row" data-name="${escapeHtml(name.toLowerCase())}" data-type="${escapeHtml((c.type_line || '').toLowerCase())}">
                 <td class="py-2.5 px-3 text-center font-bold text-cyan-400">${c.quantity || 1}x</td>
                 <td class="py-2.5 px-3 font-semibold text-white">
                     <div class="flex flex-col gap-0.5">
@@ -2385,7 +2449,7 @@ function renderMobileTiles(cards, ratingsMap) {
         }
 
         return `
-            <div class="bg-[#10141D] border border-[#263245] hover:border-[#263245] rounded-none p-3.5 space-y-2.5 shadow-md transition">
+            <div class="cmdr-card-tile bg-[#10141D] border border-[#263245] hover:border-[#263245] rounded-none p-3.5 space-y-2.5 shadow-md transition">
                 <!-- Top Row: Qty, Name, Mana Cost, Rating Badge -->
                 <div class="flex items-start justify-between gap-2">
                     <div class="flex items-start gap-2 min-w-0 flex-1">
@@ -2630,7 +2694,7 @@ function renderCardStacks(cards, ratingsMap) {
 
 function setCardViewMode(mode) {
     currentCardViewMode = mode;
-    applyCardViewMode();
+    sortAndFilterCardRegistry();
 }
 
 function applyCardViewMode() {
@@ -3030,20 +3094,20 @@ async function handleWatchClick(btn) {
         });
         const data = await safeParseCommanderJson(resp);
         if (resp.ok) {
-            showToast(`Added '${name}' to your Watchlist!`, 'success');
+            showCommanderToast(`Added '${name}' to your Watchlist!`, 'success');
             btn.className = "watch-card-btn px-2.5 py-1 bg-emerald-500/20 text-emerald-300 rounded-none text-[10px] font-mono uppercase font-bold border border-emerald-500/40 transition flex items-center gap-1 mx-auto";
             btn.innerHTML = `<span>✓ Watched</span>`;
         } else if (resp.status === 409) {
-            showToast(`'${name}' is already on your Watchlist!`, 'info');
+            showCommanderToast(`'${name}' is already on your Watchlist!`, 'info');
             btn.className = "watch-card-btn px-2.5 py-1 bg-slate-800 text-slate-400 rounded-none text-[10px] font-mono uppercase font-bold border border-[#263245] transition flex items-center gap-1 mx-auto";
             btn.innerHTML = `<span>✓ In List</span>`;
         } else {
-            showToast(data.error || 'Failed to add card to watchlist.', 'error');
+            showCommanderToast(data.error || 'Failed to add card to watchlist.', 'error');
             btn.disabled = false;
             btn.innerHTML = origHtml;
         }
     } catch (e) {
-        showToast(`Watchlist error: ${e.message}`, 'error');
+        showCommanderToast(`Watchlist error: ${e.message}`, 'error');
         btn.disabled = false;
         btn.innerHTML = origHtml;
     }
@@ -3052,7 +3116,7 @@ async function handleWatchClick(btn) {
 // Tactical Quick Add Card Handler
 async function executeQuickAddCard() {
     if (!activeDeck || !activeDeck.id) {
-        showToast("Please open a saved deck from your Vault first to add cards.", "error");
+        showCommanderToast("Please open a saved deck from your Vault first to add cards.", "error");
         return;
     }
 
@@ -3060,7 +3124,7 @@ async function executeQuickAddCard() {
     if (!input) return;
     const cardName = (input.value || '').trim();
     if (!cardName) {
-        showToast("Please enter a card name to add.", "info");
+        showCommanderToast("Please enter a card name to add.", "info");
         return;
     }
 
@@ -3090,14 +3154,14 @@ async function executeQuickAddCard() {
             activeDeck.upgrades = data.upgrades;
         }
         displayDeckInInspector(activeDeck, true);
-        showToast(data.message || `Added '${cardName}' to deck!`, "success");
+        showCommanderToast(data.message || `Added '${cardName}' to deck!`, "success");
 
         // If upgrades tab is loaded, reload it
         if (currentInspectorTab === 'upgrades') {
             await loadDualTierUpgrades(activeDeck.id);
         }
     } catch (err) {
-        showToast(`Failed to add card: ${err.message}`, "error");
+        showCommanderToast(`Failed to add card: ${err.message}`, "error");
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -3109,7 +3173,7 @@ async function executeQuickAddCard() {
 // Cut / Remove Card Execution
 async function executeRemoveCard(cardName, removeAll = false) {
     if (!activeDeck || !activeDeck.id) {
-        showToast("No active deck loaded in inspector.", "error");
+        showCommanderToast("No active deck loaded in inspector.", "error");
         return;
     }
     if (!cardName) return;
@@ -3141,14 +3205,14 @@ async function executeRemoveCard(cardName, removeAll = false) {
         }
 
         displayDeckInInspector(activeDeck, true);
-        showToast(data.message || `Removed '${cardName}' from deck.`, "success");
+        showCommanderToast(data.message || `Removed '${cardName}' from deck.`, "success");
 
         // If upgrades tab is loaded, re-evaluate
         if (currentInspectorTab === 'upgrades') {
             await loadDualTierUpgrades(activeDeck.id);
         }
     } catch (err) {
-        showToast(`Failed to cut card: ${err.message}`, "error");
+        showCommanderToast(`Failed to cut card: ${err.message}`, "error");
     }
 }
 
@@ -3180,20 +3244,20 @@ async function handleUpgradeWatchClick(btn) {
         });
         const data = await safeParseCommanderJson(resp);
         if (resp.ok) {
-            showToast(`Added upgrade '${name}' to Watchlist!`, 'success');
+            showCommanderToast(`Added upgrade '${name}' to Watchlist!`, 'success');
             btn.className = "w-full py-1.5 bg-emerald-500/20 text-emerald-300 text-xs font-mono font-bold uppercase rounded-none border border-emerald-500/40 text-center";
             btn.innerText = "✓ Added to Watchlist";
         } else if (resp.status === 409) {
-            showToast(`'${name}' is already on your Watchlist!`, 'info');
+            showCommanderToast(`'${name}' is already on your Watchlist!`, 'info');
             btn.className = "w-full py-1.5 bg-slate-800 text-slate-400 text-xs font-mono font-bold uppercase rounded-none border border-[#263245] text-center";
             btn.innerText = "✓ Already in Watchlist";
         } else {
-            showToast(data.error || 'Failed to add upgrade', 'error');
+            showCommanderToast(data.error || 'Failed to add upgrade', 'error');
             btn.disabled = false;
             btn.innerText = origText;
         }
     } catch (e) {
-        showToast(`Watchlist error: ${e.message}`, 'error');
+        showCommanderToast(`Watchlist error: ${e.message}`, 'error');
         btn.disabled = false;
         btn.innerText = origText;
     }
@@ -3387,7 +3451,7 @@ async function executeParseAndSave(runAi = false) {
     }
 
     if (!source) {
-        showToast("Please provide a ManaBox deck link or card list.", "error");
+        showCommanderToast("Please provide a ManaBox deck link or card list.", "error");
         return;
     }
 
@@ -3433,7 +3497,7 @@ async function executeParseAndSave(runAi = false) {
                 throw new Error((data && data.error) || (resp.status ? `Server returned HTTP ${resp.status}` : "Analysis timed out on gateway"));
             }
 
-            showToast("Deck analyzed and saved to Vault!", "success");
+            showCommanderToast("Deck analyzed and saved to Vault!", "success");
             dismissAiErrorAlert();
             await refreshVaultList();
             try {
@@ -3454,7 +3518,7 @@ async function executeParseAndSave(runAi = false) {
             });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.error || "Failed to save deck");
-            showToast("Deck saved to Vault with Scryfall stats!", "success");
+            showCommanderToast("Deck saved to Vault with Scryfall stats!", "success");
             await refreshVaultList();
             displayDeckInInspector(data.deck);
         }
@@ -3468,7 +3532,7 @@ async function executeParseAndSave(runAi = false) {
                 : e.message;
             showAiErrorAlert(alertMsg);
         }
-        showToast(`Error: ${e.message}`, "error");
+        showCommanderToast(`Error: ${e.message}`, "error");
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalText;
@@ -3491,7 +3555,7 @@ function closeBulkImportModal() {
 async function executeBulkImport() {
     const text = document.getElementById('bulkUrlsInput').value.trim();
     if (!text) {
-        showToast("Please enter at least one ManaBox link.", "error");
+        showCommanderToast("Please enter at least one ManaBox link.", "error");
         return;
     }
 
@@ -3509,12 +3573,12 @@ async function executeBulkImport() {
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Bulk import failed");
 
-        showToast(`Successfully imported ${data.imported_count} decks!`, 'success');
+        showCommanderToast(`Successfully imported ${data.imported_count} decks!`, 'success');
         closeBulkImportModal();
         await refreshVaultList();
         switchMainView('vault');
     } catch (e) {
-        showToast(`Error: ${e.message}`, 'error');
+        showCommanderToast(`Error: ${e.message}`, 'error');
     } finally {
         btn.disabled = false;
         progress.classList.add('hidden');
@@ -3527,11 +3591,11 @@ async function syncSavedDeck(deckId) {
         const resp = await fetch(`/api/deck/${deckId}/sync`, { method: 'POST' });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Sync failed");
-        showToast(data.message || "Deck refreshed with latest cards!", "success");
+        showCommanderToast(data.message || "Deck refreshed with latest cards!", "success");
         await refreshVaultList();
         return data.deck;
     } catch (e) {
-        showToast(`Sync error: ${e.message}`, "error");
+        showCommanderToast(`Sync error: ${e.message}`, "error");
         throw e;
     }
 }
@@ -3557,16 +3621,22 @@ async function syncActiveDeckFromSource() {
 // Polling recovery for saved deck analysis when network or gateway times out
 async function pollForCompletedAnalysis(deckId, btn, maxAttempts = 48, initialUpdatedAt = null) {
     if (!deckId) return false;
+    const startTime = Date.now();
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         await new Promise(r => setTimeout(r, 2500));
+        if (document.hidden) {
+            attempt--;
+            continue;
+        }
         try {
-            if (btn) btn.innerText = `Analyzing with Gemini (${Math.round(attempt * 2.5)}s)...`;
+            const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+            if (btn) btn.innerText = `Analyzing with Gemini (${elapsedSec}s)...`;
             const checkResp = await fetch(`/api/deck/history/${deckId}`);
             if (checkResp.ok) {
                 const freshDeck = await checkResp.json();
                 const isUpdated = initialUpdatedAt ? (freshDeck.updated_at !== initialUpdatedAt) : true;
                 if (freshDeck && freshDeck.has_ai_analysis && freshDeck.analysis && Object.keys(freshDeck.analysis).length > 0 && isUpdated) {
-                    showToast("Gemini analysis complete!", "success");
+                    showCommanderToast("Gemini analysis complete!", "success");
                     dismissAiErrorAlert();
                     try {
                         displayDeckInInspector(freshDeck, true);
@@ -3586,10 +3656,16 @@ async function pollForCompletedAnalysis(deckId, btn, maxAttempts = 48, initialUp
 
 // Polling recovery for newly parsed & analyzed deck imports
 async function pollForNewestDeckAnalysis(source, btn, maxAttempts = 48) {
+    const startTime = Date.now();
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         await new Promise(r => setTimeout(r, 2500));
+        if (document.hidden) {
+            attempt--;
+            continue;
+        }
         try {
-            if (btn) btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Analyzing with Gemini (${Math.round(attempt * 2.5)}s)...</span>`;
+            const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+            if (btn) btn.innerHTML = `<svg class="animate-spin h-4 w-4 text-current inline" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> <span>Analyzing with Gemini (${elapsedSec}s)...</span>`;
             const histResp = await fetch('/api/deck/history');
             if (histResp.ok) {
                 const list = await histResp.json();
@@ -3599,7 +3675,7 @@ async function pollForNewestDeckAnalysis(source, btn, maxAttempts = 48) {
                         const fullResp = await fetch(`/api/deck/history/${latest.id}`);
                         if (fullResp.ok) {
                             const fullDeck = await fullResp.json();
-                            showToast("Deck analyzed and saved to Vault!", "success");
+                            showCommanderToast("Deck analyzed and saved to Vault!", "success");
                             dismissAiErrorAlert();
                             await refreshVaultList();
                             try {
@@ -3665,7 +3741,7 @@ async function runAiAnalysisOnSavedDeck(callingBtn = null) {
             throw new Error((data && data.error) || (resp.status ? `Server returned HTTP ${resp.status}` : "Analysis request timed out on gateway"));
         }
 
-        showToast("Gemini analysis complete!", "success");
+        showCommanderToast("Gemini analysis complete!", "success");
         dismissAiErrorAlert();
         try {
             displayDeckInInspector(data.deck, true);
@@ -3682,7 +3758,7 @@ async function runAiAnalysisOnSavedDeck(callingBtn = null) {
             ? "The AI analysis is taking longer than usual on the server. The process may still be running in the background—please check your Vault in a moment or refresh the page."
             : e.message;
         showAiErrorAlert(alertMsg);
-        showToast(`AI error: ${e.message}`, "error");
+        showCommanderToast(`AI error: ${e.message}`, "error");
     } finally {
         triggerButtons.forEach(b => {
             b.disabled = false;
@@ -3711,13 +3787,13 @@ async function deleteSavedDeck(deckId, deckName) {
     try {
         const resp = await fetch(`/api/deck/history/${deckId}`, { method: 'DELETE' });
         if (!resp.ok) throw new Error("Delete failed");
-        showToast(`Deck '${deckName}' removed from Vault.`, "success");
+        showCommanderToast(`Deck '${deckName}' removed from Vault.`, "success");
         await refreshVaultList();
         if (activeDeck && activeDeck.id === deckId) {
             switchMainView('vault');
         }
     } catch (e) {
-        showToast(`Error: ${e.message}`, "error");
+        showCommanderToast(`Error: ${e.message}`, "error");
     }
 }
 
@@ -3738,14 +3814,14 @@ async function refreshVaultList() {
                 const inspSel = document.getElementById('inspectorDeckSelect');
                 if (inspSel) inspSel.value = activeDeck.id;
             }
-            if (typeof showToast === 'function') {
-                showToast("Deck Vault refreshed", "success");
+            if (typeof showCommanderToast === 'function') {
+                showCommanderToast("Deck Vault refreshed", "success");
             }
         }
     } catch (e) {
         console.error("Failed to refresh vault list", e);
-        if (typeof showToast === 'function') {
-            showToast("Failed to refresh vault", "error");
+        if (typeof showCommanderToast === 'function') {
+            showCommanderToast("Failed to refresh vault", "error");
         }
     } finally {
         if (icon) icon.classList.remove('animate-spin');
@@ -3919,9 +3995,10 @@ function filterVaultDecks() {
     });
 
     sortMatrixInternal();
-    renderVaultGrid(filteredDecks);
-    renderMatrixTable(filteredDecks);
+    renderActiveVaultView(filteredDecks);
 }
+
+const debouncedFilterVaultDecks = debounce(filterVaultDecks, 150);
 
 function filterMatrixTable() {
     filterVaultDecks();
@@ -3992,8 +4069,7 @@ function sortVaultDecks() {
         currentSortAsc = false;
     }
     sortMatrixInternal();
-    renderVaultGrid(filteredDecks);
-    renderMatrixTable(filteredDecks);
+    renderActiveVaultView(filteredDecks);
 }
 
 function sortMatrixBy(key) {
@@ -4004,8 +4080,7 @@ function sortMatrixBy(key) {
         currentSortAsc = false;
     }
     sortMatrixInternal();
-    renderVaultGrid(filteredDecks);
-    renderMatrixTable(filteredDecks);
+    renderActiveVaultView(filteredDecks);
 }
 
 function sortMatrixInternal() {
@@ -4052,7 +4127,7 @@ function sortMatrixInternal() {
 function toggleDeckSelection(deckId, isChecked) {
     if (isChecked) {
         if (selectedDeckIds.size >= 4) {
-            showToast("You can compare up to 4 decks at once.", "info");
+            showCommanderToast("You can compare up to 4 decks at once.", "info");
             renderMatrixTable(filteredDecks);
             return;
         }
@@ -4121,7 +4196,7 @@ function handleDropdownDeckChange() {
 
 function launchComparisonFromSelection() {
     if (selectedDeckIds.size < 2) {
-        showToast("Please select at least 2 decks to compare.", "info");
+        showCommanderToast("Please select at least 2 decks to compare.", "info");
         return;
     }
     syncDropdownsWithSelection();
@@ -4132,7 +4207,7 @@ function launchComparisonFromSelection() {
 function quickCompareWithFirst(deckId) {
     const sourceDecks = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
     if (sourceDecks.length < 2) {
-        showToast("Add at least 2 decks to compare matchups.", "info");
+        showCommanderToast("Add at least 2 decks to compare matchups.", "info");
         return;
     }
     const firstDeckId = sourceDecks[0].id === deckId ? (sourceDecks[1] ? sourceDecks[1].id : sourceDecks[0].id) : sourceDecks[0].id;
@@ -4150,7 +4225,7 @@ function launchCompareFromActiveDeck() {
     if (!activeDeck || !activeDeck.id) return;
     const sourceDecks = (allDecks && allDecks.length > 0) ? allDecks : currentVaultDecks;
     if (sourceDecks.length < 2) {
-        showToast("Add at least 2 decks to compare matchups.", "info");
+        showCommanderToast("Add at least 2 decks to compare matchups.", "info");
         return;
     }
     const otherDeck = sourceDecks.find(d => d.id !== activeDeck.id) || sourceDecks[0];
@@ -4176,7 +4251,7 @@ function launchPlaytestFromActiveDeck() {
 async function runActiveComparison() {
     const deckIds = Array.from(selectedDeckIds);
     if (deckIds.length < 2) {
-        showToast("Select at least 2 decks to compare.", "info");
+        showCommanderToast("Select at least 2 decks to compare.", "info");
         return;
     }
 
@@ -4200,7 +4275,7 @@ async function runActiveComparison() {
         if (container) container.classList.remove('hidden');
     } catch (e) {
         if (loader) loader.classList.add('hidden');
-        showToast(`Comparison Error: ${e.message}`, 'error');
+        showCommanderToast(`Comparison Error: ${e.message}`, 'error');
     }
 }
 
@@ -4395,7 +4470,7 @@ function renderComparisonResults(data) {
                 const heightPct = Math.max(8, Math.round((count / maxVal) * 100));
                 return `
                     <div class="flex-1 flex flex-col items-center h-full justify-end group">
-                        <span class="text-[9px] font-mono text-cyan-400 font-bold mb-1 opacity-0 group-hover:opacity-100 transition">${count}</span>
+                        <span class="text-[9px] font-mono text-cyan-400 font-bold mb-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">${count}</span>
                         <div class="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 rounded-t transition-all duration-300" style="height: ${heightPct}%;"></div>
                     </div>
                 `;
@@ -4472,8 +4547,8 @@ function renderComparisonResults(data) {
                 return `
                     <tr class="hover:bg-[#1B2230]/50 transition">
                         <td class="py-2.5 px-3 font-semibold text-white">
-                            <span class="cursor-pointer hover:text-cyan-300 hover:underline" data-img="${escapeHtml(img)}"
-                                  onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                            <span class="cursor-pointer hover:text-cyan-300 hover:underline" data-img="${escapeHtml(img)}" data-card-name="${escapeHtml(c.name)}"
+                                  onclick="showCardHover(event, this)" onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                                 ${escapeHtml(c.name)}
                             </span>
                         </td>
@@ -4501,8 +4576,8 @@ function renderComparisonResults(data) {
         uniqueGrid.innerHTML = decks.map(d => {
             const uData = uniqueMap[String(d.id)] || { count: 0, sample: [] };
             const sampleCardsHtml = (uData.sample || []).map(c => `
-                <li class="text-[11px] text-slate-300 truncate cursor-pointer hover:text-cyan-300" data-img="${escapeHtml(c.image_uri || '')}"
-                    onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                <li class="text-[11px] text-slate-300 truncate cursor-pointer hover:text-cyan-300" data-img="${escapeHtml(c.image_uri || '')}" data-card-name="${escapeHtml(c.name)}"
+                    onclick="showCardHover(event, this)" onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                     &bull; ${escapeHtml(c.name)}
                 </li>
             `).join('');
@@ -4530,8 +4605,8 @@ function renderComparisonResults(data) {
             const itemsHtml = cardsList.map((c, idx) => `
                 <div class="flex items-center justify-between py-1.5 border-b border-[#263245] text-xs font-mono">
                     <div class="min-w-0 pr-2">
-                        <span class="cursor-pointer hover:text-cyan-300 font-medium text-slate-200 truncate block" data-img="${escapeHtml(c.image_uri || '')}"
-                              onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                        <span class="cursor-pointer hover:text-cyan-300 font-medium text-slate-200 truncate block" data-img="${escapeHtml(c.image_uri || '')}" data-card-name="${escapeHtml(c.name)}"
+                              onclick="showCardHover(event, this)" onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                             ${idx + 1}. ${escapeHtml(c.name)}
                         </span>
                     </div>
@@ -4672,20 +4747,20 @@ async function addSharedCardToWatchlist(cardName, btn) {
         });
         const data = await safeParseCommanderJson(resp);
         if (resp.ok) {
-            showToast(`Added '${cardName}' to Watchlist!`, 'success');
+            showCommanderToast(`Added '${cardName}' to Watchlist!`, 'success');
             btn.className = "px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded-none text-[10px] font-mono uppercase font-bold border border-emerald-500/40";
             btn.innerText = "✓ Watched";
         } else if (resp.status === 409) {
-            showToast(`'${cardName}' is already on your Watchlist.`, 'info');
+            showCommanderToast(`'${cardName}' is already on your Watchlist.`, 'info');
             btn.className = "px-2 py-0.5 bg-slate-800 text-slate-400 rounded-none text-[10px] font-mono uppercase font-bold border border-[#263245]";
             btn.innerText = "✓ In List";
         } else {
-            showToast(data.error || 'Failed to add to watchlist', 'error');
+            showCommanderToast(data.error || 'Failed to add to watchlist', 'error');
             btn.disabled = false;
             btn.innerText = origText;
         }
     } catch (e) {
-        showToast(`Error: ${e.message}`, 'error');
+        showCommanderToast(`Error: ${e.message}`, 'error');
         btn.disabled = false;
         btn.innerText = origText;
     }
@@ -4693,19 +4768,32 @@ async function addSharedCardToWatchlist(cardName, btn) {
 
 // Toast aliases for compatibility
 function showOverviewToast(msg, type = 'info') {
-    showToast(msg, type);
+    showCommanderToast(msg, type);
 }
 function hideOverviewToast() {
-    hideToast();
+    hideCommanderToast();
 }
 
-// Hover Zoom Image Tooltip with automatic Scryfall resolution
+// Hover Zoom Image Tooltip (Desktop) / Full Card Modal Overlay (Mobile & Touch)
 function showCardHover(e, elem) {
     let imgUrl = elem.getAttribute('data-img');
+    const cardName = elem.getAttribute('data-card-name') || elem.getAttribute('title') || (elem.textContent || '').trim() || 'Card Artwork';
     if (!imgUrl && elem.getAttribute('data-card-name')) {
         imgUrl = resolveCardImageUri(elem.getAttribute('data-card-name'));
     }
     if (!imgUrl) return;
+
+    // On touch/coarse devices, open the clean full-screen dismissible modal instead of floating tooltip
+    if (!isFinePointerDevice() || window.innerWidth < 768) {
+        if (e && e.type === 'click' && typeof openCardImageModal === 'function') {
+            e.preventDefault();
+            e.stopPropagation();
+            hideCardHover();
+            openCardImageModal(imgUrl, cardName, elem.getAttribute('data-set') || '', elem.getAttribute('data-collector') || '', elem.getAttribute('data-finish') || '');
+        }
+        return;
+    }
+
     const preview = document.getElementById('cardHoverPreview');
     const img = document.getElementById('cardHoverImg');
     if (img) img.src = imgUrl;
@@ -4713,21 +4801,24 @@ function showCardHover(e, elem) {
     moveCardHover(e);
 }
 function moveCardHover(e) {
-    const preview = document.getElementById('cardHoverPreview');
-    if (!preview) return;
-    if (window.innerWidth < 768) {
-        preview.style.left = '50%';
-        preview.style.transform = 'translateX(-50%)';
-        preview.style.top = '70px';
-    } else {
+    if (!isFinePointerDevice() || window.innerWidth < 768) return;
+    const clientX = e && e.clientX ? e.clientX : 0;
+    const clientY = e && e.clientY ? e.clientY : 100;
+    if (_hoverRafId) cancelAnimationFrame(_hoverRafId);
+    _hoverRafId = requestAnimationFrame(() => {
+        _hoverRafId = null;
+        const preview = document.getElementById('cardHoverPreview');
+        if (!preview || preview.classList.contains('hidden')) return;
         preview.style.transform = '';
-        preview.style.left = `${(e && e.clientX ? e.clientX : 0) + 20}px`;
-        preview.style.top = `${Math.min(window.innerHeight - 340, Math.max(10, (e && e.clientY ? e.clientY : 100) - 100))}px`;
-    }
+        preview.style.left = `${clientX + 20}px`;
+        preview.style.top = `${Math.min(window.innerHeight - 340, Math.max(10, clientY - 100))}px`;
+    });
 }
 function hideCardHover() {
-    document.getElementById('cardHoverPreview').classList.add('hidden');
+    const preview = document.getElementById('cardHoverPreview');
+    if (preview) preview.classList.add('hidden');
 }
+window.addEventListener('scroll', hideCardHover, { passive: true });
 
 // Utility: Sample Decks
 function loadSampleDeck(key) {
@@ -4755,9 +4846,9 @@ async function pasteFromClipboard(elemId) {
     try {
         const text = await navigator.clipboard.readText();
         document.getElementById(elemId).value = text;
-        showToast("Pasted from clipboard!", "info");
+        showCommanderToast("Pasted from clipboard!", "info");
     } catch (e) {
-        showToast("Clipboard access denied.", "error");
+        showCommanderToast("Clipboard access denied.", "error");
     }
 }
 
@@ -4792,11 +4883,11 @@ async function saveApiKeyFromModal() {
         });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || "Verification failed");
-        showToast("Gemini API key verified & saved!", "success");
+        showCommanderToast("Gemini API key verified & saved!", "success");
         document.getElementById('geminiKeyDot').className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
         closeApiKeyModal();
     } catch (e) {
-        showToast(`Key Error: ${e.message}`, "error");
+        showCommanderToast(`Key Error: ${e.message}`, "error");
     } finally {
         btn.disabled = false;
         btn.innerText = "Verify & Save";
@@ -4806,7 +4897,7 @@ async function saveApiKeyFromModal() {
 // Toast Alert Helper
 let toastTimer = null;
 
-function showToast(msg, type = 'info') {
+function showCommanderToast(msg, type = 'info') {
     const toast = document.getElementById('analyzerToast');
     const toastBox = document.getElementById('analyzerToastBox');
     const toastMsg = document.getElementById('analyzerToastMsg');
@@ -4830,12 +4921,12 @@ function showToast(msg, type = 'info') {
     // ONLY auto-hide info and success toasts; keep error toasts visible until manually dismissed or replaced
     if (type !== 'error') {
         toastTimer = setTimeout(() => {
-            hideToast();
+            hideCommanderToast();
         }, 5000);
     }
 }
 
-function hideToast() {
+function hideCommanderToast() {
     const toast = document.getElementById('analyzerToast');
     if (toast) {
         toast.classList.add('hidden', 'translate-y-2');
@@ -4889,7 +4980,7 @@ function switchUpgradeSubtab(subtab) {
             if (content) content.classList.remove('hidden');
         } else {
             if (btn) {
-                btn.className = "py-2 sm:py-3 px-1.5 sm:px-4 text-[10px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center";
+                btn.className = "cmdr-touch-btn min-h-[44px] py-2.5 sm:py-3 px-2 sm:px-4 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-tight sm:tracking-wider text-slate-400 border-b-2 border-transparent hover:text-slate-200 hover:bg-slate-800/40 sm:hover:bg-transparent transition flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 cursor-pointer rounded-none sm:rounded-none flex-1 text-center";
             }
             if (content) content.classList.add('hidden');
         }
@@ -4903,7 +4994,7 @@ function switchUpgradeSubtab(subtab) {
 function handleUpgradeThemeChange(themeSlug) {
     window.currentUpgradeTheme = themeSlug || '';
     if (activeDeck && activeDeck.id) {
-        showToast(themeSlug ? `Filtering recommendations by theme: ${themeSlug}` : "Viewing average commander recommendations", "info");
+        showCommanderToast(themeSlug ? `Filtering recommendations by theme: ${themeSlug}` : "Viewing average commander recommendations", "info");
         loadDualTierUpgrades(activeDeck.id);
     }
 }
@@ -4924,7 +5015,7 @@ function toggleAntiSaltFilter() {
         }
     }
     if (activeDeck && activeDeck.id) {
-        showToast(window.antiSaltFilterEnabled ? "Casual Mode ON: High salt cards excluded." : "Casual Mode OFF: Showing all cards.", "info");
+        showCommanderToast(window.antiSaltFilterEnabled ? "Casual Mode ON: High salt cards excluded." : "Casual Mode OFF: Showing all cards.", "info");
         loadDualTierUpgrades(activeDeck.id);
     }
 }
@@ -4952,6 +5043,7 @@ function trackCollectionEnrichment(status) {
 
     if (!enrichmentPollTimer && status.is_running) {
         enrichmentPollTimer = setInterval(async () => {
+            if (document.hidden) return;
             try {
                 const res = await fetch('/api/inventory/enrich/status');
                 const pollData = await res.json();
@@ -4964,10 +5056,10 @@ function trackCollectionEnrichment(status) {
                         clearInterval(enrichmentPollTimer);
                         enrichmentPollTimer = null;
                         if (activeDeck && activeDeck.id && (!activeDeck.upgrades || activeDeck.upgrades.partial)) {
-                            showToast("Binder collection enrichment completed! Updating recommendations...", "success");
+                            showCommanderToast("Binder collection enrichment completed! Updating recommendations...", "success");
                             loadDualTierUpgrades(activeDeck.id, { force: true });
                         } else {
-                            showToast("Binder collection enrichment completed!", "success");
+                            showCommanderToast("Binder collection enrichment completed!", "success");
                         }
                     }
                 }
@@ -5078,11 +5170,11 @@ async function loadDualTierUpgrades(deckId, options = {}) {
             : (data.partial
                 ? `Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards (analysis continuing in background)`
                 : `Evaluation complete: ${ownedCount} binder swaps, ${shopCount} shopping cards`);
-        showToast(msg, data.partial ? "info" : "success");
+        showCommanderToast(msg, data.partial ? "info" : "success");
 
     } catch (err) {
         if (loadingElem) loadingElem.classList.add('hidden');
-        showToast(`Upgrade evaluation failed: ${err.message}`, "error");
+        showCommanderToast(`Upgrade evaluation failed: ${err.message}`, "error");
     } finally {
         if (btn) btn.disabled = false;
         if (icon) icon.classList.remove('animate-spin');
@@ -5345,7 +5437,7 @@ function renderCombos(combosEval) {
 // 1-Click Action Handler for Missing Combo Pieces
 async function handleSlotComboPiece(btn) {
     if (!activeDeck || !activeDeck.id) {
-        showToast("Select or open a deck in Inspector first", "warning");
+        showCommanderToast("Select or open a deck in Inspector first", "warning");
         return;
     }
     const cardIn = btn.getAttribute('data-card-in');
@@ -5375,7 +5467,7 @@ async function handleSlotComboPiece(btn) {
         if (!resp.ok || !data.success) {
             throw new Error(data.error || 'Failed to slot card');
         }
-        showToast(data.message || `Slotted ${cardIn} into deck!`, "success");
+        showCommanderToast(data.message || `Slotted ${cardIn} into deck!`, "success");
         if (data.deck) {
             displayDeckInInspector(data.deck, true);
         } else {
@@ -5383,7 +5475,7 @@ async function handleSlotComboPiece(btn) {
         }
         await refreshVaultList();
     } catch (err) {
-        showToast(err.message || 'Error slotting combo piece', "error");
+        showCommanderToast(err.message || 'Error slotting combo piece', "error");
     } finally {
         btn.disabled = false;
         btn.innerHTML = oldHtml;
@@ -5507,7 +5599,7 @@ async function handleApplySwapClick(btn) {
 
 async function applyDeckSwap(btn, cardOut, cardIn) {
     if (!activeDeck || !activeDeck.id) {
-        showToast("Please save or open a saved deck to apply swaps.", "error");
+        showCommanderToast("Please save or open a saved deck to apply swaps.", "error");
         return;
     }
 
@@ -5539,7 +5631,7 @@ async function applyDeckSwap(btn, cardOut, cardIn) {
         }
         displayDeckInInspector(activeDeck, true);
 
-        showToast(data.message || `Successfully swapped ${cardOut} for ${cardIn}!`, "success");
+        showCommanderToast(data.message || `Successfully swapped ${cardOut} for ${cardIn}!`, "success");
         await loadDualTierUpgrades(activeDeck.id);
 
     } catch (err) {
@@ -5547,7 +5639,7 @@ async function applyDeckSwap(btn, cardOut, cardIn) {
             btn.removeAttribute('disabled');
             btn.innerHTML = origText;
         }
-        showToast(`Swap failed: ${err.message}`, "error");
+        showCommanderToast(`Swap failed: ${err.message}`, "error");
     }
 }
 
@@ -5636,13 +5728,13 @@ function filterShoppingBracket(bracket) {
                     <div class="flex items-center gap-2">
                         ${item.image_uri ? `
                             <img src="${escapeHtml(toScryfallThumb(item.image_uri))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" class="w-7 h-10 object-cover rounded-none border border-cyan-500/40 flex-shrink-0 cursor-pointer shadow"
-                                 data-img="${escapeHtml(item.image_uri)}"
-                                 onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                                 data-img="${escapeHtml(item.image_uri)}" data-card-name="${escapeHtml(item.name)}"
+                                 onclick="showCardHover(event, this)" onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                         ` : ''}
                         <div class="min-w-0 flex-1">
                             <div class="font-bold text-white truncate cursor-pointer hover:text-cyan-300 transition" title="${escapeHtml(item.name)}"
-                                 data-img="${escapeHtml(item.image_uri || '')}"
-                                 onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
+                                 data-img="${escapeHtml(item.image_uri || '')}" data-card-name="${escapeHtml(item.name)}"
+                                 onclick="showCardHover(event, this)" onmouseenter="showCardHover(event, this)" onmousemove="moveCardHover(event)" onmouseleave="hideCardHover()">
                                 ${escapeHtml(item.name)}
                             </div>
                             <div class="text-[10px] text-slate-400 font-mono">
@@ -5690,7 +5782,7 @@ function filterShoppingBracket(bracket) {
 
 async function exportManaBoxWishlist(format) {
     if (!activeDeck || !activeDeck.id) {
-        showToast("Open a saved deck to export wishlist.", "error");
+        showCommanderToast("Open a saved deck to export wishlist.", "error");
         return;
     }
 
@@ -5712,16 +5804,16 @@ async function exportManaBoxWishlist(format) {
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
-        showToast(`Exported ManaBox wishlist (${format.toUpperCase()})!`, "success");
+        showCommanderToast(`Exported ManaBox wishlist (${format.toUpperCase()})!`, "success");
 
     } catch (err) {
-        showToast(`Export failed: ${err.message}`, "error");
+        showCommanderToast(`Export failed: ${err.message}`, "error");
     }
 }
 
 async function copyWishlistText() {
     if (!window.currentShoppingCards || window.currentShoppingCards.length === 0) {
-        showToast("Shopping list is empty.", "info");
+        showCommanderToast("Shopping list is empty.", "info");
         return;
     }
 
@@ -5730,9 +5822,9 @@ async function copyWishlistText() {
 
     try {
         await navigator.clipboard.writeText(text);
-        showToast(`Copied ${lines.length} wishlist cards to clipboard!`, "success");
+        showCommanderToast(`Copied ${lines.length} wishlist cards to clipboard!`, "success");
     } catch (e) {
-        showToast("Clipboard copy failed.", "error");
+        showCommanderToast("Clipboard copy failed.", "error");
     }
 }
 
@@ -6318,7 +6410,7 @@ async function generateTacticsSection(secKey) {
 
         renderTacticsTab(currentDeckTactics, currentTacticsStatus);
         updateTacticsBadgeAndBanner(activeDeck);
-        showToast(`${getTacticsTitle(secKey)} generated successfully!`, 'success');
+        showCommanderToast(`${getTacticsTitle(secKey)} generated successfully!`, 'success');
         return true;
     } catch (e) {
         if (cardEl) {
@@ -6337,7 +6429,7 @@ async function generateTacticsSection(secKey) {
                 </div>
             `;
         }
-        showToast(`Tactics error (${secKey}): ${e.message}`, 'error');
+        showCommanderToast(`Tactics error (${secKey}): ${e.message}`, 'error');
         return false;
     }
 }
@@ -6369,7 +6461,7 @@ async function generateAllTactics(options = {}) {
         const promises = targetKeys.map(k => generateTacticsSection(k));
         const results = await Promise.allSettled(promises);
         const successes = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
-        showToast(`Commander Tactics: ${successes} of ${targetKeys.length} cards updated.`, successes === targetKeys.length ? 'success' : 'info');
+        showCommanderToast(`Commander Tactics: ${successes} of ${targetKeys.length} cards updated.`, successes === targetKeys.length ? 'success' : 'info');
         await loadDeckTactics(activeDeck.id);
         if (activeDeck) {
             updateTacticsBadgeAndBanner(activeDeck);
@@ -6532,7 +6624,7 @@ function renderHubUpgradeCardHtml(item, isFree) {
             <div class="flex items-start justify-between gap-3">
                 <div class="flex items-start space-x-3 min-w-0">
                     <div class="w-10 h-14 bg-[#0C0F17] border border-[#263245] flex-shrink-0 overflow-hidden cursor-pointer" onclick="openCardImageModal('${escapeHtml(imgUri)}', '${escapeHtml(item.card_in)}', 'ANY', '', 'nonfoil')">
-                        ${imgUri ? `<img src="${escapeHtml(imgUri)}" alt="${escapeHtml(item.card_in)}" class="w-full h-full object-cover">` : `<div class="p-1 text-[8px] font-mono text-slate-600 text-center">Art</div>`}
+                        ${imgUri ? `<img src="${escapeHtml(toScryfallThumb(imgUri))}" alt="${escapeHtml(item.card_in)}" loading="lazy" decoding="async" class="w-full h-full object-cover">` : `<div class="p-1 text-[8px] font-mono text-slate-600 text-center">Art</div>`}
                     </div>
                     <div class="min-w-0">
                         <div class="flex items-center space-x-2 flex-wrap gap-1">

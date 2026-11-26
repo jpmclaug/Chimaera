@@ -2,7 +2,10 @@ import json
 import re
 import secrets
 import statistics
+import threading
+import time
 from datetime import datetime, timezone, timedelta
+from flask import current_app, has_app_context
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from sqlalchemy.orm import deferred, column_property, validates
@@ -708,12 +711,16 @@ class VendorPrice(db.Model):
     """Price and stock status snapshot for a card at a specific vendor."""
 
     __tablename__ = "vendor_price"
+    __table_args__ = (
+        db.Index("idx_vendor_price_watchlist_vendor", "watchlist_id", "vendor_name"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     watchlist_id = db.Column(
         db.Integer,
         db.ForeignKey("watchlist_item.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     vendor_name = db.Column(db.String(50), nullable=False)  # 'TCGplayer', 'eBay', 'Mighty Meeple'
     price = db.Column(db.Float, nullable=False)
@@ -747,21 +754,80 @@ class SystemSetting(db.Model):
     value = db.Column(db.Text, nullable=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
+    _cache: dict[str, tuple[float, str | None]] = {}
+    _cache_lock = threading.Lock()
+    _CACHE_TTL = 60.0
+
+    @classmethod
+    def _use_cache(cls) -> bool:
+        try:
+            if has_app_context() and current_app.config.get("TESTING"):
+                return False
+        except Exception:
+            pass
+        return True
+
+    @classmethod
+    def invalidate_cache(cls, key: str | None = None) -> None:
+        with cls._cache_lock:
+            if key is None:
+                cls._cache.clear()
+            else:
+                cls._cache.pop(key, None)
+
     @classmethod
     def get_many(cls, keys: list[str]) -> dict[str, str]:
         """Retrieves a dict of setting key-value pairs for the requested keys in a single query."""
-        try:
-            rows = cls.query.filter(cls.key.in_(keys)).all()
-            return {r.key: (r.value or "") for r in rows}
-        except Exception:
+        if not keys:
             return {}
+        use_cache = cls._use_cache()
+        result: dict[str, str] = {}
+        missing_keys: list[str] = []
+        now = time.monotonic()
+
+        if use_cache:
+            with cls._cache_lock:
+                for k in keys:
+                    entry = cls._cache.get(k)
+                    if entry and (now - entry[0]) < cls._CACHE_TTL:
+                        if entry[1] is not None:
+                            result[k] = entry[1]
+                    else:
+                        missing_keys.append(k)
+        else:
+            missing_keys = list(keys)
+
+        if missing_keys:
+            try:
+                rows = cls.query.filter(cls.key.in_(missing_keys)).all()
+                fetched = {r.key: (r.value or "") for r in rows}
+                result.update(fetched)
+                if use_cache:
+                    store_ts = time.monotonic()
+                    with cls._cache_lock:
+                        for k in missing_keys:
+                            cls._cache[k] = (store_ts, fetched.get(k))
+            except Exception:
+                pass
+        return result
 
     @classmethod
     def get_val(cls, key: str, default: str | None = None) -> str | None:
         """Retrieves a setting value string or default if not found."""
+        use_cache = cls._use_cache()
+        if use_cache:
+            now = time.monotonic()
+            with cls._cache_lock:
+                entry = cls._cache.get(key)
+                if entry and (now - entry[0]) < cls._CACHE_TTL:
+                    return entry[1] if entry[1] is not None else default
         try:
             row = cls.query.filter_by(key=key).first()
-            return row.value if row and row.value is not None else default
+            val = row.value if row and row.value is not None else None
+            if use_cache:
+                with cls._cache_lock:
+                    cls._cache[key] = (time.monotonic(), val)
+            return val if val is not None else default
         except Exception:
             return default
 
@@ -796,7 +862,33 @@ class SystemSetting(db.Model):
             row.value = str_val
             row.updated_at = utc_now()
         db.session.commit()
+        with cls._cache_lock:
+            cls._cache[key] = (time.monotonic(), str_val)
         return row
+
+    @classmethod
+    def set_many(cls, updates: dict[str, any]) -> None:
+        """Upserts multiple setting key-value pairs in a single database transaction."""
+        if not updates:
+            return
+        keys = list(updates.keys())
+        existing_rows = {r.key: r for r in cls.query.filter(cls.key.in_(keys)).all()}
+        now_dt = utc_now()
+        str_updates: dict[str, str] = {}
+        for k, v in updates.items():
+            str_val = str(v) if v is not None else ""
+            str_updates[k] = str_val
+            row = existing_rows.get(k)
+            if not row:
+                db.session.add(cls(key=k, value=str_val))
+            else:
+                row.value = str_val
+                row.updated_at = now_dt
+        db.session.commit()
+        now_ts = time.monotonic()
+        with cls._cache_lock:
+            for k, sv in str_updates.items():
+                cls._cache[k] = (now_ts, sv)
 
     @classmethod
     def record_successful_run(cls, process_name: str, dt: datetime | None = None, max_keep: int = 10) -> list[str]:
@@ -921,6 +1013,10 @@ class ActivityLog(db.Model):
     """Activity tracking, tool usage analytics, and authentication security audit log."""
 
     __tablename__ = "activity_log"
+    __table_args__ = (
+        db.Index("idx_activity_user_created", "user_id", "created_at"),
+        db.Index("idx_activity_action_created", "action", "created_at"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
@@ -973,7 +1069,7 @@ class MicrocenterItem(db.Model):
     in_stock = db.Column(db.Boolean, default=True, nullable=False)
     stock_count = db.Column(db.Integer, nullable=True)  # e.g. 25, 4, 0
     stock_text = db.Column(db.String(100), nullable=True)  # e.g. "25+ IN STOCK at Charlotte Store"
-    store_id = db.Column(db.String(20), default="175", nullable=False)  # 175 = Charlotte
+    store_id = db.Column(db.String(20), default="175", nullable=False, index=True)  # 175 = Charlotte
     store_name = db.Column(db.String(100), default="Charlotte", nullable=False)
     category = db.Column(db.String(100), default="Tabletop Games / Trading Card Game", nullable=True)
     target_price = db.Column(db.Float, nullable=True)
@@ -1122,9 +1218,14 @@ class MicrocenterItem(db.Model):
             "stock_delta": 0,
         }
 
-    def to_dict(self, include_history: bool = False, history_limit: int = 30) -> dict:
+    def to_dict(self, include_history: bool = False, history_limit: int = 30, day_over_day: dict | None = None) -> dict:
         """Serializes MicroCenter product item into a dict."""
-        dod = self.get_day_over_day_change()
+        if day_over_day is not None:
+            dod = day_over_day
+        elif getattr(self, "_prefetched_dod", None) is not None:
+            dod = self._prefetched_dod
+        else:
+            dod = self.get_day_over_day_change()
         data = {
             "id": self.id,
             "sku": self.sku,
@@ -1169,6 +1270,9 @@ class MicrocenterHistory(db.Model):
     """Historical timestamped snapshot of price and inventory for a MicroCenter product."""
 
     __tablename__ = "microcenter_history"
+    __table_args__ = (
+        db.Index("idx_mc_history_item_recorded", "item_id", "recorded_at"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     item_id = db.Column(
@@ -1407,29 +1511,51 @@ class DeckAnalysis(db.Model):
         """Returns clinical lifecycle status: 'ready', 'stats_only', or 'draft'."""
         if self.has_ai_analysis:
             return "ready"
-        stats = self.get_stats()
+        stats = self.get_stats(allow_recompute=False)
         if stats and "land_drop_probabilities" in stats:
             return "stats_only"
         return "draft"
 
     def get_parsed_cards(self) -> list[dict]:
-        """Returns deserialized cards_data list."""
-        if not self.cards_data:
+        """Returns deserialized cards_data list (memoized per cards_data snapshot)."""
+        raw = self.cards_data
+        if not raw:
             return []
+        cached_raw = getattr(self, "_cached_cards_raw", None)
+        if cached_raw is raw:
+            cached_val = getattr(self, "_cached_cards_val", None)
+            if cached_val is not None:
+                return [dict(c) for c in cached_val]
         try:
-            import json
-            return json.loads(self.cards_data)
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                self._cached_cards_raw = raw
+                self._cached_cards_val = parsed
+                return [dict(c) for c in parsed]
+            return []
         except Exception:
             return []
 
-    def get_stats(self) -> dict:
+    def get_stats(self, allow_recompute: bool = True) -> dict:
         """Returns deserialized stats dict or calculates it dynamically from cards_data."""
-        import json
-        if self.stats_json:
+        raw_stats = self.stats_json
+        if raw_stats:
+            cached_raw = getattr(self, "_cached_stats_raw", None)
+            if cached_raw is raw_stats:
+                cached_val = getattr(self, "_cached_stats_val", None)
+                if cached_val is not None:
+                    return cached_val
             try:
-                data = json.loads(self.stats_json)
-                if isinstance(data, dict) and "pip_breakdown" in data and "land_drop_probabilities" in data and "mana_sinks" in data:
-                    return data
+                data = json.loads(raw_stats)
+                if isinstance(data, dict):
+                    if "pip_breakdown" in data and "land_drop_probabilities" in data and "mana_sinks" in data:
+                        self._cached_stats_raw = raw_stats
+                        self._cached_stats_val = data
+                        return data
+                    if not allow_recompute:
+                        self._cached_stats_raw = raw_stats
+                        self._cached_stats_val = data
+                        return data
             except Exception:
                 pass
 
@@ -1438,31 +1564,37 @@ class DeckAnalysis(db.Model):
         if not cards:
             return {}
 
-        try:
-            from deck_analyzer import DeckAnalyzer
-            analyzer = DeckAnalyzer()
-            cmdrs = [c.strip() for c in (self.commander_name or "").split(",") if c.strip()]
-            res = analyzer.analyze({"cards": cards, "deck_name": self.deck_name, "commander": cmdrs})
-            computed_stats = res.get("stats", {})
-            if computed_stats:
-                try:
-                    self.stats_json = json.dumps(computed_stats)
-                    if self.total_value is None and computed_stats.get("total_value") is not None:
-                        self.total_value = float(computed_stats["total_value"])
-                    if self.avg_cmc is None and computed_stats.get("avg_cmc") is not None:
-                        self.avg_cmc = float(computed_stats["avg_cmc"])
-                    if not self.color_identity and computed_stats.get("color_identity"):
-                        self.color_identity = ",".join(computed_stats["color_identity"])
-                    if self.id is not None:
-                        db.session.commit()
-                except Exception:
+        if allow_recompute:
+            try:
+                from deck_analyzer import DeckAnalyzer
+                analyzer = DeckAnalyzer()
+                cmdrs = [c.strip() for c in (self.commander_name or "").split(",") if c.strip()]
+                res = analyzer.analyze({"cards": cards, "deck_name": self.deck_name, "commander": cmdrs})
+                computed_stats = res.get("stats", {})
+                if computed_stats:
                     try:
-                        db.session.rollback()
+                        self.stats_json = json.dumps(computed_stats)
+                        self._cached_stats_raw = self.stats_json
+                        self._cached_stats_val = computed_stats
+                        if self.total_value is None and computed_stats.get("total_value") is not None:
+                            self.total_value = float(computed_stats["total_value"])
+                        if self.avg_cmc is None and computed_stats.get("avg_cmc") is not None:
+                            self.avg_cmc = float(computed_stats["avg_cmc"])
+                        if not self.color_identity and computed_stats.get("color_identity"):
+                            self.color_identity = ",".join(computed_stats["color_identity"])
+                        if self.id is not None:
+                            db.session.commit()
                     except Exception:
-                        pass
-            return computed_stats
-        except Exception:
-            # Fallback basic calculation
+                        try:
+                            db.session.rollback()
+                        except Exception:
+                            pass
+                return computed_stats
+            except Exception:
+                pass
+
+        # Fast fallback basic calculation (also used when allow_recompute=False)
+        if True:
             type_counts = {}
             cmc_curve = {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7+": 0}
             total_val = 0.0
@@ -1522,7 +1654,7 @@ class DeckAnalysis(db.Model):
         """Returns list of color identity letters e.g. ['W', 'U', 'B']."""
         if self.color_identity:
             return [c.strip() for c in self.color_identity.split(",") if c.strip()]
-        stats = self.get_stats()
+        stats = self.get_stats(allow_recompute=False)
         return stats.get("color_identity", [])
 
     def get_analysis(self) -> dict:
@@ -1535,9 +1667,9 @@ class DeckAnalysis(db.Model):
         except Exception:
             return {}
 
-    def to_dict(self, include_full: bool = True):
+    def to_dict(self, include_full: bool = True, allow_recompute: bool = False):
         """Serializes deck record into a dict for JSON API responses."""
-        stats = self.get_stats()
+        stats = self.get_stats(allow_recompute=allow_recompute)
         data = {
             "id": self.id,
             "user_id": self.user_id,
@@ -1766,21 +1898,27 @@ class SecretLairAnalysis(db.Model):
         except Exception:
             return {}
 
-    def to_dict(self) -> dict:
+    def to_dict(self, include_details: bool = True) -> dict:
         """Serializes SecretLairAnalysis record into dict."""
-        return {
+        drops = self.get_drops()
+        data = {
             "id": self.id,
             "user_id": self.user_id,
             "title": self.title,
             "source_url": self.source_url,
             "banner_image": self.banner_image,
-            "drops": self.get_drops(),
-            "analysis": self.get_analysis(),
+            "drops": drops if include_details else [],
+            "drops_count": len(drops),
             "model_used": self.model_used,
             "target_deck_ids": self.target_deck_ids,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+        if include_details:
+            data["analysis"] = self.get_analysis()
+        else:
+            data["analysis"] = {}
+        return data
 
 
 class CardAddAnalysis(db.Model):
@@ -1823,21 +1961,27 @@ class CardAddAnalysis(db.Model):
         except Exception:
             return {}
 
-    def to_dict(self) -> dict:
+    def to_dict(self, include_details: bool = True) -> dict:
         """Serializes CardAddAnalysis record into dict."""
-        return {
+        cards = self.get_cards()
+        data = {
             "id": self.id,
             "user_id": self.user_id,
             "title": self.title,
             "source_type": self.source_type,
-            "input_text": self.input_text,
-            "cards": self.get_cards(),
-            "analysis": self.get_analysis(),
+            "input_text": self.input_text if include_details else None,
+            "cards": cards if include_details else [],
+            "cards_count": len(cards),
             "model_used": self.model_used,
             "target_deck_ids": self.target_deck_ids,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+        if include_details:
+            data["analysis"] = self.get_analysis()
+        else:
+            data["analysis"] = {}
+        return data
 
 
 
@@ -1862,7 +2006,7 @@ class CommanderPlaytestSession(db.Model):
     )  # active | finished | archived
     state_json = deferred(db.Column(db.Text, nullable=False), group="pt_state")  # Full JSON game state
     state_version = db.Column(db.Integer, nullable=False, default=1)
-    checkpoints_json = deferred(db.Column(db.Text, nullable=True), group="pt_state")  # Named snapshots (JSON list)
+    checkpoints_json = deferred(db.Column(db.Text, nullable=True), group="pt_checkpoints")  # Named snapshots (JSON list)
     turn_number = db.Column(db.Integer, default=1, index=True)  # Denormalized for listing
     created_at = db.Column(db.DateTime, default=utc_now, index=True)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, index=True)

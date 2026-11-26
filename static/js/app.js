@@ -134,8 +134,19 @@ function openAddCardModal() {
             submitBtn.disabled = (!currentPrintsData || currentPrintsData.length === 0);
         }
         const input = document.getElementById("card-search-input");
-        if (input) input.focus();
+        if (input && window.matchMedia("(min-width: 768px)").matches) input.focus();
     }
+}
+
+function appDebounce(fn, delayMs = 150) {
+    let timer = null;
+    return function (...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+            timer = null;
+            fn.apply(this, args);
+        }, delayMs);
+    };
 }
 
 // =========================================================================
@@ -314,11 +325,13 @@ function openBulkAddModal() {
         if (wasHidden) lockBody();
         const textarea = document.getElementById("bulk-cards-input");
         if (textarea) {
-            textarea.focus();
+            if (window.matchMedia("(min-width: 768px)").matches) textarea.focus();
             updateBulkCount();
         }
     }
 }
+
+const debouncedUpdateBulkCount = appDebounce(updateBulkCount, 150);
 
 function closeBulkAddModal() {
     const modal = document.getElementById("modal-bulk-add");
@@ -447,7 +460,9 @@ async function openEditTargetModal(id, name, currentTarget, notifyMM = true, isA
 
     modal.classList.remove("hidden");
     lockBody();
-    document.getElementById("edit-target-price-input").focus();
+    if (window.matchMedia("(min-width: 768px)").matches) {
+        document.getElementById("edit-target-price-input").focus();
+    }
 
     // Fetch price intel for quick presets in edit modal
     try {
@@ -597,6 +612,13 @@ function escapeHtml(str) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
+}
+
+function toScryfallThumb(url) {
+    if (!url || typeof url !== "string") return url || "";
+    if (url.includes("cards.scryfall.io/normal/")) return url.replace("cards.scryfall.io/normal/", "cards.scryfall.io/small/");
+    if (url.includes("cards.scryfall.io/large/")) return url.replace("cards.scryfall.io/large/", "cards.scryfall.io/small/");
+    return url;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -1270,7 +1292,9 @@ function openTcgPurchaseModal(initialMode = "reconcile") {
         loadTrackedTcgOrders(true);
         const textarea = document.getElementById("tcg-purchase-input");
         if (textarea && initialMode === "reconcile") {
-            textarea.focus();
+            if (window.matchMedia("(min-width: 768px)").matches) {
+                textarea.focus();
+            }
             onTcgInputChange();
         }
     }
@@ -1531,6 +1555,8 @@ function onTcgInputChange() {
     badge.textContent = `[ ${count} Line${count === 1 ? '' : 's'} ]`;
     badge.className = "text-[11px] font-mono text-[#00CED1] font-bold bg-[#10141D] px-2 py-0.5 border border-[#00CED1]/40";
 }
+
+const debouncedOnTcgInputChange = appDebounce(onTcgInputChange, 150);
 
 async function importTcgPurchaseOrder() {
     const textarea = document.getElementById("tcg-purchase-input");
@@ -1863,6 +1889,7 @@ async function submitEditTarget() {
  */
 function updateCardInRegistryDom(card) {
     if (!card || !card.id) return;
+    syncCardInJsonCaches(card);
     const cid = card.id;
 
     const safeName = (card.name || "").replace(/'/g, "\\'");
@@ -2610,6 +2637,7 @@ async function triggerRefreshAll() {
 // Delete Card Action
 // =========================================================================
 function removeCardsFromDomInPlace(cardIds) {
+    removeCardsFromJsonCaches(cardIds);
     cardIds.forEach(id => {
         selectedCardIds.delete(Number(id));
         const idsToRemove = [
@@ -2965,26 +2993,444 @@ async function submitBulkTag() {
 }
 
 // =========================================================================
-// View Mode Switching & Swipe Deck Touch Engine
+// View Mode Switching, Lazy Secondary Hydration & Swipe Deck Touch Engine
 // =========================================================================
-function hydrateSwipeTemplatesIfNeeded() {
-    const regTpl = document.getElementById("registry-swipe-template");
-    const regTrack = document.getElementById("registry-swipe-track");
-    if (regTpl && regTrack) {
-        regTrack.appendChild(regTpl.content.cloneNode(true));
-        regTpl.remove();
-        filterWatchlist();
-        sortWatchlist();
-    }
+window.__watchlistItemsCache = null;
+window.__dealsItemsCache = null;
+let watchlistCompactHydrated = false;
+let watchlistSwipeHydrated = false;
+let inPersonArtHydrated = false;
+let inPersonChecklistHydrated = false;
+let dealsCompactHydrated = false;
+let dealsSwipeHydrated = false;
 
-    const dealsTpl = document.getElementById("deals-swipe-template");
-    const dealsTrack = document.getElementById("deals-swipe-track");
-    if (dealsTpl && dealsTrack) {
-        dealsTrack.appendChild(dealsTpl.content.cloneNode(true));
-        dealsTpl.remove();
-        filterDeals();
-        sortDeals();
+function getWatchlistItemsData() {
+    if (Array.isArray(window.__watchlistItemsCache)) return window.__watchlistItemsCache;
+    const el = document.getElementById("watchlist-items-json");
+    if (!el) return [];
+    try {
+        window.__watchlistItemsCache = JSON.parse(el.textContent || "[]");
+    } catch (_) {
+        window.__watchlistItemsCache = [];
     }
+    return window.__watchlistItemsCache;
+}
+
+function getDealsItemsData() {
+    if (Array.isArray(window.__dealsItemsCache)) return window.__dealsItemsCache;
+    const el = document.getElementById("deals-items-json");
+    if (!el) return [];
+    try {
+        window.__dealsItemsCache = JSON.parse(el.textContent || "[]");
+    } catch (_) {
+        window.__dealsItemsCache = [];
+    }
+    return window.__dealsItemsCache;
+}
+
+function syncCardInJsonCaches(card) {
+    if (!card || !card.id) return;
+    const patch = (arr) => {
+        if (!Array.isArray(arr)) return;
+        const idx = arr.findIndex(x => Number(x.id) === Number(card.id));
+        if (idx !== -1) {
+            arr[idx] = { ...arr[idx], ...card };
+        }
+    };
+    patch(window.__watchlistItemsCache);
+    patch(window.__dealsItemsCache);
+}
+
+function removeCardsFromJsonCaches(cardIds) {
+    if (!Array.isArray(cardIds) || cardIds.length === 0) return;
+    const dead = new Set(cardIds.map(Number));
+    if (Array.isArray(window.__watchlistItemsCache)) {
+        window.__watchlistItemsCache = window.__watchlistItemsCache.filter(x => !dead.has(Number(x.id)));
+    }
+    if (Array.isArray(window.__dealsItemsCache)) {
+        window.__dealsItemsCache = window.__dealsItemsCache.filter(x => !dead.has(Number(x.id)));
+    }
+}
+
+function escapeSingleJsQuote(str) {
+    return String(str || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+function buildEditTargetOnclick(item) {
+    const tVal = (item.target_price !== null && item.target_price !== undefined) ? item.target_price : "null";
+    return `openEditTargetModal(${item.id}, '${escapeHtml(escapeSingleJsQuote(item.name))}', ${tVal}, ${item.notify_mm_stock ? "true" : "false"}, ${item.is_any_version ? "true" : "false"}, '${escapeHtml(escapeSingleJsQuote(item.tag || ""))}', '${escapeHtml(escapeSingleJsQuote((item.finish || "any").toLowerCase()))}', ${item.notify_ck_stock ? "true" : "false"}, ${item.notify_scg_stock ? "true" : "false"}, ${item.notify_csi_stock ? "true" : "false"})`;
+}
+
+function buildWatchlistCommonAttrs(item, idx, includeInPerson = false) {
+    const low = (item.lowest_price !== null && item.lowest_price !== undefined) ? item.lowest_price : 999999;
+    const tgt = (item.target_price !== null && item.target_price !== undefined) ? item.target_price : 0;
+    const savPct = (item.savings_percent !== null && item.savings_percent !== undefined) ? item.savings_percent : -999;
+    let s = `data-name="${escapeHtml((item.name || "").toLowerCase())}"
+            data-set="${escapeHtml((item.set_code || "").toLowerCase())}"
+            data-tag="${escapeHtml((item.tag || "").toLowerCase())}"
+            data-card-finish="${escapeHtml((item.finish || "any").toLowerCase())}"
+            data-is-deal="${item.is_deal ? "true" : "false"}"
+            data-in-stock="${(item.lowest_price !== null && item.lowest_price !== undefined) ? "true" : "false"}"
+            data-mm-stock="${item.mm_in_stock ? "true" : "false"}"
+            data-ck-stock="${item.ck_in_stock ? "true" : "false"}"
+            data-scg-stock="${item.scg_in_stock ? "true" : "false"}"
+            data-csi-stock="${item.csi_in_stock ? "true" : "false"}"
+            data-is-any="${item.is_any_version ? "true" : "false"}"
+            data-is-sealed="${item.is_sealed ? "true" : "false"}"
+            data-in-binder="${item.in_binder ? "true" : "false"}"
+            data-binder-count="${item.binder_count || 0}"
+            data-price="${low}"
+            data-target="${tgt}"
+            data-savings-pct="${savPct}"
+            data-order="${idx}"`;
+    if (includeInPerson) {
+        s += `
+            data-color-bucket="${escapeHtml((item.color_bucket || "colorless").toLowerCase())}"
+            data-primary-type="${escapeHtml((item.primary_card_type || "other").toLowerCase())}"
+            data-mana-cost="${escapeHtml(item.mana_cost || "")}"
+            data-cmc="${item.cmc || 0}"`;
+    }
+    return s;
+}
+
+function buildBinderLinkHtml(item, isCompact = false) {
+    if (!item.in_binder) return "";
+    const bNames = Array.isArray(item.binder_names) && item.binder_names.length ? `: ${escapeHtml(item.binder_names.join(", "))}` : "";
+    const qtyLabel = item.binder_count === 1 ? "copy" : "copies";
+    const cls = isCompact
+        ? "text-[#10B981] hover:text-white bg-[#10B981]/20 hover:bg-[#10B981]/35 border border-[#10B981]/50 px-1.5 py-0.2 uppercase text-[10px] font-bold flex items-center space-x-0.5 transition"
+        : "bg-[#10B981]/20 hover:bg-[#10B981]/35 text-[#10B981] hover:text-white border border-[#10B981]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold flex items-center space-x-1 transition";
+    return `<a href="/inventory?q=${encodeURIComponent(item.name || "")}" class="${cls}" title="Owned in Collection / Binder${bNames} (${item.binder_count} ${qtyLabel}). Click to inspect in Binder."><span>💼</span><span>IN BINDER (${item.binder_count})</span></a>`;
+}
+
+function hydrateWatchlistCompactIfNeeded() {
+    const container = document.getElementById("watchlist-compact");
+    if (!container || watchlistCompactHydrated || container.children.length > 0) return;
+    const items = getWatchlistItemsData();
+    watchlistCompactHydrated = true;
+    container.innerHTML = items.map((item, idx) => {
+        const best = item.best_vendor_obj;
+        const isSelected = selectedCardIds.has(Number(item.id));
+        const hasLow = item.lowest_price !== null && item.lowest_price !== undefined;
+        const thumbHtml = item.image_uri
+            ? `<div class="relative group flex-shrink-0 cursor-pointer" onclick="openCardImageOverlay(this)" data-card-image="${escapeHtml(item.image_uri)}" data-card-name="${escapeHtml(item.name)}" data-card-set="${escapeHtml((item.set_code || "").toUpperCase())}" data-card-number="${escapeHtml(item.collector_number || "")}" data-card-finish="${escapeHtml(item.finish || "")}" title="Click to enlarge ${escapeHtml(item.name)}">
+                <img src="${escapeHtml(toScryfallThumb(item.image_uri))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" class="w-10 h-14 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
+               </div>`
+            : `<div class="w-10 h-14 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[9px] text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>`;
+        const setHtml = (item.set_code && item.set_code.toUpperCase() !== "ANY")
+            ? `<span class="text-[#94A3B8] bg-[#10141D] px-1.5 py-0.2 border border-[#263245] uppercase text-[10px]">${escapeHtml(item.set_code)}</span>`
+            : `<span class="text-[#94A3B8] bg-[#3D4F6B]/30 px-1.5 py-0.2 border border-[#3D4F6B] uppercase text-[10px]">ANY</span>`;
+        const buyBtn = (best && best.product_url)
+            ? `<a href="${escapeHtml(best.product_url)}" target="_blank" rel="noopener" class="btn-crimson px-2.5 py-1 text-[11px] uppercase font-bold" title="Buy on ${escapeHtml(best.vendor_name)} ($${Number(best.price).toFixed(2)})">Buy $${Number(best.price).toFixed(2)}</a>`
+            : "";
+        return `<div class="watchlist-card compact-card ${item.is_deal ? "is-deal" : ""} ${isSelected ? "is-selected" : ""} flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono"
+            ${buildWatchlistCommonAttrs(item, idx, true)} id="compact-card-${item.id}">
+            <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
+                <input type="checkbox" class="card-select-checkbox w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer flex-shrink-0" data-card-id="${item.id}" id="chk-compact-${item.id}" ${isSelected ? "checked" : ""} onchange="handleCardSelectChange(${item.id}, this.checked)" title="Select ${escapeHtml(item.name)}">
+                ${thumbHtml}
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center space-x-2">
+                        <h4 class="font-heading font-bold text-sm text-white truncate">${escapeHtml(item.name)}</h4>
+                        <span id="compact-deal-badge-${item.id}" class="${item.is_deal ? "" : "hidden "}bg-[#DC143C] text-white text-[9px] px-1 py-0.2 uppercase font-bold flex-shrink-0 animate-tactical-pulse">DEAL</span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
+                        ${setHtml}
+                        <span class="text-[#00CED1] uppercase text-[10px]">${escapeHtml(item.finish || "nonfoil")}</span>
+                        <span id="compact-tag-wrapper-${item.id}" class="inline-flex items-center">${item.tag ? `<span class="text-[#C084FC] bg-[#9333EA]/20 border border-[#9333EA]/40 px-1.5 py-0.2 uppercase text-[10px]">🏷️ ${escapeHtml(item.tag)}</span>` : ""}</span>
+                        <div id="compact-binder-wrapper-${item.id}" class="inline-flex items-center">${buildBinderLinkHtml(item, true)}</div>
+                        ${item.mm_in_stock ? `<span class="text-[#00CED1] border border-[#00CED1]/50 bg-[#00CED1]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">MM In-Stock</span>` : ""}
+                        ${item.ck_in_stock ? `<span class="text-[#C4B5FD] border border-[#8B5CF6]/50 bg-[#8B5CF6]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">CK In-Stock</span>` : ""}
+                        ${item.scg_in_stock ? `<span class="text-[#FCD34D] border border-[#F59E0B]/50 bg-[#F59E0B]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">SCG In-Stock</span>` : ""}
+                        ${item.csi_in_stock ? `<span class="text-[#7DD3FC] border border-[#38BDF8]/50 bg-[#38BDF8]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">CSI In-Stock</span>` : ""}
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#263245]/60">
+                <div class="text-right">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Target / Lowest</div>
+                    <div class="text-xs font-bold">
+                        <span id="compact-target-val-${item.id}" class="text-[#94A3B8]">${item.target_price ? `$${Number(item.target_price).toFixed(2)}` : "--"}</span>
+                        <span class="text-[#64748B]"> / </span>
+                        ${hasLow ? `<span id="compact-lowest-val-${item.id}" class="${item.is_deal ? "text-[#FF3358]" : "text-[#00CED1]"}" data-lowest="${item.lowest_price}">$${Number(item.lowest_price).toFixed(2)}</span>` : `<span id="compact-lowest-val-${item.id}" class="text-[#FF3358] text-[11px] uppercase" data-lowest="">OOS</span>`}
+                    </div>
+                </div>
+                <div class="flex items-center space-x-1.5">
+                    <button type="button" onclick="toggleSingleCardSelection(${item.id})" id="btn-select-compact-${item.id}" class="btn-bridge px-2 py-1 text-[11px] ${isSelected ? "text-[#00CED1]" : "text-[#94A3B8]"} hover:text-[#00CED1]" title="Toggle Target Selection"><span class="btn-select-label-${item.id}">${isSelected ? "✓ Selected" : "Select"}</span></button>
+                    ${buyBtn}
+                    <button id="compact-edit-btn-${item.id}" onclick="${buildEditTargetOnclick(item)}" class="btn-bridge px-2 py-1 text-[11px] text-[#00CED1] hover:text-white" title="Edit Target & Tag">Edit</button>
+                    <button onclick="triggerRefreshCard(${item.id})" class="btn-bridge px-2 py-1 text-[11px] text-[#94A3B8] hover:text-white" title="Poll Price"><svg class="w-3 h-3 text-[#00CED1] refresh-icon-${item.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg></button>
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+    sortWatchlist();
+    filterWatchlist();
+}
+
+function buildSwipeVendorRow(label, vp, isEbay = false) {
+    let valHtml = `<span class="text-[#64748B]">N/A</span>`;
+    if (vp && vp.price > 0) {
+        if (isEbay) {
+            valHtml = `<span class="font-bold text-white">$${Number(vp.price).toFixed(2)}</span>` + (vp.product_url ? ` <a href="${escapeHtml(vp.product_url)}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Lowest Listing &rarr;</a>` : "");
+        } else {
+            valHtml = `<span class="font-bold text-white">$${Number(vp.price).toFixed(2)}</span>` +
+                (label !== "TCGplayer" ? ` <span class="font-bold ${vp.in_stock ? "text-[#00CED1]" : "text-[#FF3358]"}">(${vp.in_stock ? "In Stock" : "Out"})</span>` : "") +
+                (vp.product_url ? ` <a href="${escapeHtml(vp.product_url)}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>` : "");
+        }
+    }
+    return `<div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]"><span class="text-[#94A3B8]">${label}</span><div class="flex items-center space-x-2">${valHtml}</div></div>`;
+}
+
+function hydrateWatchlistSwipeIfNeeded() {
+    const track = document.getElementById("registry-swipe-track");
+    if (!track || watchlistSwipeHydrated || track.children.length > 0) return;
+    const items = getWatchlistItemsData();
+    watchlistSwipeHydrated = true;
+    track.innerHTML = items.map((item, idx) => {
+        const isSelected = selectedCardIds.has(Number(item.id));
+        const hasLow = item.lowest_price !== null && item.lowest_price !== undefined;
+        const vps = Array.isArray(item.vendor_prices) ? item.vendor_prices : [];
+        const findVp = (name) => vps.find(v => v.vendor_name === name);
+        const thumbHtml = item.image_uri
+            ? `<div class="relative group flex-shrink-0 cursor-pointer" onclick="openCardImageOverlay(this)" data-card-image="${escapeHtml(item.image_uri)}" data-card-name="${escapeHtml(item.name)}" data-card-set="${escapeHtml((item.set_code || "").toUpperCase())}" data-card-number="${escapeHtml(item.collector_number || "")}" data-card-finish="${escapeHtml(item.finish || "")}" title="Click to enlarge ${escapeHtml(item.name)}"><img src="${escapeHtml(toScryfallThumb(item.image_uri))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" class="w-20 h-28 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive"></div>`
+            : `<div class="w-20 h-28 border border-[#263245] bg-[#10141D] flex items-center justify-center text-xs text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>`;
+        const dealBanner = item.is_deal
+            ? `<div class="mt-3 bg-[#DC143C]/20 border border-[#DC143C] text-[#FF3358] text-xs px-3 py-2 flex items-center justify-between font-mono font-bold"><span>[!] TARGET ACQUIRED</span><span>-$${Number(item.savings_amount || 0).toFixed(2)} (${item.savings_percent || 0}% OFF)</span></div>`
+            : "";
+        return `<div class="swipe-card-slide watchlist-card" id="swipe-card-slide-${item.id}" ${buildWatchlistCommonAttrs(item, idx, true)} data-index="${idx}">
+            <div id="swipe-card-box-${item.id}" class="bg-[#1B2230] border ${item.is_deal ? "border-[#DC143C] bg-[#DC143C]/5" : "border-[#263245]"} p-4 sm:p-6 max-w-xl mx-auto flex flex-col justify-between">
+                <div>
+                    <div class="flex items-start space-x-4">${thumbHtml}
+                        <div class="flex-1 min-w-0">
+                            <h4 class="text-lg font-heading font-black text-white truncate tracking-wide">${escapeHtml(item.name)}</h4>
+                            <div class="flex flex-wrap gap-1.5 mt-2 items-center">
+                                ${item.set_code && item.set_code.toUpperCase() !== "ANY" ? `<span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase">${escapeHtml(item.set_code)} #${escapeHtml(item.collector_number || "?")}</span>` : `<span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold">ANY VERSION</span>`}
+                                <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase">${escapeHtml(item.finish || "nonfoil")}</span>
+                                <div id="swipe-binder-wrapper-${item.id}" class="inline-flex items-center">${buildBinderLinkHtml(item, false)}</div>
+                                <span id="swipe-tag-wrapper-${item.id}" class="inline-flex items-center">${item.tag ? `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold">🏷️ ${escapeHtml(item.tag)}</span>` : ""}</span>
+                            </div>
+                            <div class="mt-3 grid grid-cols-2 gap-2 text-xs font-mono bg-[#10141D] p-2.5 border border-[#263245]">
+                                <div><div class="text-[#94A3B8] text-[10px] uppercase">Target</div><div id="swipe-target-val-${item.id}" class="text-sm font-bold text-white mt-0.5">${item.target_price ? `$${Number(item.target_price).toFixed(2)}` : "None"}</div></div>
+                                <div><div class="text-[#94A3B8] text-[10px] uppercase">Lowest Live</div><div id="swipe-lowest-val-${item.id}" class="text-sm font-bold ${item.is_deal ? "text-[#FF3358]" : "text-[#00CED1]"} mt-0.5" data-lowest="${hasLow ? item.lowest_price : ""}">${hasLow ? `$${Number(item.lowest_price).toFixed(2)}` : "Out of Stock"}</div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="swipe-deal-banner-container-${item.id}">${dealBanner}</div>
+                    <div class="mt-3.5 pt-3 border-t border-[#263245] space-y-2 font-mono">
+                        <div class="text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Vendor Intelligence Matrix</div>
+                        ${buildSwipeVendorRow("TCGplayer", findVp("TCGplayer"))}
+                        ${buildSwipeVendorRow("Mighty Meeple", findVp("Mighty Meeple"))}
+                        ${buildSwipeVendorRow("Card Kingdom", findVp("Card Kingdom"))}
+                        ${buildSwipeVendorRow("Star City Games", findVp("Star City Games"))}
+                        ${buildSwipeVendorRow("CoolStuffInc", findVp("CoolStuffInc"))}
+                        ${buildSwipeVendorRow("eBay", findVp("eBay"), true)}
+                    </div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-xs flex-wrap gap-2">
+                    <button onclick="triggerRefreshCard(${item.id})" class="btn-bridge px-3 py-1.5 text-xs text-[#94A3B8] hover:text-white flex items-center space-x-1.5 uppercase font-medium"><svg class="w-3.5 h-3.5 text-[#00CED1] refresh-icon-${item.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Poll</span></button>
+                    <div class="flex items-center space-x-2">
+                        <button type="button" onclick="toggleSingleCardSelection(${item.id})" id="btn-select-swipe-${item.id}" class="btn-bridge px-2.5 py-1.5 text-xs ${isSelected ? "text-[#00CED1]" : "text-[#94A3B8]"} hover:text-[#00CED1] uppercase font-bold"><span class="btn-select-label-${item.id}">${isSelected ? "✓ Selected" : "Select"}</span></button>
+                        <button id="swipe-edit-btn-${item.id}" onclick="${buildEditTargetOnclick(item)}" class="btn-bridge px-3 py-1.5 text-[#00CED1] hover:text-white uppercase font-bold">Edit Target</button>
+                        <button onclick="deleteCard(${item.id}, '${escapeHtml(escapeSingleJsQuote(item.name))}')" class="btn-bridge px-2.5 py-1.5 text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">Terminate</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+    sortWatchlist();
+    filterWatchlist();
+}
+
+function hydrateInPersonArtIfNeeded() {
+    const grid = document.getElementById("inperson-art-grid");
+    if (!grid || inPersonArtHydrated || grid.children.length > 0) return;
+    const items = getWatchlistItemsData();
+    inPersonArtHydrated = true;
+    grid.innerHTML = items.map((item, idx) => {
+        const hasLow = item.lowest_price !== null && item.lowest_price !== undefined;
+        const finishLower = (item.finish || "").toLowerCase();
+        return `<div class="watchlist-card inperson-card bg-[#1B2230] border ${item.is_deal ? "border-[#DC143C] bg-[#DC143C]/5" : "border-[#263245] hover:border-[#00CED1]"} p-2 flex flex-col justify-between transition-colors relative"
+            ${buildWatchlistCommonAttrs(item, idx, true)} id="inperson-art-card-${item.id}">
+            <div class="relative group cursor-pointer w-full aspect-[5/7] bg-[#10141D] border border-[#263245] overflow-hidden flex items-center justify-center flex-shrink-0"
+                 onclick="openCardImageOverlay(this)" data-card-image="${escapeHtml(item.image_uri || "")}" data-card-name="${escapeHtml(item.name)}" data-card-set="${escapeHtml((item.set_code || "").toUpperCase())}" data-card-number="${escapeHtml(item.collector_number || "")}" data-card-finish="${escapeHtml(item.finish || "")}" title="Click to inspect ${escapeHtml(item.name)}">
+                ${item.image_uri ? `<img src="${escapeHtml(toScryfallThumb(item.image_uri))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" class="w-full h-full object-cover card-thumbnail-interactive">` : `<div class="text-[10px] text-[#64748B] font-mono uppercase text-center p-2">NO ART</div>`}
+                ${item.mana_cost ? `<div class="absolute top-1 left-1 bg-[#10141D]/90 border border-[#263245] px-1 py-0.2 text-[9px] font-mono text-white pointer-events-none">${escapeHtml(item.mana_cost)}</div>` : ""}
+                <div class="absolute top-1 right-1 flex flex-col items-end gap-0.5 pointer-events-none">
+                    ${(finishLower === "foil" || finishLower === "etched") ? `<span class="bg-[#F59E0B] text-black font-mono font-bold text-[8px] px-1 py-0.2 uppercase">★ ${escapeHtml(item.finish)}</span>` : ""}
+                    ${item.set_code && item.set_code.toUpperCase() !== "ANY" ? `<span class="bg-[#10141D]/90 text-[#94A3B8] border border-[#263245] text-[8px] px-1 py-0.2 font-mono uppercase font-bold">${escapeHtml(item.set_code)}</span>` : `<span class="bg-[#3D4F6B]/80 text-white text-[8px] px-1 py-0.2 font-mono uppercase font-bold">ANY</span>`}
+                </div>
+                ${item.in_binder ? `<div class="absolute bottom-1 left-1 right-1 bg-[#10B981]/90 text-slate-950 font-mono font-black text-[9px] px-1 py-0.5 text-center uppercase tracking-wider truncate shadow-md pointer-events-none">💼 IN BINDER (${item.binder_count})</div>` : ""}
+            </div>
+            <div class="mt-1.5 flex-1 flex flex-col justify-between space-y-1.5">
+                <div>
+                    <h4 class="font-heading font-bold text-xs sm:text-sm text-white truncate" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</h4>
+                    <div class="flex items-center gap-1 text-[10px] font-mono text-[#94A3B8] truncate mt-0.5">
+                        <span class="truncate">${escapeHtml(item.short_type_line || "")}</span>
+                        ${item.tag ? `<span class="text-[#C084FC] truncate">&bull; ${escapeHtml(item.tag)}</span>` : ""}
+                    </div>
+                </div>
+                <div class="bg-[#10141D] border border-[#263245] p-1.5 font-mono text-[11px] space-y-0.5">
+                    <div class="flex items-center justify-between"><span class="text-[#94A3B8] text-[9px] uppercase">Target:</span><span class="font-bold text-white text-xs">${item.target_price ? `$${Number(item.target_price).toFixed(2)}` : "--"}</span></div>
+                    <div class="flex items-center justify-between"><span class="text-[#94A3B8] text-[9px] uppercase">Market:</span><span class="font-bold text-xs ${item.is_deal ? "text-[#FF3358]" : "text-[#00CED1]"}">${hasLow ? `$${Number(item.lowest_price).toFixed(2)}` : `<span class="text-[#FF3358] text-[9px]">OOS</span>`}</span></div>
+                    ${item.mm_in_stock && item.mm_stock_price ? `<div class="flex items-center justify-between text-[9px] text-[#10B981] font-bold border-t border-[#263245]/60 pt-0.5"><span>MM Stock:</span><span>$${Number(item.mm_stock_price).toFixed(2)}</span></div>` : ""}
+                    ${item.ck_in_stock && item.ck_stock_price ? `<div class="flex items-center justify-between text-[9px] text-[#C4B5FD] font-bold border-t border-[#263245]/60 pt-0.5"><span>CK Stock:</span><span>$${Number(item.ck_stock_price).toFixed(2)}</span></div>` : ""}
+                    ${item.scg_in_stock && item.scg_stock_price ? `<div class="flex items-center justify-between text-[9px] text-[#FCD34D] font-bold border-t border-[#263245]/60 pt-0.5"><span>SCG Stock:</span><span>$${Number(item.scg_stock_price).toFixed(2)}</span></div>` : ""}
+                    ${item.csi_in_stock && item.csi_stock_price ? `<div class="flex items-center justify-between text-[9px] text-[#7DD3FC] font-bold border-t border-[#263245]/60 pt-0.5"><span>CSI Stock:</span><span>$${Number(item.csi_stock_price).toFixed(2)}</span></div>` : ""}
+                </div>
+                <div class="font-mono text-xs pt-1">
+                    <button type="button" data-item-id="${item.id}" data-card-name="${escapeHtml(item.name)}" data-target-price="${item.target_price !== null && item.target_price !== undefined ? item.target_price : ""}" data-lowest-price="${hasLow ? item.lowest_price : ""}" data-set-code="${escapeHtml(item.set_code || "")}" data-collector-number="${escapeHtml(item.collector_number || "")}" data-finish="${escapeHtml(item.finish || "nonfoil")}" data-image-uri="${escapeHtml(item.image_uri || "")}" onclick="openAcquireCardModalFromBtn(this)" class="w-full btn-teal py-1.5 text-[11px] font-bold uppercase flex items-center justify-center space-x-1" title="Mark as Acquired in person"><span>✓ Acquired</span></button>
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+    sortWatchlist();
+    filterWatchlist();
+}
+
+function hydrateInPersonChecklistIfNeeded() {
+    const list = document.getElementById("inperson-checklist");
+    if (!list || inPersonChecklistHydrated || list.children.length > 0) return;
+    const items = getWatchlistItemsData();
+    inPersonChecklistHydrated = true;
+    const pipStyle = (b) => {
+        if (b === "W") return ["text-[#FFFBD5] border-[#FFFBD5]/40", "W"];
+        if (b === "U") return ["text-[#00CED1] border-[#00CED1]/40", "U"];
+        if (b === "B") return ["text-[#C084FC] border-[#C084FC]/40", "B"];
+        if (b === "R") return ["text-[#FF5555] border-[#FF5555]/40", "R"];
+        if (b === "G") return ["text-[#10B981] border-[#10B981]/40", "G"];
+        if (b === "Multicolor") return ["text-[#F59E0B] border-[#F59E0B]/40", "M"];
+        if (b === "Land") return ["text-[#E2E8F0] border-[#E2E8F0]/40", "L"];
+        return ["text-[#94A3B8] border-[#94A3B8]/40", "C"];
+    };
+    list.innerHTML = items.map((item, idx) => {
+        const hasLow = item.lowest_price !== null && item.lowest_price !== undefined;
+        const [pipCls, pipChar] = pipStyle(item.color_bucket);
+        return `<div class="watchlist-card inperson-checklist-row p-2 sm:p-2.5 flex items-center justify-between gap-2.5 hover:bg-[#222B3D]/70 transition font-mono"
+            ${buildWatchlistCommonAttrs(item, idx, true)} id="inperson-check-row-${item.id}">
+            <div class="flex items-center space-x-2.5 min-w-0 flex-1">
+                <span class="w-6 h-6 flex items-center justify-center border border-[#263245] bg-[#10141D] text-[10px] font-bold flex-shrink-0 ${pipCls}">${pipChar}</span>
+                ${item.image_uri ? `<div class="w-8 h-11 bg-black border border-[#263245] overflow-hidden flex-shrink-0 cursor-pointer" onclick="openCardImageOverlay(this)" data-card-image="${escapeHtml(item.image_uri)}" data-card-name="${escapeHtml(item.name)}" data-card-set="${escapeHtml((item.set_code || "").toUpperCase())}" data-card-number="${escapeHtml(item.collector_number || "")}" data-card-finish="${escapeHtml(item.finish || "")}" title="Click to enlarge ${escapeHtml(item.name)}"><img src="${escapeHtml(toScryfallThumb(item.image_uri))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" class="w-full h-full object-cover card-thumbnail-interactive"></div>` : `<div class="w-8 h-11 bg-[#10141D] border border-[#263245] flex items-center justify-center text-[8px] text-[#64748B] flex-shrink-0">NO ART</div>`}
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center space-x-2">
+                        <h4 class="font-heading font-bold text-xs sm:text-sm text-white truncate">${escapeHtml(item.name)}</h4>
+                        ${item.is_deal ? `<span class="bg-[#DC143C] text-white text-[8px] px-1 py-0.2 uppercase font-bold flex-shrink-0">DEAL</span>` : ""}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10px] text-[#94A3B8]">
+                        <span class="bg-[#10141D] border border-[#263245] px-1 py-0.2 text-[#00CED1] uppercase font-bold">${escapeHtml(item.set_code || "ANY")}</span>
+                        <span class="uppercase">${escapeHtml(item.finish || "nonfoil")}</span>
+                        <span class="text-[#64748B] truncate">&bull; ${escapeHtml(item.short_type_line || "")}</span>
+                        ${item.tag ? `<span class="text-[#C084FC] bg-[#9333EA]/20 px-1 py-0.2 uppercase">🏷️ ${escapeHtml(item.tag)}</span>` : ""}
+                        ${item.in_binder ? `<span class="text-[#10B981] bg-[#10B981]/20 border border-[#10B981]/40 px-1 py-0.2 font-bold uppercase">💼 IN BINDER (${item.binder_count})</span>` : ""}
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2.5 sm:space-x-3.5 flex-shrink-0">
+                <div class="text-right">
+                    <div class="text-[9px] text-[#94A3B8] uppercase">Tgt / Mkt</div>
+                    <div class="text-xs font-bold"><span class="text-white">${item.target_price ? `$${Number(item.target_price).toFixed(2)}` : "--"}</span><span class="text-[#64748B]"> / </span><span class="${item.is_deal ? "text-[#FF3358]" : "text-[#00CED1]"}">${hasLow ? `$${Number(item.lowest_price).toFixed(2)}` : "OOS"}</span></div>
+                </div>
+                <button type="button" data-item-id="${item.id}" data-card-name="${escapeHtml(item.name)}" data-target-price="${item.target_price !== null && item.target_price !== undefined ? item.target_price : ""}" data-lowest-price="${hasLow ? item.lowest_price : ""}" data-set-code="${escapeHtml(item.set_code || "")}" data-collector-number="${escapeHtml(item.collector_number || "")}" data-finish="${escapeHtml(item.finish || "nonfoil")}" data-image-uri="${escapeHtml(item.image_uri || "")}" onclick="openAcquireCardModalFromBtn(this)" class="btn-teal px-2.5 py-1.5 text-[11px] font-bold uppercase" title="Acquire card in person">✓ Got It</button>
+            </div>
+        </div>`;
+    }).join("");
+    sortWatchlist();
+    filterWatchlist();
+}
+
+function hydrateDealsCompactIfNeeded() {
+    const container = document.getElementById("deals-compact");
+    if (!container || dealsCompactHydrated || container.children.length > 0) return;
+    const items = getDealsItemsData();
+    dealsCompactHydrated = true;
+    container.innerHTML = items.map((item, idx) => {
+        const best = item.best_vendor_obj;
+        const low = (item.lowest_price !== null && item.lowest_price !== undefined) ? item.lowest_price : 999999;
+        const thumbHtml = item.image_uri
+            ? `<div class="relative group flex-shrink-0 cursor-pointer" onclick="openCardImageOverlay(this)" data-card-image="${escapeHtml(item.image_uri)}" data-card-name="${escapeHtml(item.name)}" data-card-set="${escapeHtml((item.set_code || "").toUpperCase())}" data-card-number="${escapeHtml(item.collector_number || "")}" data-card-finish="${escapeHtml(item.finish || "")}" title="Click to enlarge ${escapeHtml(item.name)}"><img src="${escapeHtml(toScryfallThumb(item.image_uri))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" class="w-10 h-14 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive"></div>`
+            : `<div class="w-10 h-14 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[9px] text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>`;
+        return `<div class="deal-card compact-card is-deal flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono"
+            data-name="${escapeHtml((item.name || "").toLowerCase())}" data-set="${escapeHtml((item.set_code || "").toLowerCase())}" data-tag="${escapeHtml((item.tag || "").toLowerCase())}" data-card-finish="${escapeHtml(item.finish || "any")}" data-in-binder="${item.in_binder ? "true" : "false"}" data-binder-count="${item.binder_count || 0}" data-price="${low}" data-target="${item.target_price || 0}" data-savings-pct="${item.savings_percent || 0}" data-savings-amt="${item.savings_amount || 0}" data-order="${idx}" id="compact-deal-${item.id}">
+            <div class="flex items-center space-x-3 min-w-0 flex-1">${thumbHtml}
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center space-x-2"><h4 class="font-heading font-bold text-sm text-white truncate">${escapeHtml(item.name)}</h4><span class="bg-[#DC143C] text-white text-[9px] px-1 py-0.2 uppercase font-bold flex-shrink-0">-${item.savings_percent || 0}%</span></div>
+                    <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
+                        ${item.set_code && item.set_code.toUpperCase() !== "ANY" ? `<span class="text-[#94A3B8] bg-[#10141D] px-1.5 py-0.2 border border-[#263245] uppercase text-[10px]">${escapeHtml(item.set_code)}</span>` : `<span class="text-[#94A3B8] bg-[#3D4F6B]/30 px-1.5 py-0.2 border border-[#3D4F6B] uppercase text-[10px]">ANY</span>`}
+                        <span class="text-[#00CED1] uppercase text-[10px]">${escapeHtml(item.finish || "nonfoil")}</span>
+                        <div id="compact-deal-binder-wrapper-${item.id}" class="inline-flex items-center">${buildBinderLinkHtml(item, true)}</div>
+                        ${item.tag ? `<span class="text-[#C084FC] bg-[#9333EA]/20 border border-[#9333EA]/40 px-1.5 py-0.2 uppercase text-[10px]">🏷️ ${escapeHtml(item.tag)}</span>` : ""}
+                        <span class="text-[#FF3358] font-bold text-[10px]">SAVE $${Number(item.savings_amount || 0).toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#263245]/60">
+                <div class="text-right"><div class="text-[10px] text-[#94A3B8] uppercase">Target / Deal</div><div class="text-xs font-bold"><span class="text-[#94A3B8]" id="compact-target-price-${item.id}">$${Number(item.target_price || 0).toFixed(2)}</span><span class="text-[#64748B]"> / </span><span class="text-[#FF3358]">$${Number(item.lowest_price || 0).toFixed(2)}</span></div></div>
+                <div class="flex items-center space-x-1.5">
+                    ${best && best.product_url ? `<a href="${escapeHtml(best.product_url)}" target="_blank" rel="noopener" class="btn-crimson px-3 py-1.5 text-xs uppercase font-bold flex-shrink-0" title="Acquire on ${escapeHtml(best.vendor_name)}">Buy $${Number(best.price).toFixed(2)} &rarr;</a>` : ""}
+                    <button onclick="${buildEditTargetOnclick(item)}" class="btn-bridge p-1.5 text-[#00CED1] hover:text-white text-[10px] uppercase font-bold" title="Edit Target">EDIT</button>
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+    sortDeals();
+    filterDeals();
+}
+
+function hydrateDealsSwipeIfNeeded() {
+    const track = document.getElementById("deals-swipe-track");
+    if (!track || dealsSwipeHydrated || track.children.length > 0) return;
+    const items = getDealsItemsData();
+    dealsSwipeHydrated = true;
+    track.innerHTML = items.map((item, idx) => {
+        const best = item.best_vendor_obj;
+        const low = (item.lowest_price !== null && item.lowest_price !== undefined) ? item.lowest_price : 999999;
+        const thumbHtml = item.image_uri
+            ? `<div class="relative group flex-shrink-0 cursor-pointer" onclick="openCardImageOverlay(this)" data-card-image="${escapeHtml(item.image_uri)}" data-card-name="${escapeHtml(item.name)}" data-card-set="${escapeHtml((item.set_code || "").toUpperCase())}" data-card-number="${escapeHtml(item.collector_number || "")}" data-card-finish="${escapeHtml(item.finish || "")}" title="Click to enlarge ${escapeHtml(item.name)}"><img src="${escapeHtml(toScryfallThumb(item.image_uri))}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" class="w-20 h-28 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive"></div>`
+            : `<div class="w-20 h-28 border border-[#263245] bg-[#10141D] flex items-center justify-center text-xs text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>`;
+        const vendorBox = best
+            ? `<div class="mt-3 bg-[#10141D] p-3.5 border border-[#263245] font-mono">
+                <div class="text-xs text-[#00CED1] uppercase font-bold tracking-wider">Optimal Acquisition Source</div>
+                <div class="flex items-center justify-between mt-2"><div class="text-sm font-bold text-white">${escapeHtml(best.vendor_name)} <span class="text-xs text-[#94A3B8] font-normal">(${escapeHtml(best.condition || "NM")})</span></div><span class="text-sm font-bold text-[#00CED1]">$${Number(best.price).toFixed(2)}</span></div>
+                ${best.product_url ? `<a href="${escapeHtml(best.product_url)}" target="_blank" rel="noopener" class="btn-crimson mt-3 block w-full text-center py-2.5 text-xs uppercase font-bold tracking-wider">Execute Acquisition on ${escapeHtml(best.vendor_name)} &rarr;</a>` : ""}
+              </div>`
+            : "";
+        return `<div class="swipe-card-slide deal-card" data-name="${escapeHtml((item.name || "").toLowerCase())}" data-set="${escapeHtml((item.set_code || "").toLowerCase())}" data-tag="${escapeHtml((item.tag || "").toLowerCase())}" data-card-finish="${escapeHtml(item.finish || "any")}" data-in-binder="${item.in_binder ? "true" : "false"}" data-binder-count="${item.binder_count || 0}" data-price="${low}" data-target="${item.target_price || 0}" data-savings-pct="${item.savings_percent || 0}" data-savings-amt="${item.savings_amount || 0}" data-order="${idx}" data-index="${idx}" id="swipe-deal-${item.id}">
+            <div class="bg-[#1B2230] border border-[#DC143C] bg-[#DC143C]/5 p-4 sm:p-6 max-w-xl mx-auto flex flex-col justify-between">
+                <div>
+                    <div class="flex items-start space-x-4">${thumbHtml}
+                        <div class="flex-1 min-w-0">
+                            <h4 class="text-lg font-heading font-black text-white truncate tracking-wide">${escapeHtml(item.name)}</h4>
+                            <div class="flex flex-wrap gap-1.5 mt-2 items-center">
+                                ${item.set_code && item.set_code.toUpperCase() !== "ANY" ? `<span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase">${escapeHtml(item.set_code)} #${escapeHtml(item.collector_number || "?")}</span>` : `<span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold">ANY VERSION</span>`}
+                                <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase">${escapeHtml(item.finish || "nonfoil")}</span>
+                                <div id="swipe-deal-binder-wrapper-${item.id}" class="inline-flex items-center">${buildBinderLinkHtml(item, false)}</div>
+                                ${item.tag ? `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold">🏷️ ${escapeHtml(item.tag)}</span>` : ""}
+                            </div>
+                            <div class="mt-2.5 bg-[#DC143C]/20 border border-[#DC143C] px-3 py-1.5 text-xs text-[#FF3358] font-mono font-bold"><div class="flex items-center justify-between"><span>SAVE $${Number(item.savings_amount || 0).toFixed(2)}</span><span>${item.savings_percent || 0}% OFF</span></div></div>
+                        </div>
+                    </div>
+                    <div class="mt-3.5 grid grid-cols-2 gap-2 text-xs font-mono bg-[#10141D] p-3 border border-[#263245]">
+                        <div><div class="text-[#94A3B8] text-[10px] uppercase">Target Threshold</div><div class="flex items-center space-x-1.5 mt-0.5"><span class="text-base font-bold text-white" id="swipe-target-price-${item.id}">$${Number(item.target_price || 0).toFixed(2)}</span><button onclick="${buildEditTargetOnclick(item)}" class="text-[#00CED1] hover:text-white text-[11px] uppercase font-bold">[EDIT]</button></div></div>
+                        <div><div class="text-[#94A3B8] text-[10px] uppercase">Live Deal Price</div><div class="text-base font-bold text-[#FF3358] mt-0.5">$${Number(item.lowest_price || 0).toFixed(2)}</div></div>
+                    </div>
+                    ${vendorBox}
+                </div>
+                <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-xs">
+                    <button onclick="triggerRefreshCard(${item.id})" class="btn-bridge px-3 py-1.5 text-xs text-[#94A3B8] hover:text-white flex items-center space-x-1.5 uppercase font-medium"><svg class="w-3.5 h-3.5 text-[#00CED1] refresh-icon-${item.id}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Poll Prices</span></button>
+                    <div class="flex items-center space-x-3">
+                        <button onclick="${buildEditTargetOnclick(item)}" class="text-[#00CED1] hover:text-white uppercase font-medium">Edit Target</button>
+                        <button onclick="deleteCard(${item.id}, '${escapeHtml(escapeSingleJsQuote(item.name))}')" class="text-[#64748B] hover:text-[#FF3358] uppercase font-medium">Terminate</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }).join("");
+    sortDeals();
+    filterDeals();
+}
+
+function hydrateSwipeTemplatesIfNeeded() {
+    hydrateWatchlistSwipeIfNeeded();
+    hydrateDealsSwipeIfNeeded();
 }
 
 let activeInPersonSubView = localStorage.getItem("chimaera_inperson_subview") || "art";
@@ -2997,8 +3443,17 @@ function setViewMode(mode) {
     activeViewMode = mode;
     localStorage.setItem("chimaera_view_mode", mode);
 
-    if (mode === "swipe") {
+    if (mode === "compact") {
+        hydrateWatchlistCompactIfNeeded();
+        hydrateDealsCompactIfNeeded();
+    } else if (mode === "swipe") {
         hydrateSwipeTemplatesIfNeeded();
+    } else if (mode === "inperson") {
+        if (activeInPersonSubView === "checklist") {
+            hydrateInPersonChecklistIfNeeded();
+        } else {
+            hydrateInPersonArtIfNeeded();
+        }
     }
 
     // Update buttons
@@ -3081,6 +3536,11 @@ function setViewMode(mode) {
 function setInPersonSubView(subView) {
     activeInPersonSubView = subView || "art";
     localStorage.setItem("chimaera_inperson_subview", activeInPersonSubView);
+    if (activeInPersonSubView === "checklist") {
+        hydrateInPersonChecklistIfNeeded();
+    } else {
+        hydrateInPersonArtIfNeeded();
+    }
     applyInPersonSubView();
     renderInPersonGroups();
     updateInPersonGroupHeadersVisibility();
@@ -3104,9 +3564,11 @@ function applyInPersonSubView() {
 
     if (artGrid && checklist) {
         if (activeInPersonSubView === "checklist") {
+            if (activeViewMode === "inperson") hydrateInPersonChecklistIfNeeded();
             artGrid.classList.add("hidden");
             checklist.classList.remove("hidden");
         } else {
+            if (activeViewMode === "inperson") hydrateInPersonArtIfNeeded();
             checklist.classList.add("hidden");
             artGrid.classList.remove("hidden");
         }
@@ -3181,7 +3643,7 @@ function renderInPersonGroups() {
     ];
 
     containers.forEach(({ el, isGrid }) => {
-        if (!el) return;
+        if (!el || el.children.length === 0) return;
 
         // Remove existing headers
         el.querySelectorAll(".inperson-group-header").forEach(h => h.remove());
@@ -3299,7 +3761,8 @@ function renderInPersonGroups() {
             }
         });
 
-        // Re-append to container grouped
+        // Re-append to container grouped in a single DocumentFragment
+        const frag = document.createDocumentFragment();
         groupOrder.forEach(k => {
             const groupCards = buckets[k];
             if (!groupCards || groupCards.length === 0) return;
@@ -3317,9 +3780,10 @@ function renderInPersonGroups() {
                 <span class="text-[#94A3B8] text-[10px] uppercase font-bold group-count-badge">${groupCards.length} TARGET${groupCards.length === 1 ? '' : 'S'}</span>
             `;
 
-            el.appendChild(header);
-            groupCards.forEach(c => el.appendChild(c));
+            frag.appendChild(header);
+            groupCards.forEach(c => frag.appendChild(c));
         });
+        el.appendChild(frag);
     });
 }
 
@@ -3329,7 +3793,7 @@ function updateInPersonGroupHeadersVisibility() {
         document.getElementById("inperson-checklist")
     ];
     containers.forEach(container => {
-        if (!container) return;
+        if (!container || container.children.length === 0) return;
         const headers = container.querySelectorAll(".inperson-group-header");
         headers.forEach(header => {
             let nextEl = header.nextElementSibling;
@@ -3651,7 +4115,7 @@ function sortWatchlist(sortMode) {
     ];
 
     containers.forEach(container => {
-        if (!container) return;
+        if (!container || container.children.length === 0) return;
         const items = Array.from(container.children).filter(el => el.classList.contains("watchlist-card"));
         if (items.length <= 1) return;
 
@@ -3694,7 +4158,9 @@ function sortWatchlist(sortMode) {
             return orderA - orderB;
         });
 
-        items.forEach(item => container.appendChild(item));
+        const frag = document.createDocumentFragment();
+        items.forEach(item => frag.appendChild(item));
+        container.appendChild(frag);
     });
 
     if (swipeTrackState["registry-swipe-track"]) {
@@ -3824,7 +4290,7 @@ function sortDeals(sortMode) {
     ];
 
     containers.forEach(container => {
-        if (!container) return;
+        if (!container || container.children.length === 0) return;
         const items = Array.from(container.children).filter(el => el.classList.contains("deal-card"));
         if (items.length <= 1) return;
 
@@ -3857,7 +4323,9 @@ function sortDeals(sortMode) {
             return orderA - orderB;
         });
 
-        items.forEach(item => container.appendChild(item));
+        const frag = document.createDocumentFragment();
+        items.forEach(item => frag.appendChild(item));
+        container.appendChild(frag);
     });
 
     if (swipeTrackState["deals-swipe-track"]) {
@@ -4300,1209 +4768,27 @@ function toggleLogoMenu() {
 }
 
 // =========================================================================
-// BUYLIST SCANNER // CLIENT CONTROLS & BATCH VALUATION ENGINE
-// =========================================================================
-
-let activeBuylistMode = "single";
-let buylistSearchResults = [];
-let bulkBuylistQuotes = [];
-let bulkBuylistSummary = null;
-let currentModalVariants = [];
-let buylistCart = [];
-
-function initBuylistCart() {
-    try {
-        const saved = localStorage.getItem("chimaera_buylist_cart");
-        if (saved) {
-            buylistCart = JSON.parse(saved);
-        }
-    } catch (e) {
-        console.error("Failed to load buylist cart:", e);
-        buylistCart = [];
-    }
-    renderBuylistCart();
-}
-
-function saveBuylistCart() {
-    try {
-        localStorage.setItem("chimaera_buylist_cart", JSON.stringify(buylistCart));
-    } catch (e) {
-        console.error("Failed to save buylist cart:", e);
-    }
-    renderBuylistCart();
-}
-
-function toggleBuylistCartDrawer() {
-    const modal = document.getElementById("modal-buylist-cart");
-    if (!modal) return;
-    modal.classList.toggle("hidden");
-    if (!modal.classList.contains("hidden")) {
-        renderBuylistCart();
-    }
-}
-
-function addToBuylistCart(item) {
-    if (!item || !item.card_name) return;
-
-    const cardName = item.card_name.trim();
-    const setName = item.set_name ? item.set_name.trim() : "Unknown Set";
-    const condition = item.condition || "Lightly Played";
-    const finish = item.finish || "nonfoil";
-    const creditPrice = parseFloat(item.credit_price || 0);
-    const cashPrice = parseFloat(item.cash_price || 0);
-    const sellPrice = parseFloat(item.store_sell_price || 0);
-    const imageUrl = item.image_url || "";
-    const addQty = parseInt(item.qty || 1, 10);
-
-    const existingIndex = buylistCart.findIndex(c => 
-        c.card_name.toLowerCase() === cardName.toLowerCase() &&
-        c.set_name.toLowerCase() === setName.toLowerCase() &&
-        c.condition.toLowerCase() === condition.toLowerCase() &&
-        c.finish.toLowerCase() === finish.toLowerCase()
-    );
-
-    if (existingIndex > -1) {
-        buylistCart[existingIndex].qty += addQty;
-    } else {
-        buylistCart.push({
-            card_name: cardName,
-            set_name: setName,
-            condition: condition,
-            finish: finish,
-            credit_price: creditPrice,
-            cash_price: cashPrice,
-            store_sell_price: sellPrice,
-            image_url: imageUrl,
-            qty: addQty
-        });
-    }
-
-    saveBuylistCart();
-    showToast(`Added ${addQty}x ${cardName} (${condition}) to Trade-In Batch ($${(creditPrice * addQty).toFixed(2)} Store Credit)`, "success");
-
-    // Re-render search results to show active batch counts if present
-    if (activeBuylistMode === "single" && buylistSearchResults.length > 0) {
-        renderSingleBuylistResults();
-    } else if (activeBuylistMode === "bulk" && bulkBuylistQuotes.length > 0) {
-        renderBulkBuylistResults();
-    }
-}
-
-function getCardCartQty(cardName, setName = null, condition = null) {
-    if (!buylistCart || buylistCart.length === 0) return 0;
-    const nameLower = cardName.toLowerCase().trim();
-    let count = 0;
-    for (const c of buylistCart) {
-        if (c.card_name.toLowerCase() === nameLower) {
-            if (!setName || c.set_name.toLowerCase() === setName.toLowerCase()) {
-                if (!condition || c.condition.toLowerCase() === condition.toLowerCase()) {
-                    count += c.qty;
-                }
-            }
-        }
-    }
-    return count;
-}
-
-function addSingleResultToCart(idx) {
-    const card = buylistSearchResults[idx];
-    if (!card) return;
-
-    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-    const vMatch = getMatchingVariant(card.variants, selectedCond, "nonfoil");
-
-    addToBuylistCart({
-        card_name: card.card_name,
-        set_name: card.set_name,
-        condition: vMatch ? vMatch.condition : selectedCond,
-        finish: vMatch ? vMatch.finish : "Normal",
-        credit_price: vMatch ? vMatch.credit_price : 0,
-        cash_price: vMatch ? vMatch.cash_price : 0,
-        store_sell_price: vMatch ? vMatch.store_sell_price : 0,
-        image_url: card.image_url || "",
-        qty: 1
-    });
-}
-
-function addVariantToCart(cardName, setName, condition, finish, creditPrice, cashPrice, sellPrice, imgUrl) {
-    addToBuylistCart({
-        card_name: cardName,
-        set_name: setName,
-        condition: condition,
-        finish: finish,
-        credit_price: creditPrice,
-        cash_price: cashPrice,
-        store_sell_price: sellPrice,
-        image_url: imgUrl,
-        qty: 1
-    });
-}
-
-function addBulkQuoteToCart(idx) {
-    const q = bulkBuylistQuotes[idx];
-    if (!q || !q.matched) return;
-
-    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-    let cPrice = q.credit_price;
-    let kPrice = q.cash_price;
-    let sPrice = q.store_sell_price;
-    let cond = q.condition || selectedCond;
-    let finish = q.finish || "Normal";
-
-    if (q.all_prints && q.all_prints.length > 0) {
-        const v = getMatchingVariant(q.all_prints[0].variants, selectedCond, "nonfoil");
-        if (v) {
-            cPrice = v.credit_price;
-            kPrice = v.cash_price;
-            sPrice = v.store_sell_price;
-            cond = v.condition;
-            finish = v.finish;
-        }
-    }
-
-    addToBuylistCart({
-        card_name: q.card_name,
-        set_name: q.set_name,
-        condition: cond,
-        finish: finish,
-        credit_price: cPrice,
-        cash_price: kPrice,
-        store_sell_price: sPrice,
-        image_url: q.image_url || "",
-        qty: 1
-    });
-}
-
-function addAllBulkQuotesToCart() {
-    if (!bulkBuylistQuotes || bulkBuylistQuotes.length === 0) {
-        showToast("No bulk quotes available to add", "info");
-        return;
-    }
-
-    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-    let addedCount = 0;
-
-    bulkBuylistQuotes.forEach(q => {
-        if (q.matched) {
-            let cPrice = q.credit_price;
-            let kPrice = q.cash_price;
-            let sPrice = q.store_sell_price;
-            let cond = q.condition || selectedCond;
-            let finish = q.finish || "Normal";
-
-            if (q.all_prints && q.all_prints.length > 0) {
-                const v = getMatchingVariant(q.all_prints[0].variants, selectedCond, "nonfoil");
-                if (v) {
-                    cPrice = v.credit_price;
-                    kPrice = v.cash_price;
-                    sPrice = v.store_sell_price;
-                    cond = v.condition;
-                    finish = v.finish;
-                }
-            }
-
-            const existingIndex = buylistCart.findIndex(c => 
-                c.card_name.toLowerCase() === q.card_name.toLowerCase() &&
-                c.set_name.toLowerCase() === (q.set_name || '').toLowerCase() &&
-                c.condition.toLowerCase() === cond.toLowerCase() &&
-                c.finish.toLowerCase() === finish.toLowerCase()
-            );
-
-            if (existingIndex > -1) {
-                buylistCart[existingIndex].qty += 1;
-            } else {
-                buylistCart.push({
-                    card_name: q.card_name,
-                    set_name: q.set_name || "Unknown Set",
-                    condition: cond,
-                    finish: finish,
-                    credit_price: cPrice,
-                    cash_price: kPrice,
-                    store_sell_price: sPrice,
-                    image_url: q.image_url || "",
-                    qty: 1
-                });
-            }
-            addedCount++;
-        }
-    });
-
-    saveBuylistCart();
-    showToast(`Added ${addedCount} cards to Trade-In Batch!`, "success");
-    renderBulkBuylistResults();
-}
-
-function updateBuylistCartQty(idx, delta) {
-    if (!buylistCart[idx]) return;
-    buylistCart[idx].qty += delta;
-    if (buylistCart[idx].qty <= 0) {
-        buylistCart.splice(idx, 1);
-    }
-    saveBuylistCart();
-}
-
-function removeFromBuylistCart(idx) {
-    if (!buylistCart[idx]) return;
-    const removed = buylistCart.splice(idx, 1)[0];
-    saveBuylistCart();
-    showToast(`Removed ${removed.card_name} from Trade-In Batch`, "info");
-}
-
-function clearBuylistCart() {
-    if (buylistCart.length === 0) return;
-    buylistCart = [];
-    saveBuylistCart();
-    showToast("Trade-In Batch cleared", "info");
-}
-
-function renderBuylistCart() {
-    const badge = document.getElementById("buylist-cart-badge");
-    const container = document.getElementById("buylist-cart-items-container");
-    const totalQtyEl = document.getElementById("cart-total-qty");
-    const totalCreditEl = document.getElementById("cart-total-credit");
-    const totalCashEl = document.getElementById("cart-total-cash");
-
-    let totalQty = 0;
-    let totalCredit = 0.0;
-    let totalCash = 0.0;
-
-    buylistCart.forEach(item => {
-        totalQty += item.qty;
-        totalCredit += (item.credit_price * item.qty);
-        totalCash += (item.cash_price * item.qty);
-    });
-
-    if (badge) badge.textContent = totalQty;
-    if (totalQtyEl) totalQtyEl.textContent = totalQty;
-    if (totalCreditEl) totalCreditEl.textContent = `$${totalCredit.toFixed(2)}`;
-    if (totalCashEl) totalCashEl.textContent = `$${totalCash.toFixed(2)}`;
-
-    if (!container) return;
-
-    if (buylistCart.length === 0) {
-        container.innerHTML = `
-            <div class="bg-[#10141D] border border-[#263245] p-8 text-center text-[#94A3B8] space-y-2">
-                <div class="w-10 h-10 bg-[#1B2230] border border-[#263245] flex items-center justify-center mx-auto text-[#2DD4BF] text-lg font-bold">📦</div>
-                <div class="text-xs font-bold text-white uppercase tracking-wider">Trade-In Batch Empty</div>
-                <p class="text-[11px] text-[#64748B] max-w-xs mx-auto">
-                    Click <strong>+ Trade-In</strong> on any single card quote or bulk manifest search to build your trade-in order.
-                </p>
-            </div>
-        `;
-        return;
-    }
-
-    let html = "";
-    buylistCart.forEach((item, idx) => {
-        const itemCreditSubtotal = (item.credit_price * item.qty).toFixed(2);
-        const itemCashSubtotal = (item.cash_price * item.qty).toFixed(2);
-
-        html += `
-            <div class="bg-[#10141D] border border-[#263245] hover:border-[#2DD4BF]/50 p-2.5 flex items-center justify-between gap-3 transition">
-                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
-                    ${item.image_url ? `
-                    <img src="${item.image_url}" alt="" class="w-9 h-12 object-cover border border-[#263245] bg-[#0C0F17] flex-shrink-0" onerror="this.style.display='none'">
-                    ` : ''}
-                    <div class="min-w-0 flex-1">
-                        <div class="font-bold text-white text-xs truncate" title="${item.card_name}">
-                            ${item.card_name}
-                        </div>
-                        <div class="text-[10px] text-[#94A3B8] truncate">
-                            ${item.set_name} &bull; <span class="text-[#2DD4BF] font-bold">${item.condition}</span> (${item.finish})
-                        </div>
-                        <div class="text-[10px] text-[#64748B] mt-0.5">
-                            Unit: <span class="text-[#2DD4BF] font-bold">$${item.credit_price.toFixed(2)}</span> Credit &bull; $${item.cash_price.toFixed(2)} Cash
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quantity and Subtotals -->
-                <div class="flex items-center space-x-3 flex-shrink-0">
-                    <!-- Qty Controls -->
-                    <div class="flex items-center border border-[#263245] bg-[#1B2230]">
-                        <button onclick="updateBuylistCartQty(${idx}, -1)" class="px-2 py-0.5 text-xs text-[#94A3B8] hover:text-white hover:bg-[#263245]">-</button>
-                        <span class="px-2 text-xs font-bold text-white">${item.qty}</span>
-                        <button onclick="updateBuylistCartQty(${idx}, 1)" class="px-2 py-0.5 text-xs text-[#94A3B8] hover:text-white hover:bg-[#263245]">+</button>
-                    </div>
-
-                    <!-- Price Subtotal -->
-                    <div class="text-right min-w-[70px]">
-                        <div class="font-bold text-xs text-[#2DD4BF]">$${itemCreditSubtotal}</div>
-                        <div class="text-[10px] text-[#94A3B8]">$${itemCashSubtotal} Cash</div>
-                    </div>
-
-                    <!-- Remove Item -->
-                    <button onclick="removeFromBuylistCart(${idx})" class="text-[#64748B] hover:text-[#FF3358] text-base font-bold px-1" title="Remove item">&times;</button>
-                </div>
-            </div>
-        `;
-    });
-
-    container.innerHTML = html;
-}
-
-function exportBuylistCartCSV() {
-    if (!buylistCart || buylistCart.length === 0) {
-        showToast("Trade-In Batch is currently empty", "info");
-        return;
-    }
-
-    let csvContent = "\uFEFF"; // UTF-8 BOM
-    csvContent += "Card Name,Set,Condition Grade,Finish,Quantity,Unit Store Credit ($),Total Store Credit ($),Unit Cash Buy ($),Total Cash Buy ($)\n";
-
-    buylistCart.forEach(item => {
-        const cleanName = `"${(item.card_name || '').replace(/"/g, '""')}"`;
-        const cleanSet = `"${(item.set_name || '').replace(/"/g, '""')}"`;
-        const totalCredit = (item.credit_price * item.qty).toFixed(2);
-        const totalCash = (item.cash_price * item.qty).toFixed(2);
-        csvContent += `${cleanName},${cleanSet},${item.condition},${item.finish},${item.qty},${item.credit_price.toFixed(2)},${totalCredit},${item.cash_price.toFixed(2)},${totalCash}\n`;
-    });
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `mightymeeple_trade_in_batch_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast("Downloaded Trade-In Batch CSV", "success");
-}
-
-function copyBuylistCartSummary() {
-    if (!buylistCart || buylistCart.length === 0) {
-        showToast("Trade-In Batch is currently empty", "info");
-        return;
-    }
-
-    let summaryText = `MIGHTY MEEPLE TRADE-IN BATCH MANIFEST\n`;
-    summaryText += `Generated: ${formatESTDate(new Date())}\n`;
-    summaryText += `--------------------------------------------------\n`;
-
-    let totalQty = 0;
-    let totalCredit = 0.0;
-    let totalCash = 0.0;
-
-    buylistCart.forEach(item => {
-        const itemCredit = item.credit_price * item.qty;
-        const itemCash = item.cash_price * item.qty;
-        totalQty += item.qty;
-        totalCredit += itemCredit;
-        totalCash += itemCash;
-        summaryText += `${item.qty}x ${item.card_name} [${item.set_name}] (${item.condition} - ${item.finish}) -> Credit: $${itemCredit.toFixed(2)} | Cash: $${itemCash.toFixed(2)}\n`;
-    });
-
-    summaryText += `--------------------------------------------------\n`;
-    summaryText += `TOTAL CARDS:        ${totalQty}\n`;
-    summaryText += `TOTAL STORE CREDIT: $${totalCredit.toFixed(2)}\n`;
-    summaryText += `TOTAL CASH PAYOUT:  $${totalCash.toFixed(2)}\n`;
-
-    navigator.clipboard.writeText(summaryText).then(() => {
-        showToast("Copied Trade-In Batch Summary to clipboard", "success");
-    }).catch(() => {
-        showToast("Failed to copy to clipboard", "error");
-    });
-}
-
-function setBuylistMode(mode) {
-    activeBuylistMode = mode;
-    const btnSingle = document.getElementById("btn-mode-single");
-    const btnBulk = document.getElementById("btn-mode-bulk");
-    const singleContainer = document.getElementById("buylist-single-container");
-    const bulkContainer = document.getElementById("buylist-bulk-container");
-
-    if (mode === "single") {
-        if (btnSingle) btnSingle.classList.add("active");
-        if (btnBulk) btnBulk.classList.remove("active");
-        if (singleContainer) singleContainer.classList.remove("hidden");
-        if (bulkContainer) bulkContainer.classList.add("hidden");
-    } else {
-        if (btnSingle) btnSingle.classList.remove("active");
-        if (btnBulk) btnBulk.classList.add("active");
-        if (singleContainer) singleContainer.classList.add("hidden");
-        if (bulkContainer) bulkContainer.classList.remove("hidden");
-    }
-}
-
-function onBuylistPreferenceChange() {
-    if (activeBuylistMode === "single" && buylistSearchResults.length > 0) {
-        renderSingleBuylistResults();
-    } else if (activeBuylistMode === "bulk" && bulkBuylistQuotes.length > 0) {
-        renderBulkBuylistResults();
-    }
-}
-
-function onBuylistGameChange() {
-    if (activeBuylistMode === "single") {
-        const query = (document.getElementById("buylist-search-input")?.value || "").trim();
-        if (query) {
-            triggerSingleBuylistSearch();
-        }
-    }
-}
-
-// -------------------------------------------------------------------------
-// Single Card Search
-// -------------------------------------------------------------------------
-async function triggerSingleBuylistSearch() {
-    const input = document.getElementById("buylist-search-input");
-    const query = (input?.value || "").trim();
-    if (!query) {
-        showToast("Please enter a card name to search buylist", "info");
-        return;
-    }
-
-    const game = document.getElementById("buylist-global-game")?.value || "mtg";
-    const loadingEl = document.getElementById("single-search-loading");
-    const resultsContainer = document.getElementById("single-search-results");
-    const clearBtn = document.getElementById("btn-clear-single-search");
-
-    if (loadingEl) loadingEl.classList.remove("hidden");
-    if (resultsContainer) resultsContainer.innerHTML = "";
-    if (clearBtn) clearBtn.classList.remove("hidden");
-
-    try {
-        const res = await fetch(`/api/buylist/search?q=${encodeURIComponent(query)}&game=${encodeURIComponent(game)}&limit=25`);
-        const data = await res.json();
-
-        if (res.ok && data.items) {
-            buylistSearchResults = data.items;
-            renderSingleBuylistResults();
-            if (data.items.length === 0) {
-                showToast(`No buylist entries found for '${query}'`, "info");
-            } else {
-                showToast(`Found ${data.items.length} buylist printings`, "success");
-            }
-        } else {
-            showToast(data.error || "Failed to search buylist", "error");
-        }
-    } catch (err) {
-        console.error("Buylist search error:", err);
-        showToast("Network error querying buylist", "error");
-    } finally {
-        if (loadingEl) loadingEl.classList.add("hidden");
-    }
-}
-
-function quickBuylistSearch(cardName) {
-    const input = document.getElementById("buylist-search-input");
-    if (input) {
-        input.value = cardName;
-        triggerSingleBuylistSearch();
-    }
-}
-
-function clearSingleBuylistSearch() {
-    const input = document.getElementById("buylist-search-input");
-    const clearBtn = document.getElementById("btn-clear-single-search");
-    const resultsContainer = document.getElementById("single-search-results");
-
-    if (input) input.value = "";
-    if (clearBtn) clearBtn.classList.add("hidden");
-    buylistSearchResults = [];
-
-    if (resultsContainer) {
-        resultsContainer.innerHTML = `
-            <div id="single-search-empty-slate" class="bg-[#1B2230] border border-[#263245] p-8 text-center font-mono">
-                <div class="w-10 h-10 bg-[#10141D] border border-[#263245] flex items-center justify-center mx-auto text-[#00CED1] text-lg font-bold">&para;</div>
-                <h3 class="text-sm font-heading font-bold text-white uppercase tracking-wider mt-3">Ready to Query Buylist</h3>
-                <p class="text-xs text-[#94A3B8] max-w-md mx-auto mt-1">
-                    Enter any card name above to view all printings, condition grade multipliers, cash payouts, and store credit trade-in values.
-                </p>
-            </div>
-        `;
-    }
-}
-
-function getMatchingVariant(variants, targetCond = "Lightly Played", targetFinish = "nonfoil") {
-    if (!variants || variants.length === 0) return null;
-    const condClean = (targetCond || "Lightly Played").toLowerCase().trim();
-    const isFoil = (targetFinish || "nonfoil").toLowerCase().includes("foil");
-
-    // Exact condition and finish
-    for (const v of variants) {
-        const vCond = (v.condition || "").toLowerCase();
-        const vFoil = (v.finish || "").toLowerCase().includes("foil");
-        if ((vCond.includes(condClean) || (condClean === "lp" && vCond.includes("light")) || (condClean === "nm" && vCond.includes("near"))) && (vFoil === isFoil)) {
-            return v;
-        }
-    }
-
-    // Condition match
-    for (const v of variants) {
-        const vCond = (v.condition || "").toLowerCase();
-        if (vCond.includes(condClean) || (condClean === "lp" && vCond.includes("light")) || (condClean === "nm" && vCond.includes("near"))) {
-            return v;
-        }
-    }
-
-    return variants[0];
-}
-
-function renderSingleBuylistResults() {
-    const container = document.getElementById("single-search-results");
-    if (!container) return;
-
-    if (!buylistSearchResults || buylistSearchResults.length === 0) {
-        container.innerHTML = `
-            <div class="bg-[#1B2230] border border-[#DC143C]/40 p-6 text-center font-mono text-xs">
-                <div class="text-[#FF3358] font-bold uppercase tracking-wider text-sm">// NO BUYLIST MATCHES FOUND</div>
-                <p class="text-[#94A3B8] mt-1">Mighty Meeple is not actively purchasing this card on their buylist at this time.</p>
-            </div>
-        `;
-        return;
-    }
-
-    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-    const selectedPayout = document.getElementById("buylist-global-payout")?.value || "credit";
-
-    let html = `
-        <div class="flex items-center justify-between font-mono text-xs text-[#94A3B8] px-1">
-            <span>Found <strong class="text-white">${buylistSearchResults.length}</strong> buylist printings:</span>
-            <span class="text-[#2DD4BF] font-bold">[ Active Default: ${selectedCond} &bull; ${selectedPayout === "credit" ? "Store Credit" : (selectedPayout === "cash" ? "Cash" : "Credit + Cash")} ]</span>
-        </div>
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-    `;
-
-    buylistSearchResults.forEach((card, idx) => {
-        const vMatch = getMatchingVariant(card.variants, selectedCond, "nonfoil");
-        const creditPrice = vMatch ? vMatch.credit_price : 0.0;
-        const cashPrice = vMatch ? vMatch.cash_price : 0.0;
-        const sellPrice = vMatch ? vMatch.store_sell_price : 0.0;
-        const maxQty = vMatch ? vMatch.max_quantity : 0;
-        const cardImg = card.image_url || "/static/img/chimaera_logo.jpg";
-        const inBatchQty = getCardCartQty(card.card_name, card.set_name, selectedCond);
-
-        // Condition Pills for quick comparison
-        const nmVar = getMatchingVariant(card.variants, "Near Mint", "nonfoil");
-        const lpVar = getMatchingVariant(card.variants, "Lightly Played", "nonfoil");
-        const mpVar = getMatchingVariant(card.variants, "Moderately Played", "nonfoil");
-        const hpVar = getMatchingVariant(card.variants, "Heavily Played", "nonfoil");
-
-        html += `
-            <div class="bg-[#1B2230] border border-[#263245] hover:border-[#2DD4BF]/60 p-4 space-y-3 transition flex flex-col justify-between relative group">
-                <div class="flex items-start space-x-3.5">
-                    <img src="${cardImg}" alt="${card.card_name}" 
-                        class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0"
-                        onerror="this.src='/static/img/chimaera_logo.jpg'">
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center space-x-2">
-                            <span class="text-[9px] font-mono uppercase px-1 py-0.2 bg-[#2DD4BF]/20 text-[#2DD4BF] border border-[#2DD4BF]/50 font-bold">${card.rarity || 'SINGLE'}</span>
-                            <span class="text-[10px] font-mono text-[#94A3B8] truncate">${card.set_name}</span>
-                        </div>
-                        <h4 class="font-heading font-black text-white text-sm sm:text-base truncate mt-0.5" title="${card.card_name}">
-                            ${card.card_name}
-                        </h4>
-                        
-                        <!-- Primary Quoted Payout Block -->
-                        <div class="flex items-center space-x-3 mt-2 bg-[#10141D] p-2 border border-[#263245]">
-                            ${selectedPayout !== "cash" ? `
-                            <div>
-                                <span class="text-[9px] font-mono text-[#2DD4BF] uppercase font-bold block">Credit (${selectedCond})</span>
-                                <span class="font-mono font-bold text-base text-[#2DD4BF]">$${creditPrice.toFixed(2)}</span>
-                            </div>
-                            ` : ''}
-                            ${selectedPayout !== "credit" ? `
-                            <div class="${selectedPayout === 'both' ? 'border-l border-[#263245] pl-3' : ''}">
-                                <span class="text-[9px] font-mono text-[#94A3B8] uppercase font-bold block">Cash (${selectedCond})</span>
-                                <span class="font-mono font-bold text-base text-white">$${cashPrice.toFixed(2)}</span>
-                            </div>
-                            ` : ''}
-                            <div class="border-l border-[#263245] pl-3 ml-auto text-right">
-                                <span class="text-[9px] font-mono text-[#64748B] uppercase block">Sell Price</span>
-                                <span class="font-mono text-xs text-[#94A3B8]">$${sellPrice.toFixed(2)}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Condition Quick-Comparison Bar -->
-                <div class="grid grid-cols-4 gap-1 font-mono text-[10px] text-center pt-1 border-t border-[#263245]/60">
-                    <div class="bg-[#10141D] p-1 border ${selectedCond === 'Near Mint' ? 'border-[#00CED1] bg-[#00CED1]/10' : 'border-[#263245]'}">
-                        <span class="text-[#94A3B8] block text-[9px]">NM</span>
-                        <span class="text-[#2DD4BF] font-bold">$${nmVar ? nmVar.credit_price.toFixed(2) : '0.00'}</span>
-                    </div>
-                    <div class="bg-[#10141D] p-1 border ${selectedCond === 'Lightly Played' ? 'border-[#2DD4BF] bg-[#2DD4BF]/10' : 'border-[#263245]'}">
-                        <span class="text-[#94A3B8] block text-[9px]">LP ★</span>
-                        <span class="text-[#2DD4BF] font-bold">$${lpVar ? lpVar.credit_price.toFixed(2) : '0.00'}</span>
-                    </div>
-                    <div class="bg-[#10141D] p-1 border ${selectedCond === 'Moderately Played' ? 'border-[#00CED1] bg-[#00CED1]/10' : 'border-[#263245]'}">
-                        <span class="text-[#94A3B8] block text-[9px]">MP</span>
-                        <span class="text-[#2DD4BF] font-bold">$${mpVar ? mpVar.credit_price.toFixed(2) : '0.00'}</span>
-                    </div>
-                    <div class="bg-[#10141D] p-1 border ${selectedCond === 'Heavily Played' ? 'border-[#00CED1] bg-[#00CED1]/10' : 'border-[#263245]'}">
-                        <span class="text-[#94A3B8] block text-[9px]">HP</span>
-                        <span class="text-[#2DD4BF] font-bold">$${hpVar ? hpVar.credit_price.toFixed(2) : '0.00'}</span>
-                    </div>
-                </div>
-
-                <!-- Action Footer -->
-                <div class="flex items-center justify-between pt-2 border-t border-[#263245] text-xs font-mono">
-                    <span class="text-[10px] text-[#94A3B8]">
-                        Max Purchase Qty: <strong class="text-white">${maxQty > 0 ? maxQty : 'Quota Met'}</strong>
-                    </span>
-                    <div class="flex items-center space-x-2">
-                        <button onclick="openBuylistVariantModal(${idx}, 'single')" class="btn-bridge px-2.5 py-1 text-[11px] font-mono">
-                            All Prints (${card.variants ? card.variants.length : 0})
-                        </button>
-                        <button onclick="addSingleResultToCart(${idx})" class="btn-crimson px-2.5 py-1 text-[11px] font-mono font-bold bg-[#2DD4BF] hover:bg-[#00CED1] text-[#10141D] border-[#2DD4BF] flex items-center space-x-1" title="Add to Trade-In Batch">
-                            <span>+ Trade-In</span>
-                            ${inBatchQty > 0 ? `<span class="bg-[#10141D] text-[#2DD4BF] px-1 text-[9px] font-black font-mono">(${inBatchQty})</span>` : ''}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-
-    html += `</div>`;
-    container.innerHTML = html;
-}
-
-// -------------------------------------------------------------------------
-// Bulk Manifest Processing
-// -------------------------------------------------------------------------
-function updateBulkBuylistCount() {
-    const raw = (document.getElementById("bulk-buylist-input")?.value || "").trim();
-    if (!raw) {
-        const badge = document.getElementById("bulk-buylist-counter");
-        if (badge) badge.textContent = "[ 0 Cards ]";
-        return;
-    }
-
-    const items = raw.split(/[\n;]+/).map(s => s.trim()).filter(s => s.length > 0);
-    const unique = new Set(items.map(s => s.toLowerCase()));
-    const badge = document.getElementById("bulk-buylist-counter");
-    if (badge) {
-        badge.textContent = `[ ${unique.size} Cards Identified ]`;
-    }
-}
-
-function loadSampleBulkBuylist() {
-    const sample = "The One Ring; Sol Ring; Sheoldred, the Apocalypse; Ragavan, Nimble Pilferer; Mana Crypt; Force of Will; Rhystic Study; Cyclonic Rift; Esper Sentinel; Demonic Tutor";
-    const textarea = document.getElementById("bulk-buylist-input");
-    if (textarea) {
-        textarea.value = sample;
-        updateBulkBuylistCount();
-        showToast("Loaded sample 10 card trade-in manifest", "info");
-    }
-}
-
-function clearBulkBuylist() {
-    const textarea = document.getElementById("bulk-buylist-input");
-    if (textarea) textarea.value = "";
-    updateBulkBuylistCount();
-    bulkBuylistQuotes = [];
-    bulkBuylistSummary = null;
-
-    const resultsEl = document.getElementById("bulk-buylist-results");
-    if (resultsEl) resultsEl.classList.add("hidden");
-
-    const kpiCount = document.getElementById("kpi-buylist-count");
-    const kpiCredit = document.getElementById("kpi-buylist-credit");
-    const kpiCash = document.getElementById("kpi-buylist-cash");
-    if (kpiCount) kpiCount.textContent = "0";
-    if (kpiCredit) kpiCredit.textContent = "$0.00";
-    if (kpiCash) kpiCash.textContent = "$0.00";
-}
-
-async function submitBulkBuylist() {
-    const raw = (document.getElementById("bulk-buylist-input")?.value || "").trim();
-    if (!raw) {
-        showToast("Please enter or paste a list of card names first", "info");
-        return;
-    }
-
-    const condition = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-    const payout = document.getElementById("buylist-global-payout")?.value || "credit";
-    const game = document.getElementById("buylist-global-game")?.value || "mtg";
-
-    const loadingEl = document.getElementById("bulk-buylist-loading");
-    const resultsEl = document.getElementById("bulk-buylist-results");
-    const btnSubmit = document.getElementById("btn-submit-bulk-buylist");
-
-    if (loadingEl) loadingEl.classList.remove("hidden");
-    if (resultsEl) resultsEl.classList.add("hidden");
-    if (btnSubmit) {
-        btnSubmit.disabled = true;
-        btnSubmit.classList.add("opacity-50");
-    }
-
-    try {
-        const res = await fetch("/api/buylist/bulk", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                raw_input: raw,
-                condition: condition,
-                payout: payout,
-                game: game,
-            }),
-        });
-
-        let data = null;
-        const contentType = res.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-            try {
-                data = await res.json();
-            } catch (jsonErr) {
-                data = null;
-            }
-        }
-        if (!data) {
-            const rawText = await res.text();
-            let errText = `Server returned HTTP ${res.status}`;
-            if (rawText.includes("<title>") && rawText.includes("</title>")) {
-                const match = rawText.match(/<title>([^<]+)<\/title>/i);
-                if (match) errText = match[1].trim();
-            }
-            showToast(`Buylist valuation failed: ${errText}`, "error");
-            return;
-        }
-
-        if (res.ok && data.quotes) {
-            bulkBuylistQuotes = data.quotes;
-            bulkBuylistSummary = data.summary;
-            renderBulkBuylistResults();
-            showToast(`Evaluated ${data.summary.matched_count} cards ($${data.summary.total_credit_value.toFixed(2)} Store Credit)`, "success");
-        } else {
-            showToast(data.error || "Failed to process bulk buylist manifest", "error");
-        }
-    } catch (err) {
-        console.error("Bulk buylist error:", err);
-        showToast("Network error calculating bulk buylist", "error");
-    } finally {
-        if (loadingEl) loadingEl.classList.add("hidden");
-        if (btnSubmit) {
-            btnSubmit.disabled = false;
-            btnSubmit.classList.remove("opacity-50");
-        }
-    }
-}
-
-function renderBulkBuylistResults() {
-    const resultsEl = document.getElementById("bulk-buylist-results");
-    const tbody = document.getElementById("bulk-buylist-table-body");
-    const summaryBadge = document.getElementById("bulk-report-summary-badge");
-
-    if (!resultsEl || !tbody) return;
-
-    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-    const selectedPayout = document.getElementById("buylist-global-payout")?.value || "credit";
-
-    let totalCredit = 0.0;
-    let totalCash = 0.0;
-    let totalSell = 0.0;
-    let matchedCount = 0;
-
-    let rowsHtml = "";
-
-    bulkBuylistQuotes.forEach((q, idx) => {
-        if (q.matched) {
-            matchedCount++;
-            // Recompute variant matching if user changed grade
-            let cPrice = q.credit_price;
-            let kPrice = q.cash_price;
-            let sPrice = q.store_sell_price;
-            let mQty = q.max_quantity;
-            let matchedGrade = q.condition || selectedCond;
-
-            if (q.all_prints && q.all_prints.length > 0) {
-                const bestPrint = q.all_prints[0];
-                const v = getMatchingVariant(bestPrint.variants, selectedCond, "nonfoil");
-                if (v) {
-                    cPrice = v.credit_price;
-                    kPrice = v.cash_price;
-                    sPrice = v.store_sell_price;
-                    mQty = v.max_quantity;
-                    matchedGrade = v.condition;
-                }
-            }
-
-            totalCredit += cPrice;
-            totalCash += kPrice;
-            totalSell += sPrice;
-
-            const inBatchQty = getCardCartQty(q.card_name, q.set_name, matchedGrade);
-
-            rowsHtml += `
-                <tr class="hover:bg-[#10141D] transition">
-                    <td class="p-3 font-bold text-white flex items-center space-x-2.5">
-                        ${q.image_url ? `
-                        <img src="${q.image_url}" alt="" class="w-8 h-10 object-cover border border-[#263245] bg-[#0C0F17] flex-shrink-0" onerror="this.style.display='none'">
-                        ` : ''}
-                        <div>
-                            <div class="truncate max-w-xs" title="${q.card_name}">${q.card_name}</div>
-                            <div class="text-[10px] text-[#94A3B8] font-normal">${q.rarity ? q.rarity.toUpperCase() : ''}</div>
-                        </div>
-                    </td>
-                    <td class="p-3 text-[#94A3B8] truncate max-w-[180px]" title="${q.set_name}">${q.set_name}</td>
-                    <td class="p-3">
-                        <span class="px-1.5 py-0.5 bg-[#10141D] border border-[#263245] text-white text-[10px] font-bold uppercase">
-                            ${matchedGrade}
-                        </span>
-                    </td>
-                    <td class="p-3 text-right font-bold text-sm font-mono text-[#2DD4BF]">
-                        $${cPrice.toFixed(2)}
-                    </td>
-                    <td class="p-3 text-right font-bold text-xs font-mono text-white">
-                        $${kPrice.toFixed(2)}
-                    </td>
-                    <td class="p-3 text-right text-xs font-mono text-[#94A3B8]">
-                        $${sPrice.toFixed(2)}
-                    </td>
-                    <td class="p-3 text-center text-[11px] font-mono">
-                        <span class="${mQty > 0 ? 'text-[#00CED1] font-bold' : 'text-[#64748B]'}">
-                            ${mQty > 0 ? mQty : '0'}
-                        </span>
-                    </td>
-                    <td class="p-3 text-center space-x-1 whitespace-nowrap">
-                        <button onclick="openBuylistVariantModal(${idx}, 'bulk')" class="btn-bridge px-2 py-1 text-[10px]" title="View All Set Printings">
-                            Prints
-                        </button>
-                        <button onclick="addBulkQuoteToCart(${idx})" class="btn-crimson px-2 py-1 text-[10px] bg-[#2DD4BF] hover:bg-[#00CED1] text-[#10141D] border-[#2DD4BF] font-bold" title="Add to Trade-In Batch">
-                            + Trade-In ${inBatchQty > 0 ? `(${inBatchQty})` : ''}
-                        </button>
-                    </td>
-                </tr>
-            `;
-        } else {
-            rowsHtml += `
-                <tr class="hover:bg-[#10141D] opacity-60">
-                    <td class="p-3 font-bold text-[#94A3B8]">${q.requested_name}</td>
-                    <td class="p-3 text-[#FF3358] italic text-[11px]" colspan="6">Not found on Mighty Meeple buylist</td>
-                    <td class="p-3 text-center">
-                        <span class="text-[#64748B] text-[10px]">Unavailable</span>
-                    </td>
-                </tr>
-            `;
-        }
-    });
-
-    tbody.innerHTML = rowsHtml;
-
-    // Update Totals
-    const kpiCount = document.getElementById("kpi-buylist-count");
-    const kpiCredit = document.getElementById("kpi-buylist-credit");
-    const kpiCash = document.getElementById("kpi-buylist-cash");
-    const tableCredit = document.getElementById("bulk-table-total-credit");
-    const tableCash = document.getElementById("bulk-table-total-cash");
-    const tableSell = document.getElementById("bulk-table-total-sell");
-
-    if (kpiCount) kpiCount.textContent = `${matchedCount} / ${bulkBuylistQuotes.length}`;
-    if (kpiCredit) kpiCredit.textContent = `$${totalCredit.toFixed(2)}`;
-    if (kpiCash) kpiCash.textContent = `$${totalCash.toFixed(2)}`;
-    if (tableCredit) tableCredit.textContent = `$${totalCredit.toFixed(2)}`;
-    if (tableCash) tableCash.textContent = `$${totalCash.toFixed(2)}`;
-    if (tableSell) tableSell.textContent = `$${totalSell.toFixed(2)}`;
-
-    if (summaryBadge) {
-        summaryBadge.textContent = `${matchedCount} / ${bulkBuylistQuotes.length} Cards Quoted ($${totalCredit.toFixed(2)} Credit)`;
-    }
-
-    resultsEl.classList.remove("hidden");
-}
-
-// -------------------------------------------------------------------------
-// Variant Modal & Drawer
-// -------------------------------------------------------------------------
-function openBuylistVariantModal(idx, source = "single") {
-    const modal = document.getElementById("modal-buylist-variants");
-    const nameEl = document.getElementById("modal-variant-card-name");
-    const contentEl = document.getElementById("modal-variant-content");
-
-    if (!modal || !contentEl) return;
-
-    let targetCard = null;
-    let allPrints = [];
-
-    if (source === "single") {
-        targetCard = buylistSearchResults[idx];
-        allPrints = targetCard ? [targetCard] : [];
-    } else {
-        const quote = bulkBuylistQuotes[idx];
-        if (quote) {
-            targetCard = quote;
-            allPrints = quote.all_prints || [];
-        }
-    }
-
-    if (!targetCard) return;
-
-    if (nameEl) nameEl.textContent = `${targetCard.card_name} — All Buylist Quotes`;
-
-    let html = "";
-    allPrints.forEach(print => {
-        const printImg = print.image_url || "";
-        html += `
-            <div class="bg-[#10141D] border border-[#263245] p-3 space-y-2">
-                <div class="flex items-center justify-between border-b border-[#263245] pb-2">
-                    <div>
-                        <span class="text-white font-bold">${print.card_name}</span>
-                        <span class="text-[#94A3B8] text-[11px] block">${print.set_name} &bull; ${print.rarity ? print.rarity.toUpperCase() : 'SINGLE'}</span>
-                    </div>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left font-mono text-[11px]">
-                        <thead class="text-[#94A3B8] border-b border-[#263245]/60 text-[9px] uppercase">
-                            <tr>
-                                <th class="py-1">Condition</th>
-                                <th class="py-1">Finish</th>
-                                <th class="py-1 text-right text-[#2DD4BF]">Store Credit</th>
-                                <th class="py-1 text-right">Cash Buy</th>
-                                <th class="py-1 text-right text-[#94A3B8]">Retail Sell</th>
-                                <th class="py-1 text-center">Max Qty</th>
-                                <th class="py-1 text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-[#263245]/40">
-        `;
-
-        (print.variants || []).forEach(v => {
-            html += `
-                <tr class="hover:bg-[#1B2230]">
-                    <td class="py-1.5 font-bold ${v.condition === 'Near Mint' || v.condition === 'Lightly Played' ? 'text-white' : 'text-[#94A3B8]'}">
-                        ${v.condition}
-                    </td>
-                    <td class="py-1.5 text-[#94A3B8]">${v.finish}</td>
-                    <td class="py-1.5 text-right font-bold text-[#2DD4BF]">$${v.credit_price.toFixed(2)}</td>
-                    <td class="py-1.5 text-right font-bold text-white">$${v.cash_price.toFixed(2)}</td>
-                    <td class="py-1.5 text-right text-[#94A3B8]">$${v.store_sell_price.toFixed(2)}</td>
-                    <td class="py-1.5 text-center text-[#00CED1] font-bold">${v.max_quantity}</td>
-                    <td class="py-1.5 text-center">
-                        <button onclick="addVariantToCart('${print.card_name.replace(/'/g, "\\'")}', '${print.set_name.replace(/'/g, "\\'")}', '${v.condition}', '${v.finish}', ${v.credit_price}, ${v.cash_price}, ${v.store_sell_price}, '${printImg}')" class="btn-bridge px-2 py-0.5 text-[10px] text-[#2DD4BF] border-[#2DD4BF]/40 hover:bg-[#2DD4BF]/20 font-bold">
-                            + Add
-                        </button>
-                    </td>
-                </tr>
-            `;
-        });
-
-        html += `
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
-    });
-
-    contentEl.innerHTML = html;
-    modal.classList.remove("hidden");
-    lockBody();
-}
-
-function closeBuylistVariantModal() {
-    const modal = document.getElementById("modal-buylist-variants");
-    if (modal) {
-        modal.classList.add("hidden");
-        unlockBody();
-    }
-}
-
-// -------------------------------------------------------------------------
-// CSV Export & Clipboard Copy
-// -------------------------------------------------------------------------
-function exportBulkBuylistCSV() {
-    if (!bulkBuylistQuotes || bulkBuylistQuotes.length === 0) {
-        showToast("No buylist quotes available to export", "info");
-        return;
-    }
-
-    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-
-    let csvContent = "\uFEFF"; // UTF-8 BOM
-    csvContent += "Card Name,Set,Condition Grade,Finish,Store Credit ($),Cash Buy ($),Retail Sell ($),Max Purchase Quantity,Status\n";
-
-    bulkBuylistQuotes.forEach(q => {
-        if (q.matched) {
-            let cPrice = q.credit_price;
-            let kPrice = q.cash_price;
-            let sPrice = q.store_sell_price;
-            let mQty = q.max_quantity;
-            let cond = q.condition || selectedCond;
-
-            if (q.all_prints && q.all_prints.length > 0) {
-                const v = getMatchingVariant(q.all_prints[0].variants, selectedCond, "nonfoil");
-                if (v) {
-                    cPrice = v.credit_price;
-                    kPrice = v.cash_price;
-                    sPrice = v.store_sell_price;
-                    mQty = v.max_quantity;
-                    cond = v.condition;
-                }
-            }
-
-            const cleanName = `"${(q.card_name || '').replace(/"/g, '""')}"`;
-            const cleanSet = `"${(q.set_name || '').replace(/"/g, '""')}"`;
-            csvContent += `${cleanName},${cleanSet},${cond},${q.finish || 'Normal'},${cPrice.toFixed(2)},${kPrice.toFixed(2)},${sPrice.toFixed(2)},${mQty},Quoted\n`;
-        } else {
-            const cleanName = `"${(q.requested_name || '').replace(/"/g, '""')}"`;
-            csvContent += `${cleanName},Not Found,${selectedCond},Nonfoil,0.00,0.00,0.00,0,Not On Buylist\n`;
-        }
-    });
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `mightymeeple_buylist_valuation_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast("Downloaded Buylist Valuation CSV", "success");
-}
-
-function copyBulkBuylistSummary() {
-    if (!bulkBuylistQuotes || bulkBuylistQuotes.length === 0) {
-        showToast("No buylist quotes to copy", "info");
-        return;
-    }
-
-    const selectedCond = document.getElementById("buylist-global-condition")?.value || "Lightly Played";
-    let summaryText = `MIGHTY MEEPLE BUYLIST VALUATION\n`;
-    summaryText += `Grade Default: ${selectedCond}\n`;
-    summaryText += `Generated: ${formatESTDate(new Date())}\n`;
-    summaryText += `----------------------------------------\n`;
-
-    let totalCredit = 0.0;
-    let totalCash = 0.0;
-
-    bulkBuylistQuotes.forEach(q => {
-        if (q.matched) {
-            let cPrice = q.credit_price;
-            let kPrice = q.cash_price;
-            if (q.all_prints && q.all_prints.length > 0) {
-                const v = getMatchingVariant(q.all_prints[0].variants, selectedCond, "nonfoil");
-                if (v) {
-                    cPrice = v.credit_price;
-                    kPrice = v.cash_price;
-                }
-            }
-            totalCredit += cPrice;
-            totalCash += kPrice;
-            summaryText += `• ${q.card_name} [${q.set_name}] (${selectedCond}) -> Store Credit: $${cPrice.toFixed(2)} | Cash: $${kPrice.toFixed(2)}\n`;
-        } else {
-            summaryText += `• ${q.requested_name} -> Not on buylist\n`;
-        }
-    });
-
-    summaryText += `----------------------------------------\n`;
-    summaryText += `TOTAL STORE CREDIT: $${totalCredit.toFixed(2)}\n`;
-    summaryText += `TOTAL CASH PAYOUT:  $${totalCash.toFixed(2)}\n`;
-
-    navigator.clipboard.writeText(summaryText).then(() => {
-        showToast("Copied Buylist Valuation Summary to clipboard", "success");
-    }).catch(() => {
-        showToast("Failed to copy to clipboard", "error");
-    });
-}
-
-// -------------------------------------------------------------------------
-// File Drag and Drop / Upload Support
-// -------------------------------------------------------------------------
-function handleBuylistFileUpload(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    readManifestFile(file);
-}
-
-function readManifestFile(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const text = e.target.result;
-        if (!text) return;
-
-        const lines = text.split(/\r?\n/);
-        const cardNames = [];
-
-        for (let line of lines) {
-            line = line.trim();
-            if (!line) continue;
-            // Skip common CSV headers
-            const lower = line.toLowerCase();
-            if (lower.startsWith("card name") || lower.startsWith("name,") || lower.startsWith("count,") || lower.startsWith("quantity,")) {
-                continue;
-            }
-
-            // If CSV row, extract first or second column
-            if (line.includes(",")) {
-                const parts = line.split(",");
-                // If first part is a number (e.g. Moxfield "1,Sol Ring"), take second part
-                if (/^\d+$/.test(parts[0].trim()) && parts.length > 1) {
-                    cardNames.push(parts[1].trim().replace(/^"|"$/g, ''));
-                } else {
-                    cardNames.push(parts[0].trim().replace(/^"|"$/g, ''));
-                }
-            } else {
-                cardNames.push(line.replace(/^"|"$/g, ''));
-            }
-        }
-
-        const textarea = document.getElementById("bulk-buylist-input");
-        if (textarea) {
-            textarea.value = cardNames.join("; ");
-            updateBulkBuylistCount();
-            showToast(`Loaded ${cardNames.length} cards from ${file.name}`, "success");
-        }
-    };
-    reader.readAsText(file);
-}
-
-// Setup Dropzone Drag-and-Drop & Cart Initialization
-document.addEventListener("DOMContentLoaded", () => {
-    initBuylistCart();
-
-    const dropzone = document.getElementById("buylist-dropzone");
-    const fileInput = document.getElementById("buylist-file-input");
-
-    if (dropzone && fileInput) {
-        dropzone.addEventListener("click", () => fileInput.click());
-
-        ["dragenter", "dragover"].forEach(eventName => {
-            dropzone.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                dropzone.classList.add("drag-active");
-            }, false);
-        });
-
-        ["dragleave", "drop"].forEach(eventName => {
-            dropzone.addEventListener(eventName, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                dropzone.classList.remove("drag-active");
-            }, false);
-        });
-
-        dropzone.addEventListener("drop", (e) => {
-            const dt = e.dataTransfer;
-            const files = dt.files;
-            if (files && files.length > 0) {
-                readManifestFile(files[0]);
-            }
-        });
-    }
-});
-
-// =========================================================================
 // Global Tactical Command Palette (Ctrl+K / Cmd+K)
 // =========================================================================
 let commandPaletteActiveIdx = 0;
 let commandPaletteFilteredItems = [];
+let _cpStaticCatalog = null;
 
 function getCommandPaletteCatalog() {
-    const items = [
+    if (!_cpStaticCatalog) {
+        _cpStaticCatalog = [
         // Sector Navigation
-        { id: "nav-guide", category: "SECTOR NAVIGATION", title: "00 // Field Manual", subtitle: "System documentation & tactical operations guide", badge: "SECTOR 00", action: () => { window.location.href = "/guide"; } },
+        { id: "nav-guide", category: "SECTOR NAVIGATION", title: "00 // Field Manual", subtitle: "System documentation & tactical operations guide", badge: "SECTOR 00", action: () => { window.location.href = "/system-overview"; } },
         { id: "nav-registry", category: "SECTOR NAVIGATION", title: "01 // Registry Dashboard", subtitle: "Primary card watchlist & price surveillance", badge: "SECTOR 01", action: () => { window.location.href = "/"; } },
         { id: "nav-deals", category: "SECTOR NAVIGATION", title: "02 // Priority Deals", subtitle: "Active target acquisitions at or below threshold", badge: "SECTOR 02", action: () => { window.location.href = "/deals"; } },
-        { id: "nav-buylist", category: "SECTOR NAVIGATION", title: "03 // Buylist Evaluator", subtitle: "Card Kingdom store credit & cash valuation engine", badge: "SECTOR 03", action: () => { window.location.href = "/buylist"; } },
+        { id: "nav-buylist", category: "SECTOR NAVIGATION", title: "03 // Buylist Evaluator", subtitle: "Mighty Meeple store credit & cash valuation engine", badge: "SECTOR 03", action: () => { window.location.href = "/buylist"; } },
         { id: "nav-evaluator", category: "SECTOR NAVIGATION", title: "04 // Add Evaluator", subtitle: "Evaluate cards for collection & watchlist", badge: "SECTOR 04", action: () => { window.location.href = "/add-evaluator"; } },
-        { id: "nav-commander", category: "SECTOR NAVIGATION", title: "05 // Commander Hub", subtitle: "EDH decklist builder, salt analysis & mana telemetry", badge: "SECTOR 05", action: () => { window.location.href = "/commander-hub"; } },
+        { id: "nav-commander", category: "SECTOR NAVIGATION", title: "05 // Commander Hub", subtitle: "EDH decklist builder, salt analysis & mana telemetry", badge: "SECTOR 05", action: () => { window.location.href = "/commander"; } },
         { id: "nav-inventory", category: "SECTOR NAVIGATION", title: "06 // Collection Binder", subtitle: "Physical ManaBox collection & deck allocation vault", badge: "SECTOR 06", action: () => { window.location.href = "/inventory"; } },
-        { id: "nav-sealed", category: "SECTOR NAVIGATION", title: "08 // Sealed Product", subtitle: "Booster boxes, bundles & collector EV intelligence", badge: "SECTOR 08", action: () => { window.location.href = "/sealed"; } },
+        { id: "nav-sealed", category: "SECTOR NAVIGATION", title: "08 // Sealed Product", subtitle: "Booster boxes, bundles & collector EV intelligence", badge: "SECTOR 08", action: () => { window.location.href = "/deals#sealed"; } },
+        { id: "nav-settings", category: "SECTOR NAVIGATION", title: "09 // Settings Hub", subtitle: "Surveillance cadence, webhooks & IMAP configuration", badge: "SECTOR 09", action: () => { window.location.href = "/settings"; } },
         { id: "nav-timewalked", category: "SECTOR NAVIGATION", title: "11 // Timewalked Bracket Analyzer", subtitle: "On-Paper WotC Bracket (1-5) vs. Feels-Like Score & Itemized Receipts", badge: "SECTOR 11", action: () => { window.location.href = "/timewalked"; } },
-        { id: "nav-admin", category: "SECTOR NAVIGATION", title: "07 // Admin Console", subtitle: "User management & system telemetry controls", badge: "SECTOR 07", action: () => { window.location.href = "/admin/users"; } },
+        { id: "nav-admin", category: "SECTOR NAVIGATION", title: "07 // Admin Console", subtitle: "User management & system telemetry controls", badge: "SECTOR 07", action: () => { window.location.href = "/admin"; } },
 
         // Tactical Operations
         { id: "act-add-card", category: "TACTICAL ACTIONS", title: "+ Add Target Card to Watchlist", subtitle: "Open Scryfall single-card surveillance modal", badge: "ACTION", action: () => { closeCommandPalette(); openAddCardModal(); } },
@@ -5514,7 +4800,9 @@ function getCommandPaletteCatalog() {
         { id: "act-view-list", category: "TACTICAL ACTIONS", title: "Switch to High-Density List View", subtitle: "Set card display layout to Compact List", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("compact"); } },
         { id: "act-view-swipe", category: "TACTICAL ACTIONS", title: "Switch to Swipe Deck Carousel", subtitle: "Set card display layout to Swipe Carousel", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("swipe"); } },
         { id: "act-view-inperson", category: "TACTICAL ACTIONS", title: "Switch to In-Person Surveillance View", subtitle: "Store binder & showcase layout with WUBRG grouping", badge: "VIEW", action: () => { closeCommandPalette(); setViewMode("inperson"); } },
-    ];
+        ];
+    }
+    const items = _cpStaticCatalog.slice();
 
     // Dynamically index cards currently on page (Registry or Deals)
     const domCards = document.querySelectorAll("#watchlist-grid .watchlist-card, #deals-grid .deal-card");
@@ -5648,1293 +4936,12 @@ function executeCommandPaletteItem(idx) {
     }
 }
 
-// =========================================================================
-// TCGplayer Seller Lot Finder (Consolidation & Budget Optimizer)
-// =========================================================================
-let currentLotFinderMode = "lots";
-let currentSellerLots = [];
-
-function switchDealsSection(section) {
-    const singleContainer = document.getElementById("deals-single-container");
-    const lotsContainer = document.getElementById("deals-lot-finder-container");
-    const sealedContainer = document.getElementById("deals-sealed-finder-container");
-    const retailersContainer = document.getElementById("deals-retailers-container");
-    const btnSingle = document.getElementById("btn-deals-sec-single");
-    const btnLots = document.getElementById("btn-deals-sec-lots");
-    const btnSealed = document.getElementById("btn-deals-sec-sealed");
-    const btnRetailers = document.getElementById("btn-deals-sec-retailers");
-
-    if (!singleContainer || !lotsContainer) return;
-
-    const inactiveCls = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]";
-
-    singleContainer.classList.add("hidden");
-    lotsContainer.classList.add("hidden");
-    if (sealedContainer) sealedContainer.classList.add("hidden");
-    if (retailersContainer) retailersContainer.classList.add("hidden");
-    if (btnSingle) btnSingle.className = inactiveCls;
-    if (btnLots) btnLots.className = inactiveCls;
-    if (btnSealed) btnSealed.className = inactiveCls;
-    if (btnRetailers) btnRetailers.className = inactiveCls;
-
-    if (section === "lots") {
-        lotsContainer.classList.remove("hidden");
-        if (btnLots) {
-            btnLots.className = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#00CED1] text-[#10141D]";
-        }
-        try { history.replaceState(null, "", "#lots"); } catch (e) {}
-    } else if (section === "sealed" && sealedContainer) {
-        sealedContainer.classList.remove("hidden");
-        if (btnSealed) {
-            btnSealed.className = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#F59E0B] text-[#10141D]";
-        }
-        try { history.replaceState(null, "", "#sealed"); } catch (e) {}
-        initSealedProductFinder();
-    } else if (section === "retailers" && retailersContainer) {
-        retailersContainer.classList.remove("hidden");
-        if (btnRetailers) {
-            btnRetailers.className = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#8B5CF6] text-white";
-        }
-        try { history.replaceState(null, "", "#retailers"); } catch (e) {}
-    } else {
-        singleContainer.classList.remove("hidden");
-        if (btnSingle) {
-            btnSingle.className = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#DC143C] text-white";
-        }
-        try { history.replaceState(null, "", "#single"); } catch (e) {}
-    }
-}
-
-function setLotFinderMode(mode) {
-    currentLotFinderMode = mode;
-    const modes = ["lots", "anchor_card", "dollar_amount"];
-    modes.forEach(m => {
-        const btn = document.getElementById(`btn-mode-${m}`);
-        if (btn) {
-            if (m === mode) {
-                btn.className = "lot-mode-btn active p-2.5 sm:p-3 text-left border border-[#00CED1] bg-[#00CED1]/10 text-white transition";
-            } else {
-                btn.className = "lot-mode-btn p-2.5 sm:p-3 text-left border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition";
-            }
-        }
-    });
-
-    const anchorBox = document.getElementById("lot-anchor-card-box");
-    const dollarBox = document.getElementById("lot-dollar-amount-box");
-
-    if (anchorBox) {
-        if (mode === "anchor_card") anchorBox.classList.remove("hidden");
-        else anchorBox.classList.add("hidden");
-    }
-
-    if (dollarBox) {
-        if (mode === "dollar_amount") dollarBox.classList.remove("hidden");
-        else dollarBox.classList.add("hidden");
-    }
-}
-
-function applyDollarPreset(preset) {
-    const maxPrice = document.getElementById("lot-max-card-price");
-    const targetBundle = document.getElementById("lot-target-bundle-amount");
-    const bundleType = document.getElementById("lot-bundle-amount-type");
-
-    if (!maxPrice || !targetBundle || !bundleType) return;
-
-    if (preset === "free_ship") {
-        targetBundle.value = "5.00";
-        bundleType.value = "min_threshold";
-        showToast("Set $5.00 minimum spend goal (TCGplayer free shipping threshold).", "info");
-    } else if (preset === "budget_2") {
-        maxPrice.value = "2.00";
-        showToast("Filtering watchlist to singles under $2.00.", "info");
-    } else if (preset === "budget_5") {
-        maxPrice.value = "5.00";
-        showToast("Filtering watchlist to staples under $5.00.", "info");
-    } else if (preset === "bundle_25") {
-        targetBundle.value = "25.00";
-        bundleType.value = "max_budget";
-        showToast("Set $25.00 cart budget target.", "info");
-    } else if (preset === "clear") {
-        maxPrice.value = "";
-        targetBundle.value = "";
-        bundleType.value = "max_budget";
-        showToast("Cleared dollar amount presets.", "info");
-    }
-}
-
-async function runTcgplayerLotScan() {
-    const btn = document.getElementById("btn-run-lot-scan");
-    const btnLabel = document.getElementById("lot-scan-btn-label");
-    const spinner = document.getElementById("lot-scan-spinner");
-    const statusText = document.getElementById("lot-status-text");
-
-    const minCards = parseInt(document.getElementById("lot-min-cards")?.value || "5", 10);
-    const priceTolerance = document.getElementById("lot-price-tolerance")?.value || "decent_10";
-    const tagFilter = document.getElementById("lot-tag-filter")?.value || "all";
-    const allowMp = document.getElementById("lot-allow-mp")?.checked || false;
-
-    const anchorSelect = document.getElementById("lot-anchor-card-select");
-    const anchorCardId = anchorSelect?.value ? parseInt(anchorSelect.value, 10) : null;
-    const anchorCardName = anchorSelect?.selectedOptions[0]?.dataset?.name || null;
-
-    if (currentLotFinderMode === "anchor_card" && !anchorCardId) {
-        showToast("Please choose an anchor card from your watchlist.", "warning");
-        if (anchorSelect) anchorSelect.focus();
-        return;
-    }
-
-    const maxCardPrice = document.getElementById("lot-max-card-price")?.value || null;
-    const targetBundleAmount = document.getElementById("lot-target-bundle-amount")?.value || null;
-    const bundleAmountType = document.getElementById("lot-bundle-amount-type")?.value || "max_budget";
-    const englishOnly = document.getElementById("lot-english-only") ? document.getElementById("lot-english-only").checked : true;
-
-    if (btn) btn.disabled = true;
-    if (spinner) spinner.classList.remove("hidden");
-    if (btnLabel) btnLabel.textContent = "SCANNING MARKET...";
-    if (statusText) statusText.textContent = "Querying live TCGplayer seller inventories across watchlist...";
-
-    showToast("Launching TCGplayer seller lot scan...", "info");
-
-    const payload = {
-        mode: currentLotFinderMode,
-        min_cards: minCards,
-        price_tolerance_mode: priceTolerance,
-        tag_filter: tagFilter,
-        allow_mp: allowMp,
-        english_only: englishOnly,
-        anchor_card_id: anchorCardId,
-        anchor_card_name: anchorCardName,
-        max_card_price: maxCardPrice,
-        target_bundle_amount: targetBundleAmount,
-        bundle_amount_type: bundleAmountType,
-    };
-
-    try {
-        const resp = await fetch("/api/deals/tcgplayer-lots", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-        });
-
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || "Failed to scan TCGplayer seller lots.");
-        }
-
-        currentSellerLots = data.sellers || [];
-        renderSellerLotResults(data);
-
-        if (statusText) {
-            statusText.textContent = `Scan complete: Found ${data.total_sellers_found} qualifying sellers across ${data.scanned_cards_count} monitored cards (${data.duration_seconds}s).`;
-        }
-
-        if (data.total_sellers_found > 0) {
-            showToast(`Found ${data.total_sellers_found} seller lots holding ${minCards}+ watchlist cards!`, "success");
-        } else {
-            showToast(`No sellers found matching ${minCards}+ cards with current filters. Try relaxing price tolerance or min cards.`, "info");
-        }
-    } catch (err) {
-        console.error("Error during TCGplayer lot scan:", err);
-        showToast(err.message || "Failed to complete seller lot scan.", "error");
-        if (statusText) statusText.textContent = `Scan failed: ${err.message}`;
-    } finally {
-        if (btn) btn.disabled = false;
-        if (spinner) spinner.classList.add("hidden");
-        if (btnLabel) btnLabel.textContent = "🔍 SCAN TCGPLAYER SELLERS";
-    }
-}
-
-function renderSellerLotResults(data) {
-    const kpiRow = document.getElementById("lot-telemetry-kpis");
-    const container = document.getElementById("lot-results-container");
-    if (!container) return;
-
-    const sellers = data.sellers || [];
-    const minCards = data.min_cards || 5;
-
-    // Update KPI summary cards
-    if (kpiRow) {
-        kpiRow.classList.remove("hidden");
-        const countEl = document.getElementById("kpi-lot-sellers-count");
-        const minLabel = document.getElementById("kpi-lot-min-label");
-        const maxCardsEl = document.getElementById("kpi-lot-max-cards");
-        const maxSavingsEl = document.getElementById("kpi-lot-max-savings");
-        const durationEl = document.getElementById("kpi-lot-duration");
-        const scannedCardsEl = document.getElementById("kpi-lot-scanned-cards");
-
-        if (countEl) countEl.textContent = data.total_sellers_found || 0;
-        if (minLabel) minLabel.textContent = minCards;
-        if (maxCardsEl) {
-            const maxCards = sellers.length > 0 ? Math.max(...sellers.map(s => s.qualifyingCount)) : 0;
-            maxCardsEl.textContent = maxCards;
-        }
-        if (maxSavingsEl) {
-            const maxSav = sellers.length > 0 ? Math.max(...sellers.map(s => s.netSavings)) : 0;
-            maxSavingsEl.textContent = `$${maxSav.toFixed(2)}`;
-        }
-        if (durationEl) durationEl.textContent = `${data.duration_seconds || 0}s`;
-        if (scannedCardsEl) scannedCardsEl.textContent = data.scanned_cards_count || 0;
-    }
-
-    if (sellers.length === 0) {
-        container.innerHTML = `
-            <div class="bg-[#1B2230] border border-[#263245] p-8 sm:p-10 text-center font-mono">
-                <div class="text-xs text-[#F59E0B] uppercase font-bold tracking-widest">// NO SELLERS REACHED THRESHOLD</div>
-                <h4 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">
-                    0 Sellers Matched ${minCards}+ Cards at Selected Tolerance
-                </h4>
-                <p class="text-xs text-[#94A3B8] max-w-lg mx-auto font-sans mt-2 leading-relaxed">
-                    No single TCGplayer store held ${minCards} or more cards at or below your chosen price tolerance.
-                    Try lowering the <strong>Min Cards at Seller</strong> to 3+ or setting <strong>Decent Price Rule</strong> to Flexible (+20%).
-                </p>
-            </div>
-        `;
-        return;
-    }
-
-    let html = `<div class="space-y-4">`;
-
-    sellers.forEach((seller, idx) => {
-        const directBadge = seller.directSeller ? `<span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">TCG Direct</span>` : "";
-        const goldBadge = seller.goldSeller ? `<span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">★ Gold Star</span>` : "";
-        
-        let bundleSection = "";
-        if (seller.bundleInfo) {
-            const b = seller.bundleInfo;
-            const bLabel = b.bundleType === "min_threshold" ? "Free Shipping Goal" : "Target Budget Cap";
-            bundleSection = `
-                <div class="mt-3 p-3 bg-[#10B981]/10 border border-[#10B981]/40 font-mono text-xs">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[#10B981] font-bold">
-                        <span>🎯 OPTIMAL BUNDLE RECOMMENDATION (${bLabel}):</span>
-                        <span>${b.count} Cards &bull; Bundle Total: $${seller.subtotal.toFixed(2)} (Cap: $${b.targetAmount.toFixed(2)})</span>
-                    </div>
-                </div>
-            `;
-        }
-
-        const countBadge = seller.bundleInfo ? `
-            <span class="bg-[#10B981] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 flex-shrink-0" title="Target Bundle: ${seller.qualifyingCount} cards totaling $${seller.subtotal.toFixed(2)}">
-                <span>🎯 ${seller.qualifyingCount} Bundle Cards ($${seller.subtotal.toFixed(2)})</span>
-            </span>
-        ` : `
-            <span class="bg-[#00CED1] text-[#10141D] text-xs px-2.5 py-1.5 font-bold uppercase tracking-wider flex items-center space-x-1.5 flex-shrink-0">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-                <span>${seller.qualifyingCount} Watchlist Cards</span>
-            </span>
-        `;
-
-        let cardsTableRows = "";
-        (seller.cards || []).forEach(card => {
-            const binderBadge = card.inBinder ? `
-                <span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 text-[9px] px-1 py-0.2 uppercase font-bold" title="In Binder (${card.binderCount})">
-                    💼 IN BINDER (${card.binderCount})
-                </span>
-            ` : "";
-
-            const tagBadge = card.tag ? `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/40 text-[9px] px-1 py-0.2 uppercase font-bold">🏷️ ${card.tag}</span>` : "";
-
-            const baseMktText = card.baseMarketPrice ? `$${card.baseMarketPrice.toFixed(2)}` : "--";
-            const deltaBadge = card.deltaPct !== null ? (
-                card.deltaPct <= 0 
-                ? `<span class="text-[#10B981] text-[10px] font-bold">${card.deltaPct}%</span>`
-                : `<span class="text-[#F59E0B] text-[10px] font-bold">+${card.deltaPct}%</span>`
-            ) : "";
-
-            const fancyNotice = card.isFancyTreatment && card.marketPrice ? `
-                <span class="text-[9px] text-[#F59E0B] block" title="Special treatment (Edition Market: $${card.marketPrice.toFixed(2)})">
-                    ★ Premium Edition (Base: ${baseMktText})
-                </span>
-            ` : "";
-
-            const imgHtml = card.imageUri ? `
-                <img src="${card.imageUri}" alt="${card.name}" loading="lazy" class="w-8 h-11 object-cover border border-[#263245] bg-[#10141D] flex-shrink-0 cursor-pointer"
-                    onclick="openCardImageOverlay(this)" data-card-image="${card.imageUri}" data-card-name="${card.name}">
-            ` : `<div class="w-8 h-11 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[8px] text-[#64748B] flex-shrink-0">NO ART</div>`;
-
-            cardsTableRows += `
-                <tr class="border-b border-[#263245]/60 hover:bg-[#161C28] transition font-mono text-xs">
-                    <td class="p-2 w-10">${imgHtml}</td>
-                    <td class="p-2 min-w-0">
-                        <div class="font-bold text-white truncate" title="${card.name}">${card.name}</div>
-                        <div class="text-[10px] text-[#94A3B8] truncate flex flex-wrap items-center gap-1 mt-0.5">
-                            <span>${card.setName || "Magic: The Gathering"}</span>
-                            <span class="text-[#00CED1]">&bull; ${card.condition}</span>
-                            <span>&bull; ${card.printing}</span>
-                            <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/30 text-[9px] px-1 py-0.2 uppercase font-bold" title="${card.language || 'English'}">
-                                ${card.languageAbbreviation || "EN"}
-                            </span>
-                            ${tagBadge}
-                            ${binderBadge}
-                        </div>
-                        ${fancyNotice}
-                    </td>
-                    <td class="p-2 text-right whitespace-nowrap">
-                        <div class="font-bold text-[#00CED1] text-sm">$${card.price.toFixed(2)}</div>
-                        <div class="text-[10px] text-[#64748B]" title="Compared to cheapest baseline regular version across printings">
-                            Base Mkt: ${baseMktText} ${deltaBadge}
-                        </div>
-                    </td>
-                    <td class="p-2 text-right whitespace-nowrap">
-                        <div class="flex items-center justify-end space-x-1.5">
-                            <a href="${card.storeSearchUrl || card.tcgplayerUrl}" target="_blank" rel="noopener"
-                                class="btn-bridge inline-block px-2 py-1 text-[10px] text-[#00CED1] hover:text-white uppercase font-bold"
-                                title="Search for this card in ${seller.sellerName}'s store">
-                                🔍 In Store
-                            </a>
-                            <a href="${card.tcgplayerUrl}" target="_blank" rel="noopener"
-                                class="btn-crimson inline-block px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
-                                Buy &rarr;
-                            </a>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        });
-
-        let otherInStockHtml = "";
-        if (seller.otherInStockCount > 0) {
-            otherInStockHtml = `
-                <div class="mt-3 pt-3 border-t border-[#263245]/60 text-xs font-mono">
-                    <details class="cursor-pointer group">
-                        <summary class="text-[#00CED1] hover:text-white flex items-center justify-between text-[11px] font-bold uppercase">
-                            <span>+ ${seller.otherInStockCount} More In-Stock Watchlist Cards from this Store (Total Stocked: ${seller.allStockedCount} cards, $${seller.allStockedSubtotal ? seller.allStockedSubtotal.toFixed(2) : '--'})</span>
-                            <span class="text-[#64748B] text-[10px] group-open:rotate-180 transition-transform">&darr;</span>
-                        </summary>
-                        <div class="mt-2 space-y-1.5 pl-2 border-l border-[#00CED1]/40">
-                            ${(seller.otherInStockCards || []).map(c => `
-                                <div class="flex items-center justify-between text-[11px] text-[#94A3B8]">
-                                    <span class="truncate">${c.name} (${c.condition}, ${c.printing})</span>
-                                    <div class="flex items-center space-x-2 whitespace-nowrap">
-                                        <span class="text-white font-bold">$${c.price.toFixed(2)}</span>
-                                        <span class="text-[#64748B] text-[10px]">(Base Mkt: $${c.baseMarketPrice ? c.baseMarketPrice.toFixed(2) : '--'})</span>
-                                        <a href="${c.storeSearchUrl || c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline text-[10px]">[In Store]</a>
-                                        <a href="${c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#FF3358] hover:underline text-[10px]">[Buy]</a>
-                                    </div>
-                                </div>
-                            `).join("")}
-                            ${seller.allCardsSearchUrl ? `
-                                <div class="pt-2">
-                                    <a href="${seller.allCardsSearchUrl}" target="_blank" rel="noopener" class="text-xs text-[#00CED1] hover:underline font-bold">
-                                        🔍 Search All ${seller.allStockedCount} In-Stock Cards in ${seller.sellerName}'s Store &rarr;
-                                    </a>
-                                </div>
-                            ` : ""}
-                        </div>
-                    </details>
-                </div>
-            `;
-        }
-
-        let aboveToleranceHtml = "";
-        if (seller.aboveToleranceCount > 0) {
-            aboveToleranceHtml = `
-                <div class="mt-3 pt-3 border-t border-[#263245]/60 text-xs font-mono">
-                    <details class="cursor-pointer group">
-                        <summary class="text-[#94A3B8] hover:text-white flex items-center justify-between text-[11px] uppercase">
-                            <span>+ ${seller.aboveToleranceCount} Other In-Stock Watchlist Cards (Above Selected Tolerance)</span>
-                            <span class="text-[#64748B] text-[10px] group-open:rotate-180 transition-transform">&darr;</span>
-                        </summary>
-                        <div class="mt-2 space-y-1.5 pl-2 border-l border-[#263245]">
-                            ${(seller.aboveToleranceCards || []).map(c => `
-                                <div class="flex items-center justify-between text-[11px] text-[#94A3B8]">
-                                    <span class="truncate">${c.name} (${c.condition})</span>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-[#F59E0B] font-bold">$${c.price.toFixed(2)}</span>
-                                        <span class="text-[#64748B] text-[10px]">(Base Mkt: $${c.baseMarketPrice ? c.baseMarketPrice.toFixed(2) : '--'})</span>
-                                        <a href="${c.storeSearchUrl || c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline text-[10px]">[In Store]</a>
-                                        <a href="${c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#FF3358] hover:underline text-[10px]">[Buy]</a>
-                                    </div>
-                                </div>
-                            `).join("")}
-                        </div>
-                    </details>
-                </div>
-            `;
-        }
-
-        html += `
-            <div class="bg-[#1B2230] border-2 border-[#263245] hover:border-[#00CED1] transition p-4 sm:p-5 font-mono space-y-3.5" id="seller-lot-${idx}">
-                <!-- Seller Card Header -->
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#263245] pb-3">
-                    <div>
-                        <div class="flex items-center space-x-2">
-                            <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">#${idx + 1} TCGPLAYER STORE</span>
-                            ${directBadge}
-                            ${goldBadge}
-                        </div>
-                        <h4 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5">
-                            ${seller.sellerName}
-                        </h4>
-                        <div class="text-xs text-[#94A3B8] mt-0.5 flex flex-wrap items-center gap-2">
-                            <span>★ ${seller.sellerRating}% Rating</span>
-                            <span>&bull;</span>
-                            <span>${seller.sellerSales} Sales</span>
-                            <span>&bull;</span>
-                            <a href="${seller.storeUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline flex items-center space-x-1 font-bold">
-                                <span>🏪 Open Storefront &rarr;</span>
-                            </a>
-                        </div>
-                    </div>
-
-                    <div class="flex flex-wrap items-center gap-1.5 sm:justify-end">
-                        ${countBadge}
-                        <button onclick="openTcgMassEntry(${idx})" class="btn-bridge text-xs px-3 py-1.5 bg-[#10B981]/20 text-[#10B981] hover:bg-[#10B981] hover:text-[#10141D] flex items-center space-x-1.5 font-bold uppercase tracking-wider transition border border-[#10B981]/40"
-                            title="Copy all ${seller.qualifyingCount} cards to clipboard and open TCGplayer Mass Entry tool to cart them together">
-                            <span>🛒 Cart Lot (Mass Entry)</span>
-                        </button>
-                        <a href="${seller.storeUrl}" target="_blank" rel="noopener"
-                            class="btn-bridge text-xs px-2.5 py-1.5 text-[#00CED1] hover:text-white flex items-center space-x-1 font-bold"
-                            title="Browse ${seller.sellerName}'s live catalog on TCGplayer">
-                            <span>🏪 Storefront</span>
-                        </a>
-                        <button onclick="copySellerLotList(${idx})" class="btn-bridge text-xs px-2.5 py-1.5 text-[#94A3B8] hover:text-white" title="Copy Card List to Clipboard">
-                            📋 Copy List
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Financial Telemetry Breakdown -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#10141D] p-3 border border-[#263245] text-xs">
-                    <div>
-                        <div class="text-[#94A3B8] text-[10px] uppercase">${seller.bundleInfo ? 'Bundle Subtotal' : 'Cards Subtotal'}</div>
-                        <div class="text-sm sm:text-base font-bold text-white mt-0.5">$${seller.subtotal.toFixed(2)}</div>
-                    </div>
-                    <div>
-                        <div class="text-[#94A3B8] text-[10px] uppercase">Est. Shipping</div>
-                        <div class="text-sm sm:text-base font-bold ${seller.estShipping === 0 ? 'text-[#10B981]' : 'text-white'} mt-0.5">
-                            ${seller.estShipping === 0 ? 'FREE / DIRECT' : '$' + seller.estShipping.toFixed(2)}
-                        </div>
-                    </div>
-                    <div>
-                        <div class="text-[#94A3B8] text-[10px] uppercase">${seller.bundleInfo ? 'Bundle Landed Total' : 'Landed Total'}</div>
-                        <div class="text-sm sm:text-base font-bold text-[#00CED1] mt-0.5">$${seller.landedTotal.toFixed(2)}</div>
-                    </div>
-                    <div>
-                        <div class="text-[#94A3B8] text-[10px] uppercase" title="Savings compared to cheapest baseline regular version market price">Net Savings vs Base</div>
-                        <div class="text-sm sm:text-base font-bold ${seller.netSavings > 0 ? 'text-[#10B981]' : 'text-[#94A3B8]'} mt-0.5">
-                            ${seller.netSavings > 0 ? '+$' + seller.netSavings.toFixed(2) + ' (' + seller.savingsPct + '%)' : '$0.00'}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] bg-[#10141D] px-3 py-1.5 border border-[#263245] text-[#94A3B8] font-mono">
-                    <div class="flex items-center space-x-1.5">
-                        <span class="text-[#00CED1] font-bold">💡 How to Buy:</span>
-                        <span>Use <strong class="text-[#10B981]">🛒 Cart Lot (Mass Entry)</strong> to paste all cards into your cart at once, or use <strong class="text-[#00CED1]">🔍 In Store</strong> next to any card below to view listings in this shop.</span>
-                    </div>
-                </div>
-
-                ${bundleSection}
-
-                <!-- Cards Table -->
-                <div class="border border-[#263245] bg-[#10141D] overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="border-b border-[#263245] bg-[#161C28] text-[10px] text-[#94A3B8] uppercase font-bold tracking-wider">
-                                <th class="p-2 w-10">Art</th>
-                                <th class="p-2">Card &amp; Printing</th>
-                                <th class="p-2 text-right">Price</th>
-                                <th class="p-2 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${cardsTableRows}
-                        </tbody>
-                    </table>
-                </div>
-
-                ${otherInStockHtml}
-                ${aboveToleranceHtml}
-            </div>
-        `;
-    });
-
-    html += `</div>`;
-    container.innerHTML = html;
-}
-
-function copySellerLotList(sellerIndex) {
-    const seller = currentSellerLots[sellerIndex];
-    if (!seller) return;
-
-    let text = `TCGplayer Seller Lot: ${seller.sellerName}\n`;
-    text += `Cards In Stock: ${seller.qualifyingCount} | Subtotal: $${seller.subtotal.toFixed(2)} | Est. Shipping: $${seller.estShipping.toFixed(2)}\n`;
-    text += `--------------------------------------------------\n`;
-
-    (seller.cards || []).forEach(c => {
-        text += `1x ${c.name} (${c.condition}, ${c.printing}) - $${c.price.toFixed(2)}\n`;
-    });
-
-    navigator.clipboard.writeText(text).then(() => {
-        showToast(`Copied ${seller.qualifyingCount} cards from ${seller.sellerName} to clipboard!`, "success");
-    }).catch(err => {
-        console.error("Clipboard copy error:", err);
-        showToast("Failed to copy card list.", "error");
-    });
-}
-
-function openTcgMassEntry(sellerIndex) {
-    const seller = currentSellerLots[sellerIndex];
-    if (!seller) return;
-
-    let lines = [];
-    (seller.cards || []).forEach(c => {
-        const cname = c.cleanName || c.name.split(" // ")[0].trim();
-        lines.push(`1 ${cname}`);
-    });
-    const text = lines.join("\n");
-
-    navigator.clipboard.writeText(text).then(() => {
-        showToast(`Copied ${seller.qualifyingCount} cards in Mass Entry format! Opening TCGplayer Mass Entry...`, "success");
-        window.open("https://www.tcgplayer.com/massentry", "_blank", "noopener,noreferrer");
-    }).catch(err => {
-        console.error("Clipboard error:", err);
-        window.open("https://www.tcgplayer.com/massentry", "_blank", "noopener,noreferrer");
-    });
-}
-
-// =========================================================================
-// TCGplayer Sealed Product Deal Finder & Watchlist Integration
-// =========================================================================
-let sealedSetsLoaded = false;
-let allSealedSets = [];
-let currentSealedSetProducts = [];
-let selectedSealedProductIds = new Set();
-let sealedCustomTargets = {}; // productId -> float
-let activeSealedSubtype = "all";
-
-function initSealedProductFinder() {
-    if (!sealedSetsLoaded) {
-        loadSealedSets();
-    }
-}
-
-async function loadSealedSets() {
-    const badge = document.getElementById("sealed-sets-count-badge");
-    const select = document.getElementById("sealed-set-select");
-    const recentBar = document.getElementById("sealed-recent-sets-bar");
-    if (badge) badge.textContent = "Loading sets...";
-
-    try {
-        const resp = await fetch("/api/sealed/sets");
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || "Failed to load TCGplayer sealed sets.");
-        }
-
-        allSealedSets = data.sets || [];
-        sealedSetsLoaded = true;
-
-        if (badge) {
-            badge.innerHTML = `TCGplayer Scope: <strong class="text-white">${allSealedSets.length} Sets</strong>`;
-        }
-
-        populateSealedSetDropdown(allSealedSets);
-
-        if (recentBar) {
-            const topRecent = allSealedSets.slice(0, 8);
-            let pillsHtml = `<span class="text-[10px] text-[#64748B] uppercase font-bold flex-shrink-0">RECENT SETS:</span>`;
-            topRecent.forEach(s => {
-                const codeTag = s.setCode ? `[${s.setCode}] ` : "";
-                const safeSlug = (s.setUrlName || "").replace(/'/g, "\\'");
-                pillsHtml += `
-                    <button type="button" onclick="selectSealedSetQuick('${safeSlug}')"
-                        class="tag-pill flex-shrink-0 hover:border-[#F59E0B] hover:text-[#F59E0B]"
-                        title="${s.setName} (${s.productCount} sealed items)">
-                        ${codeTag}${s.setName}
-                    </button>
-                `;
-            });
-            recentBar.innerHTML = pillsHtml;
-        }
-    } catch (err) {
-        console.error("Failed loading sealed sets:", err);
-        if (badge) badge.textContent = "Failed to load sets";
-        if (select) select.innerHTML = `<option value="">-- ERROR LOADING SETS --</option>`;
-        showToast(err.message || "Could not load MTG sets from TCGplayer.", "error");
-    }
-}
-
-function populateSealedSetDropdown(sets) {
-    const select = document.getElementById("sealed-set-select");
-    if (!select) return;
-    const prevVal = select.value;
-
-    let html = `<option value="">-- SELECT AN MTG SET (${sets.length} AVAILABLE) --</option>`;
-    sets.forEach(s => {
-        const codePart = s.setCode ? `[${s.setCode}] ` : "";
-        const yearPart = s.releasedAt ? ` (${s.releasedAt.slice(0, 4)})` : "";
-        html += `<option value="${s.setUrlName}">${codePart}${s.setName}${yearPart} — ${s.productCount} items</option>`;
-    });
-    select.innerHTML = html;
-
-    if (prevVal && sets.some(s => s.setUrlName === prevVal)) {
-        select.value = prevVal;
-    }
-}
-
-function filterSealedSetDropdown(query) {
-    const q = (query || "").trim().toLowerCase();
-    if (!q) {
-        populateSealedSetDropdown(allSealedSets);
-        return;
-    }
-    const filtered = allSealedSets.filter(s =>
-        (s.setName || "").toLowerCase().includes(q) ||
-        (s.setUrlName || "").toLowerCase().includes(q) ||
-        (s.setCode || "").toLowerCase().includes(q)
-    );
-    populateSealedSetDropdown(filtered);
-    // If exact or single match, auto-select in dropdown
-    const select = document.getElementById("sealed-set-select");
-    if (select && filtered.length === 1) {
-        select.value = filtered[0].setUrlName;
-    }
-}
-
-function selectSealedSetQuick(setUrlName) {
-    const select = document.getElementById("sealed-set-select");
-    const search = document.getElementById("sealed-set-search");
-    if (search) search.value = "";
-    populateSealedSetDropdown(allSealedSets);
-    if (select) {
-        select.value = setUrlName;
-    }
-    loadSealedProductsForSelectedSet();
-}
-
-function getCheckedSealedCategories() {
-    const checked = [];
-    document.querySelectorAll(".sealed-cat-checkbox").forEach(cb => {
-        if (cb.checked) checked.push(cb.value);
-    });
-    return checked;
-}
-
-function setSealedBoosterSubtype(subtype) {
-    activeSealedSubtype = subtype || "all";
-    document.querySelectorAll(".sealed-subtype-pill").forEach(btn => {
-        if ((btn.dataset.subtype || "all") === activeSealedSubtype) {
-            btn.classList.add("active");
-        } else {
-            btn.classList.remove("active");
-        }
-    });
-    renderSealedSetProducts();
-}
-
-async function loadSealedProductsForSelectedSet() {
-    const select = document.getElementById("sealed-set-select");
-    const setSlug = select?.value || "";
-    const grid = document.getElementById("sealed-products-grid");
-    const heading = document.getElementById("sealed-selected-set-heading");
-    const countPill = document.getElementById("sealed-product-count-pill");
-    const includeCases = document.getElementById("sealed-include-cases")?.checked || false;
-
-    if (!setSlug) return;
-
-    const setObj = allSealedSets.find(s => s.setUrlName === setSlug);
-    const setLabel = setObj ? setObj.setName : setSlug;
-    if (heading) heading.textContent = `Loading sealed products for ${setLabel}...`;
-    if (grid) {
-        grid.innerHTML = `<div class="col-span-full py-8 text-center text-xs text-[#00CED1]">Querying TCGplayer catalog for <strong>${setLabel}</strong>...</div>`;
-    }
-
-    try {
-        const params = new URLSearchParams({
-            set: setSlug,
-            include_cases: includeCases ? "true" : "false",
-        });
-        const resp = await fetch(`/api/sealed/products?${params.toString()}`);
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || "Failed to load sealed products for set.");
-        }
-
-        currentSealedSetProducts = data.products || [];
-        selectedSealedProductIds = new Set();
-        sealedCustomTargets = {};
-
-        // Pre-populate any existing watchlist target prices
-        currentSealedSetProducts.forEach(p => {
-            if (p.watchlistTargetPrice) {
-                sealedCustomTargets[p.productId] = p.watchlistTargetPrice;
-            }
-        });
-
-        if (heading) heading.textContent = `${setLabel} — Sealed Catalog`;
-        if (countPill) {
-            countPill.textContent = `${currentSealedSetProducts.length} products`;
-            countPill.classList.remove("hidden");
-        }
-
-        renderSealedSetProducts();
-    } catch (err) {
-        console.error("Error loading set sealed products:", err);
-        if (grid) {
-            grid.innerHTML = `<div class="col-span-full py-6 text-center text-xs text-[#FF3358]">${err.message || "Error loading sealed products."}</div>`;
-        }
-        showToast(err.message || "Failed to load sealed products.", "error");
-    }
-}
-
-function getFilteredSealedProducts() {
-    const allowedCats = new Set(getCheckedSealedCategories());
-    return currentSealedSetProducts.filter(p => {
-        if (allowedCats.size > 0 && !allowedCats.has(p.category)) {
-            return false;
-        }
-        if (activeSealedSubtype && activeSealedSubtype !== "all") {
-            if ((p.boosterSubtype || "").toLowerCase() !== activeSealedSubtype.toLowerCase()) {
-                return false;
-            }
-        }
-        return true;
-    });
-}
-
-function renderSealedSetProducts() {
-    const grid = document.getElementById("sealed-products-grid");
-    const countPill = document.getElementById("sealed-product-count-pill");
-    if (!grid) return;
-
-    const products = getFilteredSealedProducts();
-    if (countPill && currentSealedSetProducts.length > 0) {
-        countPill.textContent = `${products.length} of ${currentSealedSetProducts.length} shown`;
-        countPill.classList.remove("hidden");
-    }
-
-    if (products.length === 0) {
-        grid.innerHTML = `
-            <div class="col-span-full py-8 text-center text-xs text-[#94A3B8]">
-                No sealed products match the current category / booster type filters for this set. Try checking more categories above.
-            </div>
-        `;
-        updateSealedSelectionUI();
-        return;
-    }
-
-    let html = "";
-    products.forEach(p => {
-        const isChecked = selectedSealedProductIds.has(p.productId);
-        const mktStr = p.marketPrice ? `$${p.marketPrice.toFixed(2)}` : "N/A";
-        const lowStr = p.lowestLandedPrice ? `$${p.lowestLandedPrice.toFixed(2)}` : "Out of Stock";
-        const customTarget = sealedCustomTargets[p.productId] !== undefined ? sealedCustomTargets[p.productId] : "";
-
-        let deltaBadge = "";
-        if (p.deltaVsMarketPct !== null && p.deltaVsMarketPct !== undefined) {
-            if (p.deltaVsMarketPct <= -5) {
-                deltaBadge = `<span class="bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40 text-[10px] px-1.5 py-0.5 font-bold">${p.deltaVsMarketPct}% vs Mkt</span>`;
-            } else if (p.deltaVsMarketPct <= 0) {
-                deltaBadge = `<span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-[10px] px-1.5 py-0.5 font-bold">${p.deltaVsMarketPct}% vs Mkt</span>`;
-            } else {
-                deltaBadge = `<span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-[10px] px-1.5 py-0.5">+${p.deltaVsMarketPct}%</span>`;
-            }
-        }
-
-        const perPackBadge = p.pricePerPack
-            ? `<span class="text-[10px] text-[#2DD4BF] bg-[#2DD4BF]/10 border border-[#2DD4BF]/30 px-1.5 py-0.5" title="${p.packCount} packs">$${p.pricePerPack.toFixed(2)}/pk</span>`
-            : "";
-
-        const watchedBadge = p.inWatchlist
-            ? `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-[9px] px-1.5 py-0.5 font-bold uppercase">★ Watching</span>`
-            : "";
-
-        const subtypeBadge = p.boosterSubtype && p.boosterSubtype !== "Standard"
-            ? `<span class="bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/40 text-[9px] px-1.5 py-0.5 uppercase font-bold">${p.boosterSubtype}</span>`
-            : "";
-
-        html += `
-            <div class="bg-[#10141D] border ${isChecked ? 'border-[#F59E0B] bg-[#F59E0B]/5' : 'border-[#263245] hover:border-[#3D4F6B]'} p-3 flex flex-col justify-between gap-2.5 transition" id="sealed-prod-card-${p.productId}">
-                <div class="flex items-start gap-2.5">
-                    <div class="pt-0.5 flex-shrink-0">
-                        <input type="checkbox" class="sealed-prod-checkbox w-4 h-4 text-[#F59E0B] rounded-none bg-[#161C28] border-[#263245] cursor-pointer"
-                            data-pid="${p.productId}" ${isChecked ? "checked" : ""}
-                            onchange="toggleSealedProductSelection(${p.productId}, this.checked)">
-                    </div>
-                    <img src="${p.imageUrl}" alt="${p.productName}" loading="lazy"
-                        class="w-14 h-14 object-contain border border-[#263245] bg-[#161C28] flex-shrink-0 cursor-pointer"
-                        onclick="toggleSealedProductSelection(${p.productId}, !selectedSealedProductIds.has(${p.productId}))">
-                    <div class="min-w-0 flex-1">
-                        <div class="text-xs font-bold text-white leading-snug cursor-pointer" title="${p.productName}"
-                            onclick="toggleSealedProductSelection(${p.productId}, !selectedSealedProductIds.has(${p.productId}))">
-                            ${p.productName}
-                        </div>
-                        <div class="flex flex-wrap items-center gap-1 mt-1">
-                            <span class="bg-[#1B2230] text-[#94A3B8] border border-[#263245] text-[9px] px-1.5 py-0.5 uppercase">${p.categoryLabel}</span>
-                            ${subtypeBadge}
-                            ${watchedBadge}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Prices -->
-                <div class="grid grid-cols-2 gap-2 bg-[#161C28] p-2 border border-[#263245] text-[11px]">
-                    <div>
-                        <div class="text-[9px] text-[#64748B] uppercase">TCG Market</div>
-                        <div class="font-bold text-white">${mktStr}</div>
-                    </div>
-                    <div>
-                        <div class="text-[9px] text-[#64748B] uppercase">Lowest Landed</div>
-                        <div class="font-bold ${p.inStock ? 'text-[#00CED1]' : 'text-[#FF3358]'}">${lowStr}</div>
-                    </div>
-                </div>
-
-                <div class="flex flex-wrap items-center justify-between gap-1.5">
-                    <div class="flex items-center gap-1 flex-wrap">
-                        ${deltaBadge}
-                        ${perPackBadge}
-                        <span class="text-[10px] text-[#64748B]">${p.totalListings} listings</span>
-                    </div>
-                </div>
-
-                <!-- Optional Target Price + Quick Watch -->
-                <div class="flex items-center justify-between gap-2 pt-2 border-t border-[#263245]/60">
-                    <div class="flex items-center space-x-1 flex-1 min-w-0">
-                        <span class="text-[10px] text-[#64748B] uppercase flex-shrink-0">Target $:</span>
-                        <input type="number" step="0.50" min="0" value="${customTarget}" placeholder="Optional"
-                            class="w-full max-w-[95px] bg-[#161C28] border border-[#263245] px-1.5 py-1 text-[11px] text-white font-mono focus:border-[#F59E0B]"
-                            onchange="updateSealedProductTarget(${p.productId}, this.value)">
-                    </div>
-                    <div class="flex items-center gap-1.5 flex-shrink-0">
-                        <button type="button" onclick="quickWatchSealedProduct(${p.productId})"
-                            class="text-[10px] px-2 py-1 border border-[#10B981]/40 text-[#10B981] hover:bg-[#10B981] hover:text-[#10141D] font-bold uppercase transition"
-                            title="Add this sealed product to your Watchlist">
-                            ${p.inWatchlist ? "Update" : "+ Watch"}
-                        </button>
-                        <a href="${p.tcgplayerUrl}" target="_blank" rel="noopener"
-                            class="text-[10px] px-2 py-1 border border-[#263245] text-[#94A3B8] hover:text-white hover:border-[#00CED1] uppercase font-bold">
-                            TCG &rarr;
-                        </a>
-                    </div>
-                </div>
-            </div>
-        `;
-    });
-
-    grid.innerHTML = html;
-    updateSealedSelectionUI();
-}
-
-function toggleSealedProductSelection(productId, isSelected) {
-    if (isSelected) {
-        selectedSealedProductIds.add(productId);
-    } else {
-        selectedSealedProductIds.delete(productId);
-    }
-    const card = document.getElementById(`sealed-prod-card-${productId}`);
-    const cb = card?.querySelector(".sealed-prod-checkbox");
-    if (cb) cb.checked = isSelected;
-    if (card) {
-        if (isSelected) {
-            card.classList.remove("border-[#263245]");
-            card.classList.add("border-[#F59E0B]", "bg-[#F59E0B]/5");
-        } else {
-            card.classList.remove("border-[#F59E0B]", "bg-[#F59E0B]/5");
-            card.classList.add("border-[#263245]");
-        }
-    }
-    updateSealedSelectionUI();
-}
-
-function selectSealedProductsPreset(preset) {
-    const visible = getFilteredSealedProducts();
-    if (preset === "clear") {
-        selectedSealedProductIds.clear();
-    } else if (preset === "all") {
-        visible.forEach(p => { if (p.inStock) selectedSealedProductIds.add(p.productId); });
-    } else if (preset === "boxes") {
-        selectedSealedProductIds.clear();
-        visible.forEach(p => { if (p.category === "booster_box" && p.inStock) selectedSealedProductIds.add(p.productId); });
-    } else if (preset === "packs") {
-        selectedSealedProductIds.clear();
-        visible.forEach(p => { if (p.category === "booster_pack" && p.inStock) selectedSealedProductIds.add(p.productId); });
-    } else if (preset === "below_market") {
-        selectedSealedProductIds.clear();
-        visible.forEach(p => {
-            if (p.inStock && p.deltaVsMarketPct !== null && p.deltaVsMarketPct <= 0) {
-                selectedSealedProductIds.add(p.productId);
-            }
-        });
-    }
-    renderSealedSetProducts();
-}
-
-function updateSealedProductTarget(productId, val) {
-    const num = parseFloat(val);
-    if (!isNaN(num) && num > 0) {
-        sealedCustomTargets[productId] = Math.round(num * 100) / 100;
-    } else {
-        delete sealedCustomTargets[productId];
-    }
-}
-
-function applySealedTargetPreset(multiplier) {
-    const visible = getFilteredSealedProducts();
-    const targetList = selectedSealedProductIds.size > 0
-        ? visible.filter(p => selectedSealedProductIds.has(p.productId))
-        : visible;
-
-    let updatedCount = 0;
-    targetList.forEach(p => {
-        if (p.marketPrice && p.marketPrice > 0) {
-            sealedCustomTargets[p.productId] = Math.round(p.marketPrice * multiplier * 100) / 100;
-            updatedCount += 1;
-        }
-    });
-    renderSealedSetProducts();
-    const pctLabel = multiplier === 1 ? "Market Price" : `${Math.round((1 - multiplier) * 100)}% below Market`;
-    showToast(`Applied target price (${pctLabel}) to ${updatedCount} sealed product(s).`, "info");
-}
-
-function updateSealedSelectionUI() {
-    const count = selectedSealedProductIds.size;
-    const status = document.getElementById("sealed-selection-status");
-    const scanBtn = document.getElementById("btn-scan-sealed-deals");
-    const watchBtn = document.getElementById("btn-watch-sealed-selected");
-
-    if (status) {
-        status.textContent = count === 0
-            ? "0 sealed products selected. Check products above to scan live seller listings or add to Watchlist."
-            : `${count} sealed product${count === 1 ? "" : "s"} selected.`;
-    }
-    if (scanBtn) scanBtn.disabled = count === 0;
-    if (watchBtn) watchBtn.disabled = count === 0;
-}
-
-function buildSelectedSealedPayload() {
-    const byId = {};
-    currentSealedSetProducts.forEach(p => { byId[p.productId] = p; });
-    const list = [];
-    selectedSealedProductIds.forEach(pid => {
-        const p = byId[pid];
-        if (!p) return;
-        list.push({
-            ...p,
-            targetPrice: sealedCustomTargets[pid] || null,
-        });
-    });
-    return list;
-}
-
-async function runSealedDealScan() {
-    const selected = buildSelectedSealedPayload();
-    if (selected.length === 0) {
-        showToast("Please select at least one sealed product to scan.", "warning");
-        return;
-    }
-
-    const btn = document.getElementById("btn-scan-sealed-deals");
-    const spinner = document.getElementById("sealed-scan-spinner");
-    const label = document.getElementById("sealed-scan-btn-label");
-    const toleranceMode = document.getElementById("sealed-tolerance-mode")?.value || "market_0";
-    const englishOnly = document.getElementById("sealed-english-only") ? document.getElementById("sealed-english-only").checked : true;
-
-    if (btn) btn.disabled = true;
-    if (spinner) spinner.classList.remove("hidden");
-    if (label) label.textContent = `SCANNING ${selected.length} PRODUCT(S)...`;
-
-    try {
-        const resp = await fetch("/api/sealed/scan-deals", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                products: selected,
-                tolerance_mode: toleranceMode,
-                english_only: englishOnly,
-                max_listings: 10,
-            }),
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || "Failed to scan sealed product deals.");
-        }
-
-        renderSealedDealScanResults(data);
-        const dealsFound = data.summary?.dealsFound || 0;
-        showToast(`Sealed scan complete: ${dealsFound} active deal(s) across ${data.summary?.productsScanned || 0} product(s).`, dealsFound > 0 ? "success" : "info");
-    } catch (err) {
-        console.error("Sealed deal scan error:", err);
-        showToast(err.message || "Error scanning TCGplayer sealed listings.", "error");
-    } finally {
-        if (btn) btn.disabled = selectedSealedProductIds.size === 0;
-        if (spinner) spinner.classList.add("hidden");
-        if (label) label.textContent = "🔍 Scan Live TCGplayer Deals";
-    }
-}
-
-function renderSealedDealScanResults(data) {
-    const kpis = document.getElementById("sealed-scan-kpis");
-    const container = document.getElementById("sealed-results-container");
-    if (!container) return;
-
-    const summary = data.summary || {};
-    if (kpis) {
-        kpis.classList.remove("hidden");
-        const setEl = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
-        setEl("kpi-sealed-scanned", summary.productsScanned || 0);
-        setEl("kpi-sealed-duration", `${data.durationSeconds || 0}s live scan`);
-        setEl("kpi-sealed-deals", summary.dealsFound || 0);
-        setEl("kpi-sealed-best-savings", `$${(summary.bestSavingsAmt || 0).toFixed(2)}`);
-        setEl("kpi-sealed-best-pct", `${(summary.bestSavingsPct || 0).toFixed(1)}% off market`);
-        setEl("kpi-sealed-multi-sellers", summary.multiSellerCount || 0);
-    }
-
-    let html = "";
-
-    // Multi-Product Seller Consolidation Banner
-    const multiSellers = data.multiProductSellers || [];
-    if (multiSellers.length > 0) {
-        html += `
-            <div class="bg-[#1B2230] border-2 border-[#00CED1] p-4 font-mono space-y-3">
-                <div class="flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                        <span class="text-[10px] text-[#00CED1] uppercase font-bold tracking-wider">⚡ MULTI-ITEM SELLER OVERLAP</span>
-                        <h4 class="text-sm sm:text-base font-heading font-black text-white uppercase">Sellers Carrying 2+ of Your Selected Sealed Products</h4>
-                    </div>
-                    <span class="text-[11px] text-[#94A3B8]">Combine items from one store to save on shipping</span>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    ${multiSellers.slice(0, 4).map(s => `
-                        <div class="bg-[#10141D] border border-[#263245] p-3 space-y-2 text-xs">
-                            <div class="flex items-center justify-between gap-2">
-                                <div>
-                                    <div class="font-bold text-white">${s.sellerName}</div>
-                                    <div class="text-[10px] text-[#94A3B8]">★ ${s.sellerRating}% &bull; ${s.sellerSales} Sales &bull; ${s.productCount} Items</div>
-                                </div>
-                                <a href="${s.storeUrl}" target="_blank" rel="noopener" class="btn-bridge px-2.5 py-1 text-[10px] text-[#00CED1] hover:text-white uppercase font-bold">
-                                    🏪 Store &rarr;
-                                </a>
-                            </div>
-                            <div class="space-y-1 border-t border-[#263245]/60 pt-2">
-                                ${(s.products || []).map(p => `
-                                    <div class="flex items-center justify-between gap-2 text-[11px]">
-                                        <span class="text-[#CBD5E1] truncate">${p.productName}</span>
-                                        <div class="flex items-center gap-2 whitespace-nowrap">
-                                            <span class="text-[#00CED1] font-bold">$${p.price.toFixed(2)}</span>
-                                            <a href="${p.buyUrl}" target="_blank" rel="noopener" class="text-[#FF3358] hover:underline text-[10px]">Buy</a>
-                                        </div>
-                                    </div>
-                                `).join("")}
-                            </div>
-                            <div class="flex items-center justify-between text-[11px] pt-1.5 border-t border-[#263245]/60">
-                                <span class="text-[#94A3B8]">Est. Combined Total: <strong class="text-white">$${s.estCombinedTotal.toFixed(2)}</strong></span>
-                                ${s.netSavingsVsMarket > 0 ? `<span class="text-[#10B981] font-bold">Save $${s.netSavingsVsMarket.toFixed(2)} vs Mkt</span>` : ""}
-                            </div>
-                        </div>
-                    `).join("")}
-                </div>
-            </div>
-        `;
-    }
-
-    // Per-Product Deal Cards
-    const products = data.products || [];
-    products.forEach(p => {
-        const borderCls = p.isDeal ? "border-[#10B981]" : "border-[#263245]";
-        const mktStr = p.marketPrice ? `$${p.marketPrice.toFixed(2)}` : "N/A";
-        const bestStr = p.bestLandedPrice ? `$${p.bestLandedPrice.toFixed(2)}` : "Out of Stock";
-        const targetStr = p.targetPrice ? `$${p.targetPrice.toFixed(2)}` : "None";
-
-        const dealBadge = p.isDeal
-            ? `<span class="bg-[#10B981] text-[#10141D] text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">✓ ${p.dealLabel || "DEAL"}</span>`
-            : `<span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-[10px] px-2 py-0.5 uppercase">${p.dealLabel || "Market"}</span>`;
-
-        const savingsText = (p.savingsVsMarket !== null && p.savingsVsMarket !== undefined)
-            ? (p.savingsVsMarket >= 0
-                ? `<span class="text-[#10B981] font-bold">Save $${p.savingsVsMarket.toFixed(2)} (${p.savingsVsMarketPct}% off Market)</span>`
-                : `<span class="text-[#F59E0B]">+$${Math.abs(p.savingsVsMarket).toFixed(2)} (+${Math.abs(p.savingsVsMarketPct)}% vs Market)</span>`)
-            : `<span class="text-[#64748B]">No Market Baseline</span>`;
-
-        const rowsHtml = (p.listings || []).map((l, idx) => {
-            const shipStr = l.shippingPrice === 0 ? `<span class="text-[#10B981]">FREE</span>` : `+$${l.shippingPrice.toFixed(2)}`;
-            const directTag = l.directSeller ? `<span class="bg-[#00CED1]/20 text-[#00CED1] text-[9px] px-1">Direct</span>` : "";
-            const goldTag = l.goldSeller ? `<span class="bg-[#F59E0B]/20 text-[#F59E0B] text-[9px] px-1">★ Gold</span>` : "";
-            const deltaCell = l.deltaVsMarketPct !== null && l.deltaVsMarketPct !== undefined
-                ? `<span class="${l.deltaVsMarketPct <= 0 ? 'text-[#10B981]' : 'text-[#94A3B8]'} font-bold">${l.deltaVsMarketPct > 0 ? '+' : ''}${l.deltaVsMarketPct}%</span>`
-                : "--";
-            return `
-                <tr class="border-b border-[#263245]/60 hover:bg-[#161C28] text-xs ${idx === 0 && l.isDeal ? 'bg-[#10B981]/5' : ''}">
-                    <td class="p-2">
-                        <div class="font-bold text-white flex items-center gap-1.5 flex-wrap">
-                            <span>${l.sellerName}</span>
-                            ${directTag}
-                            ${goldTag}
-                        </div>
-                        <div class="text-[10px] text-[#64748B]">★ ${l.sellerRating}% &bull; ${l.sellerSales} sales &bull; Qty: ${l.quantity}</div>
-                    </td>
-                    <td class="p-2 text-right whitespace-nowrap text-[#CBD5E1]">$${l.price.toFixed(2)}</td>
-                    <td class="p-2 text-right whitespace-nowrap">${shipStr}</td>
-                    <td class="p-2 text-right whitespace-nowrap">
-                        <div class="font-bold text-[#00CED1]">$${l.landedPrice.toFixed(2)}</div>
-                        ${l.pricePerPack ? `<div class="text-[10px] text-[#2DD4BF]">$${l.pricePerPack.toFixed(2)}/pk</div>` : ""}
-                    </td>
-                    <td class="p-2 text-right whitespace-nowrap">${deltaCell}</td>
-                    <td class="p-2 text-right whitespace-nowrap">
-                        <a href="${l.buyUrl}" target="_blank" rel="noopener" class="btn-crimson inline-block px-2.5 py-1 text-[10px] font-bold uppercase">
-                            Buy &rarr;
-                        </a>
-                    </td>
-                </tr>
-            `;
-        }).join("");
-
-        html += `
-            <div class="bg-[#1B2230] border-2 ${borderCls} p-4 font-mono space-y-3">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#263245] pb-3">
-                    <div class="flex items-start gap-3 min-w-0">
-                        <img src="${p.imageUrl}" alt="${p.productName}" class="w-14 h-14 object-contain border border-[#263245] bg-[#10141D] flex-shrink-0">
-                        <div class="min-w-0">
-                            <div class="flex flex-wrap items-center gap-1.5">
-                                ${dealBadge}
-                                <span class="text-[10px] text-[#94A3B8] uppercase">${p.categoryLabel}</span>
-                                ${p.packCount ? `<span class="text-[10px] text-[#2DD4BF]">${p.packCount} Packs</span>` : ""}
-                            </div>
-                            <h4 class="text-sm sm:text-base font-heading font-black text-white mt-0.5">${p.productName}</h4>
-                            <div class="text-xs mt-0.5">${savingsText}</div>
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2 flex-shrink-0">
-                        <button type="button" onclick="quickWatchSealedProduct(${p.productId})"
-                            class="btn-bridge px-3 py-1.5 text-xs text-[#10B981] border-[#10B981]/40 hover:bg-[#10B981] hover:text-[#10141D] font-bold uppercase">
-                            ${p.inWatchlist ? "★ Update Watchlist" : "+ Add to Watchlist"}
-                        </button>
-                        <a href="${p.bestBuyUrl}" target="_blank" rel="noopener" class="btn-crimson px-3.5 py-1.5 text-xs font-bold uppercase">
-                            Best Deal ${bestStr} &rarr;
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Summary Metrics -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#10141D] p-2.5 border border-[#263245] text-xs">
-                    <div>
-                        <div class="text-[10px] text-[#94A3B8] uppercase">Best Landed Price</div>
-                        <div class="text-sm font-bold text-[#00CED1]">${bestStr}</div>
-                    </div>
-                    <div>
-                        <div class="text-[10px] text-[#94A3B8] uppercase">TCG Market Price</div>
-                        <div class="text-sm font-bold text-white">${mktStr}</div>
-                    </div>
-                    <div>
-                        <div class="text-[10px] text-[#94A3B8] uppercase">Your Target</div>
-                        <div class="text-sm font-bold text-white">${targetStr}</div>
-                    </div>
-                    <div>
-                        <div class="text-[10px] text-[#94A3B8] uppercase">Est. Price / Pack</div>
-                        <div class="text-sm font-bold text-[#2DD4BF]">${p.pricePerPack ? '$' + p.pricePerPack.toFixed(2) : 'N/A'}</div>
-                    </div>
-                </div>
-
-                <!-- Top Live Listings Table -->
-                ${rowsHtml ? `
-                    <div class="border border-[#263245] bg-[#10141D] overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="border-b border-[#263245] bg-[#161C28] text-[10px] text-[#94A3B8] uppercase font-bold">
-                                    <th class="p-2">Seller</th>
-                                    <th class="p-2 text-right">Item</th>
-                                    <th class="p-2 text-right">Ship</th>
-                                    <th class="p-2 text-right">Landed</th>
-                                    <th class="p-2 text-right">vs Mkt</th>
-                                    <th class="p-2 text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>${rowsHtml}</tbody>
-                        </table>
-                    </div>
-                ` : `<div class="text-xs text-[#94A3B8] py-2">No live unopened English listings found for this product.</div>`}
-            </div>
-        `;
-    });
-
-    container.innerHTML = html;
-}
-
-async function addSelectedSealedToWatchlist() {
-    const selected = buildSelectedSealedPayload();
-    if (selected.length === 0) {
-        showToast("Please select at least one sealed product to add to your Watchlist.", "warning");
-        return;
-    }
-
-    const tag = (document.getElementById("sealed-watchlist-tag")?.value || "Sealed").trim() || "Sealed";
-    const toleranceMode = document.getElementById("sealed-tolerance-mode")?.value || "market_0";
-    const btn = document.getElementById("btn-watch-sealed-selected");
-    if (btn) btn.disabled = true;
-
-    try {
-        const resp = await fetch("/api/watchlist/add-sealed", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                products: selected,
-                tag: tag,
-                target_strategy: toleranceMode,
-            }),
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || "Failed to add sealed products to Watchlist.");
-        }
-
-        // Update local watchlist flags
-        selected.forEach(s => {
-            const found = currentSealedSetProducts.find(p => p.productId === s.productId);
-            if (found) found.inWatchlist = true;
-        });
-        renderSealedSetProducts();
-        showToast(data.message || "Added sealed products to your Watchlist!", "success");
-    } catch (err) {
-        console.error("Error adding sealed products to watchlist:", err);
-        showToast(err.message || "Failed to save sealed products.", "error");
-    } finally {
-        if (btn) btn.disabled = selectedSealedProductIds.size === 0;
-    }
-}
-
-async function quickWatchSealedProduct(productId) {
-    const prod = currentSealedSetProducts.find(p => p.productId === productId);
-    if (!prod) return;
-
-    const tag = (document.getElementById("sealed-watchlist-tag")?.value || "Sealed").trim() || "Sealed";
-    const toleranceMode = document.getElementById("sealed-tolerance-mode")?.value || "market_0";
-
-    try {
-        const resp = await fetch("/api/watchlist/add-sealed", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                products: [{ ...prod, targetPrice: sealedCustomTargets[productId] || null }],
-                tag: tag,
-                target_strategy: toleranceMode,
-            }),
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || "Failed to save sealed product to Watchlist.");
-        }
-        prod.inWatchlist = true;
-        renderSealedSetProducts();
-        showToast(data.message || `Added ${prod.productName} to your Watchlist!`, "success");
-    } catch (err) {
-        showToast(err.message || "Could not add sealed product to Watchlist.", "error");
-    }
-}
-
 document.addEventListener("DOMContentLoaded", () => {
-    // Check if URL hash is #lots or #sealed
-    if (window.location.hash === "#lots") {
-        switchDealsSection("lots");
-    } else if (window.location.hash === "#sealed") {
-        switchDealsSection("sealed");
-    }
-
     const cpInput = document.getElementById("command-palette-input");
     if (cpInput) {
+        const debouncedFilterPalette = appDebounce((val) => filterCommandPalette(val), 150);
         cpInput.addEventListener("input", (e) => {
-            filterCommandPalette(e.target.value);
+            debouncedFilterPalette(e.target.value);
         });
         cpInput.addEventListener("keydown", (e) => {
             if (e.key === "ArrowDown") {

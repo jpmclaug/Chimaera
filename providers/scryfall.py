@@ -3,6 +3,7 @@ import re
 import threading
 import time
 import urllib.parse
+from collections import OrderedDict
 import requests
 from card_utils import fix_mojibake, strip_accents, get_card_match_keys, normalize_card_name
 
@@ -10,6 +11,54 @@ logger = logging.getLogger(__name__)
 
 SCRYFALL_BASE_URL = "https://api.scryfall.com"
 DEFAULT_USER_AGENT = "Chimera-MTGTracker/1.0 (Contact: support@chimera.local)"
+
+
+class _TTLCache:
+    """Thread-safe bounded OrderedDict cache with TTL eviction and dict-compatible interface."""
+
+    def __init__(self, maxsize: int = 3000, ttl_seconds: float = 1800.0):
+        self._data: OrderedDict[str, tuple[float, dict]] = OrderedDict()
+        self._maxsize = maxsize
+        self._ttl = ttl_seconds
+        self._lock = threading.Lock()
+
+    def get(self, key: str, default=None):
+        now = time.monotonic()
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return default
+            if (now - entry[0]) > self._ttl:
+                del self._data[key]
+                return default
+            self._data.move_to_end(key)
+            return entry[1]
+
+    def __contains__(self, key: str) -> bool:
+        return self.get(key) is not None
+
+    def __getitem__(self, key: str):
+        val = self.get(key)
+        if val is None:
+            raise KeyError(key)
+        return val
+
+    def __setitem__(self, key: str, value: dict):
+        now = time.monotonic()
+        with self._lock:
+            if key in self._data:
+                self._data.move_to_end(key)
+            self._data[key] = (now, value)
+            while len(self._data) > self._maxsize:
+                self._data.popitem(last=False)
+
+    def clear(self):
+        with self._lock:
+            self._data.clear()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._data)
 
 
 class ScryfallProvider:
@@ -38,20 +87,23 @@ class ScryfallProvider:
         self._custom_session = value
 
     _last_request_time: float = 0.0
-    _card_cache: dict[str, dict] = {}
+    _rate_lock = threading.Lock()
+    _card_cache = _TTLCache(maxsize=3500, ttl_seconds=1800.0)
+    _id_cache = _TTLCache(maxsize=2000, ttl_seconds=1800.0)
     _prints_cache: dict[str, tuple[float, list[dict]]] = {}
     _PRINTS_CACHE_TTL: float = 600.0
     _PRINTS_CACHE_MAX: int = 256
     _cache_lock = threading.Lock()
 
     def _request(self, method: str, url: str, **kwargs):
-        """Dispatches HTTP requests to Scryfall with 100ms pacing and automatic 429 backoff."""
-        elapsed = time.time() - ScryfallProvider._last_request_time
-        if elapsed < 0.1:
-            time.sleep(0.1 - elapsed)
-
+        """Dispatches HTTP requests to Scryfall with thread-safe 100ms pacing and automatic 429 backoff."""
         for attempt in range(3):
-            ScryfallProvider._last_request_time = time.time()
+            with ScryfallProvider._rate_lock:
+                elapsed = time.time() - ScryfallProvider._last_request_time
+                if elapsed < 0.1:
+                    time.sleep(0.1 - elapsed)
+                ScryfallProvider._last_request_time = time.time()
+
             if method.lower() == "post":
                 resp = self.session.post(url, **kwargs)
             else:
@@ -182,19 +234,48 @@ class ScryfallProvider:
         return []
 
     def get_card_by_id(self, scryfall_id: str) -> dict | None:
-        """Fetches full card object from Scryfall by unique ID."""
+        """Fetches full card object from Scryfall by unique ID (with short TTL caching)."""
         if not scryfall_id:
             return None
+
+        cached = ScryfallProvider._id_cache.get(scryfall_id)
+        if cached is not None:
+            return cached
 
         try:
             url = f"{SCRYFALL_BASE_URL}/cards/{scryfall_id}"
             response = self._request("get", url, timeout=8)
             if response.status_code == 200:
-                return response.json()
+                data = response.json()
+                ScryfallProvider._id_cache[scryfall_id] = data
+                return data
             logger.warning(f"Scryfall card lookup failed for ID {scryfall_id} (status: {response.status_code})")
         except Exception as e:
             logger.error(f"Error fetching card by ID {scryfall_id}: {e}")
         return None
+
+    def prefetch_cards_by_ids(self, scryfall_ids: list[str], timeout: float = 15.0) -> None:
+        """Batch-prefetches up to 75 Scryfall IDs per POST /cards/collection request into _id_cache."""
+        unique_ids = [sid for sid in dict.fromkeys(scryfall_ids) if sid and ScryfallProvider._id_cache.get(sid) is None]
+        if not unique_ids:
+            return
+        for i in range(0, len(unique_ids), 75):
+            chunk = unique_ids[i:i + 75]
+            try:
+                resp = self._request(
+                    "post",
+                    f"{SCRYFALL_BASE_URL}/cards/collection",
+                    json={"identifiers": [{"id": sid} for sid in chunk]},
+                    headers={"Content-Type": "application/json"},
+                    timeout=timeout,
+                )
+                if resp is not None and resp.status_code == 200:
+                    for card in resp.json().get("data", []):
+                        cid = card.get("id")
+                        if cid:
+                            ScryfallProvider._id_cache[cid] = card
+            except Exception as e:
+                logger.debug(f"Scryfall ID batch prefetch failed: {e}")
 
     def _format_card_object(self, card: dict) -> dict:
         """Standardizes Scryfall card JSON into Chimaera card dictionary."""

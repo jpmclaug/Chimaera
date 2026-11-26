@@ -62,6 +62,7 @@
             <!-- Search Field -->
             <div class="flex-1 relative min-w-0">
                 <input type="text" id="watchlist-search" placeholder="FILTER BY NAME, SET, OR TAG..."
+                    autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
                     class="w-full bg-[#10141D] border border-[#263245] pl-3 pr-14 py-2 text-xs text-white uppercase placeholder-[#64748B] focus:border-[#00CED1] font-mono tracking-wide h-9"
                     oninput="debouncedFilterWatchlist()">
                 <button type="button" id="btn-clear-watchlist-search" onclick="clearWatchlistSearch()" class="hidden absolute right-7 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-white font-mono text-xs px-1" title="Clear search">✕</button>
@@ -233,11 +234,11 @@
                 </button>
 
                 <!-- Sub-layout Switcher: Art Grid vs Checklist -->
-                <div class="flex items-center border border-[#263245] bg-[#10141D] p-0.5 h-7">
-                    <button type="button" onclick="setInPersonSubView('art')" id="btn-inperson-sub-art" class="view-btn active h-full px-2 text-[10px] uppercase font-mono font-bold" title="Visual Card Art Grid">
+                <div class="flex items-center border border-[#263245] bg-[#10141D] p-0.5 min-h-[36px]">
+                    <button type="button" onclick="setInPersonSubView('art')" id="btn-inperson-sub-art" class="view-btn active min-h-[30px] px-2.5 text-[10px] uppercase font-mono font-bold" title="Visual Card Art Grid">
                         🖼️ Art Grid
                     </button>
-                    <button type="button" onclick="setInPersonSubView('checklist')" id="btn-inperson-sub-checklist" class="view-btn h-full px-2 text-[10px] uppercase font-mono font-bold" title="High-Density Checklist">
+                    <button type="button" onclick="setInPersonSubView('checklist')" id="btn-inperson-sub-checklist" class="view-btn min-h-[30px] px-2.5 text-[10px] uppercase font-mono font-bold" title="High-Density Checklist">
                         📋 Checklist
                     </button>
                 </div>
@@ -246,7 +247,7 @@
             <!-- Right: Grouping Selector -->
             <div class="flex items-center gap-2">
                 <span class="text-[10px] font-mono text-[#64748B] uppercase font-bold hidden xs:inline">Group By:</span>
-                <select id="inperson-group-select" onchange="setInPersonGroupBy(this.value)" class="bg-[#10141D] border border-[#263245] px-2 py-1 text-xs text-[#00CED1] focus:border-[#00CED1] uppercase font-mono font-bold h-7">
+                <select id="inperson-group-select" onchange="setInPersonGroupBy(this.value)" class="bg-[#10141D] border border-[#263245] px-2 py-1 text-xs text-[#00CED1] focus:border-[#00CED1] uppercase font-mono font-bold min-h-[36px]">
                     <option value="color">Group: Color (WUBRG / Multi / Land)</option>
                     <option value="type">Group: Card Type (Creature / Instant...)</option>
                     <option value="tag">Group: Deck / Tag</option>
@@ -364,18 +365,24 @@
             data-target="{{ item.target_price if item.target_price is not none else 0 }}"
             data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
             data-order="{{ loop.index0 }}"
+            data-color-bucket="{{ (item.color_bucket or 'colorless')|lower }}"
+            data-primary-type="{{ (item.primary_card_type or 'other')|lower }}"
+            data-mana-cost="{{ item.mana_cost or '' }}"
+            data-cmc="{{ item.cmc or 0 }}"
             id="card-row-{{ item.id }}">
             
             <div>
                 <!-- Card Header -->
                 <div class="flex items-start space-x-3">
                     <div class="pt-0.5 flex-shrink-0">
-                        <input type="checkbox" 
-                            class="card-select-checkbox w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer"
-                            data-card-id="{{ item.id }}"
-                            id="chk-grid-{{ item.id }}"
-                            onchange="handleCardSelectChange({{ item.id }}, this.checked)"
-                            title="Select {{ item.name }}">
+                        <label class="inline-flex items-center justify-center -m-2 p-2 cursor-pointer" title="Select {{ item.name }}">
+                            <input type="checkbox" 
+                                class="card-select-checkbox w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer"
+                                data-card-id="{{ item.id }}"
+                                id="chk-grid-{{ item.id }}"
+                                onchange="handleCardSelectChange({{ item.id }}, this.checked)"
+                                title="Select {{ item.name }}">
+                        </label>
                     </div>
                     {% if item.image_uri %}
                     <div class="relative group flex-shrink-0 cursor-pointer" 
@@ -386,7 +393,7 @@
                          data-card-number="{{ item.collector_number or '' }}"
                          data-card-finish="{{ item.finish or '' }}"
                          title="Click to enlarge {{ item.name }}">
-                        <img src="{{ item.image_uri }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
+                        <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-16 h-22 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
                         <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                             <svg class="w-4 h-4 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
@@ -451,7 +458,7 @@
                             <div class="flex flex-wrap items-center gap-1 mt-1">
                                 <!-- Mighty Meeple Stock Alert Toggle -->
                                 <button onclick="toggleMightyMeepleAlert({{ item.id }})" id="mm-alert-btn-{{ item.id }}"
-                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_mm_stock %}bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    class="min-h-[36px] sm:min-h-[28px] px-2 py-0.5 text-[10px] font-mono uppercase font-bold border transition inline-flex items-center space-x-1 {% if item.notify_mm_stock %}bg-[#00CED1]/15 text-[#00CED1] border-[#00CED1]/50 hover:bg-[#00CED1]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
                                     title="Toggle Mighty Meeple In-Stock Alert">
                                     <span>MM:</span>
                                     <span id="mm-alert-status-{{ item.id }}">{{ "ON" if item.notify_mm_stock else "OFF" }}</span>
@@ -459,7 +466,7 @@
 
                                 <!-- Card Kingdom Stock Alert Toggle -->
                                 <button onclick="toggleCardKingdomAlert({{ item.id }})" id="ck-alert-btn-{{ item.id }}"
-                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_ck_stock %}bg-[#8B5CF6]/15 text-[#C4B5FD] border-[#8B5CF6]/50 hover:bg-[#8B5CF6]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    class="min-h-[36px] sm:min-h-[28px] px-2 py-0.5 text-[10px] font-mono uppercase font-bold border transition inline-flex items-center space-x-1 {% if item.notify_ck_stock %}bg-[#8B5CF6]/15 text-[#C4B5FD] border-[#8B5CF6]/50 hover:bg-[#8B5CF6]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
                                     title="Toggle Card Kingdom In-Stock Alert">
                                     <span>CK:</span>
                                     <span id="ck-alert-status-{{ item.id }}">{{ "ON" if item.notify_ck_stock else "OFF" }}</span>
@@ -467,7 +474,7 @@
 
                                 <!-- Star City Games Stock Alert Toggle -->
                                 <button onclick="toggleStarCityGamesAlert({{ item.id }})" id="scg-alert-btn-{{ item.id }}"
-                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_scg_stock %}bg-[#F59E0B]/15 text-[#FCD34D] border-[#F59E0B]/50 hover:bg-[#F59E0B]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    class="min-h-[36px] sm:min-h-[28px] px-2 py-0.5 text-[10px] font-mono uppercase font-bold border transition inline-flex items-center space-x-1 {% if item.notify_scg_stock %}bg-[#F59E0B]/15 text-[#FCD34D] border-[#F59E0B]/50 hover:bg-[#F59E0B]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
                                     title="Toggle Star City Games In-Stock Alert">
                                     <span>SCG:</span>
                                     <span id="scg-alert-status-{{ item.id }}">{{ "ON" if item.notify_scg_stock else "OFF" }}</span>
@@ -475,7 +482,7 @@
 
                                 <!-- CoolStuffInc Stock Alert Toggle -->
                                 <button onclick="toggleCoolStuffIncAlert({{ item.id }})" id="csi-alert-btn-{{ item.id }}"
-                                    class="px-1.5 py-0.5 text-[10px] font-mono uppercase font-bold border transition flex items-center space-x-1 {% if item.notify_csi_stock %}bg-[#38BDF8]/15 text-[#7DD3FC] border-[#38BDF8]/50 hover:bg-[#38BDF8]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
+                                    class="min-h-[36px] sm:min-h-[28px] px-2 py-0.5 text-[10px] font-mono uppercase font-bold border transition inline-flex items-center space-x-1 {% if item.notify_csi_stock %}bg-[#38BDF8]/15 text-[#7DD3FC] border-[#38BDF8]/50 hover:bg-[#38BDF8]/25{% else %}bg-[#10141D] text-[#64748B] border-[#263245] hover:text-[#94A3B8]{% endif %}"
                                     title="Toggle CoolStuffInc In-Stock Alert">
                                     <span>CSI:</span>
                                     <span id="csi-alert-status-{{ item.id }}">{{ "ON" if item.notify_csi_stock else "OFF" }}</span>
@@ -820,22 +827,36 @@
             </div>
 
             <!-- Card Action Footer -->
-            <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-xs">
-                <button onclick="triggerRefreshCard({{ item.id }})" id="btn-refresh-{{ item.id }}" class="text-[#94A3B8] hover:text-white flex items-center space-x-1.5 uppercase font-medium">
+            <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between gap-2 flex-wrap font-mono text-xs">
+                <button onclick="triggerRefreshCard({{ item.id }})" id="btn-refresh-{{ item.id }}" class="min-h-[38px] px-2 py-1 inline-flex items-center space-x-1.5 border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white uppercase font-medium">
                     <svg class="w-3.5 h-3.5 text-[#00CED1] refresh-icon-{{ item.id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                     </svg>
                     <span>Poll</span>
                 </button>
 
-                <div class="flex items-center space-x-2.5 sm:space-x-3">
-                    <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-grid-{{ item.id }}" class="text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold flex items-center space-x-1" title="Toggle Target Selection">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <button type="button"
+                        data-item-id="{{ item.id }}"
+                        data-card-name="{{ item.name }}"
+                        data-target-price="{{ item.target_price if item.target_price is not none else '' }}"
+                        data-lowest-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}"
+                        data-set-code="{{ item.set_code or '' }}"
+                        data-collector-number="{{ item.collector_number or '' }}"
+                        data-finish="{{ item.finish or 'nonfoil' }}"
+                        data-image-uri="{{ item.image_uri or '' }}"
+                        onclick="openAcquireCardModalFromBtn(this)"
+                        class="min-h-[38px] px-2 py-1 inline-flex items-center border border-[#263245] bg-[#10141D] text-[#2DD4BF] hover:text-white uppercase font-bold"
+                        title="Mark as Acquired in person">
+                        ✓ Got It
+                    </button>
+                    <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-grid-{{ item.id }}" class="min-h-[38px] px-2 py-1 inline-flex items-center space-x-1 border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold" title="Toggle Target Selection">
                         <span class="btn-select-label-{{ item.id }}">Select</span>
                     </button>
-                    <button id="card-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})" class="text-[#00CED1] hover:text-white uppercase font-bold">
+                    <button id="card-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})" class="min-h-[38px] px-2 py-1 inline-flex items-center border border-[#263245] bg-[#10141D] text-[#00CED1] hover:text-white uppercase font-bold">
                         Edit Target
                     </button>
-                    <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">
+                    <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="min-h-[38px] px-2 py-1 inline-flex items-center border border-[#263245] bg-[#10141D] text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">
                         Terminate
                     </button>
                 </div>
@@ -846,149 +867,9 @@
     </div>
 
     <!-- =========================================================================
-         VIEW 2: COMPACT / HIGH-LEVEL LIST VIEW (MOBILE SCANNING)
+         VIEW 2: COMPACT / HIGH-LEVEL LIST VIEW (LAZILY HYDRATED IN APP.JS)
          ========================================================================= -->
-    <div class="watchlist-view-container hidden space-y-2" id="watchlist-compact">
-        {% for item in items %}
-        {% set best = item.best_vendor %}
-        <div class="watchlist-card compact-card {% if item.is_deal %}is-deal{% endif %} flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono"
-            data-name="{{ item.name|lower }}"
-            data-set="{{ (item.set_code or '')|lower }}"
-            data-tag="{{ (item.tag or '')|lower }}"
-            data-card-finish="{{ (item.finish or 'any')|lower }}"
-            data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
-            data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
-            data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
-            data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
-            data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
-            data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
-            data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
-            data-is-sealed="{{ 'true' if item.is_sealed else 'false' }}"
-            data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
-            data-binder-count="{{ item.binder_count or 0 }}"
-            data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
-            data-target="{{ item.target_price if item.target_price is not none else 0 }}"
-            data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
-            data-order="{{ loop.index0 }}"
-            id="compact-card-{{ item.id }}">
-            
-            <!-- Left: Thumbnail & Name -->
-            <div class="flex items-center space-x-2.5 sm:space-x-3 min-w-0 flex-1">
-                <input type="checkbox" 
-                    class="card-select-checkbox w-4 h-4 text-[#00CED1] rounded-none bg-[#10141D] border-[#263245] focus:ring-0 cursor-pointer flex-shrink-0"
-                    data-card-id="{{ item.id }}"
-                    id="chk-compact-{{ item.id }}"
-                    onchange="handleCardSelectChange({{ item.id }}, this.checked)"
-                    title="Select {{ item.name }}">
-                {% if item.image_uri %}
-                <div class="relative group flex-shrink-0 cursor-pointer" 
-                     onclick="openCardImageOverlay(this)"
-                     data-card-image="{{ item.image_uri }}"
-                     data-card-name="{{ item.name }}"
-                     data-card-set="{{ (item.set_code or '')|upper }}"
-                     data-card-number="{{ item.collector_number or '' }}"
-                     data-card-finish="{{ item.finish or '' }}"
-                     title="Click to enlarge {{ item.name }}">
-                    <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-10 h-14 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
-                    <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                        <svg class="w-3 h-3 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
-                        </svg>
-                    </div>
-                </div>
-                {% else %}
-                <div class="w-10 h-14 border border-[#263245] bg-[#10141D] flex items-center justify-center text-[9px] text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>
-                {% endif %}
-
-                <div class="min-w-0 flex-1">
-                    <div class="flex items-center space-x-2">
-                        <h4 class="font-heading font-bold text-sm text-white truncate">{{ item.name }}</h4>
-                        <span id="compact-deal-badge-{{ item.id }}" class="{% if not item.is_deal %}hidden {% endif %}bg-[#DC143C] text-white text-[9px] px-1 py-0.2 uppercase font-bold flex-shrink-0 animate-tactical-pulse">DEAL</span>
-                    </div>
-                    
-                    <div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
-                        {% if item.set_code and item.set_code.upper() != 'ANY' %}
-                        <span class="text-[#94A3B8] bg-[#10141D] px-1.5 py-0.2 border border-[#263245] uppercase text-[10px]">{{ item.set_code }}</span>
-                        {% else %}
-                        <span class="text-[#94A3B8] bg-[#3D4F6B]/30 px-1.5 py-0.2 border border-[#3D4F6B] uppercase text-[10px]">ANY</span>
-                        {% endif %}
-                        <span class="text-[#00CED1] uppercase text-[10px]">{{ item.finish }}</span>
-                        <span id="compact-tag-wrapper-{{ item.id }}" class="inline-flex items-center">
-                        {% if item.tag %}
-                        <span class="text-[#C084FC] bg-[#9333EA]/20 border border-[#9333EA]/40 px-1.5 py-0.2 uppercase text-[10px]">🏷️ {{ item.tag }}</span>
-                        {% endif %}
-                        </span>
-                        <!-- In Binder Indicator Badge -->
-                        <div id="compact-binder-wrapper-{{ item.id }}" class="inline-flex items-center">
-                        {% if item.in_binder %}
-                        <a href="/inventory?q={{ item.name|urlencode }}"
-                            class="text-[#10B981] hover:text-white bg-[#10B981]/20 hover:bg-[#10B981]/35 border border-[#10B981]/50 px-1.5 py-0.2 uppercase text-[10px] font-bold flex items-center space-x-0.5 transition"
-                            title="Owned in Collection / Binder{% if item.binder_names %}: {{ item.binder_names|join(', ') }}{% endif %} ({{ item.binder_count }} {{ 'copy' if item.binder_count == 1 else 'copies' }}). Click to inspect in Binder.">
-                            <span>💼</span>
-                            <span>IN BINDER ({{ item.binder_count }})</span>
-                        </a>
-                        {% endif %}
-                        </div>
-                        {% if item.mm_in_stock %}
-                        <span class="text-[#00CED1] border border-[#00CED1]/50 bg-[#00CED1]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">MM In-Stock</span>
-                        {% endif %}
-                        {% if item.ck_in_stock %}
-                        <span class="text-[#C4B5FD] border border-[#8B5CF6]/50 bg-[#8B5CF6]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">CK In-Stock</span>
-                        {% endif %}
-                        {% if item.scg_in_stock %}
-                        <span class="text-[#FCD34D] border border-[#F59E0B]/50 bg-[#F59E0B]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">SCG In-Stock</span>
-                        {% endif %}
-                        {% if item.csi_in_stock %}
-                        <span class="text-[#7DD3FC] border border-[#38BDF8]/50 bg-[#38BDF8]/10 px-1.5 py-0.2 text-[10px] uppercase font-bold">CSI In-Stock</span>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right / Middle: Prices & Quick Action Controls -->
-            <div class="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#263245]/60">
-                <!-- Target vs Lowest Readout -->
-                <div class="text-right">
-                    <div class="text-[10px] text-[#94A3B8] uppercase">Target / Lowest</div>
-                    <div class="text-xs font-bold">
-                        <span id="compact-target-val-{{ item.id }}" class="text-[#94A3B8]">{% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}--{% endif %}</span>
-                        <span class="text-[#64748B]"> / </span>
-                        {% if item.lowest_in_stock_price is not none %}
-                        <span id="compact-lowest-val-{{ item.id }}" class="{% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}" data-lowest="{{ item.lowest_in_stock_price }}">${{ "%.2f"|format(item.lowest_in_stock_price) }}</span>
-                        {% else %}
-                        <span id="compact-lowest-val-{{ item.id }}" class="text-[#FF3358] text-[11px] uppercase" data-lowest="">OOS</span>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <!-- Best Vendor Action / Link -->
-                <div class="flex items-center space-x-1.5">
-                    <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-compact-{{ item.id }}" class="btn-bridge px-2 py-1 text-[11px] text-[#94A3B8] hover:text-[#00CED1]" title="Toggle Target Selection">
-                        <span class="btn-select-label-{{ item.id }}">Select</span>
-                    </button>
-
-                    {% if best and best.product_url %}
-                    <a href="{{ best.product_url }}" target="_blank" rel="noopener" class="btn-crimson px-2.5 py-1 text-[11px] uppercase font-bold" title="Buy on {{ best.vendor_name }} (${{ "%.2f"|format(best.price) }})">
-                        Buy ${{ "%.2f"|format(best.price) }}
-                    </a>
-                    {% endif %}
-
-                    <button id="compact-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})" 
-                        class="btn-bridge px-2 py-1 text-[11px] text-[#00CED1] hover:text-white" title="Edit Target & Tag">
-                        Edit
-                    </button>
-
-                    <button onclick="triggerRefreshCard({{ item.id }})" class="btn-bridge px-2 py-1 text-[11px] text-[#94A3B8] hover:text-white" title="Poll Price">
-                        <svg class="w-3 h-3 text-[#00CED1] refresh-icon-{{ item.id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-        </div>
-        {% endfor %}
-    </div>
+    <div class="watchlist-view-container hidden space-y-2" id="watchlist-compact"></div>
 
     <!-- =========================================================================
          VIEW 3: SWIPE DECK CAROUSEL (TOUCH FRIENDLY MOBILE DETAIL)
@@ -1008,243 +889,9 @@
             </button>
         </div>
 
-        <!-- Swipe Track Container -->
+        <!-- Swipe Track Container (Lazily Hydrated in app.js) -->
         <div class="swipe-deck-wrapper" id="registry-swipe-wrapper">
-            <div class="swipe-track" id="registry-swipe-track">
-                <template id="registry-swipe-template">
-                {% for item in items %}
-                <div class="swipe-card-slide watchlist-card"
-                    id="swipe-card-slide-{{ item.id }}"
-                    data-name="{{ item.name|lower }}"
-                    data-set="{{ (item.set_code or '')|lower }}"
-                    data-tag="{{ (item.tag or '')|lower }}"
-                    data-card-finish="{{ (item.finish or 'any')|lower }}"
-                    data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
-                    data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
-                    data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
-                    data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
-                    data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
-                    data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
-                    data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
-                    data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
-                    data-binder-count="{{ item.binder_count or 0 }}"
-                    data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
-                    data-target="{{ item.target_price if item.target_price is not none else 0 }}"
-                    data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
-                    data-order="{{ loop.index0 }}"
-                    data-index="{{ loop.index0 }}">
-                    
-                    <div id="swipe-card-box-{{ item.id }}" class="bg-[#1B2230] border {% if item.is_deal %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245]{% endif %} p-4 sm:p-6 max-w-xl mx-auto flex flex-col justify-between">
-                        <div>
-                            <!-- Header -->
-                            <div class="flex items-start space-x-4">
-                                {% if item.image_uri %}
-                                <div class="relative group flex-shrink-0 cursor-pointer" 
-                                     onclick="openCardImageOverlay(this)"
-                                     data-card-image="{{ item.image_uri }}"
-                                     data-card-name="{{ item.name }}"
-                                     data-card-set="{{ (item.set_code or '')|upper }}"
-                                     data-card-number="{{ item.collector_number or '' }}"
-                                     data-card-finish="{{ item.finish or '' }}"
-                                     title="Click to enlarge {{ item.name }}">
-                                    <img src="{{ item.image_uri }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-20 h-28 object-cover border border-[#263245] bg-[#10141D] card-thumbnail-interactive">
-                                    <div class="absolute inset-0 bg-[#00CED1]/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                        <svg class="w-5 h-5 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"></path>
-                                        </svg>
-                                    </div>
-                                </div>
-                                {% else %}
-                                <div class="w-20 h-28 border border-[#263245] bg-[#10141D] flex items-center justify-center text-xs text-[#64748B] flex-shrink-0 uppercase font-mono">NO ART</div>
-                                {% endif %}
-
-                                <div class="flex-1 min-w-0">
-                                    <h4 class="text-lg font-heading font-black text-white truncate tracking-wide">{{ item.name }}</h4>
-                                    
-                                    <div class="flex flex-wrap gap-1.5 mt-2 items-center">
-                                        {% if item.set_code and item.set_code.upper() != 'ANY' %}
-                                        <span class="bg-[#10141D] text-[#94A3B8] border border-[#263245] text-xs px-2 py-0.5 font-mono uppercase">{{ item.set_code }} #{{ item.collector_number or '?' }}</span>
-                                        {% else %}
-                                        <span class="bg-[#3D4F6B]/30 text-[#94A3B8] border border-[#3D4F6B] text-xs px-2 py-0.5 font-mono uppercase font-semibold">ANY VERSION</span>
-                                        {% endif %}
-                                        <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-xs px-2 py-0.5 font-mono uppercase">{{ item.finish }}</span>
-                                        <!-- In Binder Indicator Badge -->
-                                        <div id="swipe-binder-wrapper-{{ item.id }}" class="inline-flex items-center">
-                                        {% if item.in_binder %}
-                                        <a href="/inventory?q={{ item.name|urlencode }}"
-                                            class="bg-[#10B981]/20 hover:bg-[#10B981]/35 text-[#10B981] hover:text-white border border-[#10B981]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold flex items-center space-x-1 transition"
-                                            title="Owned in Collection / Binder{% if item.binder_names %}: {{ item.binder_names|join(', ') }}{% endif %} ({{ item.binder_count }} {{ 'copy' if item.binder_count == 1 else 'copies' }}). Click to inspect in Binder.">
-                                            <span>💼</span>
-                                            <span>IN BINDER ({{ item.binder_count }})</span>
-                                        </a>
-                                        {% endif %}
-                                        </div>
-                                        <span id="swipe-tag-wrapper-{{ item.id }}" class="inline-flex items-center">
-                                        {% if item.tag %}
-                                        <span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/50 text-xs px-2 py-0.5 font-mono uppercase font-bold">🏷️ {{ item.tag }}</span>
-                                        {% endif %}
-                                        </span>
-                                    </div>
-
-                                    <!-- Price Readout -->
-                                    <div class="mt-3 grid grid-cols-2 gap-2 text-xs font-mono bg-[#10141D] p-2.5 border border-[#263245]">
-                                        <div>
-                                            <div class="text-[#94A3B8] text-[10px] uppercase">Target</div>
-                                            <div id="swipe-target-val-{{ item.id }}" class="text-sm font-bold text-white mt-0.5">{% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}None{% endif %}</div>
-                                        </div>
-                                        <div>
-                                            <div class="text-[#94A3B8] text-[10px] uppercase">Lowest Live</div>
-                                            <div id="swipe-lowest-val-{{ item.id }}" class="text-sm font-bold {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %} mt-0.5" data-lowest="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}">
-                                                {% if item.lowest_in_stock_price is not none %}${{ "%.2f"|format(item.lowest_in_stock_price) }}{% else %}Out of Stock{% endif %}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Deal Alert Banner -->
-                            <div id="swipe-deal-banner-container-{{ item.id }}">
-                            {% if item.is_deal %}
-                            <div class="mt-3 bg-[#DC143C]/20 border border-[#DC143C] text-[#FF3358] text-xs px-3 py-2 flex items-center justify-between font-mono font-bold">
-                                <span>[!] TARGET ACQUIRED</span>
-                                <span>-${{ "%.2f"|format(item.savings_amount) }} ({{ item.savings_percent }}% OFF)</span>
-                            </div>
-                            {% endif %}
-                            </div>
-
-                            <!-- Full Vendor Breakdown -->
-                            <div class="mt-3.5 pt-3 border-t border-[#263245] space-y-2 font-mono">
-                                <div class="text-xs font-bold text-[#94A3B8] uppercase tracking-wider">Vendor Intelligence Matrix</div>
-                                {% set tcg = item.get_vendor_price('TCGplayer') %}
-                                {% set mm = item.get_vendor_price('Mighty Meeple') %}
-                                {% set ck = item.get_vendor_price('Card Kingdom') %}
-                                {% set scg = item.get_vendor_price('Star City Games') %}
-                                {% set csi = item.get_vendor_price('CoolStuffInc') %}
-                                {% set eb = item.get_vendor_price('eBay') %}
-
-                                <!-- TCGplayer -->
-                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
-                                    <span class="text-[#94A3B8]">TCGplayer</span>
-                                    <div class="flex items-center space-x-2">
-                                        {% if tcg and tcg.price > 0 %}
-                                        <span class="font-bold text-white">${{ "%.2f"|format(tcg.price) }}</span>
-                                        {% if tcg.product_url %}
-                                        <a href="{{ tcg.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
-                                        {% endif %}
-                                        {% else %}
-                                        <span class="text-[#64748B]">N/A</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                <!-- Mighty Meeple -->
-                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
-                                    <span class="text-[#94A3B8]">Mighty Meeple</span>
-                                    <div class="flex items-center space-x-2">
-                                        {% if mm and mm.price > 0 %}
-                                        <span class="font-bold text-white">${{ "%.2f"|format(mm.price) }}</span>
-                                        <span class="font-bold {% if mm.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if mm.in_stock else "Out" }})</span>
-                                        {% if mm.product_url %}
-                                        <a href="{{ mm.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
-                                        {% endif %}
-                                        {% else %}
-                                        <span class="text-[#64748B]">N/A</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                <!-- Card Kingdom -->
-                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
-                                    <span class="text-[#94A3B8]">Card Kingdom</span>
-                                    <div class="flex items-center space-x-2">
-                                        {% if ck and ck.price > 0 %}
-                                        <span class="font-bold text-white">${{ "%.2f"|format(ck.price) }}</span>
-                                        <span class="font-bold {% if ck.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if ck.in_stock else "Out" }})</span>
-                                        {% if ck.product_url %}
-                                        <a href="{{ ck.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
-                                        {% endif %}
-                                        {% else %}
-                                        <span class="text-[#64748B]">N/A</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                <!-- Star City Games -->
-                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
-                                    <span class="text-[#94A3B8]">Star City Games</span>
-                                    <div class="flex items-center space-x-2">
-                                        {% if scg and scg.price > 0 %}
-                                        <span class="font-bold text-white">${{ "%.2f"|format(scg.price) }}</span>
-                                        <span class="font-bold {% if scg.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if scg.in_stock else "Out" }})</span>
-                                        {% if scg.product_url %}
-                                        <a href="{{ scg.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
-                                        {% endif %}
-                                        {% else %}
-                                        <span class="text-[#64748B]">N/A</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                <!-- CoolStuffInc -->
-                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
-                                    <span class="text-[#94A3B8]">CoolStuffInc</span>
-                                    <div class="flex items-center space-x-2">
-                                        {% if csi and csi.price > 0 %}
-                                        <span class="font-bold text-white">${{ "%.2f"|format(csi.price) }}</span>
-                                        <span class="font-bold {% if csi.in_stock %}text-[#00CED1]{% else %}text-[#FF3358]{% endif %}">({{ "In Stock" if csi.in_stock else "Out" }})</span>
-                                        {% if csi.product_url %}
-                                        <a href="{{ csi.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Buy &rarr;</a>
-                                        {% endif %}
-                                        {% else %}
-                                        <span class="text-[#64748B]">N/A</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-
-                                <!-- eBay -->
-                                <div class="flex items-center justify-between text-xs bg-[#10141D] p-2.5 border border-[#263245]">
-                                    <span class="text-[#94A3B8]">eBay</span>
-                                    <div class="flex items-center space-x-2">
-                                        {% if eb and eb.price > 0 %}
-                                        <span class="font-bold text-white">${{ "%.2f"|format(eb.price) }}</span>
-                                        {% if eb.product_url %}
-                                        <a href="{{ eb.product_url }}" target="_blank" rel="noopener" class="text-[#00CED1] hover:text-white underline font-bold">Lowest Listing &rarr;</a>
-                                        {% endif %}
-                                        {% else %}
-                                        <span class="text-[#64748B]">N/A</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Card Action Footer -->
-                        <div class="mt-4 pt-3 border-t border-[#263245] flex items-center justify-between font-mono text-xs">
-                            <button onclick="triggerRefreshCard({{ item.id }})" class="btn-bridge px-3 py-1.5 text-xs text-[#94A3B8] hover:text-white flex items-center space-x-1.5 uppercase font-medium">
-                                <svg class="w-3.5 h-3.5 text-[#00CED1] refresh-icon-{{ item.id }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                </svg>
-                                <span>Poll</span>
-                            </button>
-
-                            <div class="flex items-center space-x-2">
-                                <button type="button" onclick="toggleSingleCardSelection({{ item.id }})" id="btn-select-swipe-{{ item.id }}" class="btn-bridge px-2.5 py-1.5 text-xs text-[#94A3B8] hover:text-[#00CED1] uppercase font-bold" title="Toggle Target Selection">
-                                    <span class="btn-select-label-{{ item.id }}">Select</span>
-                                </button>
-                                <button id="swipe-edit-btn-{{ item.id }}" onclick="openEditTargetModal({{ item.id }}, '{{ item.name|replace("'", "\\'") }}', {{ item.target_price if item.target_price is not none else 'null' }}, {{ 'true' if item.notify_mm_stock else 'false' }}, {{ 'true' if item.is_any_version else 'false' }}, '{{ (item.tag or "")|replace("'", "\\'") }}', '{{ (item.finish or "any")|replace("'", "\\'") }}', {{ 'true' if item.notify_ck_stock else 'false' }}, {{ 'true' if item.notify_scg_stock else 'false' }}, {{ 'true' if item.notify_csi_stock else 'false' }})" class="btn-bridge px-3 py-1.5 text-[#00CED1] hover:text-white uppercase font-bold">
-                                    Edit Target
-                                </button>
-                                <button onclick="deleteCard({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')" class="btn-bridge px-2.5 py-1.5 text-[#DC143C] hover:text-[#FF3358] uppercase font-bold">
-                                    Terminate
-                                </button>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-                {% endfor %}
-                </template>
-            </div>
+            <div class="swipe-track" id="registry-swipe-track"></div>
         </div>
 
         <p class="text-center text-[11px] font-mono text-[#64748B]">
@@ -1253,284 +900,23 @@
     </div>
 
     <!-- =========================================================================
-         VIEW 4: IN-PERSON WATCHLIST (STORE CASE / BINDER BROWSING)
+         VIEW 4: IN-PERSON WATCHLIST (STORE CASE / BINDER BROWSING, LAZILY HYDRATED IN APP.JS)
          ========================================================================= -->
     <div class="watchlist-view-container hidden space-y-4" id="watchlist-inperson">
         
         <!-- SUB-VIEW 4A: Visual Art Grid (2 cols on mobile, 3 on sm, 4 on md, 5 on lg, 6 on xl) -->
-        <div id="inperson-art-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
-            {% for item in items %}
-            <div class="watchlist-card inperson-card bg-[#1B2230] border {% if item.is_deal %}border-[#DC143C] bg-[#DC143C]/5{% else %}border-[#263245] hover:border-[#00CED1]{% endif %} p-2 flex flex-col justify-between transition-colors relative"
-                data-name="{{ item.name|lower }}"
-                data-set="{{ (item.set_code or '')|lower }}"
-                data-tag="{{ (item.tag or '')|lower }}"
-                data-card-finish="{{ (item.finish or 'any')|lower }}"
-                data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
-                data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
-                data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
-                data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
-                data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
-                data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
-                data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
-                data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
-                data-binder-count="{{ item.binder_count or 0 }}"
-                data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
-                data-target="{{ item.target_price if item.target_price is not none else 0 }}"
-                data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
-                data-order="{{ loop.index0 }}"
-                data-color-bucket="{{ (item.color_bucket or 'colorless')|lower }}"
-                data-primary-type="{{ (item.primary_card_type or 'other')|lower }}"
-                data-mana-cost="{{ item.mana_cost or '' }}"
-                data-cmc="{{ item.cmc or 0 }}"
-                id="inperson-art-card-{{ item.id }}">
-
-                <!-- Visual Card Art Thumbnail & Floating Badges -->
-                <div class="relative group cursor-pointer w-full aspect-[5/7] bg-[#10141D] border border-[#263245] overflow-hidden flex items-center justify-center flex-shrink-0"
-                     onclick="openCardImageOverlay(this)"
-                     data-card-image="{{ item.image_uri or '' }}"
-                     data-card-name="{{ item.name }}"
-                     data-card-set="{{ (item.set_code or '')|upper }}"
-                     data-card-number="{{ item.collector_number or '' }}"
-                     data-card-finish="{{ item.finish or '' }}"
-                     title="Click to inspect {{ item.name }}">
-                    {% if item.image_uri %}
-                    <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-full h-full object-cover card-thumbnail-interactive">
-                    {% else %}
-                    <div class="text-[10px] text-[#64748B] font-mono uppercase text-center p-2">NO ART</div>
-                    {% endif %}
-
-                    <!-- Floating Top-Left: Color / Mana Badge -->
-                    {% if item.mana_cost %}
-                    <div class="absolute top-1 left-1 bg-[#10141D]/90 border border-[#263245] px-1 py-0.2 text-[9px] font-mono text-white pointer-events-none">
-                        {{ item.mana_cost }}
-                    </div>
-                    {% endif %}
-
-                    <!-- Floating Top-Right: Set / Finish Badge -->
-                    <div class="absolute top-1 right-1 flex flex-col items-end gap-0.5 pointer-events-none">
-                        {% if item.finish and item.finish|lower in ['foil', 'etched'] %}
-                        <span class="bg-[#F59E0B] text-black font-mono font-bold text-[8px] px-1 py-0.2 uppercase">★ {{ item.finish }}</span>
-                        {% endif %}
-                        {% if item.set_code and item.set_code.upper() != 'ANY' %}
-                        <span class="bg-[#10141D]/90 text-[#94A3B8] border border-[#263245] text-[8px] px-1 py-0.2 font-mono uppercase font-bold">{{ item.set_code }}</span>
-                        {% else %}
-                        <span class="bg-[#3D4F6B]/80 text-white text-[8px] px-1 py-0.2 font-mono uppercase font-bold">ANY</span>
-                        {% endif %}
-                    </div>
-
-                    <!-- Floating Bottom: In Binder Badge -->
-                    {% if item.in_binder %}
-                    <div class="absolute bottom-1 left-1 right-1 bg-[#10B981]/90 text-slate-950 font-mono font-black text-[9px] px-1 py-0.5 text-center uppercase tracking-wider truncate shadow-md pointer-events-none">
-                        💼 IN BINDER ({{ item.binder_count }})
-                    </div>
-                    {% endif %}
-                </div>
-
-                <!-- Card Details & Pricing Block -->
-                <div class="mt-1.5 flex-1 flex flex-col justify-between space-y-1.5">
-                    <div>
-                        <!-- Title -->
-                        <h4 class="font-heading font-bold text-xs sm:text-sm text-white truncate" title="{{ item.name }}">
-                            {{ item.name }}
-                        </h4>
-                        <!-- Meta: Type + Tag -->
-                        <div class="flex items-center gap-1 text-[10px] font-mono text-[#94A3B8] truncate mt-0.5">
-                            <span class="truncate">{{ item.short_type_line }}</span>
-                            {% if item.tag %}
-                            <span class="text-[#C084FC] truncate">&bull; {{ item.tag }}</span>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <!-- High-Contrast Price Display -->
-                    <div class="bg-[#10141D] border border-[#263245] p-1.5 font-mono text-[11px] space-y-0.5">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[#94A3B8] text-[9px] uppercase">Target:</span>
-                            <span class="font-bold text-white text-xs">
-                                {% if item.target_price %}${{ "%.2f"|format(item.target_price) }}{% else %}--{% endif %}
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-[#94A3B8] text-[9px] uppercase">Market:</span>
-                            <span class="font-bold text-xs {% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}">
-                                {% if item.lowest_in_stock_price is not none %}${{ "%.2f"|format(item.lowest_in_stock_price) }}{% else %}<span class="text-[#FF3358] text-[9px]">OOS</span>{% endif %}
-                            </span>
-                        </div>
-                        {% if item.mm_in_stock %}
-                        <div class="flex items-center justify-between text-[9px] text-[#10B981] font-bold border-t border-[#263245]/60 pt-0.5">
-                            <span>MM Stock:</span>
-                            <span>${{ "%.2f"|format(item.mm_vendor_price.price) }}</span>
-                        </div>
-                        {% endif %}
-                        {% if item.ck_in_stock %}
-                        <div class="flex items-center justify-between text-[9px] text-[#C4B5FD] font-bold border-t border-[#263245]/60 pt-0.5">
-                            <span>CK Stock:</span>
-                            <span>${{ "%.2f"|format(item.ck_vendor_price.price) }}</span>
-                        </div>
-                        {% endif %}
-                        {% if item.scg_in_stock %}
-                        <div class="flex items-center justify-between text-[9px] text-[#FCD34D] font-bold border-t border-[#263245]/60 pt-0.5">
-                            <span>SCG Stock:</span>
-                            <span>${{ "%.2f"|format(item.scg_vendor_price.price) }}</span>
-                        </div>
-                        {% endif %}
-                        {% if item.csi_in_stock %}
-                        <div class="flex items-center justify-between text-[9px] text-[#7DD3FC] font-bold border-t border-[#263245]/60 pt-0.5">
-                            <span>CSI Stock:</span>
-                            <span>${{ "%.2f"|format(item.csi_vendor_price.price) }}</span>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="font-mono text-xs pt-1">
-                        <button type="button"
-                            data-item-id="{{ item.id }}"
-                            data-card-name="{{ item.name }}"
-                            data-target-price="{{ item.target_price if item.target_price is not none else '' }}"
-                            data-lowest-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}"
-                            data-set-code="{{ item.set_code or '' }}"
-                            data-collector-number="{{ item.collector_number or '' }}"
-                            data-finish="{{ item.finish or 'nonfoil' }}"
-                            data-image-uri="{{ item.image_uri or '' }}"
-                            onclick="openAcquireCardModalFromBtn(this)"
-                            class="w-full btn-teal py-1 text-[11px] font-bold uppercase flex items-center justify-center space-x-1"
-                            title="Mark as Acquired in person and optionally ingest into inventory">
-                            <span>✓ Acquired</span>
-                        </button>
-                    </div>
-                </div>
-
-            </div>
-            {% endfor %}
-        </div>
+        <div id="inperson-art-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3"></div>
 
         <!-- SUB-VIEW 4B: High-Density Checklist -->
-        <div id="inperson-checklist" class="hidden divide-y divide-[#263245] border border-[#263245] bg-[#1B2230]">
-            {% for item in items %}
-            <div class="watchlist-card inperson-checklist-row p-2 sm:p-2.5 flex items-center justify-between gap-2.5 hover:bg-[#222B3D]/70 transition font-mono"
-                data-name="{{ item.name|lower }}"
-                data-set="{{ (item.set_code or '')|lower }}"
-                data-tag="{{ (item.tag or '')|lower }}"
-                data-card-finish="{{ (item.finish or 'any')|lower }}"
-                data-is-deal="{{ 'true' if item.is_deal else 'false' }}"
-                data-in-stock="{{ 'true' if item.lowest_in_stock_price is not none else 'false' }}"
-                data-mm-stock="{{ 'true' if item.mm_in_stock else 'false' }}"
-                data-ck-stock="{{ 'true' if item.ck_in_stock else 'false' }}"
-                data-scg-stock="{{ 'true' if item.scg_in_stock else 'false' }}"
-                data-csi-stock="{{ 'true' if item.csi_in_stock else 'false' }}"
-                data-is-any="{{ 'true' if item.is_any_version else 'false' }}"
-                data-in-binder="{{ 'true' if item.in_binder else 'false' }}"
-                data-binder-count="{{ item.binder_count or 0 }}"
-                data-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else 999999 }}"
-                data-target="{{ item.target_price if item.target_price is not none else 0 }}"
-                data-savings-pct="{{ item.savings_percent if item.savings_percent is not none else -999 }}"
-                data-order="{{ loop.index0 }}"
-                data-color-bucket="{{ (item.color_bucket or 'colorless')|lower }}"
-                data-primary-type="{{ (item.primary_card_type or 'other')|lower }}"
-                data-mana-cost="{{ item.mana_cost or '' }}"
-                data-cmc="{{ item.cmc or 0 }}"
-                id="inperson-check-row-{{ item.id }}">
-
-                <!-- Left: Color badge, thumbnail, Name & meta -->
-                <div class="flex items-center space-x-2.5 min-w-0 flex-1">
-                    <!-- Color pip indicator -->
-                    <span class="w-6 h-6 flex items-center justify-center border border-[#263245] bg-[#10141D] text-[10px] font-bold flex-shrink-0
-                        {% if item.color_bucket == 'W' %}text-[#FFFBD5] border-[#FFFBD5]/40
-                        {% elif item.color_bucket == 'U' %}text-[#00CED1] border-[#00CED1]/40
-                        {% elif item.color_bucket == 'B' %}text-[#C084FC] border-[#C084FC]/40
-                        {% elif item.color_bucket == 'R' %}text-[#FF5555] border-[#FF5555]/40
-                        {% elif item.color_bucket == 'G' %}text-[#10B981] border-[#10B981]/40
-                        {% elif item.color_bucket == 'Multicolor' %}text-[#F59E0B] border-[#F59E0B]/40
-                        {% elif item.color_bucket == 'Land' %}text-[#E2E8F0] border-[#E2E8F0]/40
-                        {% else %}text-[#94A3B8] border-[#94A3B8]/40{% endif %}">
-                        {% if item.color_bucket == 'W' %}W
-                        {% elif item.color_bucket == 'U' %}U
-                        {% elif item.color_bucket == 'B' %}B
-                        {% elif item.color_bucket == 'R' %}R
-                        {% elif item.color_bucket == 'G' %}G
-                        {% elif item.color_bucket == 'Multicolor' %}M
-                        {% elif item.color_bucket == 'Land' %}L
-                        {% else %}C{% endif %}
-                    </span>
-
-                    <!-- Tiny thumbnail (click to enlarge) -->
-                    {% if item.image_uri %}
-                    <div class="w-8 h-11 bg-black border border-[#263245] overflow-hidden flex-shrink-0 cursor-pointer"
-                         onclick="openCardImageOverlay(this)"
-                         data-card-image="{{ item.image_uri }}"
-                         data-card-name="{{ item.name }}"
-                         data-card-set="{{ (item.set_code or '')|upper }}"
-                         data-card-number="{{ item.collector_number or '' }}"
-                         data-card-finish="{{ item.finish or '' }}"
-                         title="Click to enlarge {{ item.name }}">
-                        <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-full h-full object-cover card-thumbnail-interactive">
-                    </div>
-                    {% else %}
-                    <div class="w-8 h-11 bg-[#10141D] border border-[#263245] flex items-center justify-center text-[8px] text-[#64748B] flex-shrink-0">NO ART</div>
-                    {% endif %}
-
-                    <!-- Card Info -->
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-center space-x-2">
-                            <h4 class="font-heading font-bold text-xs sm:text-sm text-white truncate">{{ item.name }}</h4>
-                            {% if item.is_deal %}
-                            <span class="bg-[#DC143C] text-white text-[8px] px-1 py-0.2 uppercase font-bold flex-shrink-0">DEAL</span>
-                            {% endif %}
-                        </div>
-
-                        <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10px] text-[#94A3B8]">
-                            <span class="bg-[#10141D] border border-[#263245] px-1 py-0.2 text-[#00CED1] uppercase font-bold">{{ item.set_code or 'ANY' }}</span>
-                            <span class="uppercase">{{ item.finish }}</span>
-                            <span class="text-[#64748B] truncate">&bull; {{ item.short_type_line }}</span>
-                            {% if item.tag %}
-                            <span class="text-[#C084FC] bg-[#9333EA]/20 px-1 py-0.2 uppercase">🏷️ {{ item.tag }}</span>
-                            {% endif %}
-                            {% if item.in_binder %}
-                            <span class="text-[#10B981] bg-[#10B981]/20 border border-[#10B981]/40 px-1 py-0.2 font-bold uppercase">💼 IN BINDER ({{ item.binder_count }})</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right: Price & Quick Acquire Button -->
-                <div class="flex items-center space-x-2.5 sm:space-x-3.5 flex-shrink-0">
-                    <div class="text-right">
-                        <div class="text-[9px] text-[#94A3B8] uppercase">Tgt / Mkt</div>
-                        <div class="text-xs font-bold">
-                            <span class="text-white">${{ "%.2f"|format(item.target_price) if item.target_price else '--' }}</span>
-                            <span class="text-[#64748B]"> / </span>
-                            <span class="{% if item.is_deal %}text-[#FF3358]{% else %}text-[#00CED1]{% endif %}">
-                                {% if item.lowest_in_stock_price is not none %}${{ "%.2f"|format(item.lowest_in_stock_price) }}{% else %}OOS{% endif %}
-                            </span>
-                        </div>
-                    </div>
-
-                    <button type="button"
-                        data-item-id="{{ item.id }}"
-                        data-card-name="{{ item.name }}"
-                        data-target-price="{{ item.target_price if item.target_price is not none else '' }}"
-                        data-lowest-price="{{ item.lowest_in_stock_price if item.lowest_in_stock_price is not none else '' }}"
-                        data-set-code="{{ item.set_code or '' }}"
-                        data-collector-number="{{ item.collector_number or '' }}"
-                        data-finish="{{ item.finish or 'nonfoil' }}"
-                        data-image-uri="{{ item.image_uri or '' }}"
-                        onclick="openAcquireCardModalFromBtn(this)"
-                        class="btn-teal px-2.5 py-1 text-[11px] font-bold uppercase"
-                        title="Acquire card in person">
-                        ✓ Got It
-                    </button>
-                </div>
-
-            </div>
-            {% endfor %}
-        </div>
+        <div id="inperson-checklist" class="hidden divide-y divide-[#263245] border border-[#263245] bg-[#1B2230]"></div>
     </div>
+
+    <script id="watchlist-items-json" type="application/json">{{ (watchlist_items_json or [])|tojson }}</script>
 
     <!-- =========================================================================
          TACTICAL FLOATING BULK ACTION BAR
          ========================================================================= -->
-    <div id="watchlist-bulk-bar" class="hidden fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#1B2230] border-2 border-[#00CED1] shadow-2xl p-2.5 sm:p-3 px-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 font-mono text-xs max-w-2xl w-[94vw] sm:w-auto transition-all duration-300">
+    <div id="watchlist-bulk-bar" class="hidden fixed bottom-[calc(3.75rem+env(safe-area-inset-bottom,0px))] sm:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#1B2230] border-2 border-[#00CED1] shadow-2xl p-2.5 sm:p-3 px-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-2.5 sm:gap-4 font-mono text-xs max-w-2xl w-[94vw] sm:w-auto transition-all duration-300">
         <div class="flex items-center space-x-2 sm:space-x-3">
             <span class="w-2 h-2 rounded-full bg-[#00CED1] animate-ping inline-block flex-shrink-0"></span>
             <span id="bulk-selected-count-badge" class="font-bold text-[#00CED1] tracking-wider text-xs sm:text-sm whitespace-nowrap">[ 0 TARGETS SELECTED ]</span>
@@ -1564,7 +950,7 @@
                     <span class="w-2.5 h-2.5 bg-[#00CED1] animate-pulse"></span>
                     <span class="text-xs font-bold text-[#00CED1] uppercase tracking-wider">// ACQUIRE TARGET IN PERSON</span>
                 </div>
-                <button onclick="closeAcquireCardModal()" class="text-[#94A3B8] hover:text-white text-base leading-none">&times;</button>
+                <button onclick="closeAcquireCardModal()" class="text-[#94A3B8] hover:text-white text-xl leading-none min-w-[40px] min-h-[40px] flex items-center justify-center">&times;</button>
             </div>
 
             <input type="hidden" id="acquire-modal-item-id">
@@ -1599,7 +985,7 @@
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="text-[10px] text-[#94A3B8] uppercase block mb-1">Price Paid ($):</label>
-                            <input type="number" step="0.01" min="0" id="acquire-price-paid-input" placeholder="0.00" class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white focus:border-[#10B981] font-mono">
+                            <input type="number" step="0.01" min="0" inputmode="decimal" id="acquire-price-paid-input" placeholder="0.00" class="w-full bg-[#10141D] border border-[#263245] px-2.5 py-1.5 text-xs text-white focus:border-[#10B981] font-mono">
                         </div>
                         <div>
                             <label class="text-[10px] text-[#94A3B8] uppercase block mb-1">Condition:</label>
@@ -1653,7 +1039,21 @@ async function trustShopifyStore(vendorPriceId, storeName, productUrl, btnEl) {
         });
         const data = await resp.json();
         if (resp.ok && data.success) {
-            window.location.reload();
+            const row = btnEl ? btnEl.closest('.flex.items-center.justify-between') : null;
+            if (row) {
+                row.classList.remove('bg-[#10141D]/60');
+                row.classList.add('bg-[#10141D]');
+                row.removeAttribute('title');
+                const badge = row.querySelector('span');
+                if (badge) {
+                    badge.textContent = 'SHOP';
+                    badge.className = 'px-1 py-0.2 bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[10px] font-bold uppercase flex-shrink-0';
+                }
+                if (btnEl) btnEl.remove();
+            }
+            if (typeof showToast === 'function') {
+                showToast(`Whitelisted "${storeName || domain}" for Discord alerts.`, 'success');
+            }
         } else {
             alert(data.error || 'Failed to trust store.');
             if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Trust'; }
@@ -1688,7 +1088,11 @@ async function blockShopifyStore(vendorPriceId, storeName, productUrl, btnEl) {
         });
         const data = await resp.json();
         if (resp.ok && data.success) {
-            window.location.reload();
+            const row = btnEl ? btnEl.closest('.flex.items-center.justify-between') : null;
+            if (row) row.remove();
+            if (typeof showToast === 'function') {
+                showToast(`Blacklisted "${storeName || domain}" — hidden from scans.`, 'info');
+            }
         } else {
             alert(data.error || 'Failed to blacklist store.');
             if (btnEl) { btnEl.disabled = false; btnEl.textContent = 'Block'; }

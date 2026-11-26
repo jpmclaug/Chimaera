@@ -29,17 +29,19 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cards.scryfall.io" crossorigin>
 
-    <!-- Google Fonts (Non-Blocking Link instead of CSS @import) -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@600;700;800;900&display=swap">
+    <!-- Google Fonts (Non-Blocking Link + Trimmed Weights) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@700;800;900&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Montserrat:wght@700;800;900&display=swap"></noscript>
 
     <!-- Pre-Compiled Minified Tailwind CSS & Tactical Theme Stylesheet -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    {% block head_extra %}{% endblock %}
 </head>
-<body class="bg-[#10141D] text-[#F1F5F9] min-h-screen flex flex-col font-sans text-sm antialiased selection:bg-[#DC143C] selection:text-white overflow-x-hidden">
+<body class="bg-[#10141D] text-[#F1F5F9] min-h-screen min-h-[100dvh] flex flex-col font-sans text-sm antialiased selection:bg-[#DC143C] selection:text-white overflow-x-hidden">
 
     <!-- Top Tactical Navigation -->
-    <nav class="bg-[#1B2230] border-b border-[#263245] sticky top-0 z-40">
+    <nav class="bg-[#1B2230] border-b border-[#263245] sticky top-0 z-40 safe-area-top">
         <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-14 sm:h-16">
                 <!-- Brand / Logo with Tactical Dropdown Trigger -->
@@ -47,7 +49,7 @@
                     <div class="relative">
                         <button onclick="toggleLogoMenu()" id="btn-logo-menu" class="flex items-center space-x-2 sm:space-x-3 group focus:outline-none text-left p-1 -ml-1 border border-transparent hover:border-[#263245] transition rounded-none" title="Open Chimaera Tactical Menu">
                             <div class="h-8 w-11 sm:h-10 sm:w-14 bg-[#10141D] border border-[#263245] p-0.5 flex items-center justify-center overflow-hidden transition group-hover:border-[#00CED1] flex-shrink-0">
-                                <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
+                                <img src="{{ url_for('static', filename='img/chimaera_logo_sm.webp') }}" width="56" height="31" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
                             </div>
                             <div class="min-w-0 flex items-center space-x-1.5">
                                 <span class="font-heading font-black text-base sm:text-lg tracking-widest text-white uppercase leading-none">CHIMAERA</span>
@@ -314,6 +316,11 @@
             <!-- Right Actions: Command Palette, Refresh, Acquire & Mobile Menu -->
             <div class="flex items-center space-x-1.5 sm:space-x-2.5 flex-shrink-0">
                 {% if current_user %}
+                <button type="button" onclick="openCommandPalette()" id="btn-command-palette-mobile" class="sm:hidden btn-bridge h-9 w-9 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1] flex items-center justify-center flex-shrink-0" title="Open Tactical Command Palette">
+                    <svg class="w-4 h-4 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                </button>
                 <button type="button" onclick="openCommandPalette()" id="btn-command-palette" class="btn-bridge h-9 px-2.5 text-xs hidden sm:flex items-center space-x-1.5 text-[#94A3B8] hover:text-[#00CED1] hover:border-[#00CED1]" title="Open Tactical Command Palette (Ctrl+K)">
                     <svg class="w-3.5 h-3.5 text-[#00CED1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
@@ -364,12 +371,12 @@
     <!-- Mobile Tactical Navigation Slide-Over Drawer -->
     <div id="mobile-nav-backdrop" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden opacity-0 mobile-drawer-backdrop md:hidden" onclick="closeMobileDrawer()"></div>
 
-    <div id="mobile-nav-drawer" class="fixed top-0 left-0 bottom-0 w-[85vw] max-w-sm bg-[#1B2230] border-r-2 border-[#263245] shadow-2xl z-50 transform -translate-x-full mobile-drawer-panel flex flex-col md:hidden text-xs font-mono safe-area-bottom">
+    <div id="mobile-nav-drawer" class="fixed top-0 left-0 bottom-0 w-[85vw] max-w-sm bg-[#1B2230] border-r-2 border-[#263245] shadow-2xl z-50 transform -translate-x-full mobile-drawer-panel flex flex-col md:hidden text-xs font-mono safe-area-top safe-area-bottom">
         <!-- Drawer Header -->
         <div class="p-4 bg-[#10141D] border-b border-[#263245] flex items-center justify-between flex-shrink-0">
             <div class="flex items-center space-x-2.5">
                 <div class="h-8 w-11 bg-[#10141D] border border-[#00CED1] p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    <img src="{{ url_for('static', filename='img/chimaera_logo.jpg') }}" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
+                    <img src="{{ url_for('static', filename='img/chimaera_logo_sm.webp') }}" width="44" height="24" alt="Chimaera Sigil" class="h-full w-full object-contain filter contrast-125">
                 </div>
                 <div>
                     <span class="font-heading font-black text-sm tracking-widest text-white uppercase block leading-none">CHIMAERA</span>
@@ -516,6 +523,10 @@
                 <div>
                     <div class="text-[9px] text-[#64748B] font-bold tracking-wider uppercase mb-1">// 06: SYSTEM & OPERATIONS</div>
                     <div class="space-y-1 pl-1.5 border-l border-[#263245]">
+                        <a href="/settings" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'settings' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
+                            <span class="font-bold">Settings Hub</span>
+                            <span class="text-[#00CED1]">&rarr;</span>
+                        </a>
                         <a href="/system-overview" onclick="closeMobileDrawer()" class="flex items-center justify-between p-2 hover:bg-[#10141D] border {% if active_tab == 'system_overview' %}border-[#00CED1] text-white bg-[#10141D]{% else %}border-transparent text-[#94A3B8] hover:text-white{% endif %} transition">
                             <span class="font-bold">Field Manual & Health</span>
                             <span class="text-[#00CED1]">&rarr;</span>
@@ -750,7 +761,7 @@
     {% endif %}
 
     <!-- Toast Notification Container -->
-    <div id="toast-container" class="fixed bottom-20 md:bottom-5 right-5 z-[60] flex flex-col space-y-2 pointer-events-none" style="z-index: 9999;"></div>
+    <div id="toast-container" class="fixed bottom-20 md:bottom-5 left-3 right-3 sm:left-auto sm:right-5 z-[60] flex flex-col space-y-2 pointer-events-none" style="z-index: 9999;"></div>
 
     <!-- Add Card Modal (Target Registration) -->
     <div id="modal-add-card" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
@@ -760,25 +771,25 @@
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">PROTOCOL // 0x4A</span>
                     <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Target Registration Protocol</h3>
                 </div>
-                <button onclick="closeAddCardModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+                <button onclick="closeAddCardModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono min-w-[40px] min-h-[40px] flex items-center justify-center">&times;</button>
             </div>
 
             <!-- Scrollable Modal Body -->
-            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 pb-28 modal-scrollable">
+            <div class="space-y-3 sm:space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 -mr-1 pb-40 modal-scrollable">
                 <!-- Autocomplete Search -->
                 <div>
                     <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Card Nomenclature / Search Query</label>
                     <div class="relative flex items-center">
                         <input type="text" id="card-search-input" placeholder="e.g. Rhystic Study, Force of Will, Black Lotus..." 
                             class="w-full bg-[#10141D] border border-[#263245] pl-3.5 pr-24 py-2.5 text-sm text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono"
-                            autocomplete="off">
+                            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
                         <button type="button" id="btn-search-card" class="absolute right-1 top-1 bottom-1 px-3 bg-[#222B3D] hover:bg-[#00CED1] hover:text-[#10141D] text-[#00CED1] border border-[#3D4F6B] font-mono text-xs font-bold transition flex items-center space-x-1 uppercase" title="Search Scryfall Prints">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                             </svg>
                             <span>Search</span>
                         </button>
-                        <div id="autocomplete-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#10141D] border border-[#3D4F6B] max-h-56 overflow-y-auto hidden z-50 shadow-2xl"></div>
+                        <div id="autocomplete-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#10141D] border border-[#3D4F6B] max-h-56 overflow-y-auto hidden z-[60] shadow-2xl"></div>
                     </div>
                 </div>
 
@@ -804,7 +815,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold ($ USD)</label>
-                            <input type="number" id="card-target-price-input" step="0.01" min="0" placeholder="e.g. 15.00" 
+                            <input type="number" id="card-target-price-input" step="0.01" min="0" inputmode="decimal" placeholder="e.g. 15.00" 
                                 class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
                         </div>
                     </div>
@@ -915,7 +926,7 @@
                     </div>
                     <h3 class="text-base font-heading font-black text-white uppercase tracking-wider mt-0.5">Bulk Target Acquisition Protocol</h3>
                 </div>
-                <button onclick="closeBulkAddModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+                <button onclick="closeBulkAddModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono min-w-[40px] min-h-[40px] flex items-center justify-center">&times;</button>
             </div>
 
             <!-- Scrollable Modal Body -->
@@ -927,8 +938,9 @@
                         <span id="bulk-counter-badge" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">[ 0 Targets Identified ]</span>
                     </div>
                     <textarea id="bulk-cards-input" rows="4" placeholder="Simic Growth Chamber; Tangled Islet; Rimewood Falls; Evolving Wilds; Lush Oasis; Thornwood Falls; Lonely Sandbar; Tranquil Thicket; Bant Panorama"
+                        autocorrect="off" autocapitalize="off" spellcheck="false"
                         class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono leading-relaxed"
-                        oninput="updateBulkCount()"></textarea>
+                        oninput="debouncedUpdateBulkCount()"></textarea>
                     <p class="text-[11px] text-[#64748B] font-mono mt-1">
                         Separate card names using semicolons (<code class="text-[#00CED1] font-bold">;</code>) or line breaks. Commas inside card names (e.g. <em>Omnath, Locus of Creation</em>) are fully preserved.
                     </p>
@@ -961,7 +973,7 @@
                 <!-- Custom Target Price Input (hidden unless 'custom' selected) -->
                 <div id="bulk-custom-price-container" class="hidden bg-[#10141D] p-3 border border-[#263245]">
                     <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Fixed Target Threshold For All Targets ($ USD)</label>
-                    <input type="number" id="bulk-custom-target-input" step="0.01" min="0" placeholder="e.g. 5.00"
+                    <input type="number" id="bulk-custom-target-input" step="0.01" min="0" inputmode="decimal" placeholder="e.g. 5.00"
                         class="w-full bg-[#1B2230] border border-[#263245] px-3 py-2 text-xs text-white focus:border-[#00CED1] font-mono">
                 </div>
 
@@ -1063,7 +1075,7 @@
                             <span id="tcg-active-orders-badge" class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 px-1 text-[9px] font-bold">0</span>
                         </button>
                     </div>
-                    <button onclick="closeTcgPurchaseModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono pl-1">&times;</button>
+                    <button onclick="closeTcgPurchaseModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono min-w-[40px] min-h-[40px] flex items-center justify-center">&times;</button>
                 </div>
             </div>
 
@@ -1082,12 +1094,12 @@
                                     Add cards to Collection Binder &amp; Track Order
                                 </label>
                             </div>
-                            <div class="flex items-center space-x-2 text-xs font-mono">
+                            <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
                                 <select id="tcg-inventory-mode-select" class="bg-[#1B2230] border border-[#263245] text-white px-2 py-1 text-[11px] focus:border-[#00CED1]">
                                     <option value="ordered" selected>🚚 Status: "Ordered" (In Transit — Auto-move when complete)</option>
                                     <option value="completed">✅ Status: "Completed" (Already Delivered — Add directly to Binder)</option>
                                 </select>
-                                <input type="text" id="tcg-target-binder-input" value="Acquired" placeholder="Target Binder (e.g. Acquired)" title="Destination binder when order is marked complete" class="bg-[#1B2230] border border-[#263245] text-white px-2 py-1 text-[11px] w-32 focus:border-[#00CED1]">
+                                <input type="text" id="tcg-target-binder-input" value="Acquired" placeholder="Target Binder (e.g. Acquired)" title="Destination binder when order is marked complete" class="bg-[#1B2230] border border-[#263245] text-white px-2 py-1 text-[11px] w-full sm:w-32 focus:border-[#00CED1]">
                             </div>
                         </div>
                     </div>
@@ -1150,8 +1162,9 @@
                             <span id="tcg-counter-badge" class="text-[11px] font-mono text-[#94A3B8] font-bold bg-[#10141D] px-2 py-0.5 border border-[#263245]">[ Ready ]</span>
                         </div>
                         <textarea id="tcg-purchase-input" rows="5" placeholder="Qty	Description&#10;1	Magic - Aether Revolt - Metallic Rebuke - Near Mint&#10;1	Magic - Commander Legends: Battle for Baldur's Gate - Abdel Adrian, Gorion's Ward (Showcase) - Near Mint..."
+                            autocorrect="off" autocapitalize="off" spellcheck="false"
                             class="w-full bg-[#10141D] border border-[#263245] p-3 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono leading-relaxed"
-                            oninput="onTcgInputChange()"></textarea>
+                            oninput="debouncedOnTcgInputChange()"></textarea>
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2">
                             <p class="text-[11px] text-[#64748B] font-mono">
                                 Automatically removes any matching cards from your Watchlist and logs packages to your Collection Binder.
@@ -1223,7 +1236,7 @@
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">RECALIBRATE</span>
                     <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider">Edit Target Threshold, Tag & Alerts</h3>
                 </div>
-                <button onclick="closeEditTargetModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+                <button onclick="closeEditTargetModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono min-w-[40px] min-h-[40px] flex items-center justify-center">&times;</button>
             </div>
             <input type="hidden" id="edit-target-item-id">
             
@@ -1237,7 +1250,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-bold text-[#94A3B8] uppercase tracking-wider mb-1.5">Target Threshold Price ($ USD)</label>
-                        <input type="number" id="edit-target-price-input" step="0.01" min="0" placeholder="Empty = no target"
+                        <input type="number" id="edit-target-price-input" step="0.01" min="0" inputmode="decimal" placeholder="Empty = no target"
                             class="w-full bg-[#10141D] border border-[#263245] px-3.5 py-2 text-sm text-white focus:border-[#00CED1] font-mono">
                     </div>
                     <div>
@@ -1339,7 +1352,7 @@
                     </div>
                     <h3 class="text-sm font-heading font-black text-white uppercase tracking-wider mt-0.5">Bulk Target Tag Assignment</h3>
                 </div>
-                <button onclick="closeBulkTagModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+                <button onclick="closeBulkTagModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono min-w-[40px] min-h-[40px] flex items-center justify-center">&times;</button>
             </div>
 
             <!-- Scrollable Modal Body -->
@@ -1400,7 +1413,7 @@
                     <span class="text-xs font-mono text-[#00CED1] uppercase tracking-widest block font-bold">CONFIG // 0x7E</span>
                     <h3 class="text-base font-heading font-black text-white uppercase tracking-wider">Surveillance & Alert Settings</h3>
                 </div>
-                <button onclick="closeCadenceModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono">&times;</button>
+                <button onclick="closeCadenceModal()" class="text-[#94A3B8] hover:text-white text-2xl leading-none font-mono min-w-[40px] min-h-[40px] flex items-center justify-center">&times;</button>
             </div>
 
             <!-- Scrollable Modal Body -->
@@ -1534,7 +1547,7 @@
                         <span id="modal-card-image-finish" class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-[10px] px-2 py-0.5 font-mono uppercase font-semibold"></span>
                     </div>
                 </div>
-                <button type="button" onclick="closeCardImageModal()" class="text-[#94A3B8] hover:text-[#FF3358] text-2xl leading-none font-mono p-1 transition" title="Close (Esc)">&times;</button>
+                <button type="button" onclick="closeCardImageModal()" class="text-[#94A3B8] hover:text-[#FF3358] text-2xl leading-none font-mono min-w-[40px] min-h-[40px] flex items-center justify-center transition" title="Close (Esc)">&times;</button>
             </div>
 
             <!-- Modal Body: Enlarged Image -->
@@ -1557,7 +1570,7 @@
 
     <!-- Global Tactical Command Palette Modal (Ctrl+K) -->
     <div id="modal-command-palette" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-start justify-center pt-16 sm:pt-24 p-3 sm:p-4 overflow-y-auto" onclick="if(event.target === this) closeCommandPalette()">
-        <div class="bg-[#1B2230] border-2 border-[#00CED1] max-w-lg w-full shadow-2xl tactical-corners flex flex-col max-h-[80vh]" onclick="event.stopPropagation()">
+        <div class="bg-[#1B2230] border-2 border-[#00CED1] max-w-lg w-full shadow-2xl tactical-corners flex flex-col max-h-[80vh] max-h-[80dvh]" onclick="event.stopPropagation()">
             <!-- Search Input Header -->
             <div class="p-3 bg-[#10141D] border-b border-[#263245] flex items-center space-x-2.5">
                 <svg class="w-4 h-4 text-[#00CED1] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1565,7 +1578,7 @@
                 </svg>
                 <input type="text" id="command-palette-input" placeholder="JUMP TO SECTOR OR EXECUTE PROTOCOL (TYPE TO FILTER)..."
                     class="w-full bg-transparent border-none text-xs font-mono text-white placeholder-[#64748B] focus:outline-none focus:ring-0 uppercase tracking-wider"
-                    autocomplete="off">
+                    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
                 <button type="button" onclick="closeCommandPalette()" class="text-[10px] font-mono bg-[#1B2230] border border-[#263245] px-1.5 py-0.5 text-[#94A3B8] hover:text-white">ESC</button>
             </div>
 

@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import re
 import secrets
 import threading
 import time
 import urllib.parse
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import wraps
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Union, Tuple, Set
 from flask import (
     Flask,
@@ -101,12 +102,27 @@ logger = logging.getLogger(__name__)
 _deck_tactics_locks = defaultdict(threading.Lock)
 
 
+_SCHEMA_MIGRATION_VERSION = "2026-11-perf-v1"
+
+
 def _migrate_db_schema(app):
     """Ensures user, allowed_email, watchlist_item, and system_setting tables are configured across dialects."""
     with app.app_context():
         try:
+            # Fast-path check: skip redundant DDL statements when schema version is already current
+            skip_ddl = False
+            try:
+                with db.engine.connect() as ver_conn:
+                    ver_row = ver_conn.execute(
+                        db.text("SELECT value FROM system_setting WHERE key = 'schema_migration_version'")
+                    ).fetchone()
+                    if ver_row and ver_row[0] == _SCHEMA_MIGRATION_VERSION:
+                        skip_ddl = True
+            except Exception:
+                skip_ddl = False
+
             dialect = db.engine.dialect.name
-            if dialect == "sqlite":
+            if not skip_ddl and dialect == "sqlite":
                 with db.engine.connect() as conn:
                     result = conn.execute(db.text("SELECT sql FROM sqlite_master WHERE type='table' AND name='watchlist_item'"))
                     row = result.fetchone()
@@ -404,9 +420,15 @@ def _migrate_db_schema(app):
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_user_id ON tcgplayer_order (user_id)"))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_status ON tcgplayer_order (status)"))
                     conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_number ON tcgplayer_order (order_number)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_vendor_price_watchlist_id ON vendor_price (watchlist_id)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_vendor_price_watchlist_vendor ON vendor_price (watchlist_id, vendor_name)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_microcenter_item_store_id ON microcenter_item (store_id)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_mc_history_item_recorded ON microcenter_history (item_id, recorded_at)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_activity_user_created ON activity_log (user_id, created_at)"))
+                    conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_activity_action_created ON activity_log (action, created_at)"))
                     conn.commit()
 
-            elif dialect in ("postgresql", "postgres"):
+            elif not skip_ddl and dialect in ("postgresql", "postgres"):
                 try:
                     with db.engine.connect() as conn:
                         try:
@@ -600,6 +622,12 @@ def _migrate_db_schema(app):
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_user_id ON tcgplayer_order (user_id)"))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_status ON tcgplayer_order (status)"))
                         conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_tcg_order_number ON tcgplayer_order (order_number)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_vendor_price_watchlist_id ON vendor_price (watchlist_id)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_vendor_price_watchlist_vendor ON vendor_price (watchlist_id, vendor_name)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS ix_microcenter_item_store_id ON microcenter_item (store_id)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_mc_history_item_recorded ON microcenter_history (item_id, recorded_at)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_activity_user_created ON activity_log (user_id, created_at)"))
+                        conn.execute(db.text("CREATE INDEX IF NOT EXISTS idx_activity_action_created ON activity_log (action, created_at)"))
 
                         # One-time backfill of tactics_fingerprints for existing decks with tactics
                         try:
@@ -680,6 +708,12 @@ def _migrate_db_schema(app):
                 except Exception as model_mig_err:
                     logger.debug(f"Gemini default model migration check skipped: {model_mig_err}")
 
+            if not skip_ddl:
+                try:
+                    SystemSetting.set_val("schema_migration_version", _SCHEMA_MIGRATION_VERSION)
+                except Exception as ver_err:
+                    logger.debug(f"Could not persist schema_migration_version: {ver_err}")
+
         except Exception as e:
             logger.warning(f"Database schema migration check skipped or completed with message: {e}")
 
@@ -718,6 +752,7 @@ def create_app(test_config=None):
     app = Flask(__name__)
     app.config.from_object(Config)
     app.config.setdefault("SEND_FILE_MAX_AGE_DEFAULT", 31536000)
+    app.config.setdefault("COMPRESS_BR_LEVEL", 2)
     app.config.setdefault(
         "COMPRESS_MIMETYPES",
         [
@@ -727,6 +762,7 @@ def create_app(test_config=None):
             "application/json",
             "application/javascript",
             "text/javascript",
+            "application/manifest+json",
             "image/svg+xml",
         ],
     )
@@ -786,6 +822,47 @@ def create_app(test_config=None):
             return forwarded.split(",")[0].strip()
         return req.remote_addr or "127.0.0.1"
 
+    _activity_queue: queue.Queue = queue.Queue(maxsize=500)
+
+    def _activity_flush_worker():
+        """Background daemon flushing non-blocking PAGE_VIEW activity entries in micro-batches."""
+        while True:
+            batch = []
+            try:
+                first = _activity_queue.get(timeout=1.0)
+                batch.append(first)
+                while len(batch) < 25:
+                    try:
+                        batch.append(_activity_queue.get_nowait())
+                    except queue.Empty:
+                        break
+            except queue.Empty:
+                continue
+
+            if not batch:
+                continue
+            try:
+                with app.app_context():
+                    for item in batch:
+                        db.session.add(ActivityLog(**item))
+                    db.session.commit()
+            except Exception as flush_err:
+                logger.debug(f"Background activity log flush failed: {flush_err}")
+                try:
+                    with app.app_context():
+                        db.session.rollback()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    with app.app_context():
+                        db.session.remove()
+                except Exception:
+                    pass
+
+    if not app.config.get("TESTING"):
+        threading.Thread(target=_activity_flush_worker, daemon=True, name="chimaera-activity-log").start()
+
     def log_activity(
         action: str,
         details: str | None = None,
@@ -797,6 +874,7 @@ def create_app(test_config=None):
     ) -> ActivityLog | None:
         """
         Records an activity or security event into the audit log.
+        Offloads read-only PAGE_VIEW writes to a non-blocking queue in production.
         Fails safely without breaking core application flow.
         """
         try:
@@ -815,6 +893,21 @@ def create_app(test_config=None):
 
             final_user_id = user.id if user else user_id
             final_email = email or (user.email if user else None)
+
+            if action == "PAGE_VIEW" and not app.config.get("TESTING"):
+                try:
+                    _activity_queue.put_nowait({
+                        "user_id": final_user_id,
+                        "user_email": final_email,
+                        "ip_address": ip,
+                        "action": action,
+                        "endpoint": endpoint,
+                        "details": details,
+                        "created_at": utc_now(),
+                    })
+                except queue.Full:
+                    pass
+                return None
 
             entry = ActivityLog(
                 user_id=final_user_id,
@@ -1314,7 +1407,11 @@ def create_app(test_config=None):
         current_admin = get_current_user()
         allowed_emails = AllowedEmail.query.order_by(AllowedEmail.created_at.desc()).all()
         users = User.query.order_by(User.created_at.desc()).all()
-        all_cards = WatchlistItem.query.order_by(WatchlistItem.created_at.desc()).all()
+        all_cards = (
+            WatchlistItem.query.options(db.joinedload(WatchlistItem.user))
+            .order_by(WatchlistItem.created_at.desc())
+            .all()
+        )
         failed_logins = (
             ActivityLog.query.filter_by(action="LOGIN_FAILED")
             .order_by(ActivityLog.created_at.desc())
@@ -1326,11 +1423,39 @@ def create_app(test_config=None):
             .limit(50)
             .all()
         )
+
+        # Pre-aggregate per-user card counts and activity telemetry in 2 GROUP BY queries (zero N+1)
+        card_counts_by_user = Counter(c.user_id for c in all_cards if c.user_id)
+        since_week = utc_now() - timedelta(days=7)
+        week_usage_rows = (
+            db.session.query(ActivityLog.user_id, db.func.count(ActivityLog.id))
+            .filter(ActivityLog.user_id.isnot(None), ActivityLog.created_at >= since_week)
+            .group_by(ActivityLog.user_id)
+            .all()
+        )
+        week_usage_map = {uid: int(cnt or 0) for uid, cnt in week_usage_rows}
+        last_active_rows = (
+            db.session.query(ActivityLog.user_id, db.func.max(ActivityLog.created_at))
+            .filter(ActivityLog.user_id.isnot(None))
+            .group_by(ActivityLog.user_id)
+            .all()
+        )
+        last_active_map = {uid: ts for uid, ts in last_active_rows}
+        user_stats = {
+            u.id: {
+                "card_count": card_counts_by_user.get(u.id, 0),
+                "usage_past_week": week_usage_map.get(u.id, 0),
+                "last_active": last_active_map.get(u.id) or u.last_login,
+            }
+            for u in users
+        }
+
         log_activity("PAGE_VIEW", details="Accessed Command Clearance Admin Console", user=current_admin)
         return render_template(
             "admin.html",
             allowed_emails=allowed_emails,
             users=users,
+            user_stats=user_stats,
             all_cards=all_cards,
             failed_logins=failed_logins,
             recent_activities=recent_activities,
@@ -1459,13 +1584,24 @@ def create_app(test_config=None):
     def admin_get_all_cards():
         """Returns JSON list of all watchlist targets across all users."""
         user_id_filter = request.args.get("user_id")
-        query = WatchlistItem.query.order_by(WatchlistItem.created_at.desc())
+        query = WatchlistItem.query.options(db.joinedload(WatchlistItem.user)).order_by(WatchlistItem.created_at.desc())
         if user_id_filter:
             try:
                 query = query.filter_by(user_id=int(user_id_filter))
             except ValueError:
                 pass
         items = query.all()
+        # Batch-enrich binder ownership per user to avoid N full-inventory SQL scans in item.to_dict()
+        items_by_user: dict[int, list[WatchlistItem]] = defaultdict(list)
+        for item in items:
+            if item.user_id:
+                items_by_user[item.user_id].append(item)
+            else:
+                item.in_binder = False
+                item.binder_count = 0
+                item.binder_names = []
+        for uid, u_items in items_by_user.items():
+            enrich_watchlist_items_with_binder_status(u_items, uid)
         return jsonify({
             "total": len(items),
             "cards": [
@@ -1517,6 +1653,7 @@ def create_app(test_config=None):
             os.path.join(app.root_path, "static"),
             "manifest.json",
             mimetype="application/manifest+json",
+            max_age=3600,
         )
 
     @app.route("/favicon.ico")
@@ -1526,6 +1663,7 @@ def create_app(test_config=None):
             os.path.join(app.root_path, "static", "img"),
             "favicon.ico",
             mimetype="image/vnd.microsoft.icon",
+            max_age=3600,
         )
 
     @app.route("/apple-touch-icon.png")
@@ -1536,6 +1674,7 @@ def create_app(test_config=None):
             os.path.join(app.root_path, "static", "img"),
             "apple-touch-icon.png",
             mimetype="image/png",
+            max_age=3600,
         )
 
     def enrich_watchlist_items_with_binder_status(watchlist_items, user_id):
@@ -1581,14 +1720,20 @@ def create_app(test_config=None):
                 item.binder_names = []
 
         # In-Person metadata enrichment (type_line, colors, color_identity, mana_cost, cmc)
+        # Skip sealed products so they never trigger infinite Scryfall /cards/collection calls.
         try:
-            missing_meta = [item for item in watchlist_items if not item.type_line or item.color_identity is None]
+            missing_meta = [
+                item for item in watchlist_items
+                if not item.is_sealed and (not item.type_line or item.color_identity is None)
+            ]
             if missing_meta:
                 names_to_fetch = list({item.name for item in missing_meta if item.name})
                 found_map = {}
+                collection_ok = False
                 if names_to_fetch:
                     try:
                         found_map, _ = scryfall_provider.get_cards_collection(names_to_fetch, fallback_named=False)
+                        collection_ok = True
                     except Exception as ex:
                         logger.debug(f"Watchlist metadata collection enrichment skipped: {ex}")
 
@@ -1609,6 +1754,13 @@ def create_app(test_config=None):
                         if meta.get("cmc") is not None:
                             item.cmc = meta.get("cmc")
                         updated_any = True
+                    elif collection_ok:
+                        # Mark unresolvable card names so they don't re-query Scryfall on every GET
+                        if item.color_identity is None:
+                            item.color_identity = ""
+                        if not item.type_line:
+                            item.type_line = "Unknown"
+                        updated_any = True
                 if updated_any:
                     try:
                         db.session.commit()
@@ -1619,6 +1771,20 @@ def create_app(test_config=None):
             logger.debug(f"Error enriching in-person card metadata: {meta_err}")
 
         return watchlist_items
+
+    def _serialize_watchlist_view_item(item):
+        data = item.to_dict(include_vendor_details=True)
+        best = item.best_vendor
+        data["best_vendor_obj"] = best.to_dict() if best else None
+        mm_vp = item.mm_vendor_price
+        ck_vp = item.ck_vendor_price
+        scg_vp = item.scg_vendor_price
+        csi_vp = item.csi_vendor_price
+        data["mm_stock_price"] = mm_vp.price if mm_vp else None
+        data["ck_stock_price"] = ck_vp.price if ck_vp else None
+        data["scg_stock_price"] = scg_vp.price if scg_vp else None
+        data["csi_stock_price"] = csi_vp.price if csi_vp else None
+        return data
 
     @app.route("/")
     @login_required
@@ -1642,11 +1808,13 @@ def create_app(test_config=None):
         user_tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
         last_poll_time = SystemSetting.get_val("last_poll_time")
         recent_poll_times = SystemSetting.get_recent_successful_runs("registry", limit=3)
+        watchlist_items_json = [_serialize_watchlist_view_item(item) for item in items]
         log_activity("PAGE_VIEW", details="Accessed Registry Dashboard", user=user)
 
         return render_template(
             "index.html",
             items=items,
+            watchlist_items_json=watchlist_items_json,
             total_items=total_items,
             deals_count=deals_count,
             total_target_value=total_target_value,
@@ -1711,11 +1879,13 @@ def create_app(test_config=None):
         total_savings = sum(item.savings_amount for item in deal_items)
         user_tags = sorted(list({item.tag.strip() for item in all_items if item.tag and item.tag.strip()}))
         watchlist_dropdown_items = sorted(all_items, key=lambda x: (x.name or "").lower())
+        deals_items_json = [_serialize_watchlist_view_item(item) for item in deal_items]
         log_activity("PAGE_VIEW", details="Accessed Priority Deals View", user=user)
 
         return render_template(
             "deals.html",
             deal_items=deal_items,
+            deals_items_json=deals_items_json,
             deals_count=len(deal_items),
             total_savings=total_savings,
             user_tags=user_tags,
@@ -2338,6 +2508,7 @@ def create_app(test_config=None):
             user=user,
         )
 
+        enrich_watchlist_items_with_binder_status(added + updated, user.id)
         return jsonify({
             "success": True,
             "addedCount": len(added),
@@ -2359,8 +2530,13 @@ def create_app(test_config=None):
     def buylist():
         """Mighty Meeple Live Buylist & Trade-in Scanner view."""
         user = get_current_user()
-        items = WatchlistItem.query.filter_by(user_id=user.id).all()
-        user_tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
+        tag_rows = (
+            db.session.query(WatchlistItem.tag)
+            .filter(WatchlistItem.user_id == user.id, WatchlistItem.tag.isnot(None))
+            .distinct()
+            .all()
+        )
+        user_tags = sorted({t[0].strip() for t in tag_rows if t[0] and t[0].strip()})
         supported_games = mightymeeple_provider.get_supported_games()
         log_activity("PAGE_VIEW", details="Accessed Mighty Meeple Buylist Scanner", user=user)
 
@@ -2371,6 +2547,71 @@ def create_app(test_config=None):
             active_tab="buylist",
         )
 
+    def _batch_compute_mc_day_over_day(items: list[MicrocenterItem]) -> dict[int, dict]:
+        """Pre-computes day-over-day price/stock diffs for all items in a single SQL query."""
+        default_dod = lambda it: {
+            "has_baseline": False,
+            "baseline_date": None,
+            "baseline_price": it.current_price,
+            "price_delta": 0.0,
+            "price_delta_percent": 0.0,
+            "baseline_stock": it.stock_count,
+            "stock_delta": 0,
+        }
+        item_ids = [it.id for it in items if it.id is not None]
+        if not item_ids:
+            return {}
+
+        now = datetime.now(timezone.utc)
+        one_day_ago = now - timedelta(hours=24)
+
+        rows = (
+            db.session.query(
+                MicrocenterHistory.item_id,
+                MicrocenterHistory.recorded_at,
+                MicrocenterHistory.price,
+                MicrocenterHistory.stock_count,
+            )
+            .filter(MicrocenterHistory.item_id.in_(item_ids))
+            .order_by(MicrocenterHistory.item_id.asc(), MicrocenterHistory.recorded_at.asc())
+            .all()
+        )
+
+        # For each item_id: track oldest entry and newest entry <= one_day_ago
+        oldest_by_item: dict[int, tuple] = {}
+        past_24h_by_item: dict[int, tuple] = {}
+        for iid, rec_at, price, stock_cnt in rows:
+            if not rec_at:
+                continue
+            rec_utc = rec_at if rec_at.tzinfo is not None else rec_at.replace(tzinfo=timezone.utc)
+            if iid not in oldest_by_item:
+                oldest_by_item[iid] = (rec_at, rec_utc, price, stock_cnt)
+            if rec_utc <= one_day_ago:
+                past_24h_by_item[iid] = (rec_at, rec_utc, price, stock_cnt)
+
+        dod_map: dict[int, dict] = {}
+        for it in items:
+            chosen = past_24h_by_item.get(it.id) or oldest_by_item.get(it.id)
+            if chosen:
+                rec_at, rec_utc, past_price, past_stock = chosen
+                if (now - rec_utc).total_seconds() > 3600:
+                    price_delta = round(it.current_price - past_price, 2)
+                    stock_delta = 0
+                    if it.stock_count is not None and past_stock is not None:
+                        stock_delta = it.stock_count - past_stock
+                    dod_map[it.id] = {
+                        "has_baseline": True,
+                        "baseline_date": rec_at.isoformat(),
+                        "baseline_price": past_price,
+                        "price_delta": price_delta,
+                        "price_delta_percent": round((price_delta / past_price) * 100.0, 1) if past_price > 0 else 0.0,
+                        "baseline_stock": past_stock,
+                        "stock_delta": stock_delta,
+                    }
+                    continue
+            dod_map[it.id] = default_dod(it)
+        return dod_map
+
     @app.route("/microcenter")
     @login_required
     def microcenter():
@@ -2379,13 +2620,14 @@ def create_app(test_config=None):
         store_id = Config.MICROCENTER_STORE_ID
         store_name = Config.MICROCENTER_STORE_NAME
 
-        # Aggregate statistics
-        total_items = MicrocenterItem.query.filter_by(store_id=store_id).count()
-        in_stock_items = MicrocenterItem.query.filter_by(store_id=store_id, in_stock=True).count()
+        # Single-query aggregate statistics
         all_items = MicrocenterItem.query.filter_by(store_id=store_id).all()
+        total_items = len(all_items)
+        in_stock_items = sum(1 for item in all_items if item.in_stock)
         deals_count = sum(1 for item in all_items if item.is_deal)
-        last_scan_time = SystemSetting.get_val("microcenter_last_scan_time")
-        last_scan_status = SystemSetting.get_val("microcenter_last_scan_status")
+        mc_settings = SystemSetting.get_many(["microcenter_last_scan_time", "microcenter_last_scan_status"])
+        last_scan_time = mc_settings.get("microcenter_last_scan_time")
+        last_scan_status = mc_settings.get("microcenter_last_scan_status")
         recent_scan_times = SystemSetting.get_recent_successful_runs("microcenter", limit=3)
 
         log_activity("PAGE_VIEW", details=f"Accessed MicroCenter {store_name} Surveillance Dashboard", user=user)
@@ -2441,6 +2683,17 @@ def create_app(test_config=None):
 
         items = query.all()
 
+        # Reuse store items when unfiltered instead of firing 3 extra SQL queries
+        if not search_query and filter_mode in ("all", "deals"):
+            total_tracked = len(items)
+            in_stock_tracked = sum(1 for item in items if item.in_stock)
+            deals_tracked = sum(1 for item in items if item.is_deal)
+        else:
+            store_items = MicrocenterItem.query.filter_by(store_id=store_id).all()
+            total_tracked = len(store_items)
+            in_stock_tracked = sum(1 for item in store_items if item.in_stock)
+            deals_tracked = sum(1 for item in store_items if item.is_deal)
+
         if filter_mode == "deals":
             items = [item for item in items if item.is_deal]
 
@@ -2459,19 +2712,18 @@ def create_app(test_config=None):
             # Default: Deals and in-stock first, then by name
             items.sort(key=lambda x: (not x.is_deal, not x.in_stock, x.name.lower()))
 
-        total_tracked = MicrocenterItem.query.filter_by(store_id=store_id).count()
-        in_stock_tracked = MicrocenterItem.query.filter_by(store_id=store_id, in_stock=True).count()
-        deals_tracked = sum(1 for item in MicrocenterItem.query.filter_by(store_id=store_id).all() if item.is_deal)
+        dod_map = _batch_compute_mc_day_over_day(items)
+        mc_settings = SystemSetting.get_many(["microcenter_last_scan_time", "microcenter_last_scan_status"])
 
         return jsonify({
-            "items": [item.to_dict(include_history=False) for item in items],
+            "items": [item.to_dict(include_history=False, day_over_day=dod_map.get(item.id)) for item in items],
             "count": len(items),
             "total_tracked": total_tracked,
             "in_stock_tracked": in_stock_tracked,
             "deals_tracked": deals_tracked,
-            "last_scan_time": SystemSetting.get_val("microcenter_last_scan_time"),
+            "last_scan_time": mc_settings.get("microcenter_last_scan_time"),
             "recent_scan_times": SystemSetting.get_recent_successful_runs("microcenter", limit=3),
-            "last_scan_status": SystemSetting.get_val("microcenter_last_scan_status"),
+            "last_scan_status": mc_settings.get("microcenter_last_scan_status"),
         })
 
     @app.route("/api/microcenter/history/<int:item_id>")
@@ -2812,6 +3064,7 @@ def create_app(test_config=None):
         if new_item is None:
             new_item = db.session.get(WatchlistItem, new_item_id)
 
+        enrich_watchlist_items_with_binder_status([new_item], user.id)
         version_desc = "Any Version" if set_code is None else f"{set_code} #{collector_number or '?'}"
         log_activity("CARD_ADD", details=f"Registered target '{name}' ({version_desc})", user=user)
         return jsonify({
@@ -2998,33 +3251,42 @@ def create_app(test_config=None):
                     except Exception:
                         pass
 
-            # Run initial fast-mode price poll across providers within a bounded wall-clock budget
-            poll_deadline = time.monotonic() + 20.0
-            had_poll_rollback = False
-            for item_id in added_ids:
-                if time.monotonic() >= poll_deadline:
-                    logger.info(
-                        f"Bulk add fast-poll budget reached; remaining {len(added_ids)} targets will complete in background sweep."
-                    )
-                    break
-                item_obj = db.session.get(WatchlistItem, item_id)
-                if item_obj is None:
-                    continue
-                try:
-                    deal_engine.poll_card(item_obj, notify=True, fast_mode=True)
-                except Exception as e:
-                    logger.error(f"Error polling new bulk item {item_obj.name}: {e}")
-                    had_poll_rollback = True
+            # Run initial fast-mode price poll: synchronous for tests / single card, async background for multi-card bulk imports
+            if app.config.get("TESTING") or len(added_ids) <= 1:
+                poll_deadline = time.monotonic() + 20.0
+                had_poll_rollback = False
+                for item_id in added_ids:
+                    if time.monotonic() >= poll_deadline:
+                        logger.info(
+                            f"Bulk add fast-poll budget reached; remaining {len(added_ids)} targets will complete in background sweep."
+                        )
+                        break
+                    item_obj = db.session.get(WatchlistItem, item_id)
+                    if item_obj is None:
+                        continue
                     try:
-                        db.session.rollback()
-                    except Exception:
-                        pass
+                        deal_engine.poll_card(item_obj, notify=True, fast_mode=True)
+                    except Exception as e:
+                        logger.error(f"Error polling new bulk item {item_obj.name}: {e}")
+                        had_poll_rollback = True
+                        try:
+                            db.session.rollback()
+                        except Exception:
+                            pass
 
-            if had_poll_rollback:
-                refetched = WatchlistItem.query.filter(WatchlistItem.id.in_(added_ids)).all()
-                by_id = {obj.id: obj for obj in refetched}
-                added_items = [by_id[i] for i in added_ids if i in by_id]
+                if had_poll_rollback:
+                    refetched = WatchlistItem.query.filter(WatchlistItem.id.in_(added_ids)).all()
+                    by_id = {obj.id: obj for obj in refetched}
+                    added_items = [by_id[i] for i in added_ids if i in by_id]
+            else:
+                def _bg_bulk_poll(target_ids: list[int]):
+                    with app.app_context():
+                        items_to_poll = WatchlistItem.query.filter(WatchlistItem.id.in_(target_ids)).all()
+                        deal_engine.poll_user_cards(items_to_poll, notify=True, fast_mode=True)
 
+                threading.Thread(target=_bg_bulk_poll, args=(list(added_ids),), daemon=True).start()
+
+        enrich_watchlist_items_with_binder_status(added_items, user.id)
         summary_msg = f"Successfully registered {len(added_items)} targets ({len(skipped_items)} skipped, {len(failed_items)} unresolved)."
         log_activity("BULK_CARD_ADD", details=f"Batch import: {len(added_items)} registered, {len(skipped_items)} skipped, {len(failed_items)} failed", user=user)
 
@@ -3056,6 +3318,7 @@ def create_app(test_config=None):
             item.notify_mm_stock = not bool(item.notify_mm_stock if item.notify_mm_stock is not None else True)
 
         db.session.commit()
+        enrich_watchlist_items_with_binder_status([item], user.id)
         status_str = "ENABLED" if item.notify_mm_stock else "DISABLED"
         log_activity("CARD_UPDATE", details=f"Toggled MM alert to {status_str} for '{item.name}'", user=user)
         return jsonify({
@@ -3080,6 +3343,7 @@ def create_app(test_config=None):
             item.notify_ck_stock = not bool(item.notify_ck_stock if item.notify_ck_stock is not None else True)
 
         db.session.commit()
+        enrich_watchlist_items_with_binder_status([item], user.id)
         status_str = "ENABLED" if item.notify_ck_stock else "DISABLED"
         log_activity("CARD_UPDATE", details=f"Toggled CK alert to {status_str} for '{item.name}'", user=user)
         return jsonify({
@@ -3104,6 +3368,7 @@ def create_app(test_config=None):
             item.notify_scg_stock = not bool(item.notify_scg_stock if item.notify_scg_stock is not None else True)
 
         db.session.commit()
+        enrich_watchlist_items_with_binder_status([item], user.id)
         status_str = "ENABLED" if item.notify_scg_stock else "DISABLED"
         log_activity("CARD_UPDATE", details=f"Toggled SCG alert to {status_str} for '{item.name}'", user=user)
         return jsonify({
@@ -3128,6 +3393,7 @@ def create_app(test_config=None):
             item.notify_csi_stock = not bool(item.notify_csi_stock if item.notify_csi_stock is not None else True)
 
         db.session.commit()
+        enrich_watchlist_items_with_binder_status([item], user.id)
         status_str = "ENABLED" if item.notify_csi_stock else "DISABLED"
         log_activity("CARD_UPDATE", details=f"Toggled CSI alert to {status_str} for '{item.name}'", user=user)
         return jsonify({
@@ -3168,6 +3434,7 @@ def create_app(test_config=None):
 
         db.session.commit()
         deal_engine.poll_card(item, notify=True)
+        enrich_watchlist_items_with_binder_status([item], user.id)
 
         scope_label = "Any Version (Card in General)" if item.is_any_version else f"{item.set_code} #{item.collector_number or '?'}"
         log_activity("CARD_UPDATE", details=f"Updated scope for '{item.name}' to {scope_label}", user=user)
@@ -3228,6 +3495,7 @@ def create_app(test_config=None):
             except Exception as poll_err:
                 logger.warning(f"Error re-polling card after finish update for {item.name}: {poll_err}")
 
+        enrich_watchlist_items_with_binder_status([item], user.id)
         log_activity("CARD_UPDATE", details=f"Updated target price to ${item.target_price or 'None'} and finish to '{item.finish}' for '{item.name}'", user=user)
         return jsonify({
             "message": "Target configuration committed.",
@@ -3247,6 +3515,7 @@ def create_app(test_config=None):
         raw_tag = (data.get("tag") or "").strip()
         item.tag = raw_tag or None
         db.session.commit()
+        enrich_watchlist_items_with_binder_status([item], user.id)
 
         tag_label = f"'{item.tag}'" if item.tag else "removed"
         log_activity("CARD_UPDATE", details=f"Updated tag to {tag_label} for '{item.name}'", user=user)
@@ -3261,8 +3530,13 @@ def create_app(test_config=None):
     def get_watchlist_tags():
         """Returns distinct list of tags used across the authenticated user's watchlist."""
         user = get_current_user()
-        items = WatchlistItem.query.filter_by(user_id=user.id).all()
-        tags = sorted(list({item.tag.strip() for item in items if item.tag and item.tag.strip()}))
+        tag_rows = (
+            db.session.query(WatchlistItem.tag)
+            .filter(WatchlistItem.user_id == user.id, WatchlistItem.tag.isnot(None))
+            .distinct()
+            .all()
+        )
+        tags = sorted({t[0].strip() for t in tag_rows if t[0] and t[0].strip()})
         return jsonify({"tags": tags})
 
     @app.route("/api/watchlist/refresh/<int:item_id>", methods=["POST"])
@@ -3646,6 +3920,7 @@ def create_app(test_config=None):
             item.tag = new_tag
 
         db.session.commit()
+        enrich_watchlist_items_with_binder_status(items, user.id)
 
         tag_label = f"'{new_tag}'" if new_tag else "cleared"
         log_activity(
@@ -4530,19 +4805,46 @@ def create_app(test_config=None):
     def get_telemetry():
         """Returns current surveillance cadence, worker heartbeat, and telemetry status."""
         user = get_current_user()
-        interval_hours = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
-        auto_enabled = SystemSetting.get_bool("auto_poll_enabled", default=True)
-        notify_mm_stock = SystemSetting.get_bool("notify_mm_stock_enabled", default=True)
-        notify_ck_stock = SystemSetting.get_bool("notify_ck_stock_enabled", default=True)
-        notify_scg_stock = SystemSetting.get_bool("notify_scg_stock_enabled", default=True)
-        notify_csi_stock = SystemSetting.get_bool("notify_csi_stock_enabled", default=True)
-        ebay_link_mode = SystemSetting.get_val("ebay_link_mode", default="direct")
-        last_poll_time = SystemSetting.get_val("last_poll_time")
-        last_poll_status = SystemSetting.get_val("last_poll_status", "No surveillance cycles recorded.")
-        last_poll_count = SystemSetting.get_val("last_poll_count", "0")
-        last_poll_deals = SystemSetting.get_val("last_poll_deals", "0")
-        worker_heartbeat = SystemSetting.get_val("worker_heartbeat")
-        worker_status = SystemSetting.get_val("worker_status", "standby")
+        keys = [
+            "poll_interval_hours",
+            "auto_poll_enabled",
+            "notify_mm_stock_enabled",
+            "notify_ck_stock_enabled",
+            "notify_scg_stock_enabled",
+            "notify_csi_stock_enabled",
+            "ebay_link_mode",
+            "last_poll_time",
+            "last_poll_status",
+            "last_poll_count",
+            "last_poll_deals",
+            "worker_heartbeat",
+            "worker_status",
+        ]
+        vals = SystemSetting.get_many(keys)
+
+        def _parse_bool(k: str, default: bool = True) -> bool:
+            v = vals.get(k)
+            if v is not None and v != "":
+                return v.strip().lower() in ("true", "1", "yes", "on")
+            return default
+
+        try:
+            interval_hours = float(vals["poll_interval_hours"]) if vals.get("poll_interval_hours") else Config.POLL_INTERVAL_HOURS
+        except (ValueError, TypeError):
+            interval_hours = Config.POLL_INTERVAL_HOURS
+
+        auto_enabled = _parse_bool("auto_poll_enabled", True)
+        notify_mm_stock = _parse_bool("notify_mm_stock_enabled", True)
+        notify_ck_stock = _parse_bool("notify_ck_stock_enabled", True)
+        notify_scg_stock = _parse_bool("notify_scg_stock_enabled", True)
+        notify_csi_stock = _parse_bool("notify_csi_stock_enabled", True)
+        ebay_link_mode = vals.get("ebay_link_mode") or "direct"
+        last_poll_time = vals.get("last_poll_time") or None
+        last_poll_status = vals.get("last_poll_status") or "No surveillance cycles recorded."
+        last_poll_count = vals.get("last_poll_count") or "0"
+        last_poll_deals = vals.get("last_poll_deals") or "0"
+        worker_heartbeat = vals.get("worker_heartbeat") or None
+        worker_status = vals.get("worker_status") or "standby"
 
         return jsonify({
             "poll_interval_hours": interval_hours,
@@ -4576,38 +4878,31 @@ def create_app(test_config=None):
         notify_csi_raw = data.get("notify_csi_stock_enabled")
         ebay_mode_raw = data.get("ebay_link_mode")
 
+        updates: dict[str, any] = {}
         if interval_raw is not None:
             try:
                 interval_float = float(interval_raw)
                 if interval_float <= 0:
                     return jsonify({"error": "Interval must be greater than 0 hours."}), 400
-                SystemSetting.set_val("poll_interval_hours", round(interval_float, 2))
+                updates["poll_interval_hours"] = round(interval_float, 2)
             except (ValueError, TypeError):
                 return jsonify({"error": "Invalid interval value."}), 400
 
         if auto_enabled_raw is not None:
-            auto_val = "true" if bool(auto_enabled_raw) else "false"
-            SystemSetting.set_val("auto_poll_enabled", auto_val)
-
+            updates["auto_poll_enabled"] = "true" if bool(auto_enabled_raw) else "false"
         if notify_mm_raw is not None:
-            mm_val = "true" if bool(notify_mm_raw) else "false"
-            SystemSetting.set_val("notify_mm_stock_enabled", mm_val)
-
+            updates["notify_mm_stock_enabled"] = "true" if bool(notify_mm_raw) else "false"
         if notify_ck_raw is not None:
-            ck_val = "true" if bool(notify_ck_raw) else "false"
-            SystemSetting.set_val("notify_ck_stock_enabled", ck_val)
-
+            updates["notify_ck_stock_enabled"] = "true" if bool(notify_ck_raw) else "false"
         if notify_scg_raw is not None:
-            scg_val = "true" if bool(notify_scg_raw) else "false"
-            SystemSetting.set_val("notify_scg_stock_enabled", scg_val)
-
+            updates["notify_scg_stock_enabled"] = "true" if bool(notify_scg_raw) else "false"
         if notify_csi_raw is not None:
-            csi_val = "true" if bool(notify_csi_raw) else "false"
-            SystemSetting.set_val("notify_csi_stock_enabled", csi_val)
-
+            updates["notify_csi_stock_enabled"] = "true" if bool(notify_csi_raw) else "false"
         if ebay_mode_raw is not None:
-            mode_str = "search" if str(ebay_mode_raw).lower() == "search" else "direct"
-            SystemSetting.set_val("ebay_link_mode", mode_str)
+            updates["ebay_link_mode"] = "search" if str(ebay_mode_raw).lower() == "search" else "direct"
+
+        if updates:
+            SystemSetting.set_many(updates)
 
         current_interval = SystemSetting.get_float("poll_interval_hours", default=Config.POLL_INTERVAL_HOURS)
         current_auto = SystemSetting.get_bool("auto_poll_enabled", default=True)
@@ -4670,13 +4965,13 @@ def create_app(test_config=None):
         return models
 
     def _query_user_recent_decks(user):
-        """Queries user's Commander decks (large JSON blobs deferred by model configuration)."""
+        """Queries user's Commander decks (large AI JSON blobs deferred by model configuration)."""
         if not user:
             return []
         query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(
             db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None)
         )
-        return query.order_by(DeckAnalysis.created_at.desc()).all()
+        return query.order_by(DeckAnalysis.created_at.desc()).limit(100).all()
 
     BASIC_LAND_NAMES = {
         "plains", "island", "swamp", "mountain", "forest", "wastes",
@@ -5641,8 +5936,10 @@ def create_app(test_config=None):
             deck_data["is_pauper"] = is_pauper_flag
             deck_data["deck_format"] = format_flag
 
-            card_names = [c["name"] for c in deck_data.get("cards", [])]
-            scryfall_map, _ = scryfall_provider.get_cards_collection(card_names)
+            scryfall_map = deck_data.get("scryfall_map")
+            if not scryfall_map:
+                card_names = [c["name"] for c in deck_data.get("cards", [])]
+                scryfall_map, _ = scryfall_provider.get_cards_collection(card_names)
 
             analyzer = GeminiAnalyzer(api_key=effective_key, model=model)
             analysis_result = analyzer.analyze_deck(
@@ -6106,24 +6403,26 @@ def create_app(test_config=None):
         effective_key = app.config.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY", "").strip() or (db_key.strip() if db_key else "")
         has_gemini_key = bool(effective_key)
 
-        available_models = GeminiAnalyzer.get_available_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
+        available_models = _get_cached_gemini_models(effective_key) if has_gemini_key else GEMINI_SUPPORTED_MODELS
         default_model = SystemSetting.get_val("gemini_default_model") or app.config.get("GEMINI_DEFAULT_MODEL", GEMINI_DEFAULT_MODEL)
 
-        recent_decks = []
-        if user:
-            query = DeckAnalysis.query if user.is_admin else DeckAnalysis.query.filter(db.or_(DeckAnalysis.user_id == user.id, DeckAnalysis.user_id == None))
-            recent_decks = query.order_by(DeckAnalysis.created_at.desc()).all()
-
+        recent_decks = _query_user_recent_decks(user)
         deck_dicts, fleet_stats = _compute_fleet_stats(recent_decks)
 
         card_history = []
         sl_history = []
         if user:
             c_query = CardAddAnalysis.query if user.is_admin else CardAddAnalysis.query.filter(db.or_(CardAddAnalysis.user_id == user.id, CardAddAnalysis.user_id == None))
-            card_history = [r.to_dict() for r in c_query.order_by(CardAddAnalysis.created_at.desc()).limit(20).all()]
+            card_history = [
+                r.to_dict(include_details=False)
+                for r in c_query.options(db.defer(CardAddAnalysis.analysis_json), db.defer(CardAddAnalysis.input_text)).order_by(CardAddAnalysis.created_at.desc()).limit(20).all()
+            ]
 
             sl_query = SecretLairAnalysis.query if user.is_admin else SecretLairAnalysis.query.filter(db.or_(SecretLairAnalysis.user_id == user.id, SecretLairAnalysis.user_id == None))
-            sl_history = [r.to_dict() for r in sl_query.order_by(SecretLairAnalysis.created_at.desc()).limit(20).all()]
+            sl_history = [
+                r.to_dict(include_details=False)
+                for r in sl_query.options(db.defer(SecretLairAnalysis.analysis_json)).order_by(SecretLairAnalysis.created_at.desc()).limit(20).all()
+            ]
 
         requested_mode = request.args.get("mode")
         if not requested_mode:
@@ -6653,6 +6952,7 @@ def create_app(test_config=None):
                 dismissed_names=dismissed_names,
                 limit_per_tier=limit,
                 pre_resolved_cards=pre_resolved_cards,
+                almost_included_combos=getattr(quick_res, "almost_included_combos", None),
             )
 
             suggestions["deck_name"] = deck_name
@@ -7974,13 +8274,20 @@ def create_app(test_config=None):
         active_session = None
         if session_id:
             active_session = CommanderPlaytestSession.query.options(
-                db.undefer_group("pt_state")
+                db.undefer_group("pt_state"),
+                db.undefer_group("pt_checkpoints"),
             ).filter_by(id=session_id, user_id=user.id).first()
             if not active_session:
                 flash("Requested playtest session was not found.", "warning")
                 return redirect(url_for("commander_playtest_page"))
 
-        saved_sessions = CommanderPlaytestSession.query.filter_by(user_id=user.id).order_by(CommanderPlaytestSession.updated_at.desc()).limit(20).all()
+        saved_sessions = (
+            CommanderPlaytestSession.query.options(db.undefer_group("pt_checkpoints"))
+            .filter_by(user_id=user.id)
+            .order_by(CommanderPlaytestSession.updated_at.desc())
+            .limit(20)
+            .all()
+        )
         user_decks = _query_user_recent_decks(user)
         deck_dicts, _ = _compute_fleet_stats(user_decks, user_id=user.id if user else None)
 
@@ -8057,7 +8364,8 @@ def create_app(test_config=None):
         """Fetches full state for a playtest session."""
         user = get_current_user()
         entry = CommanderPlaytestSession.query.options(
-            db.undefer_group("pt_state")
+            db.undefer_group("pt_state"),
+            db.undefer_group("pt_checkpoints"),
         ).filter_by(id=session_id, user_id=user.id).first()
         if not entry:
             return jsonify({"error": "Playtest session not found."}), 404
@@ -8116,7 +8424,8 @@ def create_app(test_config=None):
         """Saves a named checkpoint snapshot (max 10)."""
         user = get_current_user()
         entry = CommanderPlaytestSession.query.options(
-            db.undefer_group("pt_state")
+            db.undefer_group("pt_state"),
+            db.undefer_group("pt_checkpoints"),
         ).filter_by(id=session_id, user_id=user.id).first()
         if not entry:
             return jsonify({"error": "Playtest session not found."}), 404
@@ -8150,7 +8459,8 @@ def create_app(test_config=None):
         """Restarts the session with the same decks (Run It Back)."""
         user = get_current_user()
         entry = CommanderPlaytestSession.query.options(
-            db.undefer_group("pt_state")
+            db.undefer_group("pt_state"),
+            db.undefer_group("pt_checkpoints"),
         ).filter_by(id=session_id, user_id=user.id).first()
         if not entry:
             return jsonify({"error": "Playtest session not found."}), 404
@@ -8210,7 +8520,12 @@ def create_app(test_config=None):
     def api_playtest_list_sessions():
         """Lists playtest sessions for the active user."""
         user = get_current_user()
-        sessions = CommanderPlaytestSession.query.filter_by(user_id=user.id).order_by(CommanderPlaytestSession.updated_at.desc()).all()
+        sessions = (
+            CommanderPlaytestSession.query.options(db.undefer_group("pt_checkpoints"))
+            .filter_by(user_id=user.id)
+            .order_by(CommanderPlaytestSession.updated_at.desc())
+            .all()
+        )
         return jsonify({
             "success": True,
             "sessions": [s.to_dict(include_state=False) for s in sessions],
@@ -8489,28 +8804,46 @@ def create_app(test_config=None):
     app._attach_ownership_and_allocations = _attach_ownership_and_allocations
     app._compute_fleet_stats = _compute_fleet_stats
 
-    try:
-        def _auto_resume():
-            with app.app_context():
-                inventory_manager.resume_pending_enrichment()
-        threading.Thread(target=_auto_resume, daemon=True).start()
-    except Exception as resume_err:
-        logger.warning(f"Could not spawn auto-resume enrichment thread: {resume_err}")
+    if not app.config.get("TESTING"):
+        try:
+            def _auto_resume():
+                with app.app_context():
+                    inventory_manager.resume_pending_enrichment()
+            threading.Thread(target=_auto_resume, daemon=True).start()
+        except Exception as resume_err:
+            logger.warning(f"Could not spawn auto-resume enrichment thread: {resume_err}")
 
     return app
 
 
-app = create_app()
-_attach_ownership_and_allocations = getattr(app, "_attach_ownership_and_allocations", None)
-_compute_fleet_stats = getattr(app, "_compute_fleet_stats", None)
+_default_app = None
+_default_app_lock = threading.Lock()
+
+
+def _get_default_app():
+    global _default_app
+    if _default_app is None:
+        with _default_app_lock:
+            if _default_app is None:
+                _default_app = create_app()
+    return _default_app
+
+
+def __getattr__(name: str):
+    """PEP 562 lazy attribute access so importing `create_app` never triggers eager DB/thread boot."""
+    if name == "app":
+        return _get_default_app()
+    if name in ("_attach_ownership_and_allocations", "_compute_fleet_stats"):
+        return getattr(_get_default_app(), name, None)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 if __name__ == "__main__":
-    import threading
-    import time
     import webbrowser
 
     port = int(os.getenv("PORT", 5050))
     url = f"http://localhost:{port}"
+    app = _get_default_app()
 
     def _open_browser():
         time.sleep(1.2)

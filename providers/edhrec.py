@@ -120,23 +120,27 @@ class EDHRECProvider:
             self._last_request_time = time.time()
 
     def _get_from_cache(self, cache_key: str) -> Optional[Dict[str, Any]]:
-        """Retrieves cached JSON payload from database or memory cache if unexpired."""
-        # 1. Try DB cache
+        """Retrieves cached JSON payload from memory cache first, then database if unexpired."""
+        now = datetime.now(timezone.utc)
+        # 1. Try fast in-memory RAM cache first
+        with self._mem_lock:
+            if cache_key in self._memory_cache:
+                exp, data = self._memory_cache[cache_key]
+                if exp > now:
+                    return data
+                del self._memory_cache[cache_key]
+
+        # 2. Try DB cache (and warm RAM cache on hit)
         try:
             from models import EDHRECCache
             cached = EDHRECCache.get_cached(cache_key)
             if cached is not None:
+                with self._mem_lock:
+                    exp = now + timedelta(hours=self.cache_ttl_hours)
+                    self._memory_cache[cache_key] = (exp, cached)
                 return cached
         except Exception:
             pass
-
-        # 2. Try in-memory fallback
-        with self._mem_lock:
-            if cache_key in self._memory_cache:
-                exp, data = self._memory_cache[cache_key]
-                if exp > datetime.now(timezone.utc):
-                    return data
-                del self._memory_cache[cache_key]
 
         return None
 

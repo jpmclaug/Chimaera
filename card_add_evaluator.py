@@ -545,9 +545,11 @@ class CardAddEvaluator:
         game_changers_count = len(analysis_res.game_changers)
         included_combos = analysis_res.combos
 
-        # Find 1-card-away combos from Spellbook
-        combo_results = tw_classifier.spellbook.find_combos(commanders, list(deck_counts.keys()))
-        almost_combos = combo_results.get("almost_included") or []
+        # Reuse 1-card-away combos already retrieved during classify()
+        almost_combos = list(getattr(analysis_res, "almost_included_combos", None) or [])
+        if not almost_combos:
+            combo_results = tw_classifier.spellbook.find_combos(commanders, list(deck_counts.keys()))
+            almost_combos = combo_results.get("almost_included") or []
         combos_missing_card: dict[str, list[dict[str, Any]]] = {}
         for ac in almost_combos:
             missing_list = ac.get("missing") or []

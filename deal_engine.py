@@ -42,6 +42,7 @@ class DealEngine:
             store_id=Config.MICROCENTER_STORE_ID,
             store_name=Config.MICROCENTER_STORE_NAME,
         )
+        self._vendor_executor = ThreadPoolExecutor(max_workers=6)
 
     @staticmethod
     def _upsert_vendor_price(
@@ -156,19 +157,18 @@ class DealEngine:
                     logger.warning(f"Error querying Shopify Catalog for '{item_name}': {err}")
                     return None
 
-            with ThreadPoolExecutor(max_workers=4) as pool:
-                fut_ck = pool.submit(_fetch_ck) if ck_enabled else None
-                fut_scg = pool.submit(_fetch_scg) if scg_enabled else None
-                fut_csi = pool.submit(_fetch_csi) if csi_enabled else None
-                fut_shop = pool.submit(_fetch_shop) if shop_enabled else None
-                if fut_ck:
-                    ck_data = fut_ck.result()
-                if fut_scg:
-                    scg_data = fut_scg.result()
-                if fut_csi:
-                    csi_data = fut_csi.result()
-                if fut_shop:
-                    shop_result = fut_shop.result()
+            fut_ck = self._vendor_executor.submit(_fetch_ck) if ck_enabled else None
+            fut_scg = self._vendor_executor.submit(_fetch_scg) if scg_enabled else None
+            fut_csi = self._vendor_executor.submit(_fetch_csi) if csi_enabled else None
+            fut_shop = self._vendor_executor.submit(_fetch_shop) if shop_enabled else None
+            if fut_ck:
+                ck_data = fut_ck.result()
+            if fut_scg:
+                scg_data = fut_scg.result()
+            if fut_csi:
+                csi_data = fut_csi.result()
+            if fut_shop:
+                shop_result = fut_shop.result()
 
         best_trusted_shop = shop_result.get("best_trusted") if isinstance(shop_result, dict) else None
         best_unverified_shop = shop_result.get("best_unverified") if isinstance(shop_result, dict) else None
@@ -445,101 +445,101 @@ class DealEngine:
         ck_data = None
         scg_data = None
         csi_data = None
-        executor = ThreadPoolExecutor(max_workers=5)
-        try:
-            mm_fut = executor.submit(_fetch_mm)
-            ebay_fut = executor.submit(_fetch_ebay)
-            ck_fut = executor.submit(_fetch_ck_single) if ck_singles_enabled else None
-            scg_fut = executor.submit(_fetch_scg_single) if scg_singles_enabled else None
-            csi_fut = executor.submit(_fetch_csi_single) if csi_singles_enabled else None
-            all_futs = [f for f in (mm_fut, ebay_fut, ck_fut, scg_fut, csi_fut) if f is not None]
-            if fast_mode:
-                futures_wait(all_futs, timeout=5.5, return_when=ALL_COMPLETED)
-                if mm_fut.done():
-                    try:
-                        mm_data = mm_fut.result()
-                    except Exception as mm_err:
-                        logger.warning(f"Error querying Mighty Meeple for {item_name}: {mm_err}")
-                else:
-                    logger.warning(f"Mighty Meeple fast_mode poll timed out for {item_name}")
-                if ebay_fut.done():
-                    try:
-                        ebay_data = ebay_fut.result()
-                    except Exception as ebay_err:
-                        logger.warning(f"Error querying eBay for {item_name}: {ebay_err}")
-                else:
-                    logger.warning(f"eBay fast_mode poll timed out for {item_name}")
-                if ck_fut is not None:
-                    if ck_fut.done():
-                        try:
-                            ck_data = ck_fut.result()
-                        except Exception as ck_err:
-                            logger.warning(f"Error querying Card Kingdom for {item_name}: {ck_err}")
-                    else:
-                        logger.warning(f"Card Kingdom fast_mode poll timed out for {item_name}")
-                if scg_fut is not None:
-                    if scg_fut.done():
-                        try:
-                            scg_data = scg_fut.result()
-                        except Exception as scg_err:
-                            logger.warning(f"Error querying Star City Games for {item_name}: {scg_err}")
-                    else:
-                        logger.warning(f"Star City Games fast_mode poll timed out for {item_name}")
-                if csi_fut is not None:
-                    if csi_fut.done():
-                        try:
-                            csi_data = csi_fut.result()
-                        except Exception as csi_err:
-                            logger.warning(f"Error querying CoolStuffInc for {item_name}: {csi_err}")
-                    else:
-                        logger.warning(f"CoolStuffInc fast_mode poll timed out for {item_name}")
-            else:
+        executor = self._vendor_executor
+        mm_fut = executor.submit(_fetch_mm)
+        ebay_fut = executor.submit(_fetch_ebay)
+        ck_fut = executor.submit(_fetch_ck_single) if ck_singles_enabled else None
+        scg_fut = executor.submit(_fetch_scg_single) if scg_singles_enabled else None
+        csi_fut = executor.submit(_fetch_csi_single) if csi_singles_enabled else None
+        all_futs = [f for f in (mm_fut, ebay_fut, ck_fut, scg_fut, csi_fut) if f is not None]
+        if fast_mode:
+            futures_wait(all_futs, timeout=5.5, return_when=ALL_COMPLETED)
+            for f in all_futs:
+                if not f.done():
+                    f.cancel()
+            if mm_fut.done() and not mm_fut.cancelled():
                 try:
                     mm_data = mm_fut.result()
                 except Exception as mm_err:
                     logger.warning(f"Error querying Mighty Meeple for {item_name}: {mm_err}")
+            else:
+                logger.warning(f"Mighty Meeple fast_mode poll timed out for {item_name}")
+            if ebay_fut.done() and not ebay_fut.cancelled():
                 try:
                     ebay_data = ebay_fut.result()
                 except Exception as ebay_err:
                     logger.warning(f"Error querying eBay for {item_name}: {ebay_err}")
-                if ck_fut is not None:
+            else:
+                logger.warning(f"eBay fast_mode poll timed out for {item_name}")
+            if ck_fut is not None:
+                if ck_fut.done() and not ck_fut.cancelled():
                     try:
                         ck_data = ck_fut.result()
                     except Exception as ck_err:
                         logger.warning(f"Error querying Card Kingdom for {item_name}: {ck_err}")
-                if scg_fut is not None:
+                else:
+                    logger.warning(f"Card Kingdom fast_mode poll timed out for {item_name}")
+            if scg_fut is not None:
+                if scg_fut.done() and not scg_fut.cancelled():
                     try:
                         scg_data = scg_fut.result()
                     except Exception as scg_err:
                         logger.warning(f"Error querying Star City Games for {item_name}: {scg_err}")
-                if csi_fut is not None:
+                else:
+                    logger.warning(f"Star City Games fast_mode poll timed out for {item_name}")
+            if csi_fut is not None:
+                if csi_fut.done() and not csi_fut.cancelled():
                     try:
                         csi_data = csi_fut.result()
                     except Exception as csi_err:
                         logger.warning(f"Error querying CoolStuffInc for {item_name}: {csi_err}")
-        finally:
-            if fast_mode:
-                executor.shutdown(wait=False, cancel_futures=True)
-            else:
-                executor.shutdown(wait=True)
+                else:
+                    logger.warning(f"CoolStuffInc fast_mode poll timed out for {item_name}")
+        else:
+            try:
+                mm_data = mm_fut.result()
+            except Exception as mm_err:
+                logger.warning(f"Error querying Mighty Meeple for {item_name}: {mm_err}")
+            try:
+                ebay_data = ebay_fut.result()
+            except Exception as ebay_err:
+                logger.warning(f"Error querying eBay for {item_name}: {ebay_err}")
+            if ck_fut is not None:
+                try:
+                    ck_data = ck_fut.result()
+                except Exception as ck_err:
+                    logger.warning(f"Error querying Card Kingdom for {item_name}: {ck_err}")
+            if scg_fut is not None:
+                try:
+                    scg_data = scg_fut.result()
+                except Exception as scg_err:
+                    logger.warning(f"Error querying Star City Games for {item_name}: {scg_err}")
+            if csi_fut is not None:
+                try:
+                    csi_data = csi_fut.result()
+                except Exception as csi_err:
+                    logger.warning(f"Error querying CoolStuffInc for {item_name}: {csi_err}")
 
         now = datetime.now(timezone.utc)
         results = [tcg_data, mm_data, ebay_data, ck_data, scg_data, csi_data]
 
-        # Upsert VendorPrice records with retry on transient Neon/Postgres SSL connection drop
+        # Upsert VendorPrice records in 1 pre-loaded query with retry on transient DB error
         mm_was_in_stock = False
         ck_was_in_stock = False
         scg_was_in_stock = False
         csi_was_in_stock = False
         for db_attempt in range(2):
             try:
-                mm_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Mighty Meeple").first()
+                existing_rows = VendorPrice.query.filter_by(watchlist_id=item_id).all()
+                existing_by_vendor = {vp.vendor_name: vp for vp in existing_rows}
+
+                mm_existing = existing_by_vendor.get("Mighty Meeple")
                 mm_was_in_stock = bool(mm_existing and mm_existing.in_stock and mm_existing.price > 0)
-                ck_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Card Kingdom").first()
+                ck_existing = existing_by_vendor.get("Card Kingdom")
                 ck_was_in_stock = bool(ck_existing and ck_existing.in_stock and ck_existing.price > 0)
-                scg_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="Star City Games").first()
+                scg_existing = existing_by_vendor.get("Star City Games")
                 scg_was_in_stock = bool(scg_existing and scg_existing.in_stock and scg_existing.price > 0)
-                csi_existing = VendorPrice.query.filter_by(watchlist_id=item_id, vendor_name="CoolStuffInc").first()
+                csi_existing = existing_by_vendor.get("CoolStuffInc")
                 csi_was_in_stock = bool(csi_existing and csi_existing.in_stock and csi_existing.price > 0)
 
                 for vendor_data in results:
@@ -547,12 +547,7 @@ class DealEngine:
                         continue
 
                     v_name = vendor_data.get("vendor_name")
-                    existing = (
-                        VendorPrice.query.filter_by(
-                            watchlist_id=item_id,
-                            vendor_name=v_name,
-                        ).first()
-                    )
+                    existing = existing_by_vendor.get(v_name)
 
                     if existing:
                         existing.price = float(vendor_data.get("price", 0.0))
@@ -573,6 +568,7 @@ class DealEngine:
                             last_checked=now,
                         )
                         db.session.add(new_vp)
+                        existing_by_vendor[v_name] = new_vp
 
                 db.session.commit()
                 break
@@ -662,11 +658,27 @@ class DealEngine:
             "vendors": [v.to_dict() for v in item.vendor_prices] if item else [],
         }
 
+    def _prefetch_scryfall_batch(self, items: list[WatchlistItem]) -> None:
+        """Batch-prefetches Scryfall metadata and specific printing IDs prior to polling loops."""
+        try:
+            singles = [it for it in items if not it.is_sealed]
+            if not singles:
+                return
+            names = [it.name for it in singles if it.name]
+            if names:
+                self.scryfall.get_cards_collection(names, fallback_named=False)
+            spec_ids = [it.scryfall_id for it in singles if not it.is_any_version and it.scryfall_id]
+            if spec_ids:
+                self.scryfall.prefetch_cards_by_ids(spec_ids)
+        except Exception as e:
+            logger.debug(f"Scryfall batch prefetch skipped: {e}")
+
     def poll_all_cards(self, notify: bool = True) -> list[dict]:
         """Polls prices for all cards currently in the database."""
         items = WatchlistItem.query.all()
         summary = []
         logger.info(f"Starting scheduled poll for {len(items)} watchlist items...")
+        self._prefetch_scryfall_batch(items)
 
         for idx, item in enumerate(items):
             try:
@@ -727,6 +739,7 @@ class DealEngine:
         """Polls prices for a specific user's WatchlistItems."""
         summary = []
         total = len(items)
+        self._prefetch_scryfall_batch(items)
         for idx, item in enumerate(items):
             try:
                 res = self.poll_card(item, notify=notify, fast_mode=fast_mode)

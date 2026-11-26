@@ -159,13 +159,16 @@
                             <span class="text-[#FF3358] text-[10px] font-bold uppercase">&#x25CF; SUSPENDED</span>
                             {% endif %}
                         </td>
+                        {% set u_stats = user_stats.get(u.id, {}) if user_stats is defined else {} %}
+                        {% set u_card_count = u_stats.get('card_count', u.card_count) if u_stats else u.card_count %}
+                        {% set week_usage = u_stats.get('usage_past_week', u.get_usage_past_week()) if u_stats else u.get_usage_past_week() %}
+                        {% set last_act = u_stats.get('last_active', u.get_last_active()) if u_stats else u.get_last_active() %}
                         <td class="py-3">
                             <button onclick="filterAdminCardsByUser({{ u.id }}, '{{ u.name or u.email }}')" class="font-bold text-white hover:text-[#00CED1] underline decoration-dotted transition" title="Filter card inventory to this user">
-                                {{ u.card_count }} cards
+                                {{ u_card_count }} cards
                             </button>
                         </td>
                         <td class="py-3">
-                            {% set week_usage = u.get_usage_past_week() %}
                             {% if week_usage > 0 %}
                             <span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 px-2 py-0.5 text-[10px] font-bold">
                                 {{ week_usage }} actions
@@ -175,7 +178,6 @@
                             {% endif %}
                         </td>
                         <td class="py-3 text-[#94A3B8] text-[11px]">
-                            {% set last_act = u.get_last_active() %}
                             {% if last_act %}
                             <span class="text-white font-mono">{{ last_act|eastern('%Y-%m-%d %H:%M') }}</span> <span class="text-[9px] text-[#64748B]">EST</span>
                             {% else %}
@@ -226,6 +228,7 @@
                 <div class="relative">
                     <input type="text" id="admin-cards-search" placeholder="Search card name, tag, set..."
                         oninput="filterAdminCardsTable()"
+                        autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
                         class="bg-[#10141D] border border-[#263245] px-3 py-1.5 text-xs text-white placeholder-[#64748B] focus:border-[#00CED1] font-mono w-48 sm:w-60">
                 </div>
 
@@ -234,7 +237,8 @@
                     class="bg-[#10141D] border border-[#263245] px-3 py-1.5 text-xs text-white focus:border-[#00CED1] font-mono">
                     <option value="all">All Personnel ({{ all_cards|length }} cards)</option>
                     {% for u in users %}
-                    <option value="{{ u.id }}">{{ u.name or u.email.split('@')[0] }} ({{ u.card_count }} cards)</option>
+                    {% set u_stats = user_stats.get(u.id, {}) if user_stats is defined else {} %}
+                    <option value="{{ u.id }}">{{ u.name or u.email.split('@')[0] }} ({{ u_stats.get('card_count', u.card_count) if u_stats else u.card_count }} cards)</option>
                     {% endfor %}
                 </select>
 
@@ -287,7 +291,7 @@
                         <td class="py-3 pr-3">
                             <div class="flex items-center space-x-2.5">
                                 {% if item.image_uri %}
-                                <img src="{{ item.image_uri }}" alt="{{ item.name }}" class="w-8 h-11 object-cover border border-[#263245] bg-[#0C0F17] flex-shrink-0">
+                                <img src="{{ item.image_uri|scryfall_thumb }}" alt="{{ item.name }}" loading="lazy" decoding="async" class="w-8 h-11 object-cover border border-[#263245] bg-[#0C0F17] flex-shrink-0">
                                 {% else %}
                                 <div class="w-8 h-11 bg-[#10141D] border border-[#263245] flex items-center justify-center text-[10px] text-[#64748B] flex-shrink-0">
                                     MTG

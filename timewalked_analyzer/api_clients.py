@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any
+
+import requests
 
 from .card_db import (
     EXTRA_TURN_CARDS,
@@ -95,12 +97,24 @@ def parse_decklist_text(raw_text: str) -> tuple[list[str], dict[str, int]]:
 
 
 class HttpJsonClient:
-    """Lightweight JSON HTTP client with local file caching."""
+    """Lightweight pooled JSON HTTP client with local file caching."""
 
     def __init__(self, cache_dir: pathlib.Path = CACHE_DIR, offline: bool = False) -> None:
         self.cache_dir = cache_dir
         self.offline = offline
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._thread_local = threading.local()
+
+    def _get_session(self) -> requests.Session:
+        sess = getattr(self._thread_local, "session", None)
+        if sess is None:
+            sess = requests.Session()
+            sess.headers.update({
+                "User-Agent": USER_AGENT,
+                "Accept": "application/json",
+            })
+            self._thread_local.session = sess
+        return sess
 
     def request_json(
         self,
@@ -112,21 +126,20 @@ class HttpJsonClient:
         if self.offline:
             raise urllib.error.URLError("Offline mode enabled")
 
-        data_bytes = json.dumps(payload).encode("utf-8") if payload is not None else None
-        headers = {
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json",
-        }
-        if data_bytes is not None:
-            headers["Content-Type"] = "application/json"
-
-        req = urllib.request.Request(url, data=data_bytes, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+        sess = self._get_session()
+        if method.upper() == "POST":
+            resp = sess.post(url, json=payload, timeout=timeout)
+        else:
+            resp = sess.request(method.upper(), url, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
 
 
 class ScryfallClient:
     """Fetches and caches card metadata from Scryfall's /cards/collection endpoint."""
+
+    _shared_cache_lock = threading.Lock()
+    _shared_cache_by_path: dict[str, dict[str, dict[str, Any]]] = {}
 
     def __init__(self, http: HttpJsonClient | None = None) -> None:
         self.http = http or HttpJsonClient()
@@ -134,16 +147,24 @@ class ScryfallClient:
         self._cache: dict[str, dict[str, Any]] = self._load_cache()
 
     def _load_cache(self) -> dict[str, dict[str, Any]]:
-        if self.cache_file.exists():
-            try:
-                return json.loads(self.cache_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                return {}
-        return {}
+        path_key = str(self.cache_file)
+        with ScryfallClient._shared_cache_lock:
+            existing = ScryfallClient._shared_cache_by_path.get(path_key)
+            if existing is not None:
+                return existing
+            loaded: dict[str, dict[str, Any]] = {}
+            if self.cache_file.exists():
+                try:
+                    loaded = json.loads(self.cache_file.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    loaded = {}
+            ScryfallClient._shared_cache_by_path[path_key] = loaded
+            return loaded
 
     def _save_cache(self) -> None:
         try:
-            self.cache_file.write_text(json.dumps(self._cache, indent=2), encoding="utf-8")
+            with ScryfallClient._shared_cache_lock:
+                self.cache_file.write_text(json.dumps(self._cache), encoding="utf-8")
         except OSError:
             pass
 
@@ -364,12 +385,29 @@ class ScryfallClient:
 class SpellbookClient:
     """Queries Commander Spellbook for combos & official combo bracket tags."""
 
+    _combo_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+    _combo_lock = threading.Lock()
+    _COMBO_CACHE_TTL = 1800.0  # 30 minutes
+    _COMBO_CACHE_MAX = 256
+
     def __init__(self, http: HttpJsonClient | None = None) -> None:
         self.http = http or HttpJsonClient()
 
+    @staticmethod
+    def _cache_key(commanders: list[str], mainboard: list[str]) -> str:
+        c_key = ",".join(sorted(c.strip().lower() for c in commanders if c))
+        m_key = ",".join(sorted(m.strip().lower() for m in mainboard if m))
+        return f"{c_key}|{m_key}"
+
     def find_combos(self, commanders: list[str], mainboard: list[str]) -> dict[str, Any]:
         """Return included combos, near-combos, and Commander Spellbook's bracket tag."""
+        cache_key = self._cache_key(commanders, mainboard)
         if not self.http.offline:
+            now = time.monotonic()
+            with SpellbookClient._combo_lock:
+                cached = SpellbookClient._combo_cache.get(cache_key)
+                if cached and (now - cached[0]) < SpellbookClient._COMBO_CACHE_TTL:
+                    return cached[1]
             payload = {
                 "commanders": [{"card": c, "quantity": 1} for c in commanders],
                 "main": [{"card": m, "quantity": 1} for m in mainboard],
@@ -421,13 +459,20 @@ class SpellbookClient:
                                 "bracket_tag": str(variant.get("bracketTag", "3")),
                             }
                         )
-                return {
+                out = {
                     "source": "commander_spellbook_api",
                     "bracket_tag": results.get("bracketTag"),
                     "included": included,
                     "almost_included_count": len(almost_raw),
                     "almost_included": almost_included,
                 }
+                with SpellbookClient._combo_lock:
+                    if len(SpellbookClient._combo_cache) >= SpellbookClient._COMBO_CACHE_MAX:
+                        oldest_keys = list(SpellbookClient._combo_cache.keys())[:64]
+                        for ok in oldest_keys:
+                            SpellbookClient._combo_cache.pop(ok, None)
+                    SpellbookClient._combo_cache[cache_key] = (time.monotonic(), out)
+                return out
             except Exception:
                 pass
 

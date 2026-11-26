@@ -16,6 +16,13 @@
         } catch (e) {}
     }
 
+    function toSmallThumb(url) {
+        if (!url || typeof url !== 'string') return url || '';
+        if (url.indexOf('cards.scryfall.io/normal/') !== -1) return url.replace('cards.scryfall.io/normal/', 'cards.scryfall.io/small/');
+        if (url.indexOf('cards.scryfall.io/large/') !== -1) return url.replace('cards.scryfall.io/large/', 'cards.scryfall.io/small/');
+        return url;
+    }
+
     function initWakeLock() {
         if ('wakeLock' in navigator) {
             try {
@@ -25,6 +32,12 @@
             } catch (e) {}
         }
     }
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && coord && (!wakeLock || wakeLock.released)) {
+            initWakeLock();
+        }
+    });
 
     function showToast(msg, undoAction) {
         var toast = document.getElementById('playtestToast');
@@ -241,9 +254,9 @@
             (card.tapped ? 'rotate-90 opacity-70 border-amber-500/60 my-2' : 'border-[#2A374A] hover:border-cyan-400') +
             (state.combat && state.combat.attackers && state.combat.attackers[instId] ? ' ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : '');
 
-        var imgSrc = ref.small_image_uri || ref.image_uri || '';
+        var imgSrc = ref.small_image_uri || toSmallThumb(ref.image_uri) || '';
         var imgHtml = imgSrc
-            ? '<img src="' + imgSrc + '" class="w-full h-auto aspect-[5/7] object-cover rounded pointer-events-none" loading="lazy">'
+            ? '<img src="' + imgSrc + '" class="w-full h-auto aspect-[5/7] object-cover rounded pointer-events-none" loading="lazy" decoding="async">'
             : '<div class="w-full aspect-[5/7] bg-slate-800 p-2 text-[10px] font-mono text-white flex flex-col justify-between rounded">' +
               '<div class="font-bold truncate">' + ref.name + '</div>' +
               '<div class="text-[9px] text-slate-400">' + ref.type_line + '</div></div>';
@@ -273,8 +286,18 @@
 
         cardDiv.innerHTML = imgHtml + ptBadge + countersBadge + sickBadge + tapBadge;
 
+        // Long-press helper for iOS Safari / touchscreens (fires oncontextmenu fallback as well)
+        attachLongPress(cardDiv, function () {
+            openPermanentActionSheet(state, instId);
+        });
+
         // Click to tap/untap or toggle combat attacker/blocker
         cardDiv.onclick = function (e) {
+            if (cardDiv._longPressFired) {
+                cardDiv._longPressFired = false;
+                e.stopPropagation();
+                return;
+            }
             e.stopPropagation();
             haptic(12);
 
@@ -286,18 +309,56 @@
                 }
             }
 
-            // Normal tap/untap
+            // Normal tap/untap (in-place node replacement avoids full battlefield wipe)
             coord.dispatch({ type: 'TAP_PERMANENT', payload: { instance_id: instId } });
-            renderAll();
+            var updatedCard = createBattlefieldCardElement(coord.state, instId);
+            cardDiv.replaceWith(updatedCard);
         };
 
-        // Long-press or context menu opens action sheet
+        // Desktop right-click opens action sheet
         cardDiv.oncontextmenu = function (e) {
             e.preventDefault();
             openPermanentActionSheet(state, instId);
         };
 
         return cardDiv;
+    }
+
+    function attachLongPress(el, onLongPress) {
+        var timer = null;
+        var startX = 0;
+        var startY = 0;
+        el._longPressFired = false;
+
+        el.addEventListener('touchstart', function (e) {
+            if (!e.touches || e.touches.length !== 1) return;
+            el._longPressFired = false;
+            startX = e.touches[0].clientX;
+            startY = e.touches[0].clientY;
+            clearTimeout(timer);
+            timer = setTimeout(function () {
+                el._longPressFired = true;
+                haptic(20);
+                onLongPress();
+            }, 450);
+        }, { passive: true });
+
+        el.addEventListener('touchmove', function (e) {
+            if (!timer || !e.touches || e.touches.length !== 1) return;
+            var dx = Math.abs(e.touches[0].clientX - startX);
+            var dy = Math.abs(e.touches[0].clientY - startY);
+            if (dx > 10 || dy > 10) {
+                clearTimeout(timer);
+                timer = null;
+            }
+        }, { passive: true });
+
+        var cancelTimer = function () {
+            clearTimeout(timer);
+            timer = null;
+        };
+        el.addEventListener('touchend', cancelTimer, { passive: true });
+        el.addEventListener('touchcancel', cancelTimer, { passive: true });
     }
 
     function createLandStackElement(state, refKey, instIds) {
@@ -308,7 +369,7 @@
         }
 
         var stackDiv = document.createElement('div');
-        stackDiv.className = 'flex items-center justify-between gap-2 bg-[#141B26] border border-[#232F42] px-2.5 py-1.5 rounded font-mono text-xs flex-1 min-w-[150px] max-w-[240px]';
+        stackDiv.className = 'flex items-center justify-between gap-2 bg-[#141B26] border border-[#232F42] px-2.5 py-1.5 rounded font-mono text-xs flex-1 min-w-[150px] max-w-[240px] cursor-pointer';
 
         var labelHtml = '<div class="min-w-0 flex-1">' +
             '<div class="truncate font-bold text-slate-200 text-[11px]">' + ref.name + ' (' + instIds.length + ')</div>' +
@@ -320,7 +381,7 @@
 
         var tap1Btn = document.createElement('button');
         tap1Btn.type = 'button';
-        tap1Btn.className = 'px-1.5 py-1 bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-300 text-[10px] font-bold border border-slate-700 rounded transition';
+        tap1Btn.className = 'px-2 py-1.5 min-h-[34px] bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-300 text-[10px] font-bold border border-slate-700 rounded transition';
         tap1Btn.textContent = 'Tap 1';
         tap1Btn.onclick = function (e) {
             e.stopPropagation();
@@ -336,7 +397,7 @@
 
         var tapAllBtn = document.createElement('button');
         tapAllBtn.type = 'button';
-        tapAllBtn.className = 'px-1.5 py-1 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-300 text-[10px] font-bold border border-slate-700 rounded transition';
+        tapAllBtn.className = 'px-2 py-1.5 min-h-[34px] bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-amber-300 text-[10px] font-bold border border-slate-700 rounded transition';
         tapAllBtn.textContent = untappedCount > 0 ? 'All' : 'Untap';
         tapAllBtn.onclick = function (e) {
             e.stopPropagation();
@@ -353,6 +414,17 @@
 
         stackDiv.innerHTML = labelHtml;
         stackDiv.appendChild(buttonsDiv);
+
+        if (instIds.length > 0) {
+            var repInstId = instIds[0];
+            attachLongPress(stackDiv, function () {
+                openPermanentActionSheet(state, repInstId);
+            });
+            stackDiv.oncontextmenu = function (e) {
+                e.preventDefault();
+                openPermanentActionSheet(state, repInstId);
+            };
+        }
         return stackDiv;
     }
 
@@ -606,20 +678,16 @@
             };
         }
 
-        // 2. Draw Cards tile
+        // 2. Draw Cards tile (Quick Tactical Picker instead of browser prompt())
         var optDraw = document.getElementById('menuOptDraw');
         if (optDraw) {
             optDraw.onclick = function () {
                 sheet.classList.add('hidden');
-                var countStr = prompt('How many cards would you like to draw?', '1');
-                if (countStr) {
-                    var c = parseInt(countStr, 10);
-                    if (!isNaN(c) && c > 0) {
-                        coord.dispatch({ type: 'DRAW_CARD', payload: { count: c } });
-                        renderAll();
-                        showToast('Drew ' + c + ' card' + (c > 1 ? 's' : '') + '.');
-                    }
-                }
+                openCountPickerSheet('Draw Cards', 'Select number of cards to draw:', [1, 2, 3, 5, 7], function (c) {
+                    coord.dispatch({ type: 'DRAW_CARD', payload: { count: c } });
+                    renderAll();
+                    showToast('Drew ' + c + ' card' + (c > 1 ? 's' : '') + '.');
+                });
             };
         }
 
@@ -653,26 +721,22 @@
             };
         }
 
-        // 6. Mill tile
+        // 6. Mill tile (Quick Tactical Picker instead of browser prompt())
         var optMill = document.getElementById('menuOptMill');
         if (optMill) {
             optMill.onclick = function () {
                 sheet.classList.add('hidden');
-                var countStr = prompt('How many cards to mill to graveyard?', '3');
-                if (countStr) {
-                    var c = parseInt(countStr, 10);
-                    if (!isNaN(c) && c > 0) {
-                        var seat = state.seats[state.viewing_seat];
-                        for (var i = 0; i < c; i++) {
-                            if (seat.zones.library.length > 0) {
-                                var id = seat.zones.library[0];
-                                coord.dispatch({ type: 'MOVE_CARD', payload: { instance_id: id, from_zone: 'library', to_zone: 'graveyard' } });
-                            }
+                openCountPickerSheet('Mill Library', 'Select number of cards to mill to graveyard:', [1, 2, 3, 5, 10], function (c) {
+                    var seat = state.seats[state.viewing_seat];
+                    for (var i = 0; i < c; i++) {
+                        if (seat.zones.library.length > 0) {
+                            var id = seat.zones.library[0];
+                            coord.dispatch({ type: 'MOVE_CARD', payload: { instance_id: id, from_zone: 'library', to_zone: 'graveyard' } });
                         }
-                        renderAll();
-                        showToast('Milled ' + c + ' card' + (c > 1 ? 's' : '') + '.');
                     }
-                }
+                    renderAll();
+                    showToast('Milled ' + c + ' card' + (c > 1 ? 's' : '') + '.');
+                });
             };
         }
 
@@ -798,9 +862,9 @@
         var cardDiv = document.createElement('div');
         cardDiv.className = 'relative flex-shrink-0 w-24 sm:w-28 rounded border border-[#2A374A] hover:border-cyan-400 cursor-pointer select-none transition-transform hover:-translate-y-1';
 
-        var imgSrc = ref.small_image_uri || ref.image_uri || '';
+        var imgSrc = ref.small_image_uri || toSmallThumb(ref.image_uri) || '';
         var imgHtml = imgSrc
-            ? '<img src="' + imgSrc + '" class="w-full h-auto aspect-[5/7] object-cover rounded pointer-events-none" loading="lazy">'
+            ? '<img src="' + imgSrc + '" class="w-full h-auto aspect-[5/7] object-cover rounded pointer-events-none" loading="lazy" decoding="async">'
             : '<div class="w-full aspect-[5/7] bg-slate-800 p-2 text-[10px] font-mono text-white flex flex-col justify-between rounded">' +
               '<div class="font-bold truncate">' + ref.name + '</div>' +
               '<div class="text-[9px] text-cyan-300">' + (ref.mana_cost || '') + '</div></div>';
@@ -929,6 +993,63 @@
         sheet.classList.remove('hidden');
     }
 
+    function openCountPickerSheet(titleText, subtitleText, presets, onPick) {
+        var sheet = document.getElementById('genericActionSheet');
+        var title = document.getElementById('actionSheetTitle');
+        var body = document.getElementById('actionSheetBody');
+        if (!sheet || !body) return;
+
+        title.textContent = titleText;
+        body.innerHTML = '';
+
+        var sub = document.createElement('p');
+        sub.className = 'text-xs font-mono text-slate-400';
+        sub.textContent = subtitleText;
+        body.appendChild(sub);
+
+        var grid = document.createElement('div');
+        grid.className = 'grid grid-cols-5 gap-2 pt-1';
+        presets.forEach(function (val) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'min-h-[46px] bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-300 border border-slate-600 rounded font-mono font-bold text-sm transition';
+            btn.textContent = String(val);
+            btn.onclick = function () {
+                haptic(15);
+                closeActionSheet();
+                onPick(val);
+            };
+            grid.appendChild(btn);
+        });
+        body.appendChild(grid);
+
+        var customRow = document.createElement('div');
+        customRow.className = 'flex items-center gap-2 pt-2';
+        var inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = '1';
+        inp.inputMode = 'numeric';
+        inp.placeholder = 'Custom count...';
+        inp.className = 'flex-1 bg-[#10141D] border border-[#263245] px-3 py-2 text-sm text-white font-mono rounded';
+        var goBtn = document.createElement('button');
+        goBtn.type = 'button';
+        goBtn.className = 'min-h-[42px] px-4 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-mono font-bold text-xs uppercase rounded';
+        goBtn.textContent = 'Apply';
+        goBtn.onclick = function () {
+            var c = parseInt(inp.value, 10);
+            if (!isNaN(c) && c > 0) {
+                haptic(15);
+                closeActionSheet();
+                onPick(c);
+            }
+        };
+        customRow.appendChild(inp);
+        customRow.appendChild(goBtn);
+        body.appendChild(customRow);
+
+        sheet.classList.remove('hidden');
+    }
+
     function openPermanentActionSheet(state, instId) {
         var card = state.cards[instId];
         var ref = state.card_refs[card.card_ref] || {};
@@ -940,6 +1061,40 @@
 
         title.textContent = ref.name + ' (Battlefield Actions)';
         body.innerHTML = '';
+
+        // Card Art & Oracle Text Readout (so mobile players can read card text without zooming)
+        var previewWrap = document.createElement('div');
+        previewWrap.className = 'flex items-start gap-3 bg-[#10141D] border border-[#232F42] p-2.5 rounded mb-2';
+        var artUrl = ref.image_uri || ref.small_image_uri || '';
+        if (artUrl) {
+            var thumb = document.createElement('img');
+            thumb.src = ref.small_image_uri || toSmallThumb(artUrl);
+            thumb.alt = ref.name || 'Card';
+            thumb.className = 'w-14 h-20 object-cover rounded border border-slate-700 flex-shrink-0 cursor-pointer';
+            thumb.onclick = function () {
+                var fullWrap = document.createElement('div');
+                fullWrap.className = 'fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4';
+                fullWrap.onclick = function () { fullWrap.remove(); };
+                var bigImg = document.createElement('img');
+                bigImg.src = artUrl;
+                bigImg.className = 'max-w-full max-h-[85dvh] object-contain rounded-lg border border-cyan-500 shadow-2xl';
+                fullWrap.appendChild(bigImg);
+                document.body.appendChild(fullWrap);
+            };
+            previewWrap.appendChild(thumb);
+        }
+        var infoDiv = document.createElement('div');
+        infoDiv.className = 'min-w-0 flex-1 space-y-1';
+        var metaLine = document.createElement('div');
+        metaLine.className = 'text-[10px] font-mono text-cyan-400 font-bold';
+        metaLine.textContent = (ref.type_line || '') + (ref.mana_cost ? ' • ' + ref.mana_cost : '');
+        infoDiv.appendChild(metaLine);
+        var oracleEl = document.createElement('div');
+        oracleEl.className = 'text-[11px] font-sans text-slate-300 leading-snug max-h-24 overflow-y-auto modal-scrollable whitespace-pre-wrap';
+        oracleEl.textContent = ref.oracle_text || 'Tap card art to enlarge.';
+        infoDiv.appendChild(oracleEl);
+        previewWrap.appendChild(infoDiv);
+        body.appendChild(previewWrap);
 
         var actions = [
             {

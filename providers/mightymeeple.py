@@ -349,7 +349,9 @@ class MightyMeepleProvider:
             logger.debug(f"Failed suggest query to {url}: {e}")
         return []
 
-    _variant_cache: dict[str, list[dict]] = {}
+    _variant_cache: dict[str, tuple[float, list[dict]]] = {}
+    _VARIANT_CACHE_TTL: float = 1800.0  # 30 minutes
+    _supported_games_cache: tuple[float, list[dict]] | None = None
 
     @staticmethod
     def _is_cloudflare_challenge(resp) -> bool:
@@ -375,11 +377,18 @@ class MightyMeepleProvider:
         deadline: float | None = None,
         cf_state: dict | None = None,
     ) -> list[dict]:
-        """Fetches Shopify product variant details via .js endpoint with caching and bounded backoff."""
+        """Fetches Shopify product variant details via .js endpoint with TTL caching and bounded backoff."""
         if not handle:
             return []
-        if handle in MightyMeepleProvider._variant_cache:
-            return MightyMeepleProvider._variant_cache[handle]
+        cached_entry = MightyMeepleProvider._variant_cache.get(handle)
+        if cached_entry is not None:
+            if isinstance(cached_entry, tuple) and len(cached_entry) == 2 and isinstance(cached_entry[0], float):
+                ts, cached_variants = cached_entry
+                if (time.monotonic() - ts) < MightyMeepleProvider._VARIANT_CACHE_TTL:
+                    return cached_variants
+                MightyMeepleProvider._variant_cache.pop(handle, None)
+            else:
+                return cached_entry
 
         if deadline is not None and (deadline - time.monotonic()) <= 0.3:
             return []
@@ -432,7 +441,7 @@ class MightyMeepleProvider:
                             if len(MightyMeepleProvider._variant_cache) >= 2000:
                                 for old_k in list(MightyMeepleProvider._variant_cache.keys())[:500]:
                                     MightyMeepleProvider._variant_cache.pop(old_k, None)
-                            MightyMeepleProvider._variant_cache[handle] = variants
+                            MightyMeepleProvider._variant_cache[handle] = (time.monotonic(), variants)
                             return variants
                     except Exception as json_err:
                         logger.debug(f"JSON decode error on {handle}: {json_err}")
@@ -1048,7 +1057,11 @@ class MightyMeepleProvider:
         }
 
     def get_supported_games(self) -> list[dict]:
-        """Fetches supported card game ecosystems from BinderPOS."""
+        """Fetches supported card game ecosystems from BinderPOS (cached 1h)."""
+        now = time.monotonic()
+        cached = MightyMeepleProvider._supported_games_cache
+        if cached and (now - cached[0]) < 3600.0:
+            return cached[1]
         try:
             url = f"{BINDERPOS_PORTAL_BASE}/external/shopify/{MIGHTY_MEEPLE_STORE_ID}/supportedGames"
             resp = self.session.get(url, timeout=8)
@@ -1061,6 +1074,8 @@ class MightyMeepleProvider:
                         gname = g.get("gameName") or gid
                         if gid and not gid.endswith("s"):  # Filter internal suffix aliases
                             clean.append({"game_id": gid, "game_name": gname})
+                    if clean:
+                        MightyMeepleProvider._supported_games_cache = (now, clean)
                     return clean
         except Exception as e:
             logger.debug(f"Failed to fetch supported buylist games: {e}")

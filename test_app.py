@@ -1,3 +1,5 @@
+import os
+import re
 import unittest
 from unittest.mock import patch
 import json
@@ -2283,17 +2285,35 @@ class ChimeraTestSuite(unittest.TestCase):
             self.assertIn(f'id="card-deal-banner-container-{card_id}"', html)
             self.assertIn(f'id="card-tag-wrapper-{card_id}"', html)
             self.assertIn(f'id="card-edit-btn-{card_id}"', html)
-            self.assertIn(f'id="compact-card-{card_id}"', html)
-            self.assertIn(f'id="compact-deal-badge-{card_id}"', html)
-            self.assertIn(f'id="compact-target-val-{card_id}"', html)
-            self.assertIn(f'id="compact-lowest-val-{card_id}"', html)
-            self.assertIn(f'id="compact-edit-btn-{card_id}"', html)
-            self.assertIn(f'id="swipe-card-slide-{card_id}"', html)
-            self.assertIn(f'id="swipe-card-box-{card_id}"', html)
-            self.assertIn(f'id="swipe-target-val-{card_id}"', html)
-            self.assertIn(f'id="swipe-lowest-val-{card_id}"', html)
-            self.assertIn(f'id="swipe-deal-banner-container-{card_id}"', html)
-            self.assertIn(f'id="swipe-edit-btn-{card_id}"', html)
+            self.assertIn('id="watchlist-compact"', html)
+            self.assertIn('id="registry-swipe-track"', html)
+            self.assertIn('id="watchlist-items-json"', html)
+            m_items = re.search(
+                r'<script id="watchlist-items-json" type="application/json">(.*?)</script>',
+                html,
+                re.DOTALL,
+            )
+            self.assertIsNotNone(m_items)
+            payload_ids = [entry["id"] for entry in json.loads(m_items.group(1))]
+            self.assertIn(card_id, payload_ids)
+
+            app_js_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "js", "app.js")
+            with open(app_js_path, "r", encoding="utf-8") as f:
+                app_js = f.read()
+            for expected_tpl in (
+                'id="compact-card-${item.id}"',
+                'id="compact-deal-badge-${item.id}"',
+                'id="compact-target-val-${item.id}"',
+                'id="compact-lowest-val-${item.id}"',
+                'id="compact-edit-btn-${item.id}"',
+                'id="swipe-card-slide-${item.id}"',
+                'id="swipe-card-box-${item.id}"',
+                'id="swipe-target-val-${item.id}"',
+                'id="swipe-lowest-val-${item.id}"',
+                'id="swipe-deal-banner-container-${item.id}"',
+                'id="swipe-edit-btn-${item.id}"',
+            ):
+                self.assertIn(expected_tpl, app_js)
             self.assertIn('id="kpi-deals-box"', html)
             self.assertIn('id="kpi-deals-count"', html)
             self.assertIn('id="kpi-target-portfolio"', html)

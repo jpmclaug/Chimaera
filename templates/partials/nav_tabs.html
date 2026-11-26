@@ -1,6 +1,7 @@
 {# Reusable Tactical Sub-Navigation Bar for Domains #}
 {% if domain == 'market' %}
-<div class="bg-[#1B2230] border border-[#263245] p-1 flex items-center gap-1 overflow-x-auto no-scrollbar font-mono text-xs mb-4">
+<div class="relative mb-4">
+<div class="bg-[#1B2230] border border-[#263245] p-1 pr-7 flex items-center gap-1 overflow-x-auto no-scrollbar font-mono text-xs">
     <div class="px-2 py-1 text-[10px] uppercase font-bold text-[#64748B] flex items-center gap-1.5 whitespace-nowrap">
         <span class="w-1.5 h-1.5 rounded-full bg-[#00CED1]"></span>
         <span>01 // Market:</span>
@@ -24,9 +25,12 @@
         <span>MicroCenter Charlotte</span>
     </a>
 </div>
+<div class="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#10141D] to-transparent md:hidden"></div>
+</div>
 
 {% elif domain == 'commander' %}
-<div class="bg-[#1B2230] border border-[#263245] p-1 flex items-center gap-1 overflow-x-auto no-scrollbar font-mono text-xs mb-4">
+<div class="relative mb-4">
+<div class="bg-[#1B2230] border border-[#263245] p-1 pr-7 flex items-center gap-1 overflow-x-auto no-scrollbar font-mono text-xs">
     <div class="px-2 py-1 text-[10px] uppercase font-bold text-[#64748B] flex items-center gap-1.5 whitespace-nowrap">
         <span class="w-1.5 h-1.5 rounded-full bg-[#00CED1]"></span>
         <span>03 // Commander:</span>
@@ -41,9 +45,12 @@
         <span>Timewalked Brackets</span>
     </a>
 </div>
+<div class="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#10141D] to-transparent md:hidden"></div>
+</div>
 
 {% elif domain == 'evaluate' %}
-<div class="bg-[#1B2230] border border-[#263245] p-1 flex items-center gap-1 overflow-x-auto no-scrollbar font-mono text-xs mb-4">
+<div class="relative mb-4">
+<div class="bg-[#1B2230] border border-[#263245] p-1 pr-7 flex items-center gap-1 overflow-x-auto no-scrollbar font-mono text-xs">
     <div class="px-2 py-1 text-[10px] uppercase font-bold text-[#64748B] flex items-center gap-1.5 whitespace-nowrap">
         <span class="w-1.5 h-1.5 rounded-full bg-[#00CED1]"></span>
         <span>05 // Evaluate:</span>
@@ -54,5 +61,7 @@
     <a href="/secret-lair" class="px-3 py-1.5 flex items-center gap-1.5 border {% if active_tab == 'secret_lair' %}bg-[#10141D] text-[#C084FC] border-[#A855F7] font-bold{% else %}border-transparent text-[#94A3B8] hover:text-white hover:bg-[#10141D]/50{% endif %} transition whitespace-nowrap">
         <span>Secret Lair Advisor</span>
     </a>
+</div>
+<div class="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#10141D] to-transparent md:hidden"></div>
 </div>
 {% endif %}
