@@ -32,8 +32,8 @@
         </div>
     </div>
 
-    <!-- Deals Mode Section Switcher (Single Deals vs Seller Lot Finder vs Sealed Product Deals vs Retail & Sellers) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 border border-[#263245] bg-[#1B2230] p-1 gap-1">
+    <!-- Deals Mode Section Switcher (Single Deals vs Retail & Sellers vs Seller Lot Finder vs Sealed Product Deals vs Seller Scout) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 deals-tabs-grid border border-[#263245] bg-[#1B2230] p-1 gap-1">
         <button onclick="switchDealsSection('single')" id="btn-deals-sec-single"
             class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#DC143C] text-white">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,6 +61,10 @@
                 <path stroke-linecap="square" stroke-linejoin="miter" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
             </svg>
             <span>📦 Sealed Scanner</span>
+        </button>
+        <button onclick="switchDealsSection('scout')" id="btn-deals-sec-scout"
+            class="py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 text-[#94A3B8] hover:text-white hover:bg-[#10141D]">
+            <span>🎯 Seller Scout &middot; BF</span>
         </button>
     </div>
 
@@ -1111,9 +1115,363 @@
         </div>
     </div><!-- End of deals-retailers-container -->
 
+    <!-- =========================================================================
+         SECTION E: BLACK FRIDAY SELLER SCOUT & COMBINED CARTS
+         ========================================================================= -->
+    <div id="deals-seller-scout-container" class="hidden space-y-4 sm:space-y-6">
+        <script id="saved-tcg-sellers-json" type="application/json">{{ (saved_tcg_sellers or [])|tojson }}</script>
+
+        <!-- Briefing & Submode Switcher -->
+        <div class="bg-[#1B2230] border border-[#263245] p-3.5 sm:p-5 space-y-4 font-mono">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#263245] pb-3">
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2 h-2 bg-[#10B981] inline-block"></span>
+                        <span class="text-xs font-bold text-[#10B981] uppercase tracking-wider">BLACK FRIDAY RECON // SELLER SCOUT</span>
+                    </div>
+                    <h3 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5">
+                        TCGplayer Seller Value &amp; Combined Cart Scout
+                    </h3>
+                    <p class="text-xs text-[#94A3B8] font-sans mt-0.5">
+                        Audit a recommended seller's entire store for deck upgrades, watchlist singles, sealed boxes, and below-market steals (excluding owned cards) &mdash; or discover sellers carrying both sealed and watchlist singles in one cart.
+                    </p>
+                </div>
+                <div class="flex items-center space-x-2 flex-shrink-0">
+                    <span class="text-[11px] text-[#64748B] bg-[#10141D] px-2.5 py-1 border border-[#263245]">
+                        Saved Sellers: <strong class="text-[#10B981]" id="scout-saved-count">{{ (saved_tcg_sellers or [])|length }}</strong>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Submode Switcher -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button type="button" id="btn-scout-submode-value" onclick="setScoutSubmode('value_scan')"
+                    class="scout-submode-btn active p-2.5 sm:p-3 text-left border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wide">🎯 Specific Seller Value Scan</span>
+                        <span class="text-[10px] bg-[#10B981] text-[#10141D] px-1.5 font-bold">Store Audit</span>
+                    </div>
+                    <div class="text-[11px] text-[#94A3B8] font-sans mt-1">
+                        Paste a seller's TCGplayer store URL to surface value deals, Commander deck upgrades, watchlist hits, and sealed bargains.
+                    </div>
+                </button>
+                <button type="button" id="btn-scout-submode-combined" onclick="setScoutSubmode('combined_carts')"
+                    class="scout-submode-btn p-2.5 sm:p-3 text-left border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wide">📦+🃏 Combined Sealed &amp; Singles Carts</span>
+                        <span class="text-[10px] text-[#00CED1] font-bold">1+1 Minimum</span>
+                    </div>
+                    <div class="text-[11px] text-[#94A3B8] font-sans mt-1">
+                        Find sellers holding both wanted sealed items and your watchlist singles to save on combined shipping.
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- SUBPANEL 1: SPECIFIC SELLER VALUE SCAN -->
+        <div id="scout-subpanel-value-scan" class="space-y-4">
+            <div class="bg-[#1B2230] border border-[#263245] p-3.5 sm:p-5 space-y-4 font-mono">
+                <!-- Saved Favorite Sellers Bar -->
+                <div class="space-y-1.5">
+                    <label class="text-[10px] uppercase font-bold text-[#94A3B8] tracking-wider block">
+                        Saved Favorite Sellers (Click to Re-Scan)
+                    </label>
+                    <div id="scout-saved-sellers-chips" class="flex flex-wrap items-center gap-2"></div>
+                </div>
+
+                <!-- Seller URL / Key Input -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-2.5 pt-2 border-t border-[#263245]">
+                    <div class="lg:col-span-6">
+                        <label class="text-[10px] uppercase font-bold text-[#10B981] block mb-1">
+                            TCGplayer Store URL or 8-Char Seller Key
+                        </label>
+                        <input type="text" id="scout-seller-input"
+                            placeholder="https://www.tcgplayer.com/search/magic/product?seller=43d828c6 or 43d828c6"
+                            autocorrect="off" autocapitalize="off" spellcheck="false"
+                            class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white placeholder-[#64748B] focus:border-[#10B981]">
+                    </div>
+                    <div class="lg:col-span-3">
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">
+                            Optional Note / Source
+                        </label>
+                        <input type="text" id="scout-seller-note"
+                            placeholder="e.g. Black Friday Discord rec"
+                            autocorrect="off" autocapitalize="off" spellcheck="false"
+                            class="w-full bg-[#10141D] border border-[#263245] px-3 py-2 text-xs text-white placeholder-[#64748B] focus:border-[#10B981]">
+                    </div>
+                    <div class="lg:col-span-3 flex items-end gap-2">
+                        <button type="button" onclick="saveCurrentScoutSeller()"
+                            class="btn-bridge px-3 py-2 text-xs text-[#F59E0B] border-[#F59E0B]/50 hover:bg-[#F59E0B] hover:text-[#10141D] font-bold uppercase whitespace-nowrap">
+                            ★ Save
+                        </button>
+                        <button type="button" id="btn-run-seller-scan" onclick="runSellerValueScan(false)"
+                            class="btn-bridge flex-1 px-4 py-2 bg-[#10B981] hover:bg-[#10B981]/90 text-[#10141D] text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-1.5 transition">
+                            <svg id="scout-scan-spinner" class="w-4 h-4 text-[#10141D] hidden animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                            </svg>
+                            <span id="scout-scan-btn-label">🔍 SCAN SELLER STORE</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Value Filter Controls -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Min Discount vs Market (%)</label>
+                        <input type="number" id="scout-min-discount" value="10" min="0" max="80" step="1"
+                            inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false"
+                            class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#10B981]">
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Min Market Price ($)</label>
+                        <input type="number" id="scout-min-market" value="1.00" min="0" step="0.50"
+                            inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false"
+                            class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#10B981]">
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Card Conditions &amp; Lang</label>
+                        <div class="h-9 flex items-center px-2 bg-[#10141D] border border-[#263245] space-x-2.5 text-xs">
+                            <label class="inline-flex items-center space-x-1 text-white cursor-pointer">
+                                <input type="checkbox" id="scout-cond-nm" checked class="form-checkbox text-[#10B981] rounded-none bg-[#161C28] border-[#263245]">
+                                <span>NM</span>
+                            </label>
+                            <label class="inline-flex items-center space-x-1 text-white cursor-pointer">
+                                <input type="checkbox" id="scout-cond-lp" checked class="form-checkbox text-[#10B981] rounded-none bg-[#161C28] border-[#263245]">
+                                <span>LP</span>
+                            </label>
+                            <label class="inline-flex items-center space-x-1 text-[#94A3B8] cursor-pointer">
+                                <input type="checkbox" id="scout-allow-mp" class="form-checkbox text-[#10B981] rounded-none bg-[#161C28] border-[#263245]">
+                                <span>MP</span>
+                            </label>
+                            <label class="inline-flex items-center space-x-1 text-[#00CED1] cursor-pointer">
+                                <input type="checkbox" id="scout-english-only" checked class="form-checkbox text-[#00CED1] rounded-none bg-[#161C28] border-[#263245]">
+                                <span>EN</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Save on Scan</label>
+                        <div class="h-9 flex items-center px-2 bg-[#10141D] border border-[#263245] text-xs">
+                            <label class="inline-flex items-center space-x-1.5 text-[#F59E0B] cursor-pointer">
+                                <input type="checkbox" id="scout-save-on-scan" class="form-checkbox text-[#F59E0B] rounded-none bg-[#161C28] border-[#263245]">
+                                <span>Auto-save seller after scan</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recommendation Buckets & Ownership Exclusion Toggles -->
+                <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-[#263245] text-xs">
+                    <span class="text-[10px] uppercase font-bold text-[#64748B]">Include:</span>
+                    <label class="inline-flex items-center space-x-1.5 text-[#00CED1] cursor-pointer">
+                        <input type="checkbox" id="scout-inc-watchlist" checked class="form-checkbox text-[#00CED1] rounded-none bg-[#161C28] border-[#263245]">
+                        <span>Watchlist Singles</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 text-[#DDD6FE] cursor-pointer">
+                        <input type="checkbox" id="scout-inc-decks" checked class="form-checkbox text-[#8B5CF6] rounded-none bg-[#161C28] border-[#263245]">
+                        <span>Commander Deck Upgrades</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 text-[#10B981] cursor-pointer">
+                        <input type="checkbox" id="scout-inc-value" checked class="form-checkbox text-[#10B981] rounded-none bg-[#161C28] border-[#263245]">
+                        <span>Pure Value Singles (&ge;Min %)</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 text-[#F59E0B] cursor-pointer">
+                        <input type="checkbox" id="scout-inc-sealed" checked class="form-checkbox text-[#F59E0B] rounded-none bg-[#161C28] border-[#263245]">
+                        <span>Sealed Below Market / Watched</span>
+                    </label>
+                    <label class="inline-flex items-center space-x-1.5 text-white font-bold cursor-pointer ml-auto">
+                        <input type="checkbox" id="scout-exclude-owned" checked class="form-checkbox text-[#10B981] rounded-none bg-[#161C28] border-[#263245]">
+                        <span>Exclude Already Owned</span>
+                    </label>
+                </div>
+
+                <div class="text-xs text-[#64748B] flex items-center space-x-2 pt-1">
+                    <span class="inline-block w-2 h-2 rounded-full bg-[#10B981]"></span>
+                    <span id="scout-value-status-text">Paste a recommended seller URL above to begin store value recon.</span>
+                </div>
+            </div>
+
+            <!-- Seller Summary Banner -->
+            <div id="scout-value-store-banner" class="hidden bg-[#1B2230] border border-[#10B981]/50 p-3.5 sm:p-4"></div>
+
+            <!-- Warnings (Partial Scan / Uncached Decks) -->
+            <div id="scout-value-warnings" class="hidden bg-[#F59E0B]/10 border border-[#F59E0B]/50 p-3 text-xs font-mono text-[#F59E0B] space-y-1"></div>
+
+            <!-- KPIs -->
+            <div id="scout-value-kpis" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 font-mono">
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Watchlist Hits</div>
+                    <div class="text-xl font-bold text-[#00CED1]" id="kpi-scout-watchlist">0</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Deck Upgrades</div>
+                    <div class="text-xl font-bold text-[#DDD6FE]" id="kpi-scout-decks">0</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Pure Value Picks</div>
+                    <div class="text-xl font-bold text-[#10B981]" id="kpi-scout-value">0</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Sealed Deals</div>
+                    <div class="text-xl font-bold text-[#F59E0B]" id="kpi-scout-sealed">0</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Owned Filter</div>
+                    <div class="text-xs font-bold text-white mt-1.5" id="kpi-scout-owned-skipped">0 owned excluded</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Scan Time</div>
+                    <div class="text-xl font-bold text-white" id="kpi-scout-duration">0.0s</div>
+                </div>
+            </div>
+
+            <!-- Results Container -->
+            <div id="scout-value-results-container" class="space-y-4">
+                <div class="bg-[#1B2230] border border-[#263245] p-8 text-center font-mono">
+                    <div class="text-xs text-[#10B981] uppercase font-bold tracking-widest">// SELLER SCOUT STANDBY</div>
+                    <h4 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">
+                        Ready to Audit Any TCGplayer Seller Store
+                    </h4>
+                    <p class="text-xs text-[#94A3B8] max-w-lg mx-auto font-sans mt-1.5">
+                        Paste a store URL from TCGplayer above and click <strong>Scan Seller Store</strong>. Chimera checks your watchlist, Commander deck upgrades, unowned below-market singles, and sealed offerings.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Sticky Bottom Cart Builder Bar -->
+            <div id="scout-sticky-cart-bar" class="hidden scout-sticky-cart p-3 sm:p-4 font-mono">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                    <div class="flex flex-wrap items-center gap-3 text-xs">
+                        <span class="text-[#10B981] font-bold uppercase" id="scout-cart-count">0 items</span>
+                        <span>Subtotal: <strong class="text-white" id="scout-cart-subtotal">$0.00</strong></span>
+                        <span>Est. Ship: <strong class="text-[#00CED1]" id="scout-cart-shipping">$0.00</strong></span>
+                        <span>Est. Savings: <strong class="text-[#10B981]" id="scout-cart-savings">$0.00</strong></span>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <button type="button" onclick="selectScoutPreset('recommended')" class="btn-bridge px-2 py-1 text-[11px] text-[#00CED1]">Recommended</button>
+                        <button type="button" onclick="selectScoutPreset('top10_value')" class="btn-bridge px-2 py-1 text-[11px] text-[#10B981]">Top 10 Value</button>
+                        <button type="button" onclick="selectScoutPreset('clear')" class="btn-bridge px-2 py-1 text-[11px] text-[#94A3B8]">Clear</button>
+                        <button type="button" onclick="copyScoutMassEntry()" class="btn-bridge px-2.5 py-1.5 text-xs text-[#10B981] border-[#10B981]/60 font-bold">Copy Mass Entry</button>
+                        <button type="button" onclick="openScoutMassEntry()" class="btn-bridge px-2.5 py-1.5 text-xs bg-[#10B981] text-[#10141D] font-bold">Open Mass Entry ↗</button>
+                        <a id="scout-cart-store-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-bridge px-2.5 py-1.5 text-xs text-white bg-[#10141D]">Store ↗</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUBPANEL 2: COMBINED SEALED + SINGLES CARTS -->
+        <div id="scout-subpanel-combined-carts" class="hidden space-y-4">
+            <div class="bg-[#1B2230] border border-[#263245] p-3.5 sm:p-5 space-y-4 font-mono">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Min Sealed Items</label>
+                        <select id="combined-min-sealed" class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#10B981]">
+                            <option value="1" selected>1+ Sealed (Default)</option>
+                            <option value="2">2+ Sealed</option>
+                            <option value="3">3+ Sealed</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Min Watchlist Singles</label>
+                        <select id="combined-min-singles" class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#10B981]">
+                            <option value="1" selected>1+ Single (Default)</option>
+                            <option value="2">2+ Singles</option>
+                            <option value="3">3+ Singles</option>
+                            <option value="5">5+ Singles</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Singles Price Rule</label>
+                        <select id="combined-price-tolerance" class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#10B981]">
+                            <option value="decent_10" selected>&le; Target OR &le; Mkt +10%</option>
+                            <option value="market_0">Strict: &le; 100% Market</option>
+                            <option value="great_minus_10">Great: &le; 10% Below Mkt</option>
+                            <option value="target_only">Strict: &le; Target Only</option>
+                            <option value="flex_20">Flexible: &le; Mkt +20%</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Non-Watched Sealed Min % Off</label>
+                        <input type="number" id="combined-sealed-discount" value="0" min="0" max="80" step="1"
+                            inputmode="decimal" autocorrect="off" autocapitalize="off" spellcheck="false"
+                            class="w-full bg-[#10141D] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#10B981]">
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-bold text-[#94A3B8] block mb-1">Watchlist Tag Scope</label>
+                        <select id="combined-tag-filter" class="w-full bg-[#10141D] border border-[#263245] text-xs text-[#C084FC] p-2 font-mono focus:border-[#10B981]">
+                            <option value="all">ALL WATCHLIST CARDS</option>
+                            {% if user_tags %}
+                            {% for tag in user_tags %}
+                            <option value="{{ tag|lower }}">🏷️ {{ tag }}</option>
+                            {% endfor %}
+                            {% endif %}
+                            <option value="__untagged__">[ UNTAGGED ]</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pt-3 border-t border-[#263245] flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div class="flex flex-wrap items-center gap-3 text-xs">
+                        <label class="inline-flex items-center space-x-1.5 text-[#00CED1] cursor-pointer">
+                            <input type="checkbox" id="combined-english-only" checked class="form-checkbox text-[#00CED1] rounded-none bg-[#161C28] border-[#263245]">
+                            <span>English Only</span>
+                        </label>
+                        <label class="inline-flex items-center space-x-1.5 text-[#94A3B8] cursor-pointer">
+                            <input type="checkbox" id="combined-allow-mp" class="form-checkbox text-[#10B981] rounded-none bg-[#161C28] border-[#263245]">
+                            <span>Allow MP</span>
+                        </label>
+                        <span id="combined-status-text" class="text-[#64748B]">Ready to match sellers holding both sealed products and watchlist singles.</span>
+                    </div>
+
+                    <button type="button" id="btn-run-combined-carts" onclick="runCombinedCartsScan()"
+                        class="btn-bridge w-full sm:w-auto px-6 py-2.5 bg-[#10B981] hover:bg-[#10B981]/90 text-[#10141D] text-xs font-bold uppercase tracking-wider flex items-center justify-center space-x-2 transition">
+                        <svg id="combined-scan-spinner" class="w-4 h-4 text-[#10141D] hidden animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span id="combined-scan-btn-label">🛒 FIND COMBINED CARTS</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="combined-kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Combined Carts Found</div>
+                    <div class="text-xl font-bold text-[#10B981]" id="kpi-combined-carts-count">0</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Best Net Savings</div>
+                    <div class="text-xl font-bold text-[#00CED1]" id="kpi-combined-best-savings">$0.00</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Max Shipping Saved</div>
+                    <div class="text-xl font-bold text-[#F59E0B]" id="kpi-combined-ship-saved">$0.00</div>
+                </div>
+                <div class="bg-[#1B2230] border border-[#263245] p-3">
+                    <div class="text-[10px] text-[#94A3B8] uppercase">Scan Duration</div>
+                    <div class="text-xl font-bold text-white" id="kpi-combined-duration">0.0s</div>
+                </div>
+            </div>
+
+            <div id="combined-results-container" class="space-y-4">
+                <div class="bg-[#1B2230] border border-[#263245] p-8 text-center font-mono">
+                    <div class="text-xs text-[#00CED1] uppercase font-bold tracking-widest">// COMBINED CART SCANNER STANDBY</div>
+                    <h4 class="text-base font-heading font-black text-white uppercase tracking-wider mt-1">
+                        Consolidate Sealed Boxes &amp; Watchlist Singles
+                    </h4>
+                    <p class="text-xs text-[#94A3B8] max-w-lg mx-auto font-sans mt-1.5">
+                        Click <strong>Find Combined Carts</strong> to scan sellers carrying your watched sealed items (or below-market sealed) alongside your watchlist singles (1+1 minimum).
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div><!-- End of deals-seller-scout-container -->
+
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/deals_scanners.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/seller_scout.js') }}" defer></script>
 {% endblock %}

@@ -2110,3 +2110,69 @@ class TCGPlayerOrder(db.Model):
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
 
+
+class SavedTcgSeller(db.Model):
+    """Stores favorite/recommended TCGplayer sellers for rapid Black Friday store scanning."""
+
+    __tablename__ = "saved_tcg_seller"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    seller_key = db.Column(db.String(32), nullable=False, index=True)
+    seller_name = db.Column(db.String(255), nullable=True)
+    store_url = db.Column(db.String(512), nullable=True)
+    note = db.Column(db.String(255), nullable=True)
+    seller_rating = db.Column(db.Float, nullable=True)
+    seller_sales = db.Column(db.String(64), nullable=True)
+    is_direct = db.Column(db.Boolean, default=False, nullable=False)
+    is_gold = db.Column(db.Boolean, default=False, nullable=False)
+    is_certified_shop = db.Column(db.Boolean, default=False, nullable=False)
+    last_scanned_at = db.Column(db.DateTime, nullable=True)
+    last_summary_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utc_now, index=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "seller_key", name="uq_saved_tcg_seller_user_key"),
+    )
+
+    def get_last_summary(self) -> dict:
+        """Returns deserialized summary dict from the most recent Seller Value Scan."""
+        if not self.last_summary_json:
+            return {}
+        try:
+            data = json.loads(self.last_summary_json)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+
+    def to_dict(self) -> dict:
+        """Serializes SavedTcgSeller record for UI chips and API/MCP responses."""
+        clean_key = (self.seller_key or "").strip().lower()
+        default_url = (
+            f"https://www.tcgplayer.com/search/magic/product?seller={clean_key}&view=grid"
+            if clean_key
+            else "https://www.tcgplayer.com"
+        )
+        return {
+            "id": self.id,
+            "userId": self.user_id,
+            "sellerKey": clean_key,
+            "sellerName": self.seller_name or f"Seller {clean_key}",
+            "storeUrl": self.store_url or default_url,
+            "note": self.note or "",
+            "sellerRating": self.seller_rating,
+            "sellerSales": self.seller_sales or "",
+            "directSeller": bool(self.is_direct),
+            "goldSeller": bool(self.is_gold),
+            "certifiedShop": bool(self.is_certified_shop),
+            "lastScannedAt": self.last_scanned_at.isoformat() if self.last_scanned_at else None,
+            "lastSummary": self.get_last_summary(),
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+        }
+
+

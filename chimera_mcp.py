@@ -24,6 +24,7 @@ from models import (
     CardAddAnalysis,
     DeckAnalysis,
     MicrocenterItem,
+    SavedTcgSeller,
     SecretLairAnalysis,
     SystemSetting,
     User,
@@ -31,6 +32,7 @@ from models import (
     VendorPrice,
     WatchlistItem,
     db,
+    utc_now,
 )
 
 logger = logging.getLogger(__name__)
@@ -804,6 +806,113 @@ MCP_TOOLS: list[dict[str, Any]] = [
                     "type": "boolean",
                     "description": "If true (default), actively polls live retailer prices before returning; if false, returns the latest saved snapshot.",
                     "default": True,
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "scan_tcgplayer_seller",
+        "description": (
+            "Scans a specific TCGplayer seller's MTG storefront (via store URL, 8-character sellerKey, or saved seller name) "
+            "and recommends watchlist hits, Commander deck upgrades, pure below-market value singles (default >=10% below market), "
+            "and below-market/watched sealed products while excluding cards already owned in inventory. "
+            "If 'seller' is omitted, lists the user's saved favorite TCGplayer sellers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "seller": {
+                    "type": "string",
+                    "description": "TCGplayer store URL (?seller=...), feedback URL, 8-character sellerKey, or saved seller name. Omit to list saved sellers.",
+                },
+                "min_discount_pct": {
+                    "type": "number",
+                    "description": "Minimum discount percentage below TCGplayer market for pure value singles (default 10.0).",
+                    "default": 10.0,
+                },
+                "min_market": {
+                    "type": "number",
+                    "description": "Minimum TCGplayer market price USD for pure value singles (default 1.0).",
+                    "default": 1.0,
+                },
+                "include_sealed": {
+                    "type": "boolean",
+                    "description": "Include watched or below-market sealed items from this seller (default true).",
+                    "default": True,
+                },
+                "include_value": {
+                    "type": "boolean",
+                    "description": "Include pure below-market value singles from this seller (default true).",
+                    "default": True,
+                },
+                "include_deck_upgrades": {
+                    "type": "boolean",
+                    "description": "Include cards matching cached Commander deck upgrade recommendations (default true).",
+                    "default": True,
+                },
+                "exclude_owned": {
+                    "type": "boolean",
+                    "description": "Exclude already-owned cards from deck upgrades and pure value picks (default true).",
+                    "default": True,
+                },
+                "save_seller": {
+                    "type": "boolean",
+                    "description": "Save this seller to the user's favorite TCGplayer sellers list (default false).",
+                    "default": False,
+                },
+                "note": {
+                    "type": "string",
+                    "description": "Optional note to store when saving the seller (e.g. 'Black Friday recommendation').",
+                },
+                "limit_per_bucket": {
+                    "type": "integer",
+                    "description": "Maximum items returned per recommendation bucket (default 25, max 100).",
+                    "default": 25,
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "find_tcgplayer_combined_carts",
+        "description": (
+            "Finds TCGplayer sellers stocking BOTH wanted sealed products (watched sealed items or below-market sealed) "
+            "AND the user's watchlist singles so orders can be consolidated into one cart with combined shipping."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "min_sealed": {
+                    "type": "integer",
+                    "description": "Minimum qualifying sealed products required from a seller (default 1).",
+                    "default": 1,
+                },
+                "min_singles": {
+                    "type": "integer",
+                    "description": "Minimum qualifying watchlist singles required from a seller (default 1).",
+                    "default": 1,
+                },
+                "price_tolerance_mode": {
+                    "type": "string",
+                    "enum": ["decent_10", "market_0", "great_minus_10", "target_only", "flex_20"],
+                    "description": "Singles pricing threshold mode (default 'decent_10').",
+                    "default": "decent_10",
+                },
+                "sealed_min_discount_pct": {
+                    "type": "number",
+                    "description": "Minimum % below market for non-watched sealed products (default 0.0).",
+                    "default": 0.0,
+                },
+                "tag_filter": {
+                    "type": "string",
+                    "description": "Optional watchlist tag filter (default 'all').",
+                    "default": "all",
+                },
+                "max_sellers": {
+                    "type": "integer",
+                    "description": "Maximum candidate sellers to inspect (default 20, max 40).",
+                    "default": 20,
                 },
             },
             "required": [],
@@ -3364,6 +3473,158 @@ def _execute_scan_sealed_retailers(user: User, args: dict[str, Any]) -> dict[str
     }
 
 
+def _get_tcg_seller_scanner():
+    from flask import current_app, has_app_context
+    from providers.tcgplayer_seller_scan import TCGplayerSellerScanner
+
+    if has_app_context():
+        scanner = getattr(current_app, "tcgplayer_seller_scanner", None)
+        if scanner is not None:
+            return scanner
+    return TCGplayerSellerScanner()
+
+
+def _execute_scan_tcgplayer_seller(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """Scans a TCGplayer seller store by URL/key/saved name or lists saved favorite sellers."""
+    from flask import current_app, has_app_context
+    from providers.tcgplayer_seller_scan import SellerNotFoundError, build_user_scout_context
+
+    raw_seller = str(args.get("seller") or args.get("seller_key") or args.get("url") or "").strip()
+    if not raw_seller:
+        saved = (
+            SavedTcgSeller.query.filter_by(user_id=user.id)
+            .order_by(SavedTcgSeller.last_scanned_at.desc(), SavedTcgSeller.created_at.desc())
+            .all()
+        )
+        return {
+            "success": True,
+            "saved_sellers": [s.to_dict() for s in saved],
+            "count": len(saved),
+            "message": "Pass 'seller' (TCGplayer store URL, 8-char sellerKey, or saved seller name) to scan a store.",
+        }
+
+    def _f(val: Any, default: float, lo: float, hi: float) -> float:
+        try:
+            return max(lo, min(hi, float(val)))
+        except (ValueError, TypeError):
+            return default
+
+    def _i(val: Any, default: int, lo: int, hi: int) -> int:
+        try:
+            return max(lo, min(hi, int(val)))
+        except (ValueError, TypeError):
+            return default
+
+    limit_per_bucket = _i(args.get("limit_per_bucket", 25), 25, 1, 100)
+    save_seller = bool(args.get("save_seller", False))
+    note = args.get("note")
+
+    is_testing = bool(has_app_context() and current_app.config.get("TESTING", False))
+    options = {
+        "min_discount_pct": _f(args.get("min_discount_pct", 10.0), 10.0, 0.0, 80.0),
+        "min_market": _f(args.get("min_market", 1.0), 1.0, 0.0, 500.0),
+        "include_sealed": bool(args.get("include_sealed", True)),
+        "include_value": bool(args.get("include_value", True)),
+        "include_deck_upgrades": bool(args.get("include_deck_upgrades", True)),
+        "include_watchlist": bool(args.get("include_watchlist", True)),
+        "exclude_owned": bool(args.get("exclude_owned", True)),
+        "allow_mp": bool(args.get("allow_mp", False)),
+        "english_only": bool(args.get("english_only", True)),
+        "force_refresh": bool(args.get("force_refresh", False)),
+        "use_cache": not is_testing,
+        "max_products": _i(args.get("max_products", 2000), 2000, 50, 5000),
+    }
+
+    ctx = build_user_scout_context(user.id)
+    scanner = _get_tcg_seller_scanner()
+
+    try:
+        result = scanner.scan_seller_value(
+            raw_seller,
+            watchlist_items=ctx["watchlist_items"],
+            owned_map=ctx["owned_map"],
+            deck_upgrades=ctx["deck_upgrades"],
+            saved_sellers=ctx["saved_sellers"],
+            decks_missing_upgrades=ctx["decks_missing_upgrades"],
+            options=options,
+        )
+    except SellerNotFoundError as exc:
+        return {"error": str(exc)}
+
+    s_meta = result["seller"]
+    s_key = s_meta["sellerKey"]
+    saved_row = SavedTcgSeller.query.filter_by(user_id=user.id, seller_key=s_key).first()
+    if saved_row is None and save_seller:
+        saved_row = SavedTcgSeller(user_id=user.id, seller_key=s_key)
+        db.session.add(saved_row)
+    if saved_row is not None:
+        saved_row.seller_name = s_meta.get("sellerName") or saved_row.seller_name
+        saved_row.store_url = s_meta.get("storeUrl") or saved_row.store_url
+        if save_seller and note is not None and str(note).strip():
+            saved_row.note = str(note).strip()[:255]
+        saved_row.seller_rating = s_meta.get("sellerRating")
+        saved_row.seller_sales = s_meta.get("sellerSales")
+        saved_row.is_direct = bool(s_meta.get("directSeller"))
+        saved_row.is_gold = bool(s_meta.get("goldSeller"))
+        saved_row.is_certified_shop = bool(s_meta.get("certifiedShop"))
+        saved_row.last_scanned_at = utc_now()
+        saved_row.last_summary_json = json.dumps(result["summary"])
+        db.session.commit()
+
+    return {
+        "success": True,
+        "seller": s_meta,
+        "isSaved": saved_row is not None,
+        "summary": result["summary"],
+        "cartSummary": result["cartSummary"],
+        "storeStats": result["storeStats"],
+        "limitPerBucket": limit_per_bucket,
+        "watchlistHits": result["watchlistHits"][:limit_per_bucket],
+        "deckUpgrades": result["deckUpgrades"][:limit_per_bucket],
+        "valuePicks": result["valuePicks"][:limit_per_bucket],
+        "sealedPicks": result["sealedPicks"][:limit_per_bucket],
+    }
+
+
+def _execute_find_tcgplayer_combined_carts(user: User, args: dict[str, Any]) -> dict[str, Any]:
+    """Finds TCGplayer sellers carrying both wanted sealed products and watchlist singles."""
+    from providers.tcgplayer_seller_scan import build_user_scout_context
+
+    def _i(val: Any, default: int, lo: int, hi: int) -> int:
+        try:
+            return max(lo, min(hi, int(val)))
+        except (ValueError, TypeError):
+            return default
+
+    def _f(val: Any, default: float, lo: float, hi: float) -> float:
+        try:
+            return max(lo, min(hi, float(val)))
+        except (ValueError, TypeError):
+            return default
+
+    tolerance = str(args.get("price_tolerance_mode", "decent_10")).strip().lower()
+    if tolerance not in ("decent_10", "market_0", "great_minus_10", "target_only", "flex_20"):
+        tolerance = "decent_10"
+
+    options = {
+        "min_sealed": _i(args.get("min_sealed", 1), 1, 1, 10),
+        "min_singles": _i(args.get("min_singles", 1), 1, 1, 20),
+        "price_tolerance_mode": tolerance,
+        "sealed_min_discount_pct": _f(args.get("sealed_min_discount_pct", 0.0), 0.0, 0.0, 80.0),
+        "tag_filter": str(args.get("tag_filter", "all") or "all").strip(),
+        "allow_mp": bool(args.get("allow_mp", False)),
+        "english_only": bool(args.get("english_only", True)),
+        "max_sellers": _i(args.get("max_sellers", 20), 20, 1, 40),
+    }
+
+    ctx = build_user_scout_context(user.id)
+    scanner = _get_tcg_seller_scanner()
+    return scanner.find_combined_carts(
+        watchlist_items=ctx["watchlist_items"],
+        options=options,
+    )
+
+
 TOOL_HANDLERS = {
     "get_inventory_summary": _execute_get_inventory_summary,
     "check_inventory_cards": _execute_check_inventory_cards,
@@ -3401,6 +3662,12 @@ TOOL_HANDLERS = {
     "get_tcgplayer_orders": _execute_manage_tcgplayer_orders,
     "complete_tcgplayer_order": _execute_manage_tcgplayer_orders,
     "scan_sealed_retailers": _execute_scan_sealed_retailers,
+    "scan_tcgplayer_seller": _execute_scan_tcgplayer_seller,
+    "scout_tcgplayer_seller": _execute_scan_tcgplayer_seller,
+    "scan_seller_value": _execute_scan_tcgplayer_seller,
+    "find_tcgplayer_combined_carts": _execute_find_tcgplayer_combined_carts,
+    "combined_tcgplayer_carts": _execute_find_tcgplayer_combined_carts,
+    "find_combined_carts": _execute_find_tcgplayer_combined_carts,
 }
 
 

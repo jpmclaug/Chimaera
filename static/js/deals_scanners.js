@@ -9,10 +9,12 @@ function switchDealsSection(section) {
     const lotsContainer = document.getElementById("deals-lot-finder-container");
     const sealedContainer = document.getElementById("deals-sealed-finder-container");
     const retailersContainer = document.getElementById("deals-retailers-container");
+    const scoutContainer = document.getElementById("deals-seller-scout-container");
     const btnSingle = document.getElementById("btn-deals-sec-single");
     const btnLots = document.getElementById("btn-deals-sec-lots");
     const btnSealed = document.getElementById("btn-deals-sec-sealed");
     const btnRetailers = document.getElementById("btn-deals-sec-retailers");
+    const btnScout = document.getElementById("btn-deals-sec-scout");
 
     if (!singleContainer || !lotsContainer) return;
 
@@ -22,10 +24,12 @@ function switchDealsSection(section) {
     lotsContainer.classList.add("hidden");
     if (sealedContainer) sealedContainer.classList.add("hidden");
     if (retailersContainer) retailersContainer.classList.add("hidden");
+    if (scoutContainer) scoutContainer.classList.add("hidden");
     if (btnSingle) btnSingle.className = inactiveCls;
     if (btnLots) btnLots.className = inactiveCls;
     if (btnSealed) btnSealed.className = inactiveCls;
     if (btnRetailers) btnRetailers.className = inactiveCls;
+    if (btnScout) btnScout.className = inactiveCls;
 
     if (section === "lots") {
         lotsContainer.classList.remove("hidden");
@@ -46,6 +50,13 @@ function switchDealsSection(section) {
             btnRetailers.className = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 bg-[#8B5CF6] text-white";
         }
         try { history.replaceState(null, "", "#retailers"); } catch (e) {}
+    } else if (section === "scout" && scoutContainer) {
+        scoutContainer.classList.remove("hidden");
+        if (btnScout) {
+            btnScout.className = "py-2 px-3 text-xs font-mono font-bold uppercase transition flex items-center justify-center space-x-2 scout-tab-active";
+        }
+        try { history.replaceState(null, "", "#scout"); } catch (e) {}
+        if (typeof initSellerScout === "function") initSellerScout();
     } else {
         singleContainer.classList.remove("hidden");
         if (btnSingle) {
@@ -1374,16 +1385,15 @@ async function manualSellerAdd(action) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.location.hash === '#retailers' && typeof switchDealsSection === 'function') {
-        switchDealsSection('retailers');
-    }
-});
-
 document.addEventListener("DOMContentLoaded", () => {
-    if (window.location.hash === "#lots" && typeof switchDealsSection === "function") {
+    if (typeof switchDealsSection !== "function") return;
+    if (window.location.hash === "#retailers") {
+        switchDealsSection("retailers");
+    } else if (window.location.hash === "#lots") {
         switchDealsSection("lots");
-    } else if (window.location.hash === "#sealed" && typeof switchDealsSection === "function") {
+    } else if (window.location.hash === "#sealed") {
         switchDealsSection("sealed");
+    } else if (window.location.hash === "#scout") {
+        switchDealsSection("scout");
     }
 });

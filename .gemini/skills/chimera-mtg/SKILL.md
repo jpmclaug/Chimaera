@@ -9,7 +9,7 @@ Use this skill when the user asks questions about their Magic: The Gathering col
 
 ## Available MCP Tools
 
-The Chimaera MCP engine ([chimera_mcp.py](file:///c:/Users/jpmcl/Python%20Development/Chimera/chimera_mcp.py)) exposes 13 tools with full bulk upload and batch input support:
+The Chimaera MCP engine ([chimera_mcp.py](file:///c:/Users/jpmcl/Python%20Development/Chimera/chimera_mcp.py)) exposes 17 tools with full bulk upload and batch input support:
 
 1. `get_inventory_summary(top_n=15)`: Returns total card quantity, unique printings, total USD market value, foil breakdown, binder breakdown, color identity distribution, and top valuable cards.
 2. `check_inventory_cards(cards, card_names, card_name, text, csv_content, binder_name, include_details, match_mode)`: Fast batch or single ownership verification across inventory.
@@ -24,6 +24,10 @@ The Chimaera MCP engine ([chimera_mcp.py](file:///c:/Users/jpmcl/Python%20Develo
 11. `add_to_watchlist(cards, card_names, card_name, text, csv_content, target_price, target_strategy, set_code, finish, tag)`: Bulk adds or updates cards on the surveillance watchlist from card arrays, decklists, or CSV.
 12. `reconcile_watchlist(text, cards, card_names, card_name, card_ids, add_to_inventory, binder_name, condition)`: Bulk removes acquired cards from watchlist using TCGplayer order text, card lists, or IDs, with optional collection inventory ingestion.
 13. `check_card_deck_fit(cards, card_names, card_name, text, csv_content, deck_id, query)`: Evaluates how one or multiple candidate cards fit across the user's saved Commander decks, checking ownership, current inclusion, and upgrade recommendations.
+14. `manage_tcgplayer_orders(action, order_id, binder_name)`: Inspects or completes tracked TCGplayer purchase orders.
+15. `scan_sealed_retailers(query, include_unverified, live)`: Sweeps watched sealed MTG products across TCGplayer, Card Kingdom, Star City Games, CoolStuffInc, and Shopify Global Catalog.
+16. `scan_tcgplayer_seller(seller, min_discount_pct=10.0, min_market=1.0, include_sealed=True, include_value=True, include_deck_upgrades=True, exclude_owned=True, save_seller=False, note, limit_per_bucket=25)`: Scans a TCGplayer seller storefront (URL, 8-char key, or saved seller name) for watchlist hits, Commander deck upgrades, pure below-market singles, and below-market/watched sealed products while excluding owned cards (or lists saved sellers when `seller` is omitted).
+17. `find_tcgplayer_combined_carts(min_sealed=1, min_singles=1, price_tolerance_mode="decent_10", sealed_min_discount_pct=0.0, tag_filter="all", max_sellers=20)`: Finds TCGplayer sellers carrying both wanted sealed products and watchlist singles for single-cart consolidated shipping.
 
 ## Connecting via Google Cloud Run (Gemini Mobile App & Connected Apps)
 

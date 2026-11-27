@@ -44,6 +44,7 @@ from models import (
     CardAddAnalysis,
     CommanderPlaytestSession,
     TCGPlayerOrder,
+    SavedTcgSeller,
     utc_now,
 )
 from playtest_engine import PlaytestEngine
@@ -55,7 +56,10 @@ from providers import (
     EDHRECProvider,
     TCGplayerLotProvider,
     TCGplayerSealedProvider,
+    TCGplayerSellerScanner,
+    SellerNotFoundError,
 )
+from providers.tcgplayer_seller_scan import build_user_scout_context
 from deck_parser import DeckParser, DeckParseError
 from card_classifier import MTGCardClassifier
 from deck_analyzer import DeckAnalyzer
@@ -792,10 +796,15 @@ def create_app(test_config=None):
     edhrec_provider = EDHRECProvider()
     tcgplayer_lot_provider = TCGplayerLotProvider()
     tcgplayer_sealed_provider = TCGplayerSealedProvider()
+    tcgplayer_seller_scanner = TCGplayerSellerScanner(
+        lot_provider=tcgplayer_lot_provider,
+        sealed_provider=tcgplayer_sealed_provider,
+    )
     card_add_evaluator = CardAddEvaluator(scryfall_provider=scryfall_provider, edhrec_provider=edhrec_provider)
     app.edhrec_provider = edhrec_provider
     app.tcgplayer_lot_provider = tcgplayer_lot_provider
     app.tcgplayer_sealed_provider = tcgplayer_sealed_provider
+    app.tcgplayer_seller_scanner = tcgplayer_seller_scanner
     app.upgrade_engine = upgrade_engine
     app.inventory_manager = inventory_manager
     app.card_add_evaluator = card_add_evaluator
@@ -1880,6 +1889,12 @@ def create_app(test_config=None):
         user_tags = sorted(list({item.tag.strip() for item in all_items if item.tag and item.tag.strip()}))
         watchlist_dropdown_items = sorted(all_items, key=lambda x: (x.name or "").lower())
         deals_items_json = [_serialize_watchlist_view_item(item) for item in deal_items]
+        saved_tcg_sellers = [
+            s.to_dict()
+            for s in SavedTcgSeller.query.filter_by(user_id=user.id)
+            .order_by(SavedTcgSeller.created_at.desc())
+            .all()
+        ]
         log_activity("PAGE_VIEW", details="Accessed Priority Deals View", user=user)
 
         return render_template(
@@ -1894,6 +1909,7 @@ def create_app(test_config=None):
             sealed_opportunities_count=sealed_opportunities_count,
             trusted_shops=get_trusted_shops(),
             blocked_shops=get_blocked_shops(),
+            saved_tcg_sellers=saved_tcg_sellers,
             active_tab="deals",
         )
 
@@ -2136,6 +2152,312 @@ def create_app(test_config=None):
                 "success": False,
                 "error": f"Failed to scan sealed product deals: {str(e)}",
                 "products": [],
+            }), 500
+
+    # ---------------------------------------------------------
+    # API Routes: TCGplayer Seller Scout & Combined Carts
+    # ---------------------------------------------------------
+    def _list_saved_sellers_dicts(user_id: int) -> List[Dict[str, Any]]:
+        rows = (
+            SavedTcgSeller.query.filter_by(user_id=user_id)
+            .order_by(SavedTcgSeller.last_scanned_at.desc(), SavedTcgSeller.created_at.desc())
+            .all()
+        )
+        return [r.to_dict() for r in rows]
+
+    def _upsert_saved_seller(
+        user_id: int,
+        seller_meta: Dict[str, Any],
+        note: Optional[str] = None,
+        scan_summary: Optional[Dict[str, Any]] = None,
+        create_if_missing: bool = True,
+    ) -> Optional[SavedTcgSeller]:
+        s_key = (seller_meta.get("sellerKey") or "").strip().lower()
+        if not s_key:
+            return None
+        row = SavedTcgSeller.query.filter_by(user_id=user_id, seller_key=s_key).first()
+        if row is None:
+            if not create_if_missing:
+                return None
+            row = SavedTcgSeller(user_id=user_id, seller_key=s_key)
+            db.session.add(row)
+
+        if seller_meta.get("sellerName"):
+            row.seller_name = str(seller_meta["sellerName"])[:255]
+        if seller_meta.get("storeUrl"):
+            row.store_url = str(seller_meta["storeUrl"])[:512]
+        if note is not None:
+            clean_note = str(note).strip()
+            if clean_note:
+                row.note = clean_note[:255]
+        if seller_meta.get("sellerRating") is not None:
+            try:
+                row.seller_rating = float(seller_meta["sellerRating"])
+            except (ValueError, TypeError):
+                pass
+        if seller_meta.get("sellerSales"):
+            row.seller_sales = str(seller_meta["sellerSales"])[:64]
+        if "directSeller" in seller_meta:
+            row.is_direct = bool(seller_meta["directSeller"])
+        if "goldSeller" in seller_meta:
+            row.is_gold = bool(seller_meta["goldSeller"])
+        if "certifiedShop" in seller_meta:
+            row.is_certified_shop = bool(seller_meta["certifiedShop"])
+        if scan_summary is not None:
+            row.last_scanned_at = utc_now()
+            row.last_summary_json = json.dumps(scan_summary)
+        db.session.commit()
+        return row
+
+    @app.route("/seller-scout")
+    @login_required
+    def seller_scout_redirect():
+        """Convenience route redirecting to the Seller Scout tab on /deals."""
+        return redirect("/deals#scout")
+
+    @app.route("/api/tcgplayer/seller/resolve", methods=["POST"])
+    @login_required
+    def api_tcgplayer_seller_resolve():
+        """Resolves a TCGplayer store URL, sellerKey, or seller name into store metadata."""
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_input = str(data.get("seller") or data.get("input") or "").strip()
+        if not raw_input:
+            return jsonify({
+                "success": False,
+                "error": "Please paste a TCGplayer store URL or 8-character seller key.",
+            }), 400
+
+        saved = SavedTcgSeller.query.filter_by(user_id=user.id).all()
+        try:
+            seller = tcgplayer_seller_scanner.resolve_seller(raw_input, saved_sellers=saved)
+            is_saved = any(s.seller_key == seller["sellerKey"] for s in saved)
+            return jsonify({"success": True, "seller": seller, "isSaved": is_saved})
+        except SellerNotFoundError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 404
+        except Exception as exc:
+            logger.error(f"Error resolving TCGplayer seller: {exc}", exc_info=True)
+            return jsonify({"success": False, "error": f"Seller lookup failed: {str(exc)}"}), 500
+
+    @app.route("/api/tcgplayer/saved-sellers", methods=["GET", "POST"])
+    @login_required
+    def api_tcgplayer_saved_sellers():
+        """Lists or saves favorite/recommended TCGplayer sellers for the current user."""
+        user = get_current_user()
+        if request.method == "GET":
+            return jsonify({"success": True, "sellers": _list_saved_sellers_dicts(user.id)})
+
+        data = request.get_json(silent=True) or {}
+        raw_seller = str(data.get("seller") or data.get("seller_key") or data.get("sellerKey") or "").strip()
+        seller_name = str(data.get("seller_name") or data.get("sellerName") or "").strip()
+        note = data.get("note")
+        if not raw_seller:
+            return jsonify({"success": False, "error": "Seller URL or sellerKey is required."}), 400
+
+        saved_rows = SavedTcgSeller.query.filter_by(user_id=user.id).all()
+        extracted = tcgplayer_seller_scanner.extract_seller_key(raw_seller)
+        try:
+            seller_meta = tcgplayer_seller_scanner.resolve_seller(raw_seller, saved_sellers=saved_rows)
+        except SellerNotFoundError as exc:
+            if extracted and seller_name:
+                seller_meta = {
+                    "sellerKey": extracted,
+                    "sellerName": seller_name,
+                    "storeUrl": f"https://www.tcgplayer.com/search/magic/product?seller={extracted}&view=grid",
+                }
+            else:
+                return jsonify({"success": False, "error": str(exc)}), 404
+
+        if seller_name and (not seller_meta.get("sellerName") or seller_meta["sellerName"].startswith("Seller ")):
+            seller_meta["sellerName"] = seller_name
+
+        saved_row = _upsert_saved_seller(user.id, seller_meta, note=note, create_if_missing=True)
+        log_activity(
+            "TCGPLAYER_SAVED_SELLER",
+            details=f"Saved TCGplayer seller {saved_row.seller_name} ({saved_row.seller_key})",
+            user=user,
+        )
+        return jsonify({
+            "success": True,
+            "seller": saved_row.to_dict(),
+            "sellers": _list_saved_sellers_dicts(user.id),
+        })
+
+    @app.route("/api/tcgplayer/saved-sellers/<int:saved_id>", methods=["DELETE"])
+    @login_required
+    def api_tcgplayer_saved_seller_delete(saved_id: int):
+        """Deletes a saved TCGplayer seller belonging to the authenticated user."""
+        user = get_current_user()
+        row = SavedTcgSeller.query.filter_by(id=saved_id, user_id=user.id).first()
+        if row is None:
+            return jsonify({"success": False, "error": "Saved seller not found."}), 404
+        db.session.delete(row)
+        db.session.commit()
+        return jsonify({"success": True, "sellers": _list_saved_sellers_dicts(user.id)})
+
+    @app.route("/api/tcgplayer/seller/value-scan", methods=["POST"])
+    @login_required
+    def api_tcgplayer_seller_value_scan():
+        """
+        Scans a specific TCGplayer seller store for watchlist hits, Commander deck
+        upgrades, pure below-market singles, and below-market/watched sealed items.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+        raw_seller = str(data.get("seller") or data.get("seller_key") or data.get("sellerKey") or "").strip()
+        if not raw_seller:
+            return jsonify({
+                "success": False,
+                "error": "Please enter a TCGplayer store URL, 8-character seller key, or saved seller name.",
+            }), 400
+
+        def _clamp_float(val, default, lo, hi):
+            try:
+                num = float(val)
+                return max(lo, min(hi, num))
+            except (ValueError, TypeError):
+                return default
+
+        def _clamp_int(val, default, lo, hi):
+            try:
+                num = int(val)
+                return max(lo, min(hi, num))
+            except (ValueError, TypeError):
+                return default
+
+        min_discount_pct = _clamp_float(data.get("min_discount_pct", 10.0), 10.0, 0.0, 80.0)
+        min_market = _clamp_float(data.get("min_market", 1.0), 1.0, 0.0, 500.0)
+        sealed_min_discount_pct = _clamp_float(data.get("sealed_min_discount_pct", 0.0), 0.0, 0.0, 80.0)
+        max_products = _clamp_int(data.get("max_products", 2000), 2000, 50, 5000)
+
+        conditions = data.get("conditions")
+        if not isinstance(conditions, list):
+            conditions = ["NM", "LP"]
+
+        options = {
+            "min_discount_pct": min_discount_pct,
+            "min_market": min_market,
+            "sealed_min_discount_pct": sealed_min_discount_pct,
+            "conditions": conditions,
+            "allow_mp": bool(data.get("allow_mp", False)),
+            "include_sealed": bool(data.get("include_sealed", True)),
+            "include_value": bool(data.get("include_value", True)),
+            "include_deck_upgrades": bool(data.get("include_deck_upgrades", True)),
+            "include_watchlist": bool(data.get("include_watchlist", True)),
+            "exclude_owned": bool(data.get("exclude_owned", True)),
+            "english_only": bool(data.get("english_only", True)),
+            "force_refresh": bool(data.get("force_refresh", False)),
+            "use_cache": not bool(app.config.get("TESTING", False)),
+            "max_products": max_products,
+            "watchlist_tolerance_mode": str(data.get("watchlist_tolerance_mode", "decent_10")).strip().lower(),
+        }
+
+        ctx = build_user_scout_context(user.id)
+        save_seller = bool(data.get("save_seller", False))
+        note = data.get("note")
+
+        try:
+            result = tcgplayer_seller_scanner.scan_seller_value(
+                raw_seller,
+                watchlist_items=ctx["watchlist_items"],
+                owned_map=ctx["owned_map"],
+                deck_upgrades=ctx["deck_upgrades"],
+                saved_sellers=ctx["saved_sellers"],
+                decks_missing_upgrades=ctx["decks_missing_upgrades"],
+                options=options,
+            )
+
+            saved_row = _upsert_saved_seller(
+                user.id,
+                result["seller"],
+                note=note if save_seller else None,
+                scan_summary=result["summary"],
+                create_if_missing=save_seller,
+            )
+            result["isSaved"] = saved_row is not None or any(
+                s.seller_key == result["seller"]["sellerKey"] for s in ctx["saved_sellers"]
+            )
+            result["savedSeller"] = saved_row.to_dict() if saved_row else None
+            result["savedSellers"] = _list_saved_sellers_dicts(user.id)
+
+            s_info = result["summary"]
+            log_activity(
+                "TCGPLAYER_SELLER_SCAN",
+                details=(
+                    f"Scanned seller {result['seller']['sellerName']} ({result['seller']['sellerKey']}): "
+                    f"wl={s_info['watchlistCount']}, decks={s_info['deckUpgradesCount']}, "
+                    f"val={s_info['valuePicksCount']}, sealed={s_info['sealedPicksCount']}"
+                ),
+                user=user,
+            )
+            return jsonify(result)
+        except SellerNotFoundError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 404
+        except Exception as exc:
+            logger.error(f"Error scanning TCGplayer seller '{raw_seller}': {exc}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "error": f"Failed to scan TCGplayer seller: {str(exc)}",
+            }), 500
+
+    @app.route("/api/tcgplayer/combined-carts", methods=["POST"])
+    @login_required
+    def api_tcgplayer_combined_carts():
+        """
+        Discovers TCGplayer sellers stocking both wanted sealed items and watchlist
+        singles so buyers can consolidate shipping into one combined cart.
+        """
+        user = get_current_user()
+        data = request.get_json(silent=True) or {}
+
+        def _clamp_int(val, default, lo, hi):
+            try:
+                return max(lo, min(hi, int(val)))
+            except (ValueError, TypeError):
+                return default
+
+        def _clamp_float(val, default, lo, hi):
+            try:
+                return max(lo, min(hi, float(val)))
+            except (ValueError, TypeError):
+                return default
+
+        tolerance_mode = str(data.get("price_tolerance_mode", "decent_10")).strip().lower()
+        if tolerance_mode not in ("decent_10", "market_0", "great_minus_10", "target_only", "flex_20"):
+            tolerance_mode = "decent_10"
+
+        options = {
+            "min_sealed": _clamp_int(data.get("min_sealed", 1), 1, 1, 10),
+            "min_singles": _clamp_int(data.get("min_singles", 1), 1, 1, 20),
+            "price_tolerance_mode": tolerance_mode,
+            "sealed_min_discount_pct": _clamp_float(data.get("sealed_min_discount_pct", 0.0), 0.0, 0.0, 80.0),
+            "tag_filter": str(data.get("tag_filter", "all") or "all").strip(),
+            "allow_mp": bool(data.get("allow_mp", False)),
+            "english_only": bool(data.get("english_only", True)),
+            "max_sellers": _clamp_int(data.get("max_sellers", 25), 25, 1, 40),
+        }
+
+        ctx = build_user_scout_context(user.id)
+        try:
+            result = tcgplayer_seller_scanner.find_combined_carts(
+                watchlist_items=ctx["watchlist_items"],
+                options=options,
+            )
+            log_activity(
+                "TCGPLAYER_COMBINED_CART_SCAN",
+                details=(
+                    f"Combined carts scan (min_sealed={options['min_sealed']}, min_singles={options['min_singles']}, "
+                    f"carts={result.get('totalCartsFound', 0)})"
+                ),
+                user=user,
+            )
+            return jsonify(result)
+        except Exception as exc:
+            logger.error(f"Error scanning TCGplayer combined carts: {exc}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "error": f"Failed to scan combined carts: {str(exc)}",
+                "carts": [],
             }), 500
 
     @app.route("/.well-known/ucp/agent-profile.json", methods=["GET"])

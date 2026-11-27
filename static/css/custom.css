@@ -761,5 +761,43 @@ input:focus, select:focus, textarea:focus {
     background-color: #1B2230;
 }
 
+/* =========================================================================
+   Black Friday TCGplayer Seller Scout & Combined Carts UI
+   ========================================================================= */
+@media (min-width: 1024px) {
+    .deals-tabs-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    }
+}
+
+.scout-tab-active {
+    background-color: #10B981 !important;
+    color: #10141D !important;
+}
+
+.scout-submode-btn.active {
+    border-color: #10B981 !important;
+    background-color: rgba(16, 185, 129, 0.12) !important;
+    color: #FFFFFF !important;
+}
+
+.scout-sticky-cart {
+    position: sticky;
+    bottom: 0.5rem;
+    z-index: 30;
+    background-color: rgba(16, 20, 29, 0.96);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid #10B981;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
+}
+
+@media screen and (max-width: 640px) {
+    .scout-sticky-cart {
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+}
+
 
 

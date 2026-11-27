@@ -10,6 +10,7 @@ from .cardkingdom_singles import CardKingdomSinglesProvider
 from .starcitygames import StarCityGamesProvider
 from .coolstuffinc import CoolStuffIncProvider
 from .shopify_catalog import ShopifyCatalogProvider
+from .tcgplayer_seller_scan import TCGplayerSellerScanner, SellerNotFoundError
 
 __all__ = [
     "ScryfallProvider",
@@ -19,6 +20,8 @@ __all__ = [
     "EDHRECProvider",
     "TCGplayerLotProvider",
     "TCGplayerSealedProvider",
+    "TCGplayerSellerScanner",
+    "SellerNotFoundError",
     "CardKingdomSealedProvider",
     "CardKingdomSinglesProvider",
     "StarCityGamesProvider",
