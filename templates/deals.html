@@ -444,11 +444,11 @@
                     <button type="button" onclick="setLotFinderMode('anchor_card')" id="btn-mode-anchor_card"
                         class="lot-mode-btn p-2.5 sm:p-3 text-left border border-[#263245] bg-[#10141D] text-[#94A3B8] hover:text-white transition">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold uppercase tracking-wide">🎯 Specific Anchor Card</span>
+                            <span class="text-xs font-bold uppercase tracking-wide">🎯 Specific Anchor Card(s)</span>
                             <span class="text-[10px] text-[#00CED1] font-bold">Targeted</span>
                         </div>
                         <div class="text-[11px] text-[#94A3B8] font-sans mt-1">
-                            Start from one card you want; find sellers who also have 4+ other cards.
+                            Start from one or more anchor cards you want; find sellers stocking them plus other watchlist cards.
                         </div>
                     </button>
 
@@ -465,23 +465,45 @@
                 </div>
             </div>
 
-            <!-- Conditional Section 1: Specific Anchor Card Picker (shown in anchor_card mode) -->
-            <div id="lot-anchor-card-box" class="hidden space-y-1.5 p-3 bg-[#10141D] border border-[#263245]">
-                <label class="text-[10px] uppercase font-bold text-[#00CED1] tracking-wider block">
-                    Choose Anchor Card (Must Be In-Stock at Seller)
-                </label>
+            <!-- Conditional Section 1: Specific Anchor Card(s) Picker (shown in anchor_card mode) -->
+            <div id="lot-anchor-card-box" class="hidden space-y-2.5 p-3 bg-[#10141D] border border-[#263245]">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label class="text-[10px] uppercase font-bold text-[#00CED1] tracking-wider block">
+                        Choose Anchor Card(s) (Must Be In-Stock at Seller)
+                    </label>
+                    <div class="flex items-center space-x-1.5 text-[10px] font-mono">
+                        <span class="text-[#64748B] uppercase font-bold">Multi-Anchor Rule:</span>
+                        <button type="button" id="btn-anchor-match-all" onclick="setAnchorMatchMode('all')"
+                            class="px-2 py-0.5 border border-[#00CED1] bg-[#00CED1]/15 text-[#00CED1] font-bold uppercase transition"
+                            title="Seller must have ALL selected anchor cards in stock">
+                            Match ALL
+                        </button>
+                        <button type="button" id="btn-anchor-match-any" onclick="setAnchorMatchMode('any')"
+                            class="px-2 py-0.5 border border-[#263245] bg-[#161C28] text-[#94A3B8] hover:text-white font-bold uppercase transition"
+                            title="Seller must have AT LEAST ONE of the selected anchor cards in stock">
+                            Match ANY
+                        </button>
+                    </div>
+                </div>
                 <div class="flex flex-col sm:flex-row gap-2">
-                    <select id="lot-anchor-card-select" class="flex-1 bg-[#161C28] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
-                        <option value="">-- SELECT ANCHOR WATCHLIST CARD --</option>
+                    <input type="text" id="lot-anchor-card-filter" oninput="filterAnchorCardOptions()"
+                        placeholder="Filter watchlist cards..."
+                        class="sm:w-56 bg-[#161C28] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                    <select id="lot-anchor-card-select" onchange="addAnchorCardFromSelect()"
+                        class="flex-1 bg-[#161C28] border border-[#263245] text-xs text-white p-2 font-mono focus:border-[#00CED1]">
+                        <option value="">-- ADD ANCHOR WATCHLIST CARD --</option>
                         {% for card in all_watchlist_items %}
-                        <option value="{{ card.id }}" data-name="{{ card.name|e }}">
+                        <option value="{{ card.id }}" data-name="{{ card.name|e }}" data-set="{{ (card.set_code or '')|e }}">
                             {{ card.name }} {% if card.set_code %}[{{ card.set_code }}]{% endif %} {% if card.target_price %}(Target: ${{ "%.2f"|format(card.target_price) }}){% elif card.market_price %}(Market: ${{ "%.2f"|format(card.market_price) }}){% endif %}
                         </option>
                         {% endfor %}
                     </select>
                 </div>
+                <div id="lot-anchor-selected-list" class="flex flex-wrap items-center gap-1.5 min-h-[24px]">
+                    <span class="text-[11px] text-[#64748B] font-mono italic">No anchor cards selected yet. Pick one or more from the dropdown above.</span>
+                </div>
                 <p class="text-[11px] text-[#64748B] font-sans">
-                    Sellers will be pre-screened to ensure they have this card at a decent price, then checked for other cards on your watchlist.
+                    Sellers will be pre-screened to ensure they have your selected anchor card(s) at a decent price, then checked for other cards on your watchlist.
                 </p>
             </div>
 

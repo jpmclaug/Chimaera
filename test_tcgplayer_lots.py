@@ -515,3 +515,129 @@ def test_api_tcgplayer_lots_endpoint(lot_provider):
             assert data["success"] is True
             assert data["total_sellers_found"] == 0
             assert mock_find.called
+
+            # Verify multi-anchor parameters are forwarded
+            resp2 = client.post(
+                "/api/deals/tcgplayer-lots",
+                json={
+                    "mode": "anchor_card",
+                    "min_cards": 3,
+                    "anchor_card_ids": [1, 2],
+                    "anchor_card_names": ["Sol Ring", "Rhystic Study"],
+                    "anchor_match_mode": "any",
+                },
+            )
+            assert resp2.status_code == 200
+            kwargs = mock_find.call_args.kwargs
+            assert kwargs["anchor_card_ids"] == [1, 2]
+            assert kwargs["anchor_card_names"] == ["Sol Ring", "Rhystic Study"]
+            assert kwargs["anchor_match_mode"] == "any"
+
+
+def test_find_seller_lots_multi_anchor_all_and_any(lot_provider):
+    watchlist = [
+        DummyWatchlistItem(1, "Rhystic Study", target_price=40.00, market_price=38.00),
+        DummyWatchlistItem(2, "Smothering Tithe", target_price=30.00, market_price=28.00),
+        DummyWatchlistItem(3, "Sol Ring", target_price=2.00, market_price=1.80),
+        DummyWatchlistItem(4, "Arcane Signet", target_price=1.50, market_price=1.00),
+        DummyWatchlistItem(5, "Counterspell", target_price=1.50, market_price=1.20),
+    ]
+
+    # Seller A has BOTH anchors + 1 filler = 3 cards
+    inv_seller_a = [
+        {"productName": "Rhystic Study", "productId": 1, "marketPrice": 38.00, "listings": [{"sellerKey": "seller_a", "price": 37.00, "condition": "Near Mint"}]},
+        {"productName": "Smothering Tithe", "productId": 2, "marketPrice": 28.00, "listings": [{"sellerKey": "seller_a", "price": 27.00, "condition": "Near Mint"}]},
+        {"productName": "Sol Ring", "productId": 3, "marketPrice": 1.80, "listings": [{"sellerKey": "seller_a", "price": 1.70, "condition": "Near Mint"}]},
+    ]
+    # Seller B has ONLY Rhystic Study + 3 fillers = 4 cards (more total cards, only 1 anchor)
+    inv_seller_b = [
+        {"productName": "Rhystic Study", "productId": 1, "marketPrice": 38.00, "listings": [{"sellerKey": "seller_b", "price": 37.00, "condition": "Near Mint"}]},
+        {"productName": "Sol Ring", "productId": 3, "marketPrice": 1.80, "listings": [{"sellerKey": "seller_b", "price": 1.70, "condition": "Near Mint"}]},
+        {"productName": "Arcane Signet", "productId": 4, "marketPrice": 1.00, "listings": [{"sellerKey": "seller_b", "price": 0.90, "condition": "Near Mint"}]},
+        {"productName": "Counterspell", "productId": 5, "marketPrice": 1.20, "listings": [{"sellerKey": "seller_b", "price": 1.10, "condition": "Near Mint"}]},
+    ]
+
+    def fake_discover_for_anchor(anchor_card_name, **kwargs):
+        if "Rhystic" in anchor_card_name:
+            return [
+                {"sellerKey": "seller_a", "sellerName": "Shop Both"},
+                {"sellerKey": "seller_b", "sellerName": "Shop One"},
+            ]
+        return [{"sellerKey": "seller_a", "sellerName": "Shop Both"}]
+
+    def fake_inv(seller_key, all_names, english_only=True):
+        return inv_seller_a if seller_key == "seller_a" else inv_seller_b
+
+    with patch.object(lot_provider, "_discover_sellers_for_anchor", side_effect=fake_discover_for_anchor), \
+         patch.object(lot_provider, "_query_seller_watchlist_inventory", side_effect=fake_inv):
+
+        # Mode "all": only seller_a qualifies
+        res_all = lot_provider.find_seller_lots(
+            watchlist_items=watchlist,
+            mode="anchor_card",
+            anchor_card_ids=[1, 2],
+            anchor_match_mode="all",
+            min_cards=3,
+        )
+        assert res_all["success"] is True
+        assert res_all["total_sellers_found"] == 1
+        assert res_all["sellers"][0]["sellerKey"] == "seller_a"
+        assert res_all["sellers"][0]["matchedAnchorCount"] == 2
+        assert res_all["sellers"][0]["totalAnchorCount"] == 2
+        assert res_all["sellers"][0]["cards"][0]["isAnchor"] is True
+
+        # Mode "any": both qualify, and seller_a (2 anchors) ranks ahead of seller_b (1 anchor)
+        res_any = lot_provider.find_seller_lots(
+            watchlist_items=watchlist,
+            mode="anchor_card",
+            anchor_card_ids=[1, 2],
+            anchor_match_mode="any",
+            min_cards=3,
+        )
+        assert res_any["success"] is True
+        assert res_any["total_sellers_found"] == 2
+        assert res_any["sellers"][0]["sellerKey"] == "seller_a"
+        assert res_any["sellers"][1]["sellerKey"] == "seller_b"
+        assert res_any["sellers"][1]["matchedAnchorCount"] == 1
+
+
+def test_find_seller_lots_returns_all_above_tolerance_cards(lot_provider):
+    """Verifies aboveToleranceCards is no longer truncated to 10 items."""
+    watchlist = [
+        DummyWatchlistItem(i, f"Card {i}", target_price=1.00, market_price=1.00)
+        for i in range(1, 21)
+    ]
+
+    # 5 qualifying cards ($0.90) + 15 above-tolerance cards ($5.00)
+    mock_inventory = []
+    for i in range(1, 6):
+        mock_inventory.append({
+            "productName": f"Card {i}",
+            "productId": i,
+            "marketPrice": 1.00,
+            "listings": [{"sellerKey": "seller_full", "price": 0.90, "condition": "Near Mint"}],
+        })
+    for i in range(6, 21):
+        mock_inventory.append({
+            "productName": f"Card {i}",
+            "productId": i,
+            "marketPrice": 1.00,
+            "listings": [{"sellerKey": "seller_full", "price": 5.00, "condition": "Near Mint"}],
+        })
+
+    with patch.object(lot_provider, "_discover_sellers_for_watchlist") as mock_disc, \
+         patch.object(lot_provider, "_query_seller_watchlist_inventory") as mock_inv:
+        mock_disc.return_value = [{"sellerKey": "seller_full", "sellerName": "Full List Shop"}]
+        mock_inv.return_value = mock_inventory
+
+        res = lot_provider.find_seller_lots(
+            watchlist_items=watchlist,
+            mode="lots",
+            min_cards=5,
+            price_tolerance_mode="decent_10",
+        )
+        assert res["success"] is True
+        assert res["total_sellers_found"] == 1
+        seller = res["sellers"][0]
+        assert seller["aboveToleranceCount"] == 15
+        assert len(seller["aboveToleranceCards"]) == 15

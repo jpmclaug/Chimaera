@@ -3,6 +3,8 @@
 // =========================================================================
 let currentLotFinderMode = "lots";
 let currentSellerLots = [];
+let selectedAnchorCards = []; // [{ id: number, name: string, setCode: string }]
+let anchorMatchMode = "all"; // "all" | "any"
 
 function switchDealsSection(section) {
     const singleContainer = document.getElementById("deals-single-container");
@@ -94,6 +96,79 @@ function setLotFinderMode(mode) {
     }
 }
 
+function setAnchorMatchMode(mode) {
+    anchorMatchMode = mode === "any" ? "any" : "all";
+    const btnAll = document.getElementById("btn-anchor-match-all");
+    const btnAny = document.getElementById("btn-anchor-match-any");
+    const activeCls = "px-2 py-0.5 border border-[#00CED1] bg-[#00CED1]/15 text-[#00CED1] font-bold uppercase transition";
+    const inactiveCls = "px-2 py-0.5 border border-[#263245] bg-[#161C28] text-[#94A3B8] hover:text-white font-bold uppercase transition";
+    if (btnAll) btnAll.className = anchorMatchMode === "all" ? activeCls : inactiveCls;
+    if (btnAny) btnAny.className = anchorMatchMode === "any" ? activeCls : inactiveCls;
+}
+
+function filterAnchorCardOptions() {
+    const filterInput = document.getElementById("lot-anchor-card-filter");
+    const select = document.getElementById("lot-anchor-card-select");
+    if (!select) return;
+    const query = (filterInput?.value || "").trim().toLowerCase();
+    Array.from(select.options).forEach((opt, idx) => {
+        if (idx === 0) return; // keep placeholder
+        const text = (opt.textContent || "").toLowerCase();
+        opt.hidden = query ? !text.includes(query) : false;
+    });
+}
+
+function addAnchorCardFromSelect() {
+    const select = document.getElementById("lot-anchor-card-select");
+    if (!select || !select.value) return;
+    const id = parseInt(select.value, 10);
+    const opt = select.selectedOptions[0];
+    const name = opt?.dataset?.name || opt?.textContent?.trim() || "";
+    const setCode = opt?.dataset?.set || "";
+
+    if (id && !selectedAnchorCards.some(c => c.id === id)) {
+        selectedAnchorCards.push({ id, name, setCode });
+        renderSelectedAnchorCards();
+    }
+    select.value = "";
+}
+
+function removeAnchorCard(cardId) {
+    selectedAnchorCards = selectedAnchorCards.filter(c => c.id !== cardId);
+    renderSelectedAnchorCards();
+}
+
+function clearAnchorCards() {
+    selectedAnchorCards = [];
+    renderSelectedAnchorCards();
+}
+
+function renderSelectedAnchorCards() {
+    const container = document.getElementById("lot-anchor-selected-list");
+    if (!container) return;
+
+    if (selectedAnchorCards.length === 0) {
+        container.innerHTML = `<span class="text-[11px] text-[#64748B] font-mono italic">No anchor cards selected yet. Pick one or more from the dropdown above.</span>`;
+        return;
+    }
+
+    const chipsHtml = selectedAnchorCards.map(c => {
+        const setLabel = c.setCode ? ` <span class="text-[#94A3B8]">[${escapeHtml(c.setCode)}]</span>` : "";
+        return `
+            <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-[#00CED1]/15 border border-[#00CED1]/50 text-[#00CED1] text-[11px] font-mono font-bold">
+                <span>🎯 ${escapeHtml(c.name)}${setLabel}</span>
+                <button type="button" onclick="removeAnchorCard(${c.id})" class="text-[#94A3B8] hover:text-white leading-none" title="Remove anchor">&times;</button>
+            </span>
+        `;
+    }).join("");
+
+    const clearBtn = selectedAnchorCards.length > 1
+        ? `<button type="button" onclick="clearAnchorCards()" class="text-[10px] font-mono text-[#94A3B8] hover:text-[#FF3358] underline ml-1">Clear All</button>`
+        : "";
+
+    container.innerHTML = chipsHtml + clearBtn;
+}
+
 function applyDollarPreset(preset) {
     const maxPrice = document.getElementById("lot-max-card-price");
     const targetBundle = document.getElementById("lot-target-bundle-amount");
@@ -135,11 +210,11 @@ async function runTcgplayerLotScan() {
     const allowMp = document.getElementById("lot-allow-mp")?.checked || false;
 
     const anchorSelect = document.getElementById("lot-anchor-card-select");
-    const anchorCardId = anchorSelect?.value ? parseInt(anchorSelect.value, 10) : null;
-    const anchorCardName = anchorSelect?.selectedOptions[0]?.dataset?.name || null;
+    const anchorCardIds = selectedAnchorCards.map(c => c.id);
+    const anchorCardNames = selectedAnchorCards.map(c => c.name);
 
-    if (currentLotFinderMode === "anchor_card" && !anchorCardId) {
-        showToast("Please choose an anchor card from your watchlist.", "warning");
+    if (currentLotFinderMode === "anchor_card" && anchorCardIds.length === 0) {
+        showToast("Please choose at least one anchor card from your watchlist.", "warning");
         if (anchorSelect) anchorSelect.focus();
         return;
     }
@@ -163,8 +238,9 @@ async function runTcgplayerLotScan() {
         tag_filter: tagFilter,
         allow_mp: allowMp,
         english_only: englishOnly,
-        anchor_card_id: anchorCardId,
-        anchor_card_name: anchorCardName,
+        anchor_card_ids: anchorCardIds,
+        anchor_card_names: anchorCardNames,
+        anchor_match_mode: anchorMatchMode,
         max_card_price: maxCardPrice,
         target_bundle_amount: targetBundleAmount,
         bundle_amount_type: bundleAmountType,
@@ -258,6 +334,9 @@ function renderSellerLotResults(data) {
     sellers.forEach((seller, idx) => {
         const directBadge = seller.directSeller ? `<span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/40 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">TCG Direct</span>` : "";
         const goldBadge = seller.goldSeller ? `<span class="bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">★ Gold Star</span>` : "";
+        const anchorHeaderBadge = (seller.totalAnchorCount && seller.totalAnchorCount > 1)
+            ? `<span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/40 text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider">🎯 ${seller.matchedAnchorCount}/${seller.totalAnchorCount} Anchors</span>`
+            : "";
         
         let bundleSection = "";
         if (seller.bundleInfo) {
@@ -295,6 +374,7 @@ function renderSellerLotResults(data) {
             ` : "";
 
             const tagBadge = card.tag ? `<span class="bg-[#9333EA]/20 text-[#C084FC] border border-[#9333EA]/40 text-[9px] px-1 py-0.2 uppercase font-bold">🏷️ ${card.tag}</span>` : "";
+            const anchorBadge = card.isAnchor ? `<span class="bg-[#00CED1]/20 text-[#00CED1] border border-[#00CED1]/50 text-[9px] px-1 py-0.2 uppercase font-bold">🎯 ANCHOR</span>` : "";
 
             const baseMktText = card.baseMarketPrice ? `$${card.baseMarketPrice.toFixed(2)}` : "--";
             const deltaBadge = card.deltaPct !== null ? (
@@ -326,6 +406,7 @@ function renderSellerLotResults(data) {
                             <span class="bg-[#00CED1]/15 text-[#00CED1] border border-[#00CED1]/30 text-[9px] px-1 py-0.2 uppercase font-bold" title="${card.language || 'English'}">
                                 ${card.languageAbbreviation || "EN"}
                             </span>
+                            ${anchorBadge}
                             ${tagBadge}
                             ${binderBadge}
                         </div>
@@ -390,25 +471,32 @@ function renderSellerLotResults(data) {
 
         let aboveToleranceHtml = "";
         if (seller.aboveToleranceCount > 0) {
+            const aboveCards = seller.aboveToleranceCards || [];
             aboveToleranceHtml = `
                 <div class="mt-3 pt-3 border-t border-[#263245]/60 text-xs font-mono">
                     <details class="cursor-pointer group">
                         <summary class="text-[#94A3B8] hover:text-white flex items-center justify-between text-[11px] uppercase">
-                            <span>+ ${seller.aboveToleranceCount} Other In-Stock Watchlist Cards (Above Selected Tolerance)</span>
+                            <span>+ ${seller.aboveToleranceCount} Other In-Stock Watchlist Cards (Above Selected Tolerance) &mdash; Showing All ${aboveCards.length}</span>
                             <span class="text-[#64748B] text-[10px] group-open:rotate-180 transition-transform">&darr;</span>
                         </summary>
-                        <div class="mt-2 space-y-1.5 pl-2 border-l border-[#263245]">
-                            ${(seller.aboveToleranceCards || []).map(c => `
-                                <div class="flex items-center justify-between text-[11px] text-[#94A3B8]">
-                                    <span class="truncate">${c.name} (${c.condition})</span>
-                                    <div class="flex items-center space-x-2">
+                        <div class="mt-2 space-y-1.5 pl-2 border-l border-[#263245] max-h-80 overflow-y-auto pr-1">
+                            ${aboveCards.map(c => {
+                                const deltaStr = c.deltaPct !== null && c.deltaPct !== undefined
+                                    ? ` <span class="text-[#F59E0B] text-[10px]">(+${c.deltaPct}%)</span>`
+                                    : "";
+                                const anchorPill = c.isAnchor ? `<span class="text-[#00CED1] text-[9px] font-bold mr-1">[ANCHOR]</span>` : "";
+                                return `
+                                <div class="flex items-center justify-between gap-2 text-[11px] text-[#94A3B8]">
+                                    <span class="truncate">${anchorPill}${c.name} (${c.condition}, ${c.printing || "Normal"})</span>
+                                    <div class="flex items-center space-x-2 whitespace-nowrap">
                                         <span class="text-[#F59E0B] font-bold">$${c.price.toFixed(2)}</span>
-                                        <span class="text-[#64748B] text-[10px]">(Base Mkt: $${c.baseMarketPrice ? c.baseMarketPrice.toFixed(2) : '--'})</span>
+                                        <span class="text-[#64748B] text-[10px]">(Base Mkt: $${c.baseMarketPrice ? c.baseMarketPrice.toFixed(2) : '--'}${deltaStr})</span>
                                         <a href="${c.storeSearchUrl || c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#00CED1] hover:underline text-[10px]">[In Store]</a>
                                         <a href="${c.tcgplayerUrl}" target="_blank" rel="noopener" class="text-[#FF3358] hover:underline text-[10px]">[Buy]</a>
                                     </div>
                                 </div>
-                            `).join("")}
+                                `;
+                            }).join("")}
                         </div>
                     </details>
                 </div>
@@ -424,6 +512,7 @@ function renderSellerLotResults(data) {
                             <span class="text-xs font-mono font-bold text-[#00CED1] uppercase tracking-wider">#${idx + 1} TCGPLAYER STORE</span>
                             ${directBadge}
                             ${goldBadge}
+                            ${anchorHeaderBadge}
                         </div>
                         <h4 class="text-base sm:text-lg font-heading font-black text-white uppercase tracking-wider mt-0.5">
                             ${seller.sellerName}

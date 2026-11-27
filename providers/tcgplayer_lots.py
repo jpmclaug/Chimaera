@@ -183,6 +183,7 @@ class TCGplayerLotProvider:
         tolerance_mode: str = "decent_10",
         allow_mp: bool = False,
         english_only: bool = True,
+        max_candidates: int = 20,
     ) -> List[Dict[str, Any]]:
         """
         Discovers top active sellers offering the specified anchor card at a decent price.
@@ -312,12 +313,96 @@ class TCGplayerLotProvider:
                         },
                     })
 
-                if len(candidates) >= 20:
+                if len(candidates) >= max_candidates:
                     break
-            if len(candidates) >= 20:
+            if len(candidates) >= max_candidates:
                 break
 
         return candidates
+
+    def _discover_sellers_for_anchors(
+        self,
+        anchor_items: List[Any],
+        anchor_match_mode: str = "all",
+        tolerance_mode: str = "decent_10",
+        allow_mp: bool = False,
+        english_only: bool = True,
+        max_total_candidates: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """
+        Discovers active sellers for one or more anchor cards.
+        - Single anchor: discovers up to 25 sellers.
+        - Multiple anchors: concurrently discovers up to 50 sellers per anchor,
+          prioritizing sellers appearing across multiple anchors, then filling
+          remaining slots starting from the rarest anchor card (fewest sellers).
+        """
+        if not anchor_items:
+            return []
+
+        if len(anchor_items) == 1:
+            anchor_item = anchor_items[0]
+            return self._discover_sellers_for_anchor(
+                anchor_card_name=getattr(anchor_item, "name", ""),
+                anchor_target_price=getattr(anchor_item, "target_price", None),
+                anchor_market_price=getattr(anchor_item, "market_price", None),
+                tolerance_mode=tolerance_mode,
+                allow_mp=allow_mp,
+                english_only=english_only,
+                max_candidates=25,
+            )
+
+        per_anchor_lists: List[List[Dict[str, Any]]] = []
+        with ThreadPoolExecutor(max_workers=min(4, len(anchor_items))) as executor:
+            futures = [
+                executor.submit(
+                    self._discover_sellers_for_anchor,
+                    anchor_card_name=getattr(it, "name", ""),
+                    anchor_target_price=getattr(it, "target_price", None),
+                    anchor_market_price=getattr(it, "market_price", None),
+                    tolerance_mode=tolerance_mode,
+                    allow_mp=allow_mp,
+                    english_only=english_only,
+                    max_candidates=50,
+                )
+                for it in anchor_items
+            ]
+            for f in as_completed(futures):
+                try:
+                    res = f.result()
+                    per_anchor_lists.append(res or [])
+                except Exception as err:
+                    logger.debug(f"Error discovering sellers for anchor: {err}")
+                    per_anchor_lists.append([])
+
+        seller_map: Dict[str, Dict[str, Any]] = {}
+        seller_counts: Dict[str, int] = {}
+
+        # Sort anchor lists from fewest sellers (rarest) to most sellers
+        per_anchor_lists.sort(key=len)
+
+        for cand_list in per_anchor_lists:
+            for cand in cand_list:
+                s_key = cand.get("sellerKey")
+                if not s_key:
+                    continue
+                if s_key not in seller_map:
+                    seller_map[s_key] = cand
+                    seller_counts[s_key] = 1
+                else:
+                    seller_counts[s_key] += 1
+
+        if not seller_map:
+            return []
+
+        # Rank by number of anchors matched descending, preserving rarest-first tie-breaking
+        ordered_keys: List[str] = []
+        seen_keys: Set[str] = set()
+        for s_key, _ in sorted(seller_counts.items(), key=lambda kv: kv[1], reverse=True):
+            if s_key not in seen_keys:
+                seen_keys.add(s_key)
+                ordered_keys.append(s_key)
+
+        return [seller_map[k] for k in ordered_keys[:max_total_candidates]]
 
     def _discover_sellers_for_watchlist(
         self,
@@ -483,35 +568,41 @@ class TCGplayerLotProvider:
         target_amount: float,
         bundle_type: str = "max_budget",
         required_card_id: Optional[int] = None,
+        required_card_ids: Optional[Set[int]] = None,
     ) -> Tuple[List[Dict[str, Any]], float]:
         """
         Selects a subset of qualifying cards to hit or stay within target_amount.
         - 'max_budget': Greedy knapsack to maximize number of unique cards without exceeding target_amount.
         - 'min_threshold': Selects lowest-cost cards until the sum reaches at least target_amount (e.g. $5 for free shipping).
-        If required_card_id is provided, guarantees that card is included first if within budget.
+        If required_card_id or required_card_ids is provided, guarantees those cards are included first if within budget.
         """
         if not qualifying_cards or target_amount <= 0:
             return qualifying_cards, round(sum(c["price"] for c in qualifying_cards), 2)
 
-        required_card = None
-        remaining_cards = []
+        req_ids: Set[int] = set(required_card_ids or set())
         if required_card_id is not None:
+            req_ids.add(required_card_id)
+
+        required_cards: List[Dict[str, Any]] = []
+        remaining_cards: List[Dict[str, Any]] = []
+        if req_ids:
             for c in qualifying_cards:
-                if (c.get("id") == required_card_id or c.get("productId") == required_card_id) and required_card is None:
-                    required_card = c
+                if c.get("id") in req_ids or c.get("productId") in req_ids or c.get("isAnchor"):
+                    required_cards.append(c)
                 else:
                     remaining_cards.append(c)
         else:
             remaining_cards = list(qualifying_cards)
 
+        required_cards.sort(key=lambda c: c["price"])
         sorted_cards = sorted(remaining_cards, key=lambda c: c["price"])
 
         if bundle_type == "min_threshold":
             selected = []
             running_total = 0.0
-            if required_card:
-                selected.append(required_card)
-                running_total += required_card["price"]
+            for req in required_cards:
+                selected.append(req)
+                running_total += req["price"]
             for card in sorted_cards:
                 if running_total >= target_amount:
                     break
@@ -522,11 +613,11 @@ class TCGplayerLotProvider:
             # max_budget
             selected = []
             running_total = 0.0
-            if required_card:
-                if required_card["price"] > target_amount:
+            for req in required_cards:
+                if running_total + req["price"] > target_amount:
                     return [], 0.0
-                selected.append(required_card)
-                running_total += required_card["price"]
+                selected.append(req)
+                running_total += req["price"]
             for card in sorted_cards:
                 if running_total + card["price"] <= target_amount:
                     selected.append(card)
@@ -539,6 +630,9 @@ class TCGplayerLotProvider:
         mode: str = "lots",  # 'lots' | 'anchor_card' | 'dollar_amount'
         anchor_card_id: Optional[int] = None,
         anchor_card_name: Optional[str] = None,
+        anchor_card_ids: Optional[List[int]] = None,
+        anchor_card_names: Optional[List[str]] = None,
+        anchor_match_mode: str = "all",  # 'all' | 'any'
         min_cards: int = 5,
         price_tolerance_mode: str = "decent_10",
         max_card_price: Optional[float] = None,
@@ -553,31 +647,77 @@ class TCGplayerLotProvider:
         Main entry point for finding single-seller lots across the user's watchlist.
         """
         start_time = time.time()
+        anchor_match_mode = "any" if str(anchor_match_mode or "all").strip().lower() == "any" else "all"
+
+        # Resolve all requested anchor items (supports both single and multi-anchor inputs)
+        anchor_items: List[Any] = []
+        anchor_norms: Set[str] = set()
+        if mode == "anchor_card":
+            req_ids: List[int] = list(anchor_card_ids or [])
+            if anchor_card_id is not None and anchor_card_id not in req_ids:
+                req_ids.append(anchor_card_id)
+
+            req_names: List[str] = list(anchor_card_names or [])
+            if anchor_card_name and anchor_card_name not in req_names:
+                req_names.append(anchor_card_name)
+
+            item_by_id = {getattr(it, "id", None): it for it in watchlist_items if getattr(it, "id", None) is not None}
+            all_by_norm: Dict[str, Any] = {}
+            for it in watchlist_items:
+                nm = getattr(it, "name", "")
+                if nm:
+                    all_by_norm[normalize_card_name(nm.split(" // ")[0].strip())] = it
+
+            for aid in req_ids:
+                it = item_by_id.get(aid)
+                if it:
+                    norm_a = normalize_card_name(getattr(it, "name", "").split(" // ")[0].strip())
+                    if norm_a and norm_a not in anchor_norms:
+                        anchor_norms.add(norm_a)
+                        anchor_items.append(it)
+
+            for aname in req_names:
+                norm_a = normalize_card_name(str(aname).split(" // ")[0].strip())
+                if norm_a and norm_a not in anchor_norms:
+                    it = all_by_norm.get(norm_a)
+                    if it:
+                        anchor_norms.add(norm_a)
+                        anchor_items.append(it)
 
         # Build fast lookup map for WatchlistItems by normalized canonical name
         item_by_name: Dict[str, Any] = {}
         for item in watchlist_items:
-            # Tag filter check
-            if tag_filter and tag_filter.lower() != "all":
-                item_tag = (getattr(item, "tag", "") or "").strip().lower()
-                if tag_filter.lower() == "__untagged__":
-                    if item_tag:
-                        continue
-                elif item_tag != tag_filter.lower():
-                    continue
-
-            # Per-card dollar filter check
-            ref_price = getattr(item, "lowest_in_stock_price", None) or getattr(item, "market_price", None)
-            if ref_price is not None:
-                if max_card_price is not None and ref_price > max_card_price:
-                    continue
-                if min_card_price is not None and ref_price < min_card_price:
-                    continue
-
             name = getattr(item, "name", "")
+            norm = normalize_card_name(name.split(" // ")[0].strip()) if name else ""
+            is_anchor_item = bool(norm and norm in anchor_norms)
+
+            if not is_anchor_item:
+                # Tag filter check
+                if tag_filter and tag_filter.lower() != "all":
+                    item_tag = (getattr(item, "tag", "") or "").strip().lower()
+                    if tag_filter.lower() == "__untagged__":
+                        if item_tag:
+                            continue
+                    elif item_tag != tag_filter.lower():
+                        continue
+
+                # Per-card dollar filter check
+                ref_price = getattr(item, "lowest_in_stock_price", None) or getattr(item, "market_price", None)
+                if ref_price is not None:
+                    if max_card_price is not None and ref_price > max_card_price:
+                        continue
+                    if min_card_price is not None and ref_price < min_card_price:
+                        continue
+
             if name:
-                norm = normalize_card_name(name.split(" // ")[0].strip())
                 item_by_name[norm] = item
+
+        # Ensure all resolved anchors are in item_by_name
+        for a_it in anchor_items:
+            a_name = getattr(a_it, "name", "")
+            if a_name:
+                a_norm = normalize_card_name(a_name.split(" // ")[0].strip())
+                item_by_name.setdefault(a_norm, a_it)
 
         if not item_by_name:
             return {
@@ -594,30 +734,14 @@ class TCGplayerLotProvider:
         # Step 1: Discover candidate sellers
         candidate_sellers: List[Dict[str, Any]] = []
 
-        if mode == "anchor_card" and (anchor_card_id or anchor_card_name):
-            # Resolve anchor item
-            anchor_item = None
-            if anchor_card_id:
-                for it in watchlist_items:
-                    if getattr(it, "id", None) == anchor_card_id:
-                        anchor_item = it
-                        break
-            if not anchor_item and anchor_card_name:
-                norm_a = normalize_card_name(anchor_card_name.split(" // ")[0].strip())
-                anchor_item = item_by_name.get(norm_a)
-
-            if anchor_item:
-                anchor_name = getattr(anchor_item, "name", "")
-                anchor_target = getattr(anchor_item, "target_price", None)
-                anchor_market = getattr(anchor_item, "market_price", None)
-                candidate_sellers = self._discover_sellers_for_anchor(
-                    anchor_card_name=anchor_name,
-                    anchor_target_price=anchor_target,
-                    anchor_market_price=anchor_market,
-                    tolerance_mode=price_tolerance_mode,
-                    allow_mp=allow_mp,
-                    english_only=english_only,
-                )
+        if mode == "anchor_card" and anchor_items:
+            candidate_sellers = self._discover_sellers_for_anchors(
+                anchor_items=anchor_items,
+                anchor_match_mode=anchor_match_mode,
+                tolerance_mode=price_tolerance_mode,
+                allow_mp=allow_mp,
+                english_only=english_only,
+            )
         else:
             # Watchlist lot or dollar amount mode: discover sellers from candidate items
             candidate_sellers = self._discover_sellers_for_watchlist(
@@ -697,11 +821,13 @@ class TCGplayerLotProvider:
                         if price <= 0:
                             continue
 
-                        # Check max/min card price filters if specified in dollar mode
-                        if max_card_price is not None and price > max_card_price:
-                            continue
-                        if min_card_price is not None and price < min_card_price:
-                            continue
+                        # Check max/min card price filters if specified in dollar mode (anchors bypass)
+                        is_anchor_card = norm_name in anchor_norms
+                        if not is_anchor_card:
+                            if max_card_price is not None and price > max_card_price:
+                                continue
+                            if min_card_price is not None and price < min_card_price:
+                                continue
 
                         ship = float(l.get("shippingPrice", 0.0) or l.get("sellerShippingPrice", 0.0) or 0.0)
                         shipping_estimates.append(ship)
@@ -740,6 +866,7 @@ class TCGplayerLotProvider:
                             "tag": getattr(w_item, "tag", None),
                             "priceLabel": label,
                             "deltaPct": delta_pct,
+                            "isAnchor": is_anchor_card,
                             "tcgplayerUrl": f"https://www.tcgplayer.com/product/{p_id}?seller={s_key}&page=1",
                             "storeSearchUrl": f"https://www.tcgplayer.com/search/magic/product?seller={s_key}&q={urllib.parse.quote_plus(clean_name)}&view=grid",
                         }
@@ -756,19 +883,26 @@ class TCGplayerLotProvider:
                 elif candidate_above_tolerance:
                     above_tolerance_cards.append(min(candidate_above_tolerance, key=lambda c: c["price"]))
 
-            # If anchor card mode, verify the anchor card is present in qualifying cards
-            if mode == "anchor_card" and anchor_item:
-                anchor_norm = normalize_card_name(getattr(anchor_item, "name", "").split(" // ")[0].strip())
+            # If anchor card mode, verify anchor cards are present in qualifying cards
+            matched_anchor_count = 0
+            if mode == "anchor_card" and anchor_norms:
                 qualifying_names = {normalize_card_name(c["name"].split(" // ")[0].strip()) for c in qualifying_cards}
-                if anchor_norm not in qualifying_names:
-                    return None
+                matched_anchors = anchor_norms & qualifying_names
+                matched_anchor_count = len(matched_anchors)
+                if anchor_match_mode == "all":
+                    if not anchor_norms.issubset(qualifying_names):
+                        return None
+                else:
+                    if matched_anchor_count == 0:
+                        return None
 
             # Check min_cards threshold
             if len(qualifying_cards) < min_cards:
                 return None
 
-            # Sort qualifying cards by price ascending
-            qualifying_cards.sort(key=lambda c: c["price"])
+            # Sort qualifying and above-tolerance cards: anchors first, then price ascending
+            qualifying_cards.sort(key=lambda c: (0 if c.get("isAnchor") else 1, c["price"]))
+            above_tolerance_cards.sort(key=lambda c: (0 if c.get("isAnchor") else 1, c["price"]))
 
             bundle_info = None
             display_cards = qualifying_cards
@@ -776,12 +910,16 @@ class TCGplayerLotProvider:
 
             # If target bundle amount is configured, optimize and enforce constraints on the bundle
             if target_bundle_amount and target_bundle_amount > 0:
-                required_id = getattr(anchor_item, "id", None) if (mode == "anchor_card" and anchor_item) else None
+                required_ids = (
+                    {getattr(it, "id", None) for it in anchor_items if getattr(it, "id", None) is not None}
+                    if (mode == "anchor_card" and anchor_items)
+                    else None
+                )
                 b_cards, b_total = self._optimize_dollar_bundle(
                     qualifying_cards=qualifying_cards,
                     target_amount=target_bundle_amount,
                     bundle_type=bundle_amount_type,
-                    required_card_id=required_id,
+                    required_card_ids=required_ids,
                 )
 
                 # Validation: Does the optimized bundle satisfy the user's constraints?
@@ -858,7 +996,9 @@ class TCGplayerLotProvider:
                 "allStockedCount": len(qualifying_cards),
                 "allStockedSubtotal": round(sum(c["price"] for c in qualifying_cards), 2),
                 "aboveToleranceCount": len(above_tolerance_cards),
-                "aboveToleranceCards": above_tolerance_cards[:10],
+                "aboveToleranceCards": above_tolerance_cards,
+                "matchedAnchorCount": matched_anchor_count,
+                "totalAnchorCount": len(anchor_items) if mode == "anchor_card" else 0,
                 "bundleInfo": bundle_info,
             }
 
@@ -873,9 +1013,13 @@ class TCGplayerLotProvider:
                 except Exception as err:
                     logger.debug(f"Error evaluating seller: {err}")
 
-        # Sort sellers: first by qualifying card count descending, then by net savings descending
+        # Sort sellers: prioritize matchedAnchorCount when multi-anchor, then qualifyingCount, then netSavings
         qualifying_sellers.sort(
-            key=lambda x: (x["qualifyingCount"], x["netSavings"]),
+            key=lambda x: (
+                x.get("matchedAnchorCount", 0) if (mode == "anchor_card" and len(anchor_items) > 1) else 0,
+                x["qualifyingCount"],
+                x["netSavings"],
+            ),
             reverse=True,
         )
 
@@ -887,6 +1031,8 @@ class TCGplayerLotProvider:
             "scanned_cards_count": len(all_names),
             "duration_seconds": elapsed,
             "mode": mode,
+            "anchor_match_mode": anchor_match_mode if mode == "anchor_card" else None,
+            "anchor_count": len(anchor_items) if mode == "anchor_card" else 0,
             "min_cards": min_cards,
             "tolerance_mode": price_tolerance_mode,
             "english_only": english_only,

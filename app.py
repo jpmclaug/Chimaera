@@ -1945,6 +1945,33 @@ def create_app(test_config=None):
 
         anchor_card_name = str(data.get("anchor_card_name", "")).strip() or None
 
+        anchor_card_ids = []
+        raw_ids = data.get("anchor_card_ids")
+        if isinstance(raw_ids, list):
+            for raw_id in raw_ids:
+                try:
+                    val = int(raw_id)
+                    if val not in anchor_card_ids:
+                        anchor_card_ids.append(val)
+                except (ValueError, TypeError):
+                    pass
+        if anchor_card_id is not None and anchor_card_id not in anchor_card_ids:
+            anchor_card_ids.append(anchor_card_id)
+
+        anchor_card_names = []
+        raw_names = data.get("anchor_card_names")
+        if isinstance(raw_names, list):
+            for raw_name in raw_names:
+                clean_nm = str(raw_name or "").strip()
+                if clean_nm and clean_nm not in anchor_card_names:
+                    anchor_card_names.append(clean_nm)
+        if anchor_card_name and anchor_card_name not in anchor_card_names:
+            anchor_card_names.append(anchor_card_name)
+
+        anchor_match_mode = str(data.get("anchor_match_mode", "all")).strip().lower()
+        if anchor_match_mode not in ("all", "any"):
+            anchor_match_mode = "all"
+
         max_card_price = None
         if data.get("max_card_price") is not None and str(data.get("max_card_price")).strip() != "":
             try:
@@ -1993,6 +2020,9 @@ def create_app(test_config=None):
                 mode=mode,
                 anchor_card_id=anchor_card_id,
                 anchor_card_name=anchor_card_name,
+                anchor_card_ids=anchor_card_ids,
+                anchor_card_names=anchor_card_names,
+                anchor_match_mode=anchor_match_mode,
                 min_cards=min_cards,
                 price_tolerance_mode=price_tolerance_mode,
                 max_card_price=max_card_price,
